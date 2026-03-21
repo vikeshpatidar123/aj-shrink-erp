@@ -9,7 +9,7 @@ import {
   gravureWorkOrders as initWOs, gravureOrders as initOrders,
   machines, employees, processMasters, items, customers,
   GravureWorkOrder, GravureOrder, GravureEstimationProcess,
-  SecondaryLayer, PlyConsumableItem, CATEGORY_GROUP_SUBGROUP,
+  SecondaryLayer, PlyConsumableItem, CategoryPlyConsumable, CATEGORY_GROUP_SUBGROUP,
 } from "@/data/dummyData";
 import { useCategories } from "@/context/CategoriesContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
@@ -32,6 +32,21 @@ const FILM_SUBGROUPS = Array.from(
   FILM_ITEMS.filter(i => i.subGroup === subGroup).forEach(i => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
   return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
 });
+
+// Default consumables shown when category has none defined for that plyType
+const DEFAULT_PLY_CONSUMABLES: Record<string, CategoryPlyConsumable[]> = {
+  Printing: [
+    { id: "DEF_INK",     plyType: "Printing",   itemGroup: "Ink",     itemSubGroup: "Solvent Based Ink",  fieldDisplayName: "Ink",     defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
+    { id: "DEF_SOL",     plyType: "Printing",   itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", fieldDisplayName: "Solvent", defaultValue: 2.0, minValue: 0.5, maxValue: 5,   sharePercentageFormula: "" },
+  ],
+  Lamination: [
+    { id: "DEF_ADH",     plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive",      fieldDisplayName: "Adhesive", defaultValue: 3.5, minValue: 2,   maxValue: 6,   sharePercentageFormula: "" },
+    { id: "DEF_HRD",     plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",      fieldDisplayName: "Hardener", defaultValue: 0.7, minValue: 0.3, maxValue: 1.5, sharePercentageFormula: "" },
+  ],
+  Coating: [
+    { id: "DEF_CTG",     plyType: "Coating",    itemGroup: "Adhesive", itemSubGroup: "Coating Adhesive", fieldDisplayName: "Coating", defaultValue: 3.0, minValue: 1,   maxValue: 6,   sharePercentageFormula: "" },
+  ],
+};
 
 const STATUS_COLORS: Record<string, string> = {
   Open:          "bg-gray-50 text-gray-600 border-gray-200",
@@ -90,31 +105,67 @@ export default function GravureWorkOrderPage() {
   const [viewPlanWO, setViewPlanWO]   = useState<GravureWorkOrder | null>(null);
 
   // ── Live Cost Breakdown ────────────────────────────────────
+  type MaterialRow = {
+    plyNo: number; plyType: string; itemName: string; group: string; gsm: number;
+    reqMtr: number; reqSQM: number; reqWt: number;
+    wasteMtr: number; wasteSQM: number; wasteWt: number;
+    totalMtr: number; totalSQM: number; totalWt: number;
+    rate: number; amount: number;
+  };
+
   const costBreakdown = useMemo(() => {
     const qty    = form.quantity || 0;
-    const areaM2 = qty * ((form.jobWidth || 0) / 1000);
+    const widthM = (form.jobWidth || 0) / 1000;
+    const areaM2 = qty * widthM;
+    const WASTE  = 0.03; // 3% standard waste
 
-    // Film cost — lookup estimationRate from FILM_ITEMS by subGroup + thickness
-    let filmCost = 0;
+    let filmCost = 0, consumableCost = 0;
+    const materialRows: MaterialRow[] = [];
+
     form.secondaryLayers.forEach(l => {
-      if (!l.plyType || l.plyType === "Film") {
-        const fi = FILM_ITEMS.find(x =>
-          x.subGroup === l.itemSubGroup && Math.abs(parseFloat(x.thickness) - l.thickness) < 5
-        );
-        filmCost += ((l.gsm || 0) / 1000) * areaM2 * (parseFloat(fi?.estimationRate ?? "0") || 0);
+      const reqMtr  = qty;
+      const reqSQM  = areaM2;
+
+      // Film row
+      if (l.itemSubGroup && l.gsm > 0) {
+        const fi   = FILM_ITEMS.find(x => x.subGroup === l.itemSubGroup && Math.abs(parseFloat(x.thickness) - l.thickness) < 5);
+        const rate = parseFloat(fi?.estimationRate ?? "0") || 0;
+        const reqWt    = (l.gsm / 1000) * reqSQM;
+        const wasteMtr = reqMtr * WASTE;
+        const wasteSQM = reqSQM * WASTE;
+        const wasteWt  = reqWt  * WASTE;
+        const totalWt  = reqWt + wasteWt;
+        filmCost += totalWt * rate;
+        materialRows.push({
+          plyNo: l.layerNo, plyType: l.plyType || "Film",
+          itemName: l.itemSubGroup || "Film", group: "Film", gsm: l.gsm,
+          reqMtr, reqSQM, reqWt,
+          wasteMtr, wasteSQM, wasteWt,
+          totalMtr: reqMtr + wasteMtr, totalSQM: reqSQM + wasteSQM, totalWt,
+          rate, amount: totalWt * rate,
+        });
       }
-    });
 
-    // Consumable rows (Ink / Solvent / Adhesive)
-    let consumableCost = 0;
-    const consumableRows: { name: string; group: string; gsm: number; rate: number; kg: number; amt: number }[] = [];
-    form.secondaryLayers.forEach(l => {
+      // Consumable rows (Ink / Solvent / Adhesive / Hardener)
       (l.consumableItems || []).forEach(ci => {
-        const kg  = ((ci.gsm || 0) / 1000) * areaM2;
-        const amt = kg * (ci.rate || 0);
-        consumableCost += amt;
-        if (ci.itemName || ci.itemSubGroup)
-          consumableRows.push({ name: ci.itemName || ci.itemSubGroup, group: ci.itemGroup, gsm: ci.gsm || 0, rate: ci.rate || 0, kg, amt });
+        if (!ci.gsm && ci.gsm !== 0) return;
+        const reqWt    = (ci.gsm / 1000) * reqSQM;
+        const wasteMtr = reqMtr * WASTE;
+        const wasteSQM = reqSQM * WASTE;
+        const wasteWt  = reqWt  * WASTE;
+        const totalWt  = reqWt + wasteWt;
+        const rate     = ci.rate || 0;
+        const amount   = totalWt * rate;
+        consumableCost += amount;
+        materialRows.push({
+          plyNo: l.layerNo, plyType: l.plyType || "",
+          itemName: ci.itemName || ci.fieldDisplayName || ci.itemSubGroup,
+          group: ci.itemGroup, gsm: ci.gsm || 0,
+          reqMtr, reqSQM, reqWt,
+          wasteMtr, wasteSQM, wasteWt,
+          totalMtr: reqMtr + wasteMtr, totalSQM: reqSQM + wasteSQM, totalWt,
+          rate, amount,
+        });
       });
     });
 
@@ -137,7 +188,7 @@ export default function GravureWorkOrderPage() {
     const profit       = (subtotal + overhead) * ((form.profitPct || 0) / 100);
     const total        = subtotal + overhead + profit;
     const perMeter     = qty > 0 ? total / qty : 0;
-    return { filmCost, consumableCost, processCost, cylinderCost, materialCost, overhead, profit, total, perMeter, consumableRows };
+    return { filmCost, consumableCost, processCost, cylinderCost, materialCost, overhead, profit, total, perMeter, materialRows };
   }, [form.secondaryLayers, form.processes, form.quantity, form.jobWidth, form.noOfColors, form.cylinderCostPerColor, form.overheadPct, form.profitPct]);
 
   // ── Save to Catalog ────────────────────────────────────────
@@ -197,10 +248,12 @@ export default function GravureWorkOrderPage() {
     setForm(p => ({ ...p, [k]: v }));
 
   // ── Ply helpers ─────────────────────────────────────────────
-  const getCategoryConsumables = (categoryId: string, plyType: string) => {
+  const getCategoryConsumables = (categoryId: string, plyType: string): CategoryPlyConsumable[] => {
+    if (!plyType || plyType === "Film") return [];
     const cat = categories.find(c => c.id === categoryId);
-    if (!cat?.plyConsumables || !plyType || plyType === "Film") return [];
-    return cat.plyConsumables.filter((pc: { plyType: string }) => pc.plyType === plyType);
+    const catDefs = cat?.plyConsumables?.filter(pc => pc.plyType === plyType) ?? [];
+    // Use category-specific consumables if available, otherwise fall back to defaults
+    return catDefs.length > 0 ? catDefs : (DEFAULT_PLY_CONSUMABLES[plyType] ?? []);
   };
 
   const onPlyTypeChange = (index: number, plyType: string) => {
@@ -827,35 +880,64 @@ export default function GravureWorkOrderPage() {
             <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-2 mb-1">
                 <Calculator size={14} className="text-indigo-600" />
-                <p className="text-xs font-bold text-indigo-800 uppercase tracking-widest">Live Cost Estimate</p>
-                <span className="text-[10px] text-indigo-400 ml-1">(Qty: {form.quantity.toLocaleString()} {form.unit} · Width: {form.jobWidth}mm)</span>
+                <p className="text-xs font-bold text-indigo-800 uppercase tracking-widest">Live Cost Estimate — Material Breakdown</p>
+                <span className="text-[10px] text-indigo-400 ml-1">(Qty: {form.quantity.toLocaleString()} {form.unit} · Width: {form.jobWidth}mm · 3% Waste)</span>
               </div>
 
-              {/* Consumable detail rows */}
-              {costBreakdown.consumableRows.length > 0 && (
-                <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white">
-                  <table className="w-full text-[10px] border-collapse">
+              {/* Full estimation-style material breakdown table */}
+              {costBreakdown.materialRows.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white shadow-sm">
+                  <table className="min-w-full text-[10px] border-collapse whitespace-nowrap">
                     <thead className="bg-indigo-700 text-white">
                       <tr>
-                        {["Material / Item", "Group", "GSM / Wet Wt.", "Rate (₹/Kg)", "Weight (Kg)", "Amount (₹)"].map(h => (
-                          <th key={h} className="p-2 border border-indigo-600/30 text-center whitespace-nowrap">{h}</th>
+                        {["Ply", "Type", "Film / Material", "Group", "GSM/Wet Wt.", "Req.Mtr", "Req.SQM", "Req.Wt(Kg)", "Waste Mtr", "Waste SQM", "Waste Wt(Kg)", "Total Mtr", "Total SQM", "Total Wt(Kg)", "Rate (₹/Kg)", "Amount (₹)"].map(h => (
+                          <th key={h} className="px-2 py-2 border border-indigo-600/30 text-center">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {costBreakdown.consumableRows.map((r, i) => (
-                        <tr key={i} className="hover:bg-indigo-50/40">
-                          <td className="p-2 border border-gray-100 font-medium text-gray-700">{r.name}</td>
-                          <td className="p-2 border border-gray-100 text-center">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${r.group === "Ink" ? "bg-blue-100 text-blue-700" : r.group === "Solvent" ? "bg-orange-100 text-orange-700" : "bg-teal-100 text-teal-700"}`}>{r.group}</span>
-                          </td>
-                          <td className="p-2 border border-gray-100 text-center font-mono text-indigo-700">{r.gsm}</td>
-                          <td className="p-2 border border-gray-100 text-center font-mono">₹{r.rate.toFixed(2)}</td>
-                          <td className="p-2 border border-gray-100 text-center font-mono">{r.kg.toFixed(4)}</td>
-                          <td className="p-2 border border-gray-100 text-center font-bold text-green-700">₹{r.amt.toFixed(2)}</td>
-                        </tr>
-                      ))}
+                      {costBreakdown.materialRows.map((r, i) => {
+                        const typeColor =
+                          r.group === "Film"     ? "bg-blue-100 text-blue-700 border-blue-200" :
+                          r.group === "Ink"      ? "bg-violet-100 text-violet-700 border-violet-200" :
+                          r.group === "Solvent"  ? "bg-orange-100 text-orange-700 border-orange-200" :
+                          r.group === "Adhesive" ? "bg-teal-100 text-teal-700 border-teal-200" :
+                          r.group === "Hardner"  ? "bg-pink-100 text-pink-700 border-pink-200" :
+                                                   "bg-gray-100 text-gray-600 border-gray-200";
+                        return (
+                          <tr key={i} className={`hover:bg-indigo-50/30 ${r.group === "Film" ? "bg-blue-50/20 font-medium" : ""}`}>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-bold text-indigo-900">{r.plyNo}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${typeColor}`}>{r.group}</span>
+                            </td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-gray-800 min-w-[130px] whitespace-normal">{r.itemName || "—"}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${typeColor}`}>{r.group}</span>
+                            </td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-indigo-700 font-bold">{r.gsm}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqMtr.toFixed(0)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqSQM.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqWt.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteMtr.toFixed(1)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteSQM.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteWt.toFixed(4)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-gray-700">{r.totalMtr.toFixed(0)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-gray-700">{r.totalSQM.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono font-bold text-gray-900">{r.totalWt.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">₹{r.rate.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-bold text-green-700">₹{r.amount.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
+                    <tfoot className="bg-indigo-50 border-t-2 border-indigo-300">
+                      <tr className="font-bold">
+                        <td colSpan={13} className="px-3 py-2 text-right text-indigo-900 text-[10px] uppercase tracking-wider">Total Material Cost</td>
+                        <td className="px-2 py-2 text-center font-bold text-indigo-900">{costBreakdown.materialRows.reduce((s, r) => s + r.totalWt, 0).toFixed(3)}</td>
+                        <td className="px-2 py-2"></td>
+                        <td className="px-2 py-2 text-center font-black text-green-800 bg-green-50">₹{(costBreakdown.filmCost + costBreakdown.consumableCost).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
@@ -1090,30 +1172,59 @@ export default function GravureWorkOrderPage() {
                 <Calculator size={14} className="text-indigo-600" />
                 <p className="text-xs font-bold text-indigo-800 uppercase tracking-widest">Cost Estimate — After Replan</p>
               </div>
-              {costBreakdown.consumableRows.length > 0 && (
-                <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white">
-                  <table className="w-full text-[10px] border-collapse">
+              {costBreakdown.materialRows.length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white shadow-sm">
+                  <table className="min-w-full text-[10px] border-collapse whitespace-nowrap">
                     <thead className="bg-indigo-700 text-white">
                       <tr>
-                        {["Material / Item", "Group", "GSM / Wet Wt.", "Rate (₹/Kg)", "Weight (Kg)", "Amount (₹)"].map(h => (
-                          <th key={h} className="p-2 border border-indigo-600/30 text-center whitespace-nowrap">{h}</th>
+                        {["Ply", "Type", "Film / Material", "Group", "GSM/Wet Wt.", "Req.Mtr", "Req.SQM", "Req.Wt(Kg)", "Waste Mtr", "Waste SQM", "Waste Wt(Kg)", "Total Mtr", "Total SQM", "Total Wt(Kg)", "Rate (₹/Kg)", "Amount (₹)"].map(h => (
+                          <th key={h} className="px-2 py-2 border border-indigo-600/30 text-center">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {costBreakdown.consumableRows.map((r, i) => (
-                        <tr key={i} className="hover:bg-indigo-50/40">
-                          <td className="p-2 border border-gray-100 font-medium text-gray-700">{r.name}</td>
-                          <td className="p-2 border border-gray-100 text-center">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${r.group === "Ink" ? "bg-blue-100 text-blue-700" : r.group === "Solvent" ? "bg-orange-100 text-orange-700" : "bg-teal-100 text-teal-700"}`}>{r.group}</span>
-                          </td>
-                          <td className="p-2 border border-gray-100 text-center font-mono text-indigo-700">{r.gsm}</td>
-                          <td className="p-2 border border-gray-100 text-center font-mono">₹{r.rate.toFixed(2)}</td>
-                          <td className="p-2 border border-gray-100 text-center font-mono">{r.kg.toFixed(4)}</td>
-                          <td className="p-2 border border-gray-100 text-center font-bold text-green-700">₹{r.amt.toFixed(2)}</td>
-                        </tr>
-                      ))}
+                      {costBreakdown.materialRows.map((r, i) => {
+                        const typeColor =
+                          r.group === "Film"     ? "bg-blue-100 text-blue-700 border-blue-200" :
+                          r.group === "Ink"      ? "bg-violet-100 text-violet-700 border-violet-200" :
+                          r.group === "Solvent"  ? "bg-orange-100 text-orange-700 border-orange-200" :
+                          r.group === "Adhesive" ? "bg-teal-100 text-teal-700 border-teal-200" :
+                          r.group === "Hardner"  ? "bg-pink-100 text-pink-700 border-pink-200" :
+                                                   "bg-gray-100 text-gray-600 border-gray-200";
+                        return (
+                          <tr key={i} className={`hover:bg-indigo-50/30 ${r.group === "Film" ? "bg-blue-50/20 font-medium" : ""}`}>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-bold text-indigo-900">{r.plyNo}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border ${typeColor}`}>{r.group}</span>
+                            </td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-gray-800 min-w-[130px] whitespace-normal">{r.itemName || "—"}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${typeColor}`}>{r.group}</span>
+                            </td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-indigo-700 font-bold">{r.gsm}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqMtr.toFixed(0)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqSQM.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">{r.reqWt.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteMtr.toFixed(1)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteSQM.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-orange-600">{r.wasteWt.toFixed(4)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-gray-700">{r.totalMtr.toFixed(0)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono text-gray-700">{r.totalSQM.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono font-bold text-gray-900">{r.totalWt.toFixed(3)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-mono">₹{r.rate.toFixed(2)}</td>
+                            <td className="px-2 py-1.5 border border-gray-100 text-center font-bold text-green-700">₹{r.amount.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
+                    <tfoot className="bg-indigo-50 border-t-2 border-indigo-300">
+                      <tr className="font-bold">
+                        <td colSpan={13} className="px-3 py-2 text-right text-indigo-900 text-[10px] uppercase tracking-wider">Total Material Cost</td>
+                        <td className="px-2 py-2 text-center font-bold text-indigo-900">{costBreakdown.materialRows.reduce((s, r) => s + r.totalWt, 0).toFixed(3)}</td>
+                        <td className="px-2 py-2"></td>
+                        <td className="px-2 py-2 text-center font-black text-green-800 bg-green-50">₹{(costBreakdown.filmCost + costBreakdown.consumableCost).toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
