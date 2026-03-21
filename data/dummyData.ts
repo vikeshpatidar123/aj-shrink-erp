@@ -1545,12 +1545,46 @@ export type GravureEstimation = {
   concernPerson?: string;
 };
 
+export type GravureOrderLine = {
+  id: string;
+  lineNo: number;
+  sourceType: "Estimation" | "Catalog" | "Direct";
+  estimationId: string; estimationNo: string;
+  catalogId: string; catalogNo: string;
+  productCode: string; productName: string;
+  categoryId: string; categoryName: string;
+  substrate: string;
+  jobWidth: number; jobHeight: number;
+  noOfColors: number;
+  printType: "Surface Print" | "Reverse Print" | "Combination";
+  cylinderStatus: "New" | "Existing";
+  cylinderCount: number;
+  filmType: string;
+  laminationRequired: boolean;
+  orderQty: number; unit: string;
+  rate: number; currency: string;
+  amount: number;
+  deliveryDate: string;
+  remarks: string;
+};
+
 export type GravureOrder = {
   id: string; orderNo: string; date: string;
+  // Header
+  customerId: string; customerName: string;
+  salesPerson: string; salesType: string; salesLedger: string;
+  poNo: string; poDate: string;
+  directDispatch: boolean;
+  // Lines
+  orderLines: GravureOrderLine[];
+  // Summary
+  totalAmount: number; advancePaid: number;
+  remarks: string;
+  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
+  // Legacy single-product fields (kept for workorder compatibility)
   sourceType: "Estimation" | "Catalog" | "Direct";
   enquiryId: string; estimationId: string;
   catalogId: string; catalogNo: string;
-  customerId: string; customerName: string;
   jobName: string; substrate: string; structure: string;
   categoryId: string; categoryName: string; content: string;
   jobWidth: number; jobHeight: number;
@@ -1558,14 +1592,11 @@ export type GravureOrder = {
   printType: string;
   quantity: number; unit: string;
   deliveryDate: string; cylinderSet: string;
-  totalAmount: number; advancePaid: number;
   perMeterRate: number;
   machineId: string; machineName: string;
   secondaryLayers: SecondaryLayer[];
   processes: GravureEstimationProcess[];
   overheadPct: number; profitPct: number;
-  remarks: string;
-  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
 };
 
 export type GravureProductCatalog = {
@@ -1821,10 +1852,82 @@ export const gravureEstimations: GravureEstimation[] = [
 
 // ─── GRAVURE ORDERS ───────────────────────────────────────────
 export const gravureOrders: GravureOrder[] = [
-  { id: "GO001", orderNo: "GRV-ORD-2024-001", date: "2024-03-06", sourceType: "Estimation", enquiryId: "GE001", estimationId: "GEST001", catalogId: "", catalogNo: "", customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + Dry Lam + CPP 30μ", categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label", jobWidth: 340, jobHeight: 450, width: 340, noOfColors: 8, printType: "Surface Print", quantity: 200000, unit: "Meter", deliveryDate: "2024-03-28", cylinderSet: "CYL-P001", totalAmount: 272000, advancePaid: 80000, perMeterRate: 1.36, machineId: "M004", machineName: "Roto Press 1 – 8 Color", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "In Production" },
-  { id: "GO002", orderNo: "GRV-ORD-2024-002", date: "2024-03-10", sourceType: "Estimation", enquiryId: "GE002", estimationId: "GEST002", catalogId: "", catalogNo: "", customerId: "C002", customerName: "Britannia Industries Ltd", jobName: "Britannia NutriChoice 200g", substrate: "PET 12μ", structure: "PET 12μ + Dry Lam + PE 40μ", categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal", jobWidth: 420, jobHeight: 400, width: 420, noOfColors: 6, printType: "Reverse Print", quantity: 150000, unit: "Meter", deliveryDate: "2024-04-02", cylinderSet: "CYL-B001", totalAmount: 228000, advancePaid: 60000, perMeterRate: 1.52, machineId: "M003", machineName: "Roto Press 4 – 6 Color", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Confirmed" },
-  { id: "GO003", orderNo: "GRV-ORD-2024-003", date: "2024-03-14", sourceType: "Direct", enquiryId: "GE005", estimationId: "", catalogId: "", catalogNo: "", customerId: "C006", customerName: "Nestle India Ltd", jobName: "Maggi Noodles 70g Outer Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + PE 30μ", categoryId: "", categoryName: "", content: "", jobWidth: 300, jobHeight: 0, width: 300, noOfColors: 8, printType: "Reverse Print", quantity: 250000, unit: "Meter", deliveryDate: "2024-04-08", cylinderSet: "", totalAmount: 350000, advancePaid: 100000, perMeterRate: 1.40, machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Confirmed" },
-  { id: "GO004", orderNo: "GRV-ORD-2024-004", date: "2024-03-18", sourceType: "Direct", enquiryId: "GE004", estimationId: "", catalogId: "", catalogNo: "", customerId: "C005", customerName: "Amul Dairy", jobName: "Amul Butter Shrink Sleeve", substrate: "PVC 50μ", structure: "PVC 50μ Shrink", categoryId: "", categoryName: "", content: "", jobWidth: 260, jobHeight: 360, width: 260, noOfColors: 6, printType: "Surface Print", quantity: 500000, unit: "Meter", deliveryDate: "2024-04-15", cylinderSet: "CYL-A001", totalAmount: 450000, advancePaid: 150000, perMeterRate: 0.90, machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Ready" },
+  {
+    id: "GO001", orderNo: "GRV-ORD-2024-001", date: "2024-03-06",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd",
+    salesPerson: "Rajesh Sharma", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-PARLE-2024-031", poDate: "2024-03-05", directDispatch: false,
+    orderLines: [
+      { id: "GL001-1", lineNo: 1, sourceType: "Estimation", estimationId: "GEST001", estimationNo: "GRV-EST-2024-001", catalogId: "", catalogNo: "", productCode: "PARLE-BISC-100G", productName: "Parle-G Biscuit 100g Wrap", categoryId: "CAT001", categoryName: "Roto - Label", substrate: "BOPP 20μ", jobWidth: 340, jobHeight: 450, noOfColors: 8, printType: "Surface Print", cylinderStatus: "New", cylinderCount: 8, filmType: "BOPP", laminationRequired: true, orderQty: 200000, unit: "Meter", rate: 1.36, currency: "INR", amount: 272000, deliveryDate: "2024-03-28", remarks: "Pantone matching required" },
+    ],
+    totalAmount: 272000, advancePaid: 80000, remarks: "Urgent – Feb launch",
+    status: "In Production",
+    // Legacy fields
+    sourceType: "Estimation", enquiryId: "GE001", estimationId: "GEST001", catalogId: "", catalogNo: "",
+    jobName: "Parle-G Biscuit 100g Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + Dry Lam + CPP 30μ",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
+    jobWidth: 340, jobHeight: 450, width: 340, noOfColors: 8, printType: "Surface Print",
+    quantity: 200000, unit: "Meter", deliveryDate: "2024-03-28", cylinderSet: "CYL-P001",
+    perMeterRate: 1.36, machineId: "M004", machineName: "Roto Press 1 – 8 Color",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO002", orderNo: "GRV-ORD-2024-002", date: "2024-03-10",
+    customerId: "C002", customerName: "Britannia Industries Ltd",
+    salesPerson: "Sanjay Gupta", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-BRIT-2024-058", poDate: "2024-03-09", directDispatch: false,
+    orderLines: [
+      { id: "GL002-1", lineNo: 1, sourceType: "Estimation", estimationId: "GEST002", estimationNo: "GRV-EST-2024-002", catalogId: "", catalogNo: "", productCode: "BRIT-NC-200G", productName: "Britannia NutriChoice 200g", categoryId: "CAT002", categoryName: "Pouch", substrate: "PET 12μ", jobWidth: 420, jobHeight: 400, noOfColors: 6, printType: "Reverse Print", cylinderStatus: "Existing", cylinderCount: 6, filmType: "PET", laminationRequired: true, orderQty: 150000, unit: "Meter", rate: 1.52, currency: "INR", amount: 228000, deliveryDate: "2024-04-02", remarks: "Matte OPV required" },
+    ],
+    totalAmount: 228000, advancePaid: 60000, remarks: "Existing cylinders available",
+    status: "Confirmed",
+    // Legacy fields
+    sourceType: "Estimation", enquiryId: "GE002", estimationId: "GEST002", catalogId: "", catalogNo: "",
+    jobName: "Britannia NutriChoice 200g", substrate: "PET 12μ", structure: "PET 12μ + Dry Lam + PE 40μ",
+    categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal",
+    jobWidth: 420, jobHeight: 400, width: 420, noOfColors: 6, printType: "Reverse Print",
+    quantity: 150000, unit: "Meter", deliveryDate: "2024-04-02", cylinderSet: "CYL-B001",
+    perMeterRate: 1.52, machineId: "M003", machineName: "Roto Press 4 – 6 Color",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO003", orderNo: "GRV-ORD-2024-003", date: "2024-03-14",
+    customerId: "C006", customerName: "Nestle India Ltd",
+    salesPerson: "Anita Desai", salesType: "Inter-State", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-NEST-2024-021", poDate: "2024-03-13", directDispatch: true,
+    orderLines: [
+      { id: "GL003-1", lineNo: 1, sourceType: "Direct", estimationId: "", estimationNo: "", catalogId: "", catalogNo: "", productCode: "NEST-MAGGI-70G", productName: "Maggi Noodles 70g Outer Wrap", categoryId: "", categoryName: "", substrate: "BOPP 20μ", jobWidth: 300, jobHeight: 0, noOfColors: 8, printType: "Reverse Print", cylinderStatus: "New", cylinderCount: 8, filmType: "BOPP", laminationRequired: false, orderQty: 250000, unit: "Meter", rate: 1.40, currency: "INR", amount: 350000, deliveryDate: "2024-04-08", remarks: "" },
+    ],
+    totalAmount: 350000, advancePaid: 100000, remarks: "",
+    status: "Confirmed",
+    // Legacy fields
+    sourceType: "Direct", enquiryId: "GE005", estimationId: "", catalogId: "", catalogNo: "",
+    jobName: "Maggi Noodles 70g Outer Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + PE 30μ",
+    categoryId: "", categoryName: "", content: "",
+    jobWidth: 300, jobHeight: 0, width: 300, noOfColors: 8, printType: "Reverse Print",
+    quantity: 250000, unit: "Meter", deliveryDate: "2024-04-08", cylinderSet: "",
+    perMeterRate: 1.40, machineId: "", machineName: "",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO004", orderNo: "GRV-ORD-2024-004", date: "2024-03-18",
+    customerId: "C005", customerName: "Amul Dairy",
+    salesPerson: "Rajesh Sharma", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-AMUL-2024-009", poDate: "2024-03-17", directDispatch: false,
+    orderLines: [
+      { id: "GL004-1", lineNo: 1, sourceType: "Direct", estimationId: "", estimationNo: "", catalogId: "", catalogNo: "", productCode: "AMUL-BUT-SLV", productName: "Amul Butter Shrink Sleeve", categoryId: "", categoryName: "", substrate: "PVC 50μ", jobWidth: 260, jobHeight: 360, noOfColors: 6, printType: "Surface Print", cylinderStatus: "Existing", cylinderCount: 6, filmType: "PVC", laminationRequired: false, orderQty: 500000, unit: "Meter", rate: 0.90, currency: "INR", amount: 450000, deliveryDate: "2024-04-15", remarks: "UV ink required" },
+    ],
+    totalAmount: 450000, advancePaid: 150000, remarks: "UV ink required",
+    status: "Ready",
+    // Legacy fields
+    sourceType: "Direct", enquiryId: "GE004", estimationId: "", catalogId: "", catalogNo: "",
+    jobName: "Amul Butter Shrink Sleeve", substrate: "PVC 50μ", structure: "PVC 50μ Shrink",
+    categoryId: "", categoryName: "", content: "",
+    jobWidth: 260, jobHeight: 360, width: 260, noOfColors: 6, printType: "Surface Print",
+    quantity: 500000, unit: "Meter", deliveryDate: "2024-04-15", cylinderSet: "CYL-A001",
+    perMeterRate: 0.90, machineId: "", machineName: "",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
 ];
 
 // ─── GRAVURE PRODUCT CATALOG ──────────────────────────────────

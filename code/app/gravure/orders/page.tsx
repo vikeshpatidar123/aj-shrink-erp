@@ -18,21 +18,22 @@ import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 
 const blank: Omit<GravureOrder, "id" | "orderNo"> = {
   date: new Date().toISOString().slice(0, 10),
-  sourceType: "Direct",
-  enquiryId: "", estimationId: "",
-  catalogId: "", catalogNo: "",
   customerId: "", customerName: "",
+  salesPerson: "", salesType: "Local", salesLedger: "",
+  poNo: "", poDate: "", directDispatch: false,
+  orderLines: [],
+  totalAmount: 0, advancePaid: 0, remarks: "", status: "Confirmed",
+  sourceType: "Direct", enquiryId: "", estimationId: "",
+  catalogId: "", catalogNo: "",
   jobName: "", substrate: "", structure: "",
   categoryId: "", categoryName: "", content: "",
   jobWidth: 0, jobHeight: 0, width: 0, noOfColors: 6,
   printType: "Surface Print",
   quantity: 0, unit: "Meter",
-  deliveryDate: "", cylinderSet: "",
-  totalAmount: 0, advancePaid: 0, perMeterRate: 0,
+  deliveryDate: "", cylinderSet: "", perMeterRate: 0,
   machineId: "", machineName: "",
   secondaryLayers: [], processes: [],
   overheadPct: 12, profitPct: 15,
-  remarks: "", status: "Confirmed",
 };
 
 const STATUS_COLORS: Record<string, string> = {
