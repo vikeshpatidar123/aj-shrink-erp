@@ -217,18 +217,17 @@ export default function GravureEstimationPage() {
   const [activeTab, setActiveTab] = useState<number>(1);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [isPlanApplied, setIsPlanApplied] = useState(false);
-  const [altQty1, setAltQty1] = useState<number>(0);
-  const [altQty2, setAltQty2] = useState<number>(0);
-  const [activeQtySlot, setActiveQtySlot] = useState<0 | 1 | 2>(0); // which card is "selected"
+  const [extraQtys, setExtraQtys] = useState<number[]>([]);
+  const [activeQtyIdx, setActiveQtyIdx] = useState<number>(0); // 0 = base qty
 
   // Derived costs (live)
   const costs     = useMemo(() => calcCosts(form), [form]);
-  const costsAlt1 = useMemo(() => calcCosts({ ...form, quantity: altQty1 || form.quantity }), [form, altQty1]);
-  const costsAlt2 = useMemo(() => calcCosts({ ...form, quantity: altQty2 || form.quantity }), [form, altQty2]);
   const breakdown = useMemo(() => getCostBreakdown(form), [form]);
-  // Active-slot costs (drives Cost Summary at bottom)
-  const activeCosts = activeQtySlot === 1 ? costsAlt1 : activeQtySlot === 2 ? costsAlt2 : costs;
-  const activeQty   = activeQtySlot === 1 ? (altQty1 || form.quantity) : activeQtySlot === 2 ? (altQty2 || form.quantity) : form.quantity;
+  const allQtys   = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
+  const allCosts  = useMemo(() => allQtys.map(qty => calcCosts({ ...form, quantity: qty })), [form, allQtys]);
+  const safeIdx   = Math.min(activeQtyIdx, allCosts.length - 1);
+  const activeCosts = allCosts[safeIdx] ?? costs;
+  const activeQty   = allQtys[safeIdx] ?? form.quantity;
 
   // ── Production plan rows (Tab 2) ────────────────────────
   const totalPlyGSM = useMemo(() =>
@@ -269,7 +268,7 @@ export default function GravureEstimationPage() {
   const openAdd = () => {
     setEditing(null);
     setForm({ ...blank });
-    setActiveTab(1); setAltQty1(0); setAltQty2(0); setActiveQtySlot(0);
+    setActiveTab(1); setExtraQtys([]); setActiveQtyIdx(0);
     setPreviewCode(generateCode(UNIT_CODE.Gravure, MODULE_CODE.Estimation, data.map(d => d.estimationNo)));
     setModal(true);
   };
@@ -277,7 +276,7 @@ export default function GravureEstimationPage() {
     setEditing(row);
     const { id, estimationNo, ...rest } = row;
     setForm(rest);
-    setActiveTab(1); setAltQty1(0); setAltQty2(0); setActiveQtySlot(0);
+    setActiveTab(1); setExtraQtys([]); setActiveQtyIdx(0);
     setModal(true);
   };
 
@@ -429,9 +428,7 @@ export default function GravureEstimationPage() {
       setData(d => d.map(r => r.id === editing.id ? { ...record, id: editing.id, estimationNo: editing.estimationNo } : r));
     } else {
       // Build one record per filled quantity slot
-      const qtys: number[] = [form.quantity];
-      if (altQty1 > 0) qtys.push(altQty1);
-      if (altQty2 > 0) qtys.push(altQty2);
+      const qtys: number[] = [form.quantity, ...extraQtys.filter(q => q > 0)];
 
       setData(prev => {
         let updated = [...prev];
@@ -1110,136 +1107,6 @@ export default function GravureEstimationPage() {
               </div>
             )}
 
-            {/* ── Ply-wise GSM & Weight Calculation (after plan applied) ── */}
-            {isPlanApplied && selectedPlan && (
-              <div className="space-y-3 animate-in fade-in duration-300">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">Ply-wise GSM & Weight Calculation</p>
-                    <p className="text-[10px] text-gray-500 uppercase tracking-widest font-semibold mt-0.5">
-                      Machine: {selectedPlan.machineName} · Plan: {selectedPlan.planId} · Width: {form.jobWidth} mm
-                    </p>
-                  </div>
-                  <Button variant="secondary" onClick={() => { setIsPlanApplied(false); setSelectedPlanId(null); }}>Change Plan</Button>
-                </div>
-
-                {form.secondaryLayers.length === 0 ? (
-                  <div className="border-2 border-dashed border-gray-200 rounded-xl py-6 text-center text-xs text-gray-400">
-                    No plys configured in Tab 1. Go back and add ply details.
-                  </div>
-                ) : (
-                  <>
-                    {/* Desktop table */}
-                    <div className="hidden sm:block bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-xs whitespace-nowrap">
-                          <thead className="bg-gray-50 border-b border-gray-200">
-                            <tr>
-                              {["Ply", "Ply Type", "Film Sub Group", "Thick (μ)", "Density", "Film GSM", "Consumable GSM", "Total GSM", "Size W (mm)", "Req. Mtr", "Req. SQM", "Req. Wt (Kg)", "Waste Mtr", "Waste SQM", "Waste Wt", "Total Mtr", "Total SQM", "Total Wt (Kg)"].map(h => (
-                                <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {form.secondaryLayers.map((l, idx) => {
-                              const plyLabel = idx === 0 ? "1st" : idx === 1 ? "2nd" : idx === 2 ? "3rd" : `${idx + 1}th`;
-                              const consumableGSM = l.consumableItems.reduce((s, ci) => s + (ci.gsm || 0), 0);
-                              const totalGSM = l.gsm + consumableGSM;
-                              const sizeW = form.jobWidth || 340;
-                              const reqMtr = selectedPlan.totalRMT;
-                              const reqSQM = parseFloat((reqMtr * sizeW / 1000).toFixed(3));
-                              const reqWt = parseFloat((reqSQM * totalGSM / 1000).toFixed(4));
-                              const wasteMtr = parseFloat((reqMtr * 0.01).toFixed(2));
-                              const wasteSQM = parseFloat((wasteMtr * sizeW / 1000).toFixed(3));
-                              const wasteWt = parseFloat((wasteSQM * totalGSM / 1000).toFixed(4));
-                              const totalMtr = reqMtr + wasteMtr;
-                              const totalSQM = parseFloat((totalMtr * sizeW / 1000).toFixed(3));
-                              const totalWt = parseFloat((reqWt + wasteWt).toFixed(4));
-                              return (
-                                <tr key={l.id} className="hover:bg-gray-50 transition-colors">
-                                  <td className="px-3 py-2.5 font-bold text-purple-700 bg-purple-50/40">{plyLabel} Ply</td>
-                                  <td className="px-3 py-2.5">
-                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                      l.plyType === "Printing" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                      l.plyType === "Lamination" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                                      l.plyType === "Coating" ? "bg-green-50 text-green-700 border-green-200" :
-                                      "bg-indigo-50 text-indigo-700 border-indigo-200"}`}>
-                                      {l.plyType || "—"}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-2.5 text-gray-700 font-medium">{l.itemSubGroup || "—"}</td>
-                                  <td className="px-3 py-2.5 text-center font-mono text-gray-600">{l.thickness || "—"}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-600">{l.density || "—"}</td>
-                                  <td className="px-3 py-2.5 text-center font-semibold text-indigo-700">{l.gsm || 0}</td>
-                                  <td className="px-3 py-2.5 text-center font-semibold text-teal-700">{consumableGSM.toFixed(2)}</td>
-                                  <td className="px-3 py-2.5 text-center font-bold text-gray-900 bg-gray-50">{totalGSM.toFixed(2)}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-600">{sizeW}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-600">{reqMtr}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-600">{reqSQM}</td>
-                                  <td className="px-3 py-2.5 text-center font-semibold text-blue-600">{reqWt}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-500">{wasteMtr}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-500">{wasteSQM}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-500">{wasteWt}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-700">{totalMtr}</td>
-                                  <td className="px-3 py-2.5 text-center text-gray-700">{totalSQM}</td>
-                                  <td className="px-3 py-2.5 text-center font-bold text-gray-900 bg-gray-50">{totalWt}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                          <tfoot className="bg-gray-50 border-t-2 border-gray-300">
-                            <tr>
-                              <td colSpan={17} className="px-3 py-3 text-right text-xs font-bold text-gray-700 uppercase">Total Combined Weight (Kg)</td>
-                              <td className="px-3 py-3 text-center font-bold text-purple-800 bg-purple-50">
-                                {form.secondaryLayers.reduce((s, l) => {
-                                  const totalGSM = l.gsm + l.consumableItems.reduce((cs, ci) => cs + (ci.gsm || 0), 0);
-                                  const sizeW = form.jobWidth || 340;
-                                  const totalMtr = selectedPlan.totalRMT * 1.01;
-                                  return s + parseFloat((totalMtr * sizeW / 1000 * totalGSM / 1000).toFixed(4));
-                                }, 0).toFixed(3)}
-                              </td>
-                            </tr>
-                          </tfoot>
-                        </table>
-                      </div>
-                    </div>
-
-                    {/* Mobile ply cards */}
-                    <div className="sm:hidden space-y-2">
-                      {form.secondaryLayers.map((l, idx) => {
-                        const plyLabel = idx === 0 ? "1st" : idx === 1 ? "2nd" : idx === 2 ? "3rd" : `${idx + 1}th`;
-                        const consumableGSM = l.consumableItems.reduce((s, ci) => s + (ci.gsm || 0), 0);
-                        const totalGSM = l.gsm + consumableGSM;
-                        const sizeW = form.jobWidth || 340;
-                        const reqWt = parseFloat((selectedPlan.totalRMT * sizeW / 1000 * totalGSM / 1000).toFixed(4));
-                        const totalWt = parseFloat((reqWt * 1.01).toFixed(4));
-                        return (
-                          <div key={l.id} className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-bold text-purple-700">{plyLabel} Ply</span>
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                                l.plyType === "Printing" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                l.plyType === "Lamination" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                                "bg-indigo-50 text-indigo-700 border-indigo-200"}`}>
-                                {l.plyType || "—"}
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1 text-[11px] text-gray-600">
-                              <span>Film: <b className="text-indigo-700">{l.itemSubGroup || "—"}</b></span>
-                              <span>Thick: <b>{l.thickness}μ</b></span>
-                              <span>Film GSM: <b className="text-indigo-700">{l.gsm}</b></span>
-                              <span>Consumable GSM: <b className="text-teal-700">{consumableGSM.toFixed(2)}</b></span>
-                              <span>Total GSM: <b className="text-gray-900">{totalGSM.toFixed(2)}</b></span>
-                              <span>Total Wt: <b className="text-purple-700">{totalWt} Kg</b></span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -1248,99 +1115,154 @@ export default function GravureEstimationPage() {
             <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
               {/* ── Section 3: Multiple Quantity Costing ──────────────────── */}
               <div>
-                 <SectionHeader label="Quantity Simulations" />
-                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          {/* ── Qty Card helper ── */}
-                    {([
-                      { slot: 0 as const, label: "Base Quantity (Q1)", badge: "TARGET QTY", qty: form.quantity, c: costs,     isBase: true  },
-                      { slot: 1 as const, label: "Simulate Quantity 2", badge: altQty1 > 0 ? "Q2" : "", qty: altQty1, c: costsAlt1, isBase: false },
-                      { slot: 2 as const, label: "Simulate Quantity 3", badge: altQty2 > 0 ? "Q3" : "", qty: altQty2, c: costsAlt2, isBase: false },
-                    ] as const).map(({ slot, label, badge, qty, c, isBase }) => {
-                      const active = activeQtySlot === slot;
-                      return (
-                        <div
-                          key={slot}
-                          onClick={() => setActiveQtySlot(slot)}
-                          className={`rounded-2xl p-5 shadow-sm relative overflow-hidden cursor-pointer transition-all duration-200 border-2
-                            ${active
-                              ? "border-purple-500 bg-purple-50 ring-2 ring-purple-300 shadow-md scale-[1.02]"
-                              : "border-slate-200 bg-slate-50 hover:border-purple-300 hover:bg-purple-50/40"}`}
-                        >
-                          {/* Badge */}
-                          {badge && (
-                            <span className={`absolute top-0 right-0 text-[10px] font-bold px-2 py-1 rounded-bl-lg
-                              ${active ? "bg-purple-500 text-white" : "bg-slate-200 text-slate-600"}`}>
-                              {badge}
-                            </span>
-                          )}
-                          {active && (
-                            <span className="absolute top-0 left-0 text-[10px] font-bold px-2 py-1 rounded-br-lg bg-purple-600 text-white">
-                              ✓ SELECTED
-                            </span>
-                          )}
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs font-bold text-gray-700">Quantity Planning</p>
+                    <p className="text-[10px] text-gray-400 mt-0.5">Add multiple quantities — each saves as a separate estimation record with its own plan</p>
+                  </div>
+                  <button
+                    onClick={() => setExtraQtys(p => [...p, 0])}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-xl border border-purple-200 transition">
+                    <Plus size={12} /> Add Quantity
+                  </button>
+                </div>
 
-                          {/* Input */}
-                          <div className="mt-3 mb-4" onClick={e => e.stopPropagation()}>
-                            {isBase ? (
-                              <div className="flex gap-2 items-end">
-                                <div className="flex-1">
-                                  <Input label={label} type="number" value={form.quantity}
-                                    onChange={e => f("quantity", Number(e.target.value))}
-                                    className="bg-white border-purple-300" />
-                                </div>
-                                <div className="w-1/3">
-                                  <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)}
-                                    options={[{ value: "Kg", label: "Kg" }, { value: "Pieces", label: "Pieces" }]} />
-                                </div>
-                              </div>
-                            ) : (
-                              <Input label={label} type="number" value={qty || ""}
-                                onChange={e => slot === 1 ? setAltQty1(Number(e.target.value)) : setAltQty2(Number(e.target.value))}
-                                placeholder="Enter quantity to simulate" className="bg-white" />
-                            )}
-                          </div>
+                <div className="border border-gray-200 rounded-xl overflow-hidden">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50 text-gray-500 uppercase">
+                      <tr>
+                        {["#", "Quantity", "Unit", "Total Cost", "Rate/Meter", "Margin", ""].map(h => (
+                          <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {/* Base quantity row */}
+                      <tr
+                        onClick={() => setActiveQtyIdx(0)}
+                        className={`cursor-pointer transition-colors ${activeQtyIdx === 0 ? "bg-purple-50 ring-1 ring-inset ring-purple-300" : "hover:bg-gray-50"}`}>
+                        <td className="px-3 py-2.5">
+                          <span className="px-1.5 py-0.5 bg-purple-600 text-white rounded text-[10px] font-bold">Q1</span>
+                        </td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="number"
+                            className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-purple-400 bg-white font-mono"
+                            value={form.quantity || ""}
+                            onChange={e => { f("quantity", Number(e.target.value)); setActiveQtyIdx(0); }}
+                            placeholder="Quantity"
+                          />
+                        </td>
+                        <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                          <select
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                            value={form.unit}
+                            onChange={e => f("unit", e.target.value)}>
+                            <option value="Meter">Meter</option>
+                            <option value="Kg">Kg</option>
+                          </select>
+                        </td>
+                        <td className="px-3 py-2.5 font-bold text-gray-900">₹{allCosts[0]?.totalAmount.toLocaleString() ?? "—"}</td>
+                        <td className="px-3 py-2.5 font-semibold text-blue-700">₹{allCosts[0]?.perMeterRate ?? "—"}</td>
+                        <td className="px-3 py-2.5">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${(allCosts[0]?.marginPct ?? 0) >= 12 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                            {allCosts[0]?.marginPct ?? 0}%
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-[10px] text-purple-600 font-semibold">{activeQtyIdx === 0 ? "● Active" : ""}</td>
+                      </tr>
 
-                          {/* Cost display */}
-                          <div className={`pt-4 border-t ${active ? "border-purple-300" : "border-slate-200"}`}>
-                            <p className={`text-[10px] font-bold mb-0.5 uppercase tracking-wide ${active ? "text-purple-500" : "text-slate-500"}`}>
-                              Total Estimated Cost
-                            </p>
-                            <p className={`text-2xl font-black mb-3 ${active ? "text-purple-900" : "text-slate-700"}`}>
-                              ₹{c.totalAmount.toLocaleString()}
-                            </p>
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <p className={`text-[10px] font-bold mb-0.5 uppercase tracking-wide ${active ? "text-purple-500" : "text-slate-500"}`}>Rate / Unit</p>
-                                <p className={`text-lg font-bold ${active ? "text-purple-800" : "text-indigo-700"}`}>₹{c.perMeterRate}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className={`text-[10px] font-bold mb-0.5 uppercase tracking-wide ${active ? "text-purple-500" : "text-slate-500"}`}>Margin</p>
-                                <p className={`text-sm font-bold ${c.marginPct >= 12 ? "text-green-600" : "text-orange-500"}`}>{c.marginPct}%</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                 </div>
+                      {/* Extra quantity rows */}
+                      {extraQtys.map((qty, i) => {
+                        const c = allCosts[i + 1];
+                        const isActive = activeQtyIdx === i + 1;
+                        return (
+                          <tr key={i}
+                            onClick={() => setActiveQtyIdx(i + 1)}
+                            className={`cursor-pointer transition-colors ${isActive ? "bg-purple-50 ring-1 ring-inset ring-purple-300" : "hover:bg-gray-50"}`}>
+                            <td className="px-3 py-2.5">
+                              <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold">Q{i + 2}</span>
+                            </td>
+                            <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="number"
+                                className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-purple-400 bg-white font-mono"
+                                value={qty || ""}
+                                onChange={e => {
+                                  const v = Number(e.target.value);
+                                  setExtraQtys(p => p.map((q, idx) => idx === i ? v : q));
+                                  setActiveQtyIdx(i + 1);
+                                }}
+                                placeholder="Enter quantity"
+                              />
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-500">{form.unit}</td>
+                            <td className="px-3 py-2.5 font-bold text-gray-900">{qty > 0 ? `₹${c?.totalAmount.toLocaleString() ?? "—"}` : "—"}</td>
+                            <td className="px-3 py-2.5 font-semibold text-blue-700">{qty > 0 ? `₹${c?.perMeterRate ?? "—"}` : "—"}</td>
+                            <td className="px-3 py-2.5">
+                              {qty > 0 && c && (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${c.marginPct >= 12 ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                                  {c.marginPct}%
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 flex items-center gap-2">
+                              {isActive && <span className="text-[10px] text-purple-600 font-semibold">● Active</span>}
+                              <button onClick={e => { e.stopPropagation(); setExtraQtys(p => p.filter((_, idx) => idx !== i)); if (isActive) setActiveQtyIdx(0); }}
+                                className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                                <X size={12} />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-gray-50 border-t border-gray-200">
+                      <tr>
+                        <td colSpan={7} className="px-3 py-2 text-[10px] text-gray-500">
+                          {extraQtys.filter(q => q > 0).length === 0
+                            ? "Add quantities above to compare costs at different volumes"
+                            : `Will save ${1 + extraQtys.filter(q => q > 0).length} estimation records — click a row to view its cost breakdown below`}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
 
           {/* ── Material Cost Breakdown ──────────────────────── */}
           <div>
-            <SectionHeader label={`Material Cost Breakdown — Area: ${breakdown.areaM2.toLocaleString()} m²`} />
+            <SectionHeader label={`Material Cost Breakdown — Area: ${(activeQty * (form.jobWidth / 1000)).toLocaleString()} m² · Qty: ${activeQty.toLocaleString()} ${form.unit}`} />
             <div className="border border-gray-200 rounded-xl overflow-hidden">
-              <table className="min-w-full text-xs">
+              <div className="overflow-x-auto">
+              <table className="min-w-full text-xs whitespace-nowrap">
                 <thead style={{ background: "var(--erp-primary)" }} className="text-white">
                   <tr>
-                    {["Ply", "Type", "Material / Item", "Group", "GSM / Wet Wt.", "Qty (Kg)", "Rate (₹/Kg)", "Amount (₹)"].map(h => (
-                      <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                    {["Ply", "Type", "Material / Item", "Group", "GSM / Wet Wt.", "Req. Mtr", "Req. SQM", "Req. Wt (Kg)", "Waste Mtr", "Waste SQM", "Waste Wt (Kg)", "Total Mtr", "Total SQM", "Total Wt (Kg)", "Rate (₹/Kg)", "Amount (₹)"].map(h => (
+                      <th key={h} className="px-3 py-2.5 text-left font-semibold">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {breakdown.matLines.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">No materials — select items in Ply Information (Tab 1)</td></tr>
-                  ) : breakdown.matLines.map((m, i) => (
+                    <tr><td colSpan={16} className="px-4 py-6 text-center text-gray-400">No materials — select items in Ply Information (Tab 1)</td></tr>
+                  ) : breakdown.matLines.map((m, i) => {
+                    const sizeW = form.jobWidth || 340;
+                    const qtyScale = (activeQty || form.quantity) / (form.quantity || 1);
+                    // Running meter: use plan RMT if plan applied, else use quantity directly
+                    const basePlanRMT = isPlanApplied && selectedPlan ? selectedPlan.totalRMT : form.quantity;
+                    const reqMtr   = m.plyNo > 0 ? parseFloat((basePlanRMT * qtyScale).toFixed(2)) : 0;
+                    const reqSQM   = m.plyNo > 0 ? parseFloat((reqMtr * sizeW / 1000).toFixed(3)) : 0;
+                    const reqWt    = m.plyNo > 0 && m.gsm > 0 ? parseFloat((reqSQM * m.gsm / 1000).toFixed(4)) : 0;
+                    const wasteMtr = m.plyNo > 0 ? parseFloat((reqMtr * 0.01).toFixed(2)) : 0;
+                    const wasteSQM = m.plyNo > 0 ? parseFloat((wasteMtr * sizeW / 1000).toFixed(3)) : 0;
+                    const wasteWt  = m.plyNo > 0 && m.gsm > 0 ? parseFloat((wasteSQM * m.gsm / 1000).toFixed(4)) : 0;
+                    const totalMtr = m.plyNo > 0 ? parseFloat((reqMtr + wasteMtr).toFixed(2)) : 0;
+                    const totalSQM = m.plyNo > 0 ? parseFloat((reqSQM + wasteSQM).toFixed(3)) : 0;
+                    const totalWt  = m.plyNo > 0 ? parseFloat((reqWt + wasteWt).toFixed(4)) : 0;
+                    const isExtra  = m.plyNo === 0;
+
+                    return (
                     <tr key={i} className="hover:bg-gray-50">
                       <td className="px-3 py-2 font-semibold text-purple-700">{m.plyNo > 0 ? `P${m.plyNo}` : "—"}</td>
                       <td className="px-3 py-2">
@@ -1355,19 +1277,30 @@ export default function GravureEstimationPage() {
                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${GROUP_COLORS[m.group] || "bg-gray-100 text-gray-600"}`}>{m.group}</span>
                       </td>
                       <td className="px-3 py-2 font-mono text-gray-700">{m.gsm > 0 ? `${m.gsm} g/m²` : "—"}</td>
-                      <td className="px-3 py-2 font-mono text-gray-700">{m.kg.toFixed(3)}</td>
-                      <td className="px-3 py-2 font-mono text-gray-700">{m.rate > 0 ? `₹${m.rate}` : <span className="text-amber-600 font-semibold">—  select item</span>}</td>
+                      {/* Running Meter columns — only for ply materials, not Extra */}
+                      <td className="px-3 py-2 font-mono text-gray-700">{isExtra ? "—" : reqMtr.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700">{isExtra ? "—" : reqSQM.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-semibold text-blue-700">{isExtra ? m.kg.toFixed(3) : reqWt.toFixed(4)}</td>
+                      <td className="px-3 py-2 font-mono text-amber-600">{isExtra ? "—" : wasteMtr.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-mono text-amber-600">{isExtra ? "—" : wasteSQM.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-mono text-amber-600">{isExtra ? "—" : wasteWt.toFixed(4)}</td>
+                      <td className="px-3 py-2 font-bold text-gray-800">{isExtra ? "—" : totalMtr.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-bold text-gray-800">{isExtra ? "—" : totalSQM.toLocaleString()}</td>
+                      <td className="px-3 py-2 font-bold text-purple-700 bg-purple-50/40">{isExtra ? m.kg.toFixed(3) : totalWt.toFixed(4)}</td>
+                      <td className="px-3 py-2 font-mono text-gray-700">{m.rate > 0 ? `₹${m.rate}` : <span className="text-amber-600 font-semibold">— select item</span>}</td>
                       <td className="px-3 py-2 font-bold text-gray-900">{m.amount > 0 ? `₹${m.amount.toLocaleString()}` : "₹0"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
                 <tfoot className="bg-purple-50 border-t-2 border-purple-200">
                   <tr>
-                    <td colSpan={7} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase text-right">Total Material Cost</td>
+                    <td colSpan={15} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase text-right">Total Material Cost</td>
                     <td className="px-3 py-2.5 text-sm font-black text-purple-800">₹{activeCosts.materialCost.toLocaleString()}</td>
                   </tr>
                 </tfoot>
               </table>
+              </div>
             </div>
           </div>
 
@@ -1419,8 +1352,8 @@ export default function GravureEstimationPage() {
           {/* ── Section 5: Live Cost Summary ──────────────────── */}
           <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
-              <SectionHeader label={`Cost Summary — ${activeQtySlot === 0 ? "Base Qty" : `Q${activeQtySlot + 1}`} (${activeQty.toLocaleString()} ${form.unit})`} />
-              {activeQtySlot > 0 && (
+              <SectionHeader label={`Cost Summary — ${activeQtyIdx === 0 ? "Base Qty" : `Q${activeQtyIdx + 1}`} (${activeQty.toLocaleString()} ${form.unit})`} />
+              {activeQtyIdx > 0 && (
                 <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
                   Simulated View
                 </span>
@@ -1478,7 +1411,7 @@ export default function GravureEstimationPage() {
             ) : (
               <>
                 <Button icon={<Calculator size={14} />} onClick={save}>
-                  {editing ? "Update Estimation" : !altQty1 && !altQty2 ? "Save Estimation" : `Save ${1 + (altQty1 > 0 ? 1 : 0) + (altQty2 > 0 ? 1 : 0)} Estimations`}
+                  {editing ? "Update Estimation" : extraQtys.filter(q => q > 0).length === 0 ? "Save Estimation" : `Save ${1 + extraQtys.filter(q => q > 0).length} Estimations`}
                 </Button>
               </>
             )}
@@ -1488,32 +1421,101 @@ export default function GravureEstimationPage() {
 
       {/* ══ VIEW MODAL ════════════════════════════════════════════ */}
       {viewRow && (
-        <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`Estimation – ${viewRow.estimationNo}`} size="xl">
+        <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`${viewRow.estimationNo} — ${viewRow.jobName}`} size="xl">
           <div className="space-y-5 text-sm">
 
-            {/* Basic Info */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {([
-                ["Customer",    viewRow.customerName],
-                ["Job Name",    viewRow.jobName],
-                ["Substrate",   viewRow.substrateName],
-                ["Print Width", `${viewRow.width} mm`],
-                ["Colors",      `${viewRow.noOfColors} Colors`],
-                ["Print Type",  viewRow.printType],
-                ["Machine",     viewRow.machineName],
-                ["Quantity",    `${viewRow.quantity.toLocaleString()} ${viewRow.unit}`],
-                ["Date",        viewRow.date],
-              ] as [string, string][]).map(([k, v]) => (
-                <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-medium text-gray-900">{v}</p></div>
-              ))}
+            {/* Header status + date */}
+            <div className="flex items-center justify-between">
+              <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${STATUS_COLORS[viewRow.status]}`}>{viewRow.status}</div>
+              <span className="text-xs text-gray-400">{viewRow.date}</span>
             </div>
 
+            {/* Basic Info */}
+            <div>
+              <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Basic Information</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {([
+                  ["Estimation No",  viewRow.estimationNo],
+                  ["Customer",       viewRow.customerName],
+                  ["Job Name",       viewRow.jobName],
+                  ["Category",       viewRow.categoryName || "—"],
+                  ["Content",        viewRow.content || "—"],
+                  ["Sales Person",   viewRow.salesPerson || "—"],
+                  ["Sales Type",     viewRow.salesType || "—"],
+                  ["Concern Person", viewRow.concernPerson || "—"],
+                  ["Enquiry No",     viewRow.enquiryNo || "—"],
+                ] as [string,string][]).map(([k,v]) => (
+                  <div key={k} className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">{k}</p>
+                    <p className="font-semibold text-gray-800 mt-0.5 text-xs">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
 
+            {/* Planning Specification */}
+            <div>
+              <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Planning Specification</p>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                {([
+                  ["Job Width",    `${viewRow.jobWidth} mm`],
+                  ["Job Height",   `${viewRow.jobHeight} mm`],
+                  ["Act. Width",   `${viewRow.actualWidth} mm`],
+                  ["Act. Height",  `${viewRow.actualHeight} mm`],
+                  ["No. of Colors",`${viewRow.noOfColors} C`],
+                  ["Print Type",   viewRow.printType],
+                  ["Machine",      viewRow.machineName],
+                  ["Quantity",     `${viewRow.quantity.toLocaleString()} ${viewRow.unit}`],
+                  ["Cyl Cost/Color",`₹${viewRow.cylinderCostPerColor}`],
+                  ["No. of Plys",  `${viewRow.secondaryLayers.length} ply`],
+                ] as [string,string][]).map(([k,v]) => (
+                  <div key={k} className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">{k}</p>
+                    <p className="font-semibold text-gray-800 mt-0.5 text-xs">{v}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Ply Information */}
+            {viewRow.secondaryLayers.length > 0 && (
+              <div>
+                <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Ply Information</p>
+                <div className="space-y-2">
+                  {viewRow.secondaryLayers.map((l, i) => (
+                    <div key={l.id} className="border border-purple-100 rounded-xl overflow-hidden">
+                      <div className="flex items-center gap-3 bg-purple-50 px-3 py-2 border-b border-purple-100">
+                        <span className="text-xs font-bold text-purple-700">Ply {l.layerNo}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                          l.plyType === "Film" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                          l.plyType === "Printing" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                          l.plyType === "Lamination" ? "bg-orange-50 text-orange-700 border-orange-200" :
+                          "bg-green-50 text-green-700 border-green-200"}`}>{l.plyType}</span>
+                        <span className="text-xs text-gray-500">{l.itemSubGroup}</span>
+                        {l.thickness > 0 && <span className="text-xs text-gray-500">{l.thickness}μ</span>}
+                        {l.gsm > 0 && <span className="text-xs font-bold text-purple-700">{l.gsm} GSM</span>}
+                      </div>
+                      {l.consumableItems.length > 0 && (
+                        <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {l.consumableItems.map((ci, ci_i) => (
+                            <div key={ci_i} className="bg-teal-50 border border-teal-100 rounded-lg px-2 py-1.5">
+                              <p className="text-[10px] text-gray-400 font-semibold">{ci.itemGroup}</p>
+                              <p className="text-xs font-semibold text-gray-800">{ci.itemName || ci.itemSubGroup || "—"}</p>
+                              <p className="text-[10px] text-teal-700 font-bold">{ci.gsm} GSM · ₹{ci.rate}/Kg</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Processes */}
             {viewRow.processes.length > 0 && (
               <div>
-                <p className="text-xs font-bold text-purple-700 uppercase tracking-wide mb-2">Processes Applied</p>
+                <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Process List</p>
                 <div className="border border-gray-200 rounded-xl overflow-hidden">
                   <table className="min-w-full text-xs">
                     <thead className="bg-gray-50 text-gray-500 uppercase">
@@ -1540,38 +1542,40 @@ export default function GravureEstimationPage() {
             )}
 
             {/* Cost Summary */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Material Cost",  val: `₹${viewRow.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200" },
-                { label: "Process Cost",   val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200" },
-                { label: "Cylinder Cost",  val: `₹${viewRow.cylinderCost.toLocaleString()}`,  cls: "bg-indigo-50 border-indigo-200" },
-                { label: "Overhead",       val: `₹${viewRow.overheadAmt.toLocaleString()}`,   cls: "bg-yellow-50 border-yellow-200" },
-                { label: "Profit",         val: `₹${viewRow.profitAmt.toLocaleString()}`,     cls: "bg-green-50 border-green-200" },
-                { label: "Total Amount",   val: `₹${viewRow.totalAmount.toLocaleString()}`,   cls: "bg-white border-2 border-purple-400 font-extrabold" },
-                { label: "Rate / Meter",   val: `₹${viewRow.perMeterRate}`,                   cls: "bg-gray-50 border-gray-200" },
-                { label: "Margin %",       val: `${viewRow.marginPct}%`,                      cls: viewRow.marginPct >= 12 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200" },
-              ].map(s => (
-                <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>
-                  <p className="text-xs text-gray-500">{s.label}</p>
-                  <p className="font-bold text-gray-900 mt-0.5">{s.val}</p>
-                </div>
-              ))}
+            <div>
+              <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Cost Summary</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Material Cost",  val: `₹${viewRow.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200" },
+                  { label: "Process Cost",   val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200" },
+                  { label: "Cylinder Cost",  val: `₹${viewRow.cylinderCost.toLocaleString()}`,  cls: "bg-indigo-50 border-indigo-200" },
+                  { label: `Overhead (${viewRow.overheadPct}%)`, val: `₹${viewRow.overheadAmt.toLocaleString()}`, cls: "bg-yellow-50 border-yellow-200" },
+                  { label: `Profit (${viewRow.profitPct}%)`, val: `₹${viewRow.profitAmt.toLocaleString()}`, cls: "bg-green-50 border-green-200" },
+                  { label: "Total Amount",   val: `₹${viewRow.totalAmount.toLocaleString()}`,   cls: "bg-white border-2 border-purple-400" },
+                  { label: "Rate / Meter",   val: `₹${viewRow.perMeterRate}`,                   cls: "bg-gray-50 border-gray-200" },
+                  { label: "Margin %",       val: `${viewRow.marginPct}%`,                      cls: viewRow.marginPct >= 12 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200" },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>
+                    <p className="text-[10px] text-gray-400 uppercase font-semibold">{s.label}</p>
+                    <p className="font-bold text-gray-900 mt-0.5">{s.val}</p>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${STATUS_COLORS[viewRow.status]}`}>
-              {viewRow.status}
-            </div>
             {viewRow.remarks && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
                 <strong>Remarks:</strong> {viewRow.remarks}
               </div>
             )}
           </div>
+
           <div className="flex justify-between mt-6">
             <Button variant="secondary" onClick={() => setViewRow(null)}>Close</Button>
-            {viewRow.status === "Approved" && (
-              <Button icon={<ArrowRight size={14} />}>Convert to Order</Button>
-            )}
+            <div className="flex gap-2">
+              <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => { setViewRow(null); openEdit(viewRow); }}>Edit</Button>
+              {viewRow.status === "Approved" && <Button icon={<ArrowRight size={14} />}>Convert to Order</Button>}
+            </div>
           </div>
         </Modal>
       )}

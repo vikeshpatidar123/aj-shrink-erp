@@ -5,7 +5,11 @@
       "Bash(powershell -Command \"Get-ChildItem ''D:\\\\code\\\\app\\\\masters'' -Recurse -Filter ''*.tsx'' | ForEach-Object { $c = Get-Content $_FullName -Raw; $n = $c -replace ''teal-'', ''blue-''; if \\($c -ne $n\\) { Set-Content $_FullName $n -NoNewline; Write-Host $_Name } }\")",
       "Bash(npx tsc:*)",
       "Bash(npm install:*)",
-      "Bash(node -e \"try{require\\(''jsqr''\\); console.log\\(''jsqr ok''\\)}catch\\(e\\){console.log\\(''jsqr missing:'',e.message\\)}\")"
+      "Bash(node -e \"try{require\\(''jsqr''\\); console.log\\(''jsqr ok''\\)}catch\\(e\\){console.log\\(''jsqr missing:'',e.message\\)}\")",
+      "Bash(vercel --version)",
+      "Bash(vercel deploy:*)",
+      "Bash(vercel --prod --yes --token *)",
+      "Bash(node -e \":*)"
     ]
   }
 }

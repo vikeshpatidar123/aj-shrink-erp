@@ -1671,13 +1671,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE001", enquiryNo: "GRV-ENQ-2024-001",
     customerId: "C001", customerName: "Parle Products Pvt Ltd",
     jobName: "Parle-G Biscuit 100g Wrap",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
     substrateItemId: "ITM001", substrateName: "BOPP 90 MICRON 0.2 THICKNESS",
     jobWidth: 340, jobHeight: 450, ups: 2,
-    actualWidth: 341, actualHeight: 451,
+    actualWidth: 340, actualHeight: 450,
     width: 340, noOfColors: 8, printType: "Surface Print",
     quantity: 200000, unit: "Meter",
     machineId: "M004", machineName: "Roto Press 1 – 8 Color",
     cylinderCostPerColor: 3500,
+    salesPerson: "Rajesh Sharma", salesType: "Local", concernPerson: "Amit Parle",
     materials: [
       { itemId: "ITM001", itemCode: "RM-FIL-4475", itemName: "BOPP 90 MICRON 0.2 THICKNESS", group: "Film",    unit: "Kg", rate: 155, qty: 1200, amount: 186000 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",    group: "Ink",     unit: "Kg", rate: 460, qty:   38, amount:  17480 },
@@ -1695,9 +1697,26 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 282970, processCost: 413900, cylinderCost: 28000,
     overheadAmt: 86961, profitAmt: 108701,
     totalAmount: 920532, perMeterRate: 4.60, marginPct: 14.7,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL001", layerNo: 1, plyType: "Film", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 20, gsm: 18.2,
+        consumableItems: [],
+      },
+      {
+        id: "SL002", layerNo: 2, plyType: "Printing", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI001", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM007", itemName: "YELLOW INK SOLVENT BASED", gsm: 3.5, rate: 460 },
+          { consumableId: "CI002", fieldDisplayName: "Solvent", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 2.0, rate: 330 },
+        ],
+      },
+      {
+        id: "SL003", layerNo: 3, plyType: "Lamination", itemSubGroup: "CPP FILM", density: 0.90, thickness: 30, gsm: 27,
+        consumableItems: [
+          { consumableId: "CI003", fieldDisplayName: "Adhesive Wet Weight", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 3.5, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
     status: "Approved", remarks: "Price valid for 30 days",
   },
   {
@@ -1705,13 +1724,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE002", enquiryNo: "GRV-ENQ-2024-002",
     customerId: "C002", customerName: "Britannia Industries Ltd",
     jobName: "Britannia NutriChoice 200g",
+    categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal",
     substrateItemId: "ITM002", substrateName: "LLDPE C4 GRADE FILM",
     jobWidth: 420, jobHeight: 400, ups: 2,
-    actualWidth: 421, actualHeight: 401,
+    actualWidth: 420, actualHeight: 400,
     width: 420, noOfColors: 6, printType: "Reverse Print",
     quantity: 150000, unit: "Meter",
     machineId: "M003", machineName: "Roto Press 4 – 6 Color",
     cylinderCostPerColor: 0,
+    salesPerson: "Sanjay Gupta", salesType: "Local", concernPerson: "Priya Britannia",
     materials: [
       { itemId: "ITM002", itemCode: "RM-FIL-1022", itemName: "LLDPE C4 GRADE FILM",       group: "Film", unit: "Kg", rate:  98, qty: 900, amount:  88200 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",  group: "Ink",  unit: "Kg", rate: 460, qty:  30, amount:  13800 },
@@ -1728,9 +1749,25 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 144980, processCost: 330600, cylinderCost: 0,
     overheadAmt: 57069, profitAmt: 71336,
     totalAmount: 603985, perMeterRate: 4.03, marginPct: 13.2,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL004", layerNo: 1, plyType: "Film", itemSubGroup: "PET FILM", density: 1.38, thickness: 12, gsm: 16.56,
+        consumableItems: [],
+      },
+      {
+        id: "SL005", layerNo: 2, plyType: "Printing", itemSubGroup: "PET FILM", density: 1.38, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI004", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM007", itemName: "YELLOW INK SOLVENT BASED", gsm: 3.2, rate: 460 },
+        ],
+      },
+      {
+        id: "SL006", layerNo: 3, plyType: "Lamination", itemSubGroup: "LLDPE C4 GRADE", density: 0.92, thickness: 40, gsm: 36.8,
+        consumableItems: [
+          { consumableId: "CI005", fieldDisplayName: "Adhesive Wet Weight", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 3.5, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
     status: "Sent", remarks: "Cylinder cost absorbed (existing set)",
   },
   {
@@ -1738,13 +1775,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE005", enquiryNo: "GRV-ENQ-2024-005",
     customerId: "C006", customerName: "Nestle India Ltd",
     jobName: "Maggi Noodles 70g Outer Wrap",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
     substrateItemId: "ITM001", substrateName: "BOPP 90 MICRON 0.2 THICKNESS",
     jobWidth: 300, jobHeight: 390, ups: 2,
-    actualWidth: 301, actualHeight: 391,
+    actualWidth: 300, actualHeight: 390,
     width: 300, noOfColors: 8, printType: "Reverse Print",
     quantity: 250000, unit: "Meter",
     machineId: "M005", machineName: "Roto Press 2 – 9 Color",
     cylinderCostPerColor: 3500,
+    salesPerson: "Anita Desai", salesType: "Inter-State", concernPerson: "Rahul Nestle",
     materials: [
       { itemId: "ITM001", itemCode: "RM-FIL-4475", itemName: "BOPP 90 MICRON 0.2 THICKNESS", group: "Film", unit: "Kg", rate: 155, qty: 1400, amount: 217000 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",     group: "Ink",  unit: "Kg", rate: 460, qty:   42, amount:  19320 },
@@ -1762,9 +1801,20 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 329870, processCost: 458500, cylinderCost: 28000,
     overheadAmt: 98124, profitAmt: 122655,
     totalAmount: 1037149, perMeterRate: 4.15, marginPct: 12.9,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL007", layerNo: 1, plyType: "Film", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 20, gsm: 18.2,
+        consumableItems: [],
+      },
+      {
+        id: "SL008", layerNo: 2, plyType: "Printing", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI006", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM008", itemName: "CYAN INK SOLVENT BASED", gsm: 3.8, rate: 490 },
+          { consumableId: "CI007", fieldDisplayName: "Solvent", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 2.2, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
     status: "Draft", remarks: "Awaiting design confirmation",
   },
 ];
