@@ -334,102 +334,81 @@ export default function ProductCatalogPage() {
             </div>
           </div>
 
-          <div className="max-h-[65vh] overflow-y-auto pr-1 space-y-5">
+          <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-5">
 
-            {/* ── Editable fields (only 3) ── */}
-            <div>
-              <SH label="Product Name (Editable)" />
+            {/* ── Editable fields ── */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
+                <Input
+                  label="Product Name *"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="e.g. Parle-G Biscuit 100g Wrap"
+                />
+              </div>
               <Input
-                label="Product Name *"
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                placeholder="e.g. Parle-G Biscuit 100g Wrap"
+                label="₹ / Meter Rate"
+                type="number"
+                value={editRate || ""}
+                onChange={e => setEditRate(Number(e.target.value))}
+                placeholder="e.g. 1.36"
+                step={0.01}
               />
             </div>
+            <Textarea
+              label="Remarks / Notes"
+              value={editRemark}
+              onChange={e => setEditRemark(e.target.value)}
+              placeholder="Special notes for this catalog template…"
+            />
 
-            {/* ── Locked snapshot ── */}
+            {/* ── Full Planning Snapshot from Work Order ── */}
             <div>
               <div className="flex items-center gap-2 mb-3">
-                <SH label="Locked Planning Snapshot" />
-                <span className="mb-2.5 ml-1 inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded-full text-[10px] font-semibold">
+                <p className="text-xs font-bold text-purple-700 uppercase tracking-widest">Planning Snapshot from Work Order</p>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-500 border border-gray-200 rounded-full text-[10px] font-semibold">
                   <Lock size={9} />READ ONLY
                 </span>
               </div>
 
-              {/* Identity pills */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                <Pill label="Substrate"  value={sourceWO?.substrate || sourceOrder.orderLines?.[0]?.substrate || sourceOrder.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
-                <Pill label="Print Type" value={sourceWO?.printType || sourceOrder.orderLines?.[0]?.printType || sourceOrder.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
-                <Pill label="Colors"     value={`${sourceWO?.noOfColors || sourceOrder.noOfColors || 0} Colors`} cls="bg-blue-50 text-blue-700 border-blue-200" />
-                <Pill label="Machine"    value={sourceWO?.machineName || "—"} cls="bg-teal-50 text-teal-700 border-teal-200" />
-                <Pill label="Job Width"  value={`${sourceWO?.jobWidth || sourceOrder.jobWidth || 0} mm`} />
-                <Pill label="Job Height" value={`${sourceWO?.jobHeight || sourceOrder.jobHeight || 0} mm`} />
-                <Pill label="Overhead"   value={`${sourceWO?.overheadPct || 12}%`} />
-                <Pill label="Profit"     value={`${sourceWO?.profitPct || 15}%`} />
-              </div>
-
-              {/* Ply Structure */}
-              {(sourceWO?.secondaryLayers?.length || 0) > 0 && (
-                <div className="mb-3">
-                  <p className="text-[10px] text-gray-400 uppercase font-semibold mb-2">Ply Structure ({sourceWO!.secondaryLayers.length} plys)</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {sourceWO!.secondaryLayers.map((l, i) => (
-                      <span key={i} className="px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg text-xs font-medium">
-                        P{i + 1}: {l.plyType || "Film"}{l.itemSubGroup ? ` — ${l.itemSubGroup}` : ""}{l.gsm > 0 ? ` · ${l.gsm} GSM` : ""}
-                      </span>
-                    ))}
+              {sourceWO ? (
+                <PlanViewer plan={{
+                  title:   "Work Order",
+                  refNo:   sourceWO.workOrderNo,
+                  jobWidth:   sourceWO.jobWidth,
+                  jobHeight:  sourceWO.jobHeight,
+                  quantity:   sourceWO.quantity,
+                  unit:       sourceWO.unit,
+                  noOfColors: sourceWO.noOfColors,
+                  secondaryLayers:      sourceWO.secondaryLayers,
+                  processes:            sourceWO.processes,
+                  cylinderCostPerColor: sourceWO.cylinderCostPerColor,
+                  overheadPct: sourceWO.overheadPct,
+                  profitPct:   sourceWO.profitPct,
+                } satisfies PlanInput} />
+              ) : (
+                /* No WO — fallback to order data pills */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <Pill label="Substrate"  value={sourceOrder.orderLines?.[0]?.substrate || sourceOrder.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
+                    <Pill label="Print Type" value={sourceOrder.orderLines?.[0]?.printType || sourceOrder.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
+                    <Pill label="Colors"     value={`${sourceOrder.noOfColors || 0} Colors`} cls="bg-blue-50 text-blue-700 border-blue-200" />
+                    <Pill label="Job Width"  value={`${sourceOrder.jobWidth || 0} mm`} />
+                  </div>
+                  {(sourceOrder.processes?.length || 0) > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(sourceOrder.processes || []).map((p, i) => (
+                        <span key={i} className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium">
+                          {p.processName}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                    No Work Order found — catalog will use basic order data. Create a Work Order first for full planning detail.
                   </div>
                 </div>
               )}
-
-              {/* Processes */}
-              {((sourceWO?.processes?.length || 0) > 0 || (sourceOrder.processes?.length || 0) > 0) && (
-                <div>
-                  <p className="text-[10px] text-gray-400 uppercase font-semibold mb-2">Processes</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(sourceWO?.processes || sourceOrder.processes || []).map((p, i) => (
-                      <span key={i} className="px-2.5 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-medium">
-                        {p.processName}
-                        {p.rate > 0 && <span className="text-indigo-400 ml-1">₹{p.rate}/{p.chargeUnit}</span>}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* If no planning data */}
-              {!(sourceWO?.secondaryLayers?.length) && !(sourceWO?.processes?.length) && !(sourceOrder.processes?.length) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
-                  No ply or process planning data available. Catalog will store basic order details.
-                  Full planning can be added via Work Order later.
-                </div>
-              )}
-            </div>
-
-            {/* ── Rate (editable) ── */}
-            <div>
-              <SH label="Rate (Editable)" />
-              <div className="max-w-xs">
-                <Input
-                  label="₹ / Meter Rate"
-                  type="number"
-                  value={editRate || ""}
-                  onChange={e => setEditRate(Number(e.target.value))}
-                  placeholder="e.g. 1.36"
-                  step={0.01}
-                />
-              </div>
-            </div>
-
-            {/* ── Remarks (editable) ── */}
-            <div>
-              <SH label="Remarks (Editable)" />
-              <Textarea
-                label="Remarks / Notes"
-                value={editRemark}
-                onChange={e => setEditRemark(e.target.value)}
-                placeholder="Special notes for this catalog template…"
-              />
             </div>
           </div>
 
