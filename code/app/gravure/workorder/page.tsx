@@ -129,7 +129,11 @@ export default function GravureWorkOrderPage() {
       standardQty: catSaveWO.quantity,
       standardUnit: catSaveWO.unit,
       sourceEstimationId: "",
-      sourceEstimationNo: catSaveWO.orderNo ? `WO:${catSaveWO.workOrderNo}` : "",
+      sourceEstimationNo: "",
+      sourceOrderId: catSaveWO.orderId || "",
+      sourceOrderNo: catSaveWO.orderNo || "",
+      sourceWorkOrderId: catSaveWO.id,
+      sourceWorkOrderNo: catSaveWO.workOrderNo,
       status: "Active",
       remarks: catSaveWO.specialInstructions || "",
     };
