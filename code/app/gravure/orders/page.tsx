@@ -303,7 +303,6 @@ export default function GravureOrdersPage() {
   const [editing,   setEditing] = useState<GravureOrder | null>(null);
   const [form,      setForm]    = useState<Omit<GravureOrder, "id" | "orderNo">>(blankHeader);
   const [deleteId,  setDelId]   = useState<string | null>(null);
-  const [step,      setStep]    = useState<"header" | "lines">("header");
   const [expandedView, setExpandedView] = useState<string | null>(null);
 
   const f = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -345,14 +344,12 @@ export default function GravureOrdersPage() {
   const openAdd = () => {
     setEditing(null);
     setForm(blankHeader);
-    setStep("header");
     setModal(true);
   };
 
   const openEdit = (row: GravureOrder) => {
     setEditing(row);
     setForm({ ...row });
-    setStep("header");
     setModal(true);
   };
 
@@ -478,164 +475,101 @@ export default function GravureOrdersPage() {
       <Modal
         open={modal}
         onClose={() => setModal(false)}
-        title={editing ? `Edit Order — ${editing.orderNo}` : step === "header" ? "New Order — Header" : "New Order — Order Lines"}
+        title={editing ? `Edit Order — ${editing.orderNo}` : "New Order"}
         size="xl"
       >
-        {/* ── Step tabs ── */}
-        {!editing && (
-          <div className="flex border-b border-gray-200 mb-5 -mt-1">
-            {(["header", "lines"] as const).map((s, i) => (
-              <button
-                key={s}
-                onClick={() => step === "lines" && setStep(s)}
-                className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold border-b-2 transition-colors
-                  ${step === s ? "border-teal-600 text-teal-700" : "border-transparent text-gray-400 hover:text-gray-600"}`}
-              >
-                <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold
-                  ${step === s ? "bg-teal-600 text-white" : "bg-gray-200 text-gray-500"}`}>{i + 1}</span>
-                {s === "header" ? "Order Header" : "Product Lines"}
-              </button>
-            ))}
+        <div className="max-h-[80vh] overflow-y-auto pr-1 space-y-4">
+
+          {/* ── Client + Availability ── */}
+          <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-teal-700 uppercase tracking-widest flex items-center gap-1.5">
+              <User size={12} />Client Information
+            </p>
+            <Select
+              label="Client Name *"
+              value={form.customerId}
+              onChange={e => {
+                const c = customers.find(x => x.id === e.target.value);
+                setForm(p => ({ ...blankHeader, customerId: e.target.value, customerName: c?.name || "", date: p.date }));
+              }}
+              options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+            />
+            {form.customerId && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className={`rounded-xl border p-3 flex items-center gap-3 ${custEstimations.length ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+                  <Calculator size={18} className={custEstimations.length ? "text-blue-600" : "text-gray-300"} />
+                  <div>
+                    <p className={`text-xs font-semibold ${custEstimations.length ? "text-blue-700" : "text-gray-400"}`}>Estimations</p>
+                    <p className={`text-xs ${custEstimations.length ? "text-blue-500" : "text-gray-400"}`}>
+                      {custEstimations.length ? `${custEstimations.length} available` : "None"}
+                    </p>
+                  </div>
+                  {custEstimations.length ? <CheckCircle2 size={14} className="ml-auto text-blue-500" /> : <AlertCircle size={14} className="ml-auto text-gray-300" />}
+                </div>
+                <div className={`rounded-xl border p-3 flex items-center gap-3 ${custCatalog.length ? "bg-purple-50 border-purple-200" : "bg-gray-50 border-gray-200"}`}>
+                  <BookMarked size={18} className={custCatalog.length ? "text-purple-600" : "text-gray-300"} />
+                  <div>
+                    <p className={`text-xs font-semibold ${custCatalog.length ? "text-purple-700" : "text-gray-400"}`}>Product Catalog</p>
+                    <p className={`text-xs ${custCatalog.length ? "text-purple-500" : "text-gray-400"}`}>
+                      {custCatalog.length ? `${custCatalog.length} products` : "None"}
+                    </p>
+                  </div>
+                  {custCatalog.length ? <CheckCircle2 size={14} className="ml-auto text-purple-500" /> : <AlertCircle size={14} className="ml-auto text-gray-300" />}
+                </div>
+              </div>
+            )}
           </div>
-        )}
 
-        {/* ════ STEP 1 — HEADER ════ */}
-        {(step === "header" || editing) && (
-          <div className="space-y-5">
-            {/* Customer + Availability */}
-            <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-4">
-              <p className="text-xs font-bold text-teal-700 uppercase tracking-widest flex items-center gap-1.5">
-                <User size={12} />Client Information
-              </p>
-              <Select
-                label="Client Name *"
-                value={form.customerId}
-                onChange={e => {
-                  const c = customers.find(x => x.id === e.target.value);
-                  setForm(p => ({ ...blankHeader, customerId: e.target.value, customerName: c?.name || "", date: p.date }));
-                }}
-                options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
-              />
-              {form.customerId && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className={`rounded-xl border p-3 flex items-center gap-3 ${custEstimations.length ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
-                    <Calculator size={18} className={custEstimations.length ? "text-blue-600" : "text-gray-300"} />
-                    <div>
-                      <p className={`text-xs font-semibold ${custEstimations.length ? "text-blue-700" : "text-gray-400"}`}>Estimations</p>
-                      <p className={`text-xs ${custEstimations.length ? "text-blue-500" : "text-gray-400"}`}>
-                        {custEstimations.length ? `${custEstimations.length} available` : "None"}
-                      </p>
-                    </div>
-                    {custEstimations.length ? <CheckCircle2 size={14} className="ml-auto text-blue-500" /> : <AlertCircle size={14} className="ml-auto text-gray-300" />}
-                  </div>
-                  <div className={`rounded-xl border p-3 flex items-center gap-3 ${custCatalog.length ? "bg-purple-50 border-purple-200" : "bg-gray-50 border-gray-200"}`}>
-                    <BookMarked size={18} className={custCatalog.length ? "text-purple-600" : "text-gray-300"} />
-                    <div>
-                      <p className={`text-xs font-semibold ${custCatalog.length ? "text-purple-700" : "text-gray-400"}`}>Product Catalog</p>
-                      <p className={`text-xs ${custCatalog.length ? "text-purple-500" : "text-gray-400"}`}>
-                        {custCatalog.length ? `${custCatalog.length} products` : "None"}
-                      </p>
-                    </div>
-                    {custCatalog.length ? <CheckCircle2 size={14} className="ml-auto text-purple-500" /> : <AlertCircle size={14} className="ml-auto text-gray-300" />}
-                  </div>
-                </div>
-              )}
+          {/* ── Order Details ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <FileText size={12} />Order Details
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <Input label="Order Date *" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
+              <Select label="Sales Person" value={form.salesPerson}
+                onChange={e => f("salesPerson", e.target.value)}
+                options={[{ value: "", label: "-- Select --" }, ...SALES_PERSONS.map(s => ({ value: s, label: s }))]} />
+              <Select label="Sales Type" value={form.salesType}
+                onChange={e => f("salesType", e.target.value)}
+                options={SALES_TYPES.map(s => ({ value: s, label: s }))} />
+              <Select label="Sales Ledger" value={form.salesLedger}
+                onChange={e => f("salesLedger", e.target.value)}
+                options={[{ value: "", label: "-- Select Ledger --" }, ...SALES_LEDGERS.map(s => ({ value: s, label: s }))]} />
+              <Input label="PO No" value={form.poNo} onChange={e => f("poNo", e.target.value)} placeholder="e.g. PO-PARLE-2024-031" />
+              <Input label="PO Date" type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)} />
             </div>
-
-            {/* Order details */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                <FileText size={12} />Order Details
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <Input label="Order Date *" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
-                <Select label="Sales Person" value={form.salesPerson}
-                  onChange={e => f("salesPerson", e.target.value)}
-                  options={[{ value: "", label: "-- Select --" }, ...SALES_PERSONS.map(s => ({ value: s, label: s }))]} />
-                <Select label="Sales Type" value={form.salesType}
-                  onChange={e => f("salesType", e.target.value)}
-                  options={SALES_TYPES.map(s => ({ value: s, label: s }))} />
-                <Select label="Sales Ledger" value={form.salesLedger}
-                  onChange={e => f("salesLedger", e.target.value)}
-                  options={[{ value: "", label: "-- Select Ledger --" }, ...SALES_LEDGERS.map(s => ({ value: s, label: s }))]} />
-                <Input label="PO No" value={form.poNo} onChange={e => f("poNo", e.target.value)} placeholder="e.g. PO-PARLE-2024-031" />
-                <Input label="PO Date" type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)} />
-              </div>
-              <div className="flex items-center gap-3 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={form.directDispatch}
-                    onChange={e => f("directDispatch", e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300 accent-teal-600" />
-                  <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                    <Truck size={14} className="text-teal-600" />Direct Dispatch
-                  </span>
-                </label>
-                {form.directDispatch && (
-                  <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
-                    Order will be dispatched directly without separate dispatch note
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Payment */}
-            <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                <CreditCard size={12} />Payment
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Select label="Status" value={form.status}
-                  onChange={e => f("status", e.target.value as typeof form.status)}
-                  options={[{ value: "Confirmed", label: "Confirmed" }, { value: "In Production", label: "In Production" }, { value: "Ready", label: "Ready" }, { value: "Dispatched", label: "Dispatched" }]} />
-                <Input label="Advance Paid (₹)" type="number" value={form.advancePaid || ""}
-                  onChange={e => f("advancePaid", Number(e.target.value))} />
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-gray-500 mb-1">Order Total (₹)</span>
-                  <div className="flex-1 flex items-center px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg font-bold text-teal-800 text-sm">
-                    ₹{linesTotal.toLocaleString()}
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-semibold text-gray-500 mb-1">Balance Pending (₹)</span>
-                  <div className={`flex-1 flex items-center px-3 py-2 border rounded-lg font-bold text-sm
-                    ${balance > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-green-50 border-green-200 text-green-700"}`}>
-                    ₹{Math.max(0, linesTotal - form.advancePaid).toLocaleString()}
-                  </div>
-                </div>
-              </div>
-              <Textarea label="Order Remarks" value={form.remarks} onChange={e => f("remarks", e.target.value)} placeholder="Special instructions…" />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-1">
-              <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
-              {editing ? (
-                <Button icon={<Save size={14} />} onClick={save}>Update Order</Button>
-              ) : (
-                <Button disabled={!form.customerId} onClick={() => setStep("lines")}>
-                  Next: Add Products →
-                </Button>
+            <div className="flex items-center gap-3 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.directDispatch}
+                  onChange={e => f("directDispatch", e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 accent-teal-600" />
+                <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                  <Truck size={14} className="text-teal-600" />Direct Dispatch
+                </span>
+              </label>
+              {form.directDispatch && (
+                <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-full">
+                  Order will be dispatched directly without separate dispatch note
+                </span>
               )}
             </div>
           </div>
-        )}
 
-        {/* ════ STEP 2 — LINES ════ */}
-        {step === "lines" && !editing && (
-          <div className="space-y-4">
-            {/* Context bar */}
-            <div className="flex items-center justify-between bg-teal-50 border border-teal-200 rounded-xl px-4 py-2.5">
-              <div className="text-sm">
-                <span className="font-semibold text-teal-800">{form.customerName}</span>
-                {form.poNo && <span className="text-teal-600 ml-2 text-xs">PO: {form.poNo}</span>}
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                <span className="text-gray-500">{form.orderLines.length} line{form.orderLines.length !== 1 ? "s" : ""}</span>
-                <span className="font-bold text-teal-800">Total: ₹{linesTotal.toLocaleString()}</span>
-              </div>
+          {/* ── Product Lines ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                <Package size={12} />Product Lines
+              </p>
+              {form.orderLines.length > 0 && (
+                <span className="text-xs text-teal-700 font-bold">
+                  {form.orderLines.length} line{form.orderLines.length !== 1 ? "s" : ""} · Total: ₹{linesTotal.toLocaleString()}
+                </span>
+              )}
             </div>
 
-            {/* Lines */}
-            <div className="max-h-[55vh] overflow-y-auto pr-1 space-y-1">
+            <div className="space-y-2">
               {form.orderLines.map((line, idx) => (
                 <LineRow
                   key={line.id}
@@ -662,23 +596,49 @@ export default function GravureOrdersPage() {
               ))}
             </div>
 
-            {/* Add line */}
             <button
               onClick={addLine}
               className="w-full py-3 border-2 border-dashed border-teal-300 rounded-xl text-teal-600 font-semibold text-sm hover:bg-teal-50 transition-colors flex items-center justify-center gap-2"
             >
               <Plus size={16} />Add Product Line
             </button>
+          </div>
 
-            <div className="flex justify-between pt-1">
-              <Button variant="secondary" onClick={() => setStep("header")}>← Back to Header</Button>
-              <div className="flex gap-3">
-                <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
-                <Button icon={<ShoppingCart size={14} />} onClick={save}>Book Order</Button>
+          {/* ── Payment ── */}
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+              <CreditCard size={12} />Payment
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Select label="Status" value={form.status}
+                onChange={e => f("status", e.target.value as typeof form.status)}
+                options={[{ value: "Confirmed", label: "Confirmed" }, { value: "In Production", label: "In Production" }, { value: "Ready", label: "Ready" }, { value: "Dispatched", label: "Dispatched" }]} />
+              <Input label="Advance Paid (₹)" type="number" value={form.advancePaid || ""}
+                onChange={e => f("advancePaid", Number(e.target.value))} />
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold text-gray-500 mb-1">Order Total (₹)</span>
+                <div className="flex-1 flex items-center px-3 py-2 bg-teal-50 border border-teal-200 rounded-lg font-bold text-teal-800 text-sm">
+                  ₹{linesTotal.toLocaleString()}
+                </div>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs font-semibold text-gray-500 mb-1">Balance Pending (₹)</span>
+                <div className={`flex-1 flex items-center px-3 py-2 border rounded-lg font-bold text-sm
+                  ${balance > 0 ? "bg-red-50 border-red-200 text-red-700" : "bg-green-50 border-green-200 text-green-700"}`}>
+                  ₹{Math.max(0, linesTotal - form.advancePaid).toLocaleString()}
+                </div>
               </div>
             </div>
+            <Textarea label="Order Remarks" value={form.remarks} onChange={e => f("remarks", e.target.value)} placeholder="Special instructions…" />
           </div>
-        )}
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 mt-2">
+          <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
+          <Button icon={editing ? <Save size={14} /> : <ShoppingCart size={14} />} onClick={save} disabled={!form.customerId}>
+            {editing ? "Update Order" : "Book Order"}
+          </Button>
+        </div>
       </Modal>
 
       {/* ══ VIEW MODAL ════════════════════════════════════════════ */}
