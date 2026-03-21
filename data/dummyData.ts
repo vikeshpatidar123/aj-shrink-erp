@@ -1677,14 +1677,49 @@ export type GravureItemIssue = {
   status: "Pending" | "Partial" | "Issued";
 };
 
+export type MaterialConsumptionLine = {
+  itemId: string; itemName: string;
+  itemType: "Film" | "Ink" | "Solvent" | "Adhesive" | "Other";
+  plannedQty: number; actualQty: number;
+  unit: string; variance: number;
+};
+
+export type ProductionProcessEntry = {
+  id: string; processName: string;
+  startTime: string; endTime: string;
+  outputQty: number; wastageQty: number; remarks: string;
+};
+
 export type GravureProductionEntry = {
   id: string; entryNo: string; date: string;
+  // Header
   workOrderId: string; workOrderNo: string;
+  customerId: string; customerName: string; jobName: string;
   machineId: string; machineName: string;
-  shift: "A" | "B" | "C"; rollNo: string; substrate: string;
-  printedQty: number; wastageQty: number; netQty: number;
-  speed: number; inkConsumption: number; machineRuntime: number;
+  shift: "A" | "B" | "C";
+  operatorName: string; supervisorName: string;
+  // Machine Control
+  machineStatus: "Pending" | "Running" | "On Hold" | "Stopped";
+  startTime: string; pauseTime: string; resumeTime: string; stopTime: string;
+  pauseReason: "Breakdown" | "Ink Issue" | "Cylinder" | "Power" | "";
+  totalRunTime: number; downtime: number;
+  // Production Output
+  producedQty: number; goodQty: number; rejectedQty: number;
+  wastageQty: number; netQty: number;
+  efficiencyPct: number; wastagePct: number;
+  // Speed & Meters
+  speed: number; machineRuntime: number; machineUtilPct: number;
+  totalMeterRun: number; wasteMeter: number; netMeter: number;
+  // Color / Cylinder
+  noOfColors: number; cylinderCode: string; impressionCount: number;
+  // Detail grids
+  materialLines: MaterialConsumptionLine[];
+  processEntries: ProductionProcessEntry[];
+  // Legacy / quality
+  substrate: string; rollNo: string;
+  inkConsumption: number;
   printQuality: "Good" | "Rework" | "Rejected";
+  status: "Pending" | "In Progress" | "Completed" | "On Hold";
   remarks: string;
 };
 
@@ -1994,10 +2029,98 @@ export const gravureItemIssues: GravureItemIssue[] = [
 
 // ─── GRAVURE PRODUCTION ENTRIES ───────────────────────────────
 export const gravureProductionEntries: GravureProductionEntry[] = [
-  { id: "GPE001", entryNo: "GRV-PROD-2024-001", date: "2024-03-09", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-001", substrate: "BOPP 20μ", printedQty: 45000, wastageQty: 1800, netQty: 43200, speed: 120, inkConsumption: 28, machineRuntime: 7.5, printQuality: "Good", remarks: "Color registration OK. Pantone match approved." },
-  { id: "GPE002", entryNo: "GRV-PROD-2024-002", date: "2024-03-10", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-002", substrate: "BOPP 20μ", printedQty: 48000, wastageQty: 1440, netQty: 46560, speed: 130, inkConsumption: 30, machineRuntime: 8, printQuality: "Good", remarks: "" },
-  { id: "GPE003", entryNo: "GRV-PROD-2024-003", date: "2024-03-11", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "B", rollNo: "GRV-ROLL-003", substrate: "BOPP 20μ", printedQty: 42000, wastageQty: 2100, netQty: 39900, speed: 110, inkConsumption: 26, machineRuntime: 8, printQuality: "Rework", remarks: "Yellow shade off. Ink viscosity corrected after 5000m." },
-  { id: "GPE004", entryNo: "GRV-PROD-2024-004", date: "2024-03-12", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-004", substrate: "BOPP 20μ", printedQty: 52000, wastageQty: 1560, netQty: 50440, speed: 135, inkConsumption: 32, machineRuntime: 8, printQuality: "Good", remarks: "" },
+  {
+    id: "GPE001", entryNo: "GRV-PROD-2024-001", date: "2024-03-09",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "14:30",
+    pauseReason: "", totalRunTime: 450, downtime: 0,
+    producedQty: 45000, goodQty: 43200, rejectedQty: 0, wastageQty: 1800, netQty: 43200,
+    efficiencyPct: 90.0, wastagePct: 4.0, speed: 120, machineRuntime: 7.5, machineUtilPct: 93.8,
+    totalMeterRun: 45000, wasteMeter: 1800, netMeter: 43200,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 45000,
+    inkConsumption: 28, rollNo: "GRV-ROLL-001", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "Color registration OK. Pantone match approved.",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1250, actualQty: 1230, unit: "Kg",  variance: -20 },
+      { itemId: "INK001", itemName: "Cyan Gravure Ink (PU)",    itemType: "Ink",     plannedQty: 45,   actualQty: 28,   unit: "Kg",  variance: -17 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 150,  actualQty: 145,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "14:30", outputQty: 45000, wastageQty: 1800, remarks: "All 8 colors registered OK" },
+    ],
+  },
+  {
+    id: "GPE002", entryNo: "GRV-PROD-2024-002", date: "2024-03-10",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "15:00",
+    pauseReason: "", totalRunTime: 480, downtime: 0,
+    producedQty: 48000, goodQty: 46560, rejectedQty: 0, wastageQty: 1440, netQty: 46560,
+    efficiencyPct: 92.3, wastagePct: 3.0, speed: 130, machineRuntime: 8, machineUtilPct: 96.2,
+    totalMeterRun: 48000, wasteMeter: 1440, netMeter: 46560,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 48000,
+    inkConsumption: 30, rollNo: "GRV-ROLL-002", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1300, actualQty: 1280, unit: "Kg",  variance: -20 },
+      { itemId: "INK001", itemName: "Gravure Ink (Mixed)",       itemType: "Ink",     plannedQty: 50,   actualQty: 30,   unit: "Kg",  variance: -20 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 160,  actualQty: 155,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "15:00", outputQty: 48000, wastageQty: 1440, remarks: "" },
+    ],
+  },
+  {
+    id: "GPE003", entryNo: "GRV-PROD-2024-003", date: "2024-03-11",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "B",
+    operatorName: "Deepak Verma", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "15:00", pauseTime: "17:30", resumeTime: "17:55", stopTime: "23:00",
+    pauseReason: "Ink Issue", totalRunTime: 455, downtime: 25,
+    producedQty: 42000, goodQty: 39900, rejectedQty: 0, wastageQty: 2100, netQty: 39900,
+    efficiencyPct: 83.5, wastagePct: 5.0, speed: 110, machineRuntime: 8, machineUtilPct: 87.0,
+    totalMeterRun: 42000, wasteMeter: 2100, netMeter: 39900,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 42000,
+    inkConsumption: 26, rollNo: "GRV-ROLL-003", substrate: "BOPP 20μ", printQuality: "Rework",
+    status: "Completed", remarks: "Yellow shade off. Ink viscosity corrected after 5000m.",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1200, actualQty: 1195, unit: "Kg",  variance: -5  },
+      { itemId: "INK003", itemName: "Yellow Gravure Ink (PU)",  itemType: "Ink",     plannedQty: 35,   actualQty: 38,   unit: "Kg",  variance: 3   },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 140,  actualQty: 142,  unit: "Ltr", variance: 2   },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "15:00", endTime: "23:00", outputQty: 42000, wastageQty: 2100, remarks: "Ink pause at 17:30. Viscosity corrected." },
+    ],
+  },
+  {
+    id: "GPE004", entryNo: "GRV-PROD-2024-004", date: "2024-03-12",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "15:00",
+    pauseReason: "", totalRunTime: 480, downtime: 0,
+    producedQty: 52000, goodQty: 50440, rejectedQty: 0, wastageQty: 1560, netQty: 50440,
+    efficiencyPct: 94.5, wastagePct: 3.0, speed: 135, machineRuntime: 8, machineUtilPct: 97.2,
+    totalMeterRun: 52000, wasteMeter: 1560, netMeter: 50440,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 52000,
+    inkConsumption: 32, rollNo: "GRV-ROLL-004", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1350, actualQty: 1340, unit: "Kg",  variance: -10 },
+      { itemId: "INK001", itemName: "Gravure Ink (Mixed)",       itemType: "Ink",     plannedQty: 55,   actualQty: 32,   unit: "Kg",  variance: -23 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 170,  actualQty: 165,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "15:00", outputQty: 52000, wastageQty: 1560, remarks: "Best run of the batch. Speed increased." },
+    ],
+  },
 ];
 
 // ─── GRAVURE DISPATCHES ───────────────────────────────────────
