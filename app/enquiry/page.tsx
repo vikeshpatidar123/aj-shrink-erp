@@ -157,7 +157,7 @@ export default function EnquiryPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {[
           { label: "Total", val: total, cls: "bg-gray-50 text-gray-700 border-gray-200" },
           { label: "Extrusion", val: extCount, cls: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -216,7 +216,7 @@ export default function EnquiryPage() {
           {/* Common fields */}
           <div>
             <SH label="Basic Information" />
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input
                 label="Enquiry No."
                 value={editing ? editing.enquiryNo : "Auto Generated"}
@@ -290,7 +290,7 @@ export default function EnquiryPage() {
           {form.categoryId && (
             <div>
               <SH label={`Select Content — ${form.categoryName}`} />
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {availableContents.map(content => {
                   const isSelected = form.selectedContent === content;
                   return (
@@ -330,7 +330,7 @@ export default function EnquiryPage() {
             /* ── Extrusion fields ── */
             <div>
               <SH label="Extrusion Specifications" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Select
                   label="Product"
                   value={form.productId}
@@ -537,7 +537,7 @@ export default function EnquiryPage() {
               </span>
               {statusBadge(viewRow.status)}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {([
                 ["Customer", viewRow.customerName],
                 ["Job Name", viewRow.jobName],

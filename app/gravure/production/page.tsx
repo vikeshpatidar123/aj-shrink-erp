@@ -241,7 +241,7 @@ export default function GravureProductionPage() {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Total Produced"  val={`${totalProduced.toLocaleString()} m`} cls="bg-blue-50 text-blue-700 border-blue-200" />
         <StatCard label="Total Wastage"   val={`${totalWastage.toLocaleString()} m`}  cls="bg-red-50 text-red-700 border-red-200" />
         <StatCard label="Net Production"  val={`${totalNet.toLocaleString()} m`}       cls="bg-green-50 text-green-700 border-green-200" />
@@ -249,7 +249,7 @@ export default function GravureProductionPage() {
       </div>
 
       {/* Status Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {(["Pending", "In Progress", "Completed", "On Hold"] as const).map(s => (
           <div key={s} className={`rounded-xl border p-4 ${STATUS_COLOR[s]}`}>
             <p className="text-xs font-medium">{s}</p>
@@ -305,7 +305,7 @@ export default function GravureProductionPage() {
         {activeTab === "machine" && (
           <div className="space-y-5">
             {/* Header Fields */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input label="Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
               <Select
                 label="Work Order *"
@@ -365,7 +365,7 @@ export default function GravureProductionPage() {
               </div>
 
               {/* Time Capture */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Input label="Start Time" type="time" value={form.startTime} onChange={e => f("startTime", e.target.value)} />
                 <Input label="Pause Time" type="time" value={form.pauseTime} onChange={e => f("pauseTime", e.target.value)} />
                 <Input label="Resume Time" type="time" value={form.resumeTime} onChange={e => f("resumeTime", e.target.value)} />
@@ -389,7 +389,7 @@ export default function GravureProductionPage() {
               )}
 
               {/* Run Time & Downtime */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Input label="Total Run Time (min)" type="number" value={form.totalRunTime} onChange={e => f("totalRunTime", Number(e.target.value))} />
                 <Input label="Downtime (min)" type="number" value={form.downtime} onChange={e => f("downtime", Number(e.target.value))} />
               </div>
@@ -414,7 +414,7 @@ export default function GravureProductionPage() {
         {activeTab === "output" && (
           <div className="space-y-5">
             {/* Quantity Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Input label="Produced Qty (m)" type="number" value={form.producedQty} onChange={e => f("producedQty", Number(e.target.value))} />
               <Input label="Good Qty (m)" type="number" value={form.goodQty} onChange={e => f("goodQty", Number(e.target.value))} />
               <Input label="Rejected Qty (m)" type="number" value={form.rejectedQty} onChange={e => f("rejectedQty", Number(e.target.value))} />
@@ -422,7 +422,7 @@ export default function GravureProductionPage() {
             </div>
 
             {/* Auto-calc cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                 <p className="text-xs text-gray-500">Net Qty</p>
                 <p className="text-xl font-bold text-green-700">{netQty.toLocaleString()} m</p>
@@ -442,7 +442,7 @@ export default function GravureProductionPage() {
             </div>
 
             {/* Speed / Quality */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Input label="Machine Speed (m/min)" type="number" value={form.speed} onChange={e => f("speed", Number(e.target.value))} />
               <Input label="Machine Runtime (hr)" type="number" value={form.machineRuntime} step={0.5} onChange={e => f("machineRuntime", Number(e.target.value))} />
               <Input label="Ink Consumption (Kg)" type="number" value={form.inkConsumption} step={0.1} onChange={e => f("inkConsumption", Number(e.target.value))} />
@@ -463,7 +463,7 @@ export default function GravureProductionPage() {
               <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
                 <Gauge size={14} className="text-purple-500" /> Running Meter Tracking
               </h4>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Input label="Total Meter Run (m)" type="number" value={form.totalMeterRun} onChange={e => f("totalMeterRun", Number(e.target.value))} />
                 <Input label="Waste Meter (m)" type="number" value={form.wasteMeter} onChange={e => f("wasteMeter", Number(e.target.value))} />
                 <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex flex-col justify-center">
@@ -476,7 +476,7 @@ export default function GravureProductionPage() {
             {/* Color / Cylinder */}
             <div className="border border-gray-200 rounded-xl p-4 space-y-3">
               <h4 className="text-sm font-semibold text-gray-700">Color / Cylinder Tracking</h4>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <Input label="No. of Colors Used" type="number" value={form.noOfColors} onChange={e => f("noOfColors", Number(e.target.value))} />
                 <Input label="Cylinder Code" value={form.cylinderCode} onChange={e => f("cylinderCode", e.target.value)} placeholder="CYL-001" />
                 <Input label="Impression Count" type="number" value={form.impressionCount} onChange={e => f("impressionCount", Number(e.target.value))} />
@@ -568,7 +568,7 @@ export default function GravureProductionPage() {
             {consPerMeter.length > 0 && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                 <p className="text-xs font-semibold text-blue-700 mb-2">Material Consumption per Net Meter</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                   {consPerMeter.map((c, i) => (
                     <div key={i} className="bg-white rounded-lg border border-blue-100 p-2">
                       <p className="text-xs text-gray-500 truncate">{c.name || `Item ${i + 1}`}</p>
@@ -606,7 +606,7 @@ export default function GravureProductionPage() {
                       <Trash2 size={13} />
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div>
                       <label className="text-xs font-medium text-gray-600 block mb-1">Process Name</label>
                       <input
@@ -653,7 +653,7 @@ export default function GravureProductionPage() {
             {/* Entry Details */}
             <div className="bg-gray-50 rounded-xl border p-4">
               <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Entry Details</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {[
                   ["Date", form.date], ["Work Order", form.workOrderNo || "—"], ["Customer", form.customerName || "—"],
                   ["Job Name", form.jobName || "—"], ["Machine", form.machineName || "—"], ["Shift", `Shift ${form.shift}`],
@@ -669,7 +669,7 @@ export default function GravureProductionPage() {
             {/* Machine Control */}
             <div className="bg-gray-50 rounded-xl border p-4">
               <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Machine Control</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   ["Start Time", form.startTime || "—"], ["Pause Time", form.pauseTime || "—"],
                   ["Resume Time", form.resumeTime || "—"], ["Stop Time", form.stopTime || "—"],
@@ -684,7 +684,7 @@ export default function GravureProductionPage() {
             {/* Production Output */}
             <div className="bg-gray-50 rounded-xl border p-4">
               <p className="text-xs font-semibold text-gray-400 uppercase mb-3">Production Output</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   { l: "Produced",     v: `${form.producedQty.toLocaleString()} m`,   c: "bg-blue-50 text-blue-700 border-blue-200" },
                   { l: "Good Qty",     v: `${(netQty - form.rejectedQty).toLocaleString()} m`, c: "bg-green-50 text-green-700 border-green-200" },
@@ -745,7 +745,7 @@ export default function GravureProductionPage() {
                         <span className="text-xs font-semibold text-gray-800">{p.processName || `Process ${i + 1}`}</span>
                         <span className="text-xs text-gray-400">{p.startTime || "—"} – {p.endTime || "—"}</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
                         <span>Output: <b>{p.outputQty} m</b></span>
                         <span>Waste: <b className="text-red-600">{p.wastageQty} m</b></span>
                         <span className="text-gray-500 truncate">{p.remarks}</span>
@@ -789,7 +789,7 @@ export default function GravureProductionPage() {
       {viewRow && (
         <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`Production Entry – ${viewRow.entryNo}`} size="lg">
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 ["Date", viewRow.date], ["Work Order", viewRow.workOrderNo],
                 ["Customer", viewRow.customerName], ["Job", viewRow.jobName],
@@ -801,7 +801,7 @@ export default function GravureProductionPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { l: "Produced", v: `${viewRow.producedQty.toLocaleString()} m`, c: "bg-blue-50 text-blue-700 border-blue-200" },
                 { l: "Net Qty",  v: `${viewRow.netQty.toLocaleString()} m`,       c: "bg-green-50 text-green-700 border-green-200" },
@@ -865,7 +865,7 @@ export default function GravureProductionPage() {
                         <span className="font-semibold text-gray-800">{p.processName}</span>
                         <span className="text-gray-400">{p.startTime} – {p.endTime}</span>
                       </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-xs">
                         <span>Output: <b>{p.outputQty} m</b></span>
                         <span>Waste: <b className="text-red-600">{p.wastageQty} m</b></span>
                         <span className="text-gray-500">{p.remarks}</span>

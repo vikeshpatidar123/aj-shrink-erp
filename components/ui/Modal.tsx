@@ -12,10 +12,10 @@ interface ModalProps {
 
 // Wider sizes so less scrolling is needed
 const sizes = {
-  sm: "sm:max-w-lg",          // confirm dialogs  ~512px
-  md: "sm:max-w-3xl",         // simple forms     ~768px
-  lg: "sm:max-w-5xl",         // medium forms     ~1024px
-  xl: "sm:max-w-[92vw]",      // large forms      ~92% viewport
+  sm: "sm:max-w-lg",
+  md: "sm:max-w-3xl",
+  lg: "sm:max-w-5xl",
+  xl: "sm:max-w-[92vw]",
 };
 
 export default function Modal({ open, onClose, title, children, size = "md" }: ModalProps) {
@@ -36,11 +36,11 @@ export default function Modal({ open, onClose, title, children, size = "md" }: M
       <div
         className={`relative bg-white w-full ${sizes[size]}
           rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col
-          max-h-[96dvh] sm:max-h-[95vh]`}
+          max-h-[94dvh] sm:max-h-[95vh]`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 flex-shrink-0">
-          <h3 className="text-base font-semibold text-gray-800 truncate pr-4">{title}</h3>
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-200 flex-shrink-0">
+          <h3 className="text-sm sm:text-base font-semibold text-gray-800 truncate pr-4">{title}</h3>
           <button
             onClick={onClose}
             className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors p-1.5 rounded-lg hover:bg-gray-100"
@@ -49,8 +49,8 @@ export default function Modal({ open, onClose, title, children, size = "md" }: M
           </button>
         </div>
 
-        {/* Body — more padding, taller scroll area */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">{children}</div>
       </div>
     </div>
   );

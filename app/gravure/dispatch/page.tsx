@@ -90,7 +90,7 @@ export default function GravureDispatchPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: "Total Dispatches", val: data.length,                                     cls: "bg-blue-50 text-blue-700 border-blue-200" },
           { label: "In Transit",       val: data.filter(d => d.status === "In Transit").length, cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
@@ -150,7 +150,7 @@ export default function GravureDispatchPage() {
 
       {/* Form Modal */}
       <Modal open={modalOpen} onClose={() => setModal(false)} title={editing ? "Edit Dispatch" : "New Gravure Dispatch"} size="xl">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Input label="Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
           <Select
             label="Order *"
@@ -183,7 +183,7 @@ export default function GravureDispatchPage() {
 
         {/* Dispatch Summary */}
         {form.quantity > 0 && (
-          <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
               <p className="text-xs text-gray-500">Total Quantity</p>
               <p className="font-bold text-blue-700">{form.quantity.toLocaleString()} {form.unit}</p>
@@ -209,7 +209,7 @@ export default function GravureDispatchPage() {
       {viewRow && (
         <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`Dispatch – ${viewRow.dispatchNo}`} size="lg">
           <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {([
                 ["Date",       viewRow.date],
                 ["Order No",   viewRow.orderNo],

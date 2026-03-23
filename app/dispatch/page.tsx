@@ -137,7 +137,7 @@ export default function DispatchPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: "Total Dispatches", val: displayData.length,  cls: "bg-blue-50 text-blue-700 border-blue-200" },
           { label: "In Transit",       val: inTransit,          cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
@@ -228,7 +228,7 @@ export default function DispatchPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Input label="Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
 
           {/* Order selector — EXT uses orders, GRV uses gravureOrders */}
@@ -301,7 +301,7 @@ export default function DispatchPage() {
               <UnitBadge unit={viewRow.businessUnit} />
               <span className="text-xs text-gray-500">{viewRow.businessUnit} Unit</span>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 ["Date",            viewRow.date],
                 ["Order No",        viewRow.orderNo],

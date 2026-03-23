@@ -48,8 +48,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   const handleMenuClick = () => {
-    setMobileOpen(o => !o);
-    setDesktopOpen(o => !o);
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setMobileOpen(o => !o);   // mobile: overlay drawer
+    } else {
+      setDesktopOpen(o => !o);  // desktop: push layout
+    }
   };
 
   return (

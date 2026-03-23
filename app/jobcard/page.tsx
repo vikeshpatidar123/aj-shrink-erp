@@ -64,7 +64,7 @@ export default function JobCardPage() {
         <Button icon={<Plus size={16} />} onClick={openAdd}>Generate Job Card</Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {["Open", "In Progress", "Completed", "On Hold"].map((s) => {
           const colors: Record<string, string> = {
             Open: "bg-gray-50 text-gray-600 border-gray-200",
@@ -99,7 +99,7 @@ export default function JobCardPage() {
 
       {/* Form Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Job Card" : "Generate Job Card"} size="xl">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Input label="Date" type="date" value={form.date} onChange={(e) => f("date", e.target.value)} />
           <Select
             label="Order *"
@@ -151,7 +151,7 @@ export default function JobCardPage() {
       {/* View Modal */}
       {viewRow && (
         <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`Job Card – ${viewRow.jobCardNo}`} size="lg">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             {[
               ["Order No", viewRow.orderNo],
               ["Customer", viewRow.customerName],

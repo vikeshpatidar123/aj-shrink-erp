@@ -45,6 +45,7 @@ export default function PurchaseRequisitionPage() {
   const [reqDate, setReqDate] = useState(todayISO());
   const [remark, setRemark] = useState("");
   const [filterStatus, setFilterStatus] = useState<"All" | PurchaseRequisition["status"]>("All");
+  const [listSearch, setListSearch] = useState("");
 
   // Item picker state
   const [showPicker, setShowPicker] = useState(false);
@@ -145,8 +146,16 @@ export default function PurchaseRequisitionPage() {
 
   const currentReqNo = editing ? editing.reqNo : nextReqNo(data);
   const totalPOQty = lines.reduce((s, l) => s + l.poQtyInPU, 0);
-  const filteredData =
-    filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus);
+  const filteredData = (filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus))
+    .filter((r) => {
+      if (!listSearch) return true;
+      const s = listSearch.toLowerCase();
+      return (
+        r.reqNo.toLowerCase().includes(s) ||
+        r.remark.toLowerCase().includes(s) ||
+        r.status.toLowerCase().includes(s)
+      );
+    });
   const statuses: ("All" | PurchaseRequisition["status"])[] = [
     "All", "Draft", "Submitted", "Approved", "Rejected", "Ordered",
   ];
@@ -174,7 +183,7 @@ export default function PurchaseRequisitionPage() {
         </div>
 
         {/* Status filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">
               Status
@@ -192,6 +201,16 @@ export default function PurchaseRequisitionPage() {
                 {s}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+            <Search size={14} className="text-gray-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="Search by requisition no, remark..."
+              value={listSearch}
+              onChange={e => setListSearch(e.target.value)}
+              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+            />
           </div>
         </div>
 

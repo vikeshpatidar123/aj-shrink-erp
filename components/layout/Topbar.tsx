@@ -27,27 +27,27 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
 
   return (
     <header
-      className="bg-white px-4 py-0 flex items-center justify-between sticky top-0 z-10"
+      className="bg-white px-3 md:px-4 py-0 flex items-center justify-between sticky top-0 z-10 gap-2"
       style={{ borderBottom: "1px solid #dde3ed", minHeight: "52px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
     >
 
       {/* ── Left: hamburger + title ── */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <button
           onClick={onMenuClick}
-          className="p-2 rounded text-gray-500 hover:bg-gray-100 transition-colors"
+          className="p-2 rounded text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
         >
           <Menu size={19} />
         </button>
-        <h2 className="text-[14px] font-semibold text-gray-800 truncate max-w-[140px] sm:max-w-xs md:max-w-none"
+        <h2 className="text-[13px] sm:text-[14px] font-semibold text-gray-800 truncate"
           style={{ letterSpacing: "0.01em" }}>
           {title}
         </h2>
       </div>
 
-      {/* ── Centre: Unit switcher ── */}
+      {/* ── Centre: Unit switcher — icon-only on mobile, full label on sm+ ── */}
       <div
-        className="flex items-center gap-px rounded-md overflow-hidden border"
+        className="flex items-center gap-px rounded-md overflow-hidden border flex-shrink-0"
         style={{ borderColor: "#dde3ed" }}
       >
         {UNITS.map(u => {
@@ -56,7 +56,7 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
             <button
               key={u.value}
               onClick={() => setUnit(u.value)}
-              className="px-3 py-1.5 text-[11px] font-semibold tracking-wide transition-all"
+              className="px-2 sm:px-3 py-1.5 text-[10px] sm:text-[11px] font-semibold tracking-wide transition-all"
               style={
                 active
                   ? { background: "var(--erp-primary)", color: "#fff", borderColor: "transparent" }
@@ -69,16 +69,17 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
                 if (!active) (e.currentTarget as HTMLElement).style.background = "#fff";
               }}
             >
-              {u.label}
+              <span className="hidden sm:inline">{u.label}</span>
+              <span className="sm:hidden">{u.label.slice(0, 3)}</span>
             </button>
           );
         })}
       </div>
 
       {/* ── Right ── */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 flex-shrink-0">
 
-        {/* Search */}
+        {/* Search — md+ only */}
         <div className="hidden md:flex items-center gap-2 rounded-md px-3 py-1.5 border border-gray-200 bg-gray-50 focus-within:bg-white transition-all"
           style={{ minWidth: "160px" }}>
           <Search size={13} className="text-gray-400 flex-shrink-0" />
@@ -95,7 +96,7 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full" />
         </button>
 
-        {/* Settings */}
+        {/* Settings — md+ only */}
         <button className="p-2 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors hidden md:flex">
           <Settings size={16} />
         </button>
@@ -104,7 +105,7 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
         <div className="relative">
           <button
             onClick={() => setDropOpen(p => !p)}
-            className="flex items-center gap-2 cursor-pointer rounded hover:bg-gray-100 px-2 py-1.5 transition-colors"
+            className="flex items-center gap-1.5 cursor-pointer rounded hover:bg-gray-100 px-1.5 sm:px-2 py-1.5 transition-colors"
           >
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"

@@ -4,7 +4,7 @@ import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
   Camera, Keyboard, List, ClipboardCheck, TrendingUp, TrendingDown,
-  Minus, PackagePlus,
+  Minus, PackagePlus, Search,
 } from "lucide-react";
 import {
   grnRecords, GRNLine,
@@ -342,6 +342,7 @@ export default function PhysicalVerificationPage() {
   const [data, setData] = useState<PhysicalVerification[]>(initData);
   const [editing, setEditing] = useState<PhysicalVerification | null>(null);
   const [filterStatus, setFilterStatus] = useState<"All" | PhysicalVerification["status"]>("All");
+  const [listSearch, setListSearch] = useState("");
   const [activeTab, setActiveTab] = useState<"scan" | "lines">("scan");
 
   // Form state
@@ -460,7 +461,16 @@ export default function PhysicalVerificationPage() {
     setView("list");
   };
 
-  const filteredData = filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus);
+  const filteredData = (filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus))
+    .filter((r) => {
+      if (!listSearch) return true;
+      const s = listSearch.toLowerCase();
+      return (
+        r.voucherNo.toLowerCase().includes(s) ||
+        r.status.toLowerCase().includes(s) ||
+        r.remark.toLowerCase().includes(s)
+      );
+    });
 
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
@@ -480,7 +490,7 @@ export default function PhysicalVerificationPage() {
         </div>
 
         {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Status</span>
             {(["All", "Draft", "Completed"] as const).map((s) => (
@@ -489,6 +499,16 @@ export default function PhysicalVerificationPage() {
                 {s}
               </button>
             ))}
+          </div>
+          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
+            <Search size={14} className="text-gray-400 shrink-0" />
+            <input
+              type="text"
+              placeholder="Search by voucher no, remark..."
+              value={listSearch}
+              onChange={e => setListSearch(e.target.value)}
+              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+            />
           </div>
         </div>
 

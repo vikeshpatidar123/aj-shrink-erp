@@ -435,7 +435,7 @@ export default function GravureWorkOrderPage() {
 
             {/* Source-specific top banner for non-Direct */}
             {form.sourceOrderType !== "Direct" && (
-              <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
                 <div className={`rounded-xl border px-3 py-2 text-xs ${form.sourceOrderType === "Estimation" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-purple-50 border-purple-200 text-purple-700"}`}>
                   <p className="font-bold uppercase text-[10px] tracking-widest mb-0.5">Source</p>
                   <p className="font-semibold">{form.sourceOrderType === "Estimation" ? "📋 Estimation" : "📦 Catalog"}</p>
@@ -451,7 +451,7 @@ export default function GravureWorkOrderPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input label="Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
 
               {/* Customer — dropdown for Direct, read-only for order-linked */}
@@ -542,7 +542,7 @@ export default function GravureWorkOrderPage() {
           </div>
 
           {form.totalAmount > 0 && (
-            <div className="grid grid-cols-3 gap-3 text-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
               <div className="bg-gray-50 border rounded-xl p-3"><p className="text-xs text-gray-400">Total Amount</p><p className="font-bold">₹{form.totalAmount.toLocaleString()}</p></div>
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3"><p className="text-xs text-gray-400">₹/Meter Rate</p><p className="font-bold text-blue-700">₹{form.perMeterRate.toFixed(2)}</p></div>
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-3"><p className="text-xs text-gray-400">Processes</p><p className="font-bold text-purple-700">{form.processes.length} steps</p></div>
@@ -568,7 +568,7 @@ export default function GravureWorkOrderPage() {
           {/* Machine & Cost */}
           <div>
             <SH label="Machine & Cost" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Select label="Printing Machine *" value={form.machineId}
                 onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { f("machineId", m.id); f("machineName", m.name); } }}
                 options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
@@ -656,7 +656,7 @@ export default function GravureWorkOrderPage() {
                           <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                             <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Film / Substrate</p>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Sub Group</label>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
                               <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
                                 value={l.itemSubGroup}
                                 onChange={e => {
@@ -667,11 +667,11 @@ export default function GravureWorkOrderPage() {
                                   layers[index] = { ...l, itemSubGroup: subGroup, density, thickness: 0, gsm: 0 };
                                   f("secondaryLayers", layers);
                                 }}>
-                                <option value="">Select Film Sub Group</option>
+                                <option value="">Select Film Type</option>
                                 {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
                               </select>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                               <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
@@ -703,7 +703,7 @@ export default function GravureWorkOrderPage() {
                                     <span className="text-[10px] font-bold text-gray-700 uppercase tracking-widest">{pc.fieldDisplayName}</span>
                                     <span className="text-[9px] px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded font-semibold border border-teal-200">{pc.itemGroup}</span>
                                   </div>
-                                  <div className="grid grid-cols-3 gap-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                     <div>
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Sub Group</label>
                                       <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
@@ -943,7 +943,7 @@ export default function GravureWorkOrderPage() {
               )}
 
               {/* Summary cards row 1 */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                 {[
                   { label: "Film (Material)", val: `₹${costBreakdown.filmCost.toFixed(2)}`,         cls: "bg-blue-50 border-blue-200 text-blue-800"   },
                   { label: "Consumables",      val: `₹${costBreakdown.consumableCost.toFixed(2)}`,  cls: "bg-teal-50 border-teal-200 text-teal-800"   },
@@ -958,7 +958,7 @@ export default function GravureWorkOrderPage() {
               </div>
 
               {/* Summary cards row 2 */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t border-indigo-100 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 border-t border-indigo-100 pt-2">
                 {[
                   { label: `Overhead (${form.overheadPct}%)`, val: `₹${costBreakdown.overhead.toFixed(2)}`,  cls: "bg-gray-50 border-gray-200 text-gray-700"   },
                   { label: `Profit (${form.profitPct}%)`,      val: `₹${costBreakdown.profit.toFixed(2)}`,   cls: "bg-gray-50 border-gray-200 text-gray-700"   },
@@ -998,7 +998,7 @@ export default function GravureWorkOrderPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: "Pending Orders", val: stats.pending,    cls: "bg-orange-50 text-orange-700 border-orange-200" },
           { label: "Open WOs",       val: stats.open,       cls: "bg-gray-50 text-gray-600 border-gray-200" },
@@ -1013,9 +1013,9 @@ export default function GravureWorkOrderPage() {
       </div>
 
       {/* ── Page Tabs ── */}
-      <div className="flex bg-gray-100 p-1.5 rounded-xl gap-1.5">
+      <div className="flex overflow-x-auto bg-gray-100 p-1.5 rounded-xl gap-1.5">
         <button onClick={() => setPageTab("pending")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all ${pageTab === "pending" ? "bg-white shadow text-orange-600" : "text-gray-500 hover:text-gray-700"}`}>
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${pageTab === "pending" ? "bg-white shadow text-orange-600" : "text-gray-500 hover:text-gray-700"}`}>
           <Clock size={15} />
           Pending Orders
           {stats.pending > 0 && (
@@ -1023,7 +1023,7 @@ export default function GravureWorkOrderPage() {
           )}
         </button>
         <button onClick={() => setPageTab("workorders")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all ${pageTab === "workorders" ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${pageTab === "workorders" ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
           <Printer size={15} />
           Work Orders
           <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-600">{workOrders.length}</span>
@@ -1134,7 +1134,7 @@ export default function GravureWorkOrderPage() {
         <div className="space-y-4">
           <div>
             <SH label="Machine" />
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Select label="Printing Machine" value={form.machineId}
                 onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { f("machineId", m.id); f("machineName", m.name); } }}
                 options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
@@ -1228,7 +1228,7 @@ export default function GravureWorkOrderPage() {
                   </table>
                 </div>
               )}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                 {[
                   { label: "Film",       val: `₹${costBreakdown.filmCost.toFixed(2)}`,         cls: "bg-blue-50 border-blue-200 text-blue-800"   },
                   { label: "Consumables",val: `₹${costBreakdown.consumableCost.toFixed(2)}`,  cls: "bg-teal-50 border-teal-200 text-teal-800"   },
@@ -1264,7 +1264,7 @@ export default function GravureWorkOrderPage() {
               {viewRow.sourceOrderType !== "Direct" ? <Calculator size={12}/> : <Edit3 size={12}/>}
               {viewRow.sourceOrderType !== "Direct" ? `From Order: ${viewRow.orderNo}` : "Direct Work Order"}
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {([
                 ["Customer",    viewRow.customerName],
                 ["Job Name",    viewRow.jobName],

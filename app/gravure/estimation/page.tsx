@@ -41,9 +41,10 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   customerId: "", customerName: "",
   jobName: "",
   jobWidth: 0, jobHeight: 0, ups: 0,
+  trimmingSize: 0,
   actualWidth: 0, actualHeight: 0,
   substrateItemId: "", substrateName: "",
-  width: 0, noOfColors: 6,
+  width: 0, noOfColors: 6, frontColors: 4, backColors: 2,
   printType: "Surface Print",
   quantity: 0, quantities: [], unit: "Kg",
   machineId: "", machineName: "",
@@ -110,10 +111,10 @@ function calcCosts(form: typeof blank) {
       const filmRate = parseFloat(FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup)?.estimationRate || "0");
       if (filmRate > 0) plyMaterialCost += (l.gsm * areaM2 / 1000) * filmRate;
     }
-    // Consumable items — apply coverage % for Ink items
+    // Consumable items — apply coverage % for all consumables
     l.consumableItems.forEach(ci => {
       if (ci.gsm > 0 && ci.rate > 0) {
-        const effectiveGsm = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+        const effectiveGsm = (ci.coveragePct ?? 100) < 100
           ? ci.gsm * ((ci.coveragePct ?? 100) / 100)
           : ci.gsm;
         plyMaterialCost += (effectiveGsm * areaM2 / 1000) * ci.rate;
@@ -179,14 +180,14 @@ function getCostBreakdown(form: typeof blank): { matLines: MatLine[]; procLines:
       const kg       = parseFloat((l.gsm * areaM2 / 1000).toFixed(3));
       matLines.push({ plyNo: idx + 1, plyType: l.plyType || "Film", name: l.itemSubGroup || "Film Substrate", group: "Film", gsm: l.gsm, kg, rate, amount: parseFloat((kg * rate).toFixed(2)) });
     }
-    // Consumables — apply coverage % for Ink items
+    // Consumables — apply coverage % for all consumables
     l.consumableItems.forEach(ci => {
-      const effectiveGsm = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+      const effectiveGsm = (ci.coveragePct ?? 100) < 100
         ? parseFloat((ci.gsm * ((ci.coveragePct ?? 100) / 100)).toFixed(3))
         : ci.gsm;
       const kg     = parseFloat((effectiveGsm * areaM2 / 1000).toFixed(3));
       const amount = parseFloat((kg * ci.rate).toFixed(2));
-      const label  = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+      const label  = (ci.coveragePct ?? 100) < 100
         ? `${ci.itemName || ci.fieldDisplayName} (${ci.coveragePct}% cov.)`
         : (ci.itemName || ci.fieldDisplayName);
       matLines.push({ plyNo: idx + 1, plyType: l.plyType || "", name: label, group: ci.itemGroup, gsm: effectiveGsm, kg, rate: ci.rate, amount });
@@ -252,17 +253,20 @@ export default function GravureEstimationPage() {
   const [activeTab, setActiveTab] = useState<number>(1);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [isPlanApplied, setIsPlanApplied] = useState(false);
+  const [planSearch, setPlanSearch] = useState("");
+  const [planSort, setPlanSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
   const [extraQtys, setExtraQtys] = useState<number[]>([]);
   const [activeQtyIdx, setActiveQtyIdx] = useState<number>(0); // 0 = base qty
 
   // Derived costs (live)
   const costs     = useMemo(() => calcCosts(form), [form]);
-  const breakdown = useMemo(() => getCostBreakdown(form), [form]);
   const allQtys   = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
   const allCosts  = useMemo(() => allQtys.map(qty => calcCosts({ ...form, quantity: qty })), [form, allQtys]);
-  const safeIdx   = Math.min(activeQtyIdx, allCosts.length - 1);
+  const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
   const activeCosts = allCosts[safeIdx] ?? costs;
   const activeQty   = allQtys[safeIdx] ?? form.quantity;
+  // breakdown always reflects the ACTIVE quantity row (Q1/Q2/Q3)
+  const breakdown = useMemo(() => getCostBreakdown({ ...form, quantity: activeQty }), [form, activeQty]);
 
   // ── Production plan rows (Tab 2) ────────────────────────
   const totalPlyGSM = useMemo(() =>
@@ -275,8 +279,9 @@ export default function GravureEstimationPage() {
       : PRINT_MACHINES;
     return machinesToPlan.flatMap(machine => {
       const baseCirc = form.jobHeight ? Math.ceil(form.jobHeight / 12) * 12 : 450;
-      const rollWidth = 340;
-      const acUps = form.jobWidth > 0 ? Math.max(1, Math.floor(rollWidth / form.jobWidth)) : 10;
+      const filmSize = 340;
+      const acUps = form.jobWidth > 0 ? Math.max(1, Math.floor(filmSize / form.jobWidth)) : 10;
+      const trimSize = form.trimmingSize && form.trimmingSize > 0 ? form.trimmingSize : (form.jobWidth || filmSize);
       const costPerHour = parseFloat(machine.costPerHour as string) || 1350;
       const speed = parseFloat(machine.speedMax) || 150;
       return Array.from({ length: 7 }, (_, i) => {
@@ -285,18 +290,43 @@ export default function GravureEstimationPage() {
         const totalUPS = acUps * repeatUPS;
         const reqRMT = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
         const totalRMT = Math.ceil(reqRMT * 1.01);
-        const totalWt = parseFloat((totalRMT * ((form.jobWidth || 340) / 1000) * totalPlyGSM / 1000).toFixed(3));
+        const totalWt = parseFloat((totalRMT * ((form.jobWidth || filmSize) / 1000) * totalPlyGSM / 1000).toFixed(3));
         const totalTime = parseFloat((totalRMT / (speed * 60)).toFixed(2));
         const planCost = parseFloat((totalTime * costPerHour).toFixed(2));
         const cylCost = form.noOfColors * form.cylinderCostPerColor;
         const grandTotal = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
         const unitPrice = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
-        return { planId: `PLAN-${machine.id}-${i}`, machineId: machine.id, machineName: machine.name, cylCirc, rollWidth, acUps, repeatUPS, totalUPS, reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice };
+        const wastage = parseFloat((filmSize - acUps * trimSize).toFixed(1));
+        return { planId: `PLAN-${machine.id}-${i}`, machineId: machine.id, machineName: machine.name, cylCirc, filmSize, acUps, repeatUPS, totalUPS, reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice, wastage };
       });
     });
-  }, [form.machineId, form.jobHeight, form.jobWidth, form.quantity, form.noOfColors, form.cylinderCostPerColor, totalPlyGSM, costs.processCost]);
+  }, [form.machineId, form.jobHeight, form.jobWidth, form.trimmingSize, form.quantity, form.noOfColors, form.cylinderCostPerColor, totalPlyGSM, costs.processCost]);
 
   const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId), [allPlans, selectedPlanId]);
+
+  const visiblePlans = useMemo(() => {
+    let rows = allPlans;
+    if (planSearch.trim()) {
+      const q = planSearch.toLowerCase();
+      rows = rows.filter(p =>
+        p.machineName.toLowerCase().includes(q) ||
+        String(p.cylCirc).includes(q) ||
+        String(p.totalUPS).includes(q) ||
+        String(p.filmSize).includes(q)
+      );
+    }
+    if (planSort.key) {
+      rows = [...rows].sort((a, b) => {
+        const av = (a as Record<string, unknown>)[planSort.key] as number;
+        const bv = (b as Record<string, unknown>)[planSort.key] as number;
+        return planSort.dir === "asc" ? av - bv : bv - av;
+      });
+    }
+    return rows;
+  }, [allPlans, planSearch, planSort]);
+
+  const togglePlanSort = (key: string) =>
+    setPlanSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   const f = (k: keyof typeof blank, v: unknown) => setForm(p => ({ ...p, [k]: v }));
 
@@ -548,7 +578,7 @@ export default function GravureEstimationPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: "Total",          val: stats.total,    cls: "bg-blue-50 text-blue-700 border-blue-200" },
           { label: "Draft",          val: stats.draft,    cls: "bg-gray-50 text-gray-600 border-gray-200" },
@@ -579,10 +609,10 @@ export default function GravureEstimationPage() {
 
       {/* ══ ADD / EDIT MODAL ══════════════════════════════════════ */}
       <Modal open={modalOpen} onClose={() => setModal(false)} title={editing ? "Edit Estimation" : "New Gravure Estimation"} size="xl">
-        <div className="flex bg-gray-100 p-1.5 rounded-xl mb-6 shadow-inner gap-1">
-           <button onClick={() => setActiveTab(1)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 1 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}>1. Basic Info</button>
-           <button onClick={() => setActiveTab(2)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 2 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}>2. View Plan (Production)</button>
-           <button onClick={() => setActiveTab(3)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTab === 3 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}>3. Cost Estimation</button>
+        <div className="flex bg-gray-100 p-1.5 rounded-xl mb-4 sm:mb-6 shadow-inner gap-1 overflow-x-auto">
+           <button onClick={() => setActiveTab(1)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 1 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">1. Basic Info</span><span className="sm:hidden">① Info</span></button>
+           <button onClick={() => setActiveTab(2)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 2 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">2. View Plan (Production)</span><span className="sm:hidden">② Plan</span></button>
+           <button onClick={() => setActiveTab(3)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 3 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">3. Cost Estimation</span><span className="sm:hidden">③ Cost</span></button>
         </div>
 
         <div>
@@ -614,7 +644,7 @@ export default function GravureEstimationPage() {
                </div>
              </div>
 
-             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                  <Select
                    label="From Enquiry (optional)"
                    value={form.enquiryId}
@@ -724,10 +754,10 @@ export default function GravureEstimationPage() {
                    options={[{ value: "", label: "-- Select Category --" }, ...categories.map(c => ({ value: c.id, label: c.name }))]}
                  />
                  <Select
-                   label="Select Job Size *"
+                   label="Select Product Type *"
                    value={form.content || ""}
                    onChange={e => f("content", e.target.value)}
-                   options={[...(!form.categoryId ? [] : [{ value: "", label: "-- Select Job Size --" }]), ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx }))]}
+                   options={[...(!form.categoryId ? [] : [{ value: "", label: "-- Select Product Type --" }]), ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx }))]}
                    disabled={!form.categoryId || !(categories.find(c => c.id === form.categoryId)?.contents?.length)}
                  />
                   <Select
@@ -759,7 +789,7 @@ export default function GravureEstimationPage() {
               {/* ── Section 1: Planning Specification ─────────────────────────── */}
               <div>
                 <SectionHeader label="Planning Specification" />
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <Input label="No. of Plys *" type="number"
                     value={form.secondaryLayers.length || ""}
                     onChange={e => {
@@ -776,23 +806,43 @@ export default function GravureEstimationPage() {
                 }}
               />
 
-                  <Input label="Job Width (mm)" type="number" 
-                    value={form.jobWidth || ""} 
-                    onChange={e => { 
+                  <Input label="Job Width (mm)" type="number"
+                    value={form.jobWidth || ""}
+                    onChange={e => {
                       const v = Number(e.target.value);
                       setForm(p => ({ ...p, jobWidth: v, width: v, actualWidth: v }));
-                    }} 
+                    }}
                   />
-                  <Input label="Job Height (mm)" type="number" 
-                    value={form.jobHeight || ""} 
-                    onChange={e => { 
+                  <Input label="Job Height (mm)" type="number"
+                    value={form.jobHeight || ""}
+                    onChange={e => {
                       const v = Number(e.target.value);
                       setForm(p => ({ ...p, jobHeight: v, actualHeight: v }));
-                    }} 
+                    }}
+                  />
+                  <Input label="Trimming Size (mm)" type="number"
+                    value={form.trimmingSize || ""}
+                    onChange={e => f("trimmingSize", parseFloat(e.target.value) || 0)}
+                    placeholder="e.g. 118"
                   />
                   <Input label="Actual Width" type="number" value={form.actualWidth || ""} onChange={e => f("actualWidth", Number(e.target.value))} />
                   <Input label="Actual Height" type="number" value={form.actualHeight || ""} onChange={e => f("actualHeight", Number(e.target.value))} />
-                  <Input label="No. of Colors" type="number" value={form.noOfColors} onChange={e => f("noOfColors", Number(e.target.value))} min={1} max={12} />
+                  <Input label="Front Colors" type="number"
+                    value={form.frontColors ?? ""}
+                    onChange={e => {
+                      const fc = Number(e.target.value) || 0;
+                      setForm(p => ({ ...p, frontColors: fc, noOfColors: fc + (p.backColors ?? 0) }));
+                    }}
+                    min={0} max={12}
+                  />
+                  <Input label="Back Colors" type="number"
+                    value={form.backColors ?? ""}
+                    onChange={e => {
+                      const bc = Number(e.target.value) || 0;
+                      setForm(p => ({ ...p, backColors: bc, noOfColors: (p.frontColors ?? 0) + bc }));
+                    }}
+                    min={0} max={12}
+                  />
 
               <Select label="Print Type" value={form.printType} onChange={e => f("printType", e.target.value)}
                 options={[
@@ -800,6 +850,23 @@ export default function GravureEstimationPage() {
                   { value: "Reverse Print", label: "Reverse Print" },
                   { value: "Combination",   label: "Combination" },
                 ]} />
+              {/* ── Quantity directly in Planning section ── */}
+              <Input
+                label="Quantity (Q1) *"
+                type="number"
+                value={form.quantity || ""}
+                onChange={e => { f("quantity", Number(e.target.value)); setActiveQtyIdx(0); }}
+                placeholder="e.g. 200000"
+              />
+              <Select
+                label="Unit"
+                value={form.unit}
+                onChange={e => f("unit", e.target.value)}
+                options={[
+                  { value: "Meter", label: "Meter" },
+                  { value: "Kg",    label: "Kg" },
+                ]}
+              />
             </div>
 
 
@@ -854,7 +921,7 @@ export default function GravureEstimationPage() {
                                 {l.plyType === "Film" ? "1st Ply — Film / Substrate" : l.plyType === "Lamination" ? "3rd Ply — Laminating Film" : "2nd Ply — Print Film"}
                               </p>
                               <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Sub Group</label>
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
                                 <select
                                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
                                   value={l.itemSubGroup}
@@ -866,7 +933,7 @@ export default function GravureEstimationPage() {
                                     layers[index] = { ...l, itemSubGroup: subGroup, density, thickness: 0, gsm: 0 };
                                     f("secondaryLayers", layers);
                                   }}>
-                                  <option value="">Select Film Sub Group</option>
+                                  <option value="">Select Film Type</option>
                                   {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
                                 </select>
                               </div>
@@ -979,21 +1046,16 @@ export default function GravureEstimationPage() {
                                           onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
                                         />
                                       </div>
-                                      {/* Coverage % — only for Ink */}
+                                      {/* Coverage % — always editable */}
                                       <div>
-                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">
-                                          {ci.itemGroup === "Ink" ? "Coverage %" : "—"}
-                                        </label>
-                                        {ci.itemGroup === "Ink" ? (
-                                          <input
-                                            type="number" step={1} min={1} max={100}
-                                            className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-blue-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono"
-                                            value={ci.coveragePct ?? 100}
-                                            onChange={e => updatePlyConsumable(index, ciIdx, { coveragePct: Math.min(100, Math.max(1, Number(e.target.value))) })}
-                                          />
-                                        ) : (
-                                          <div className="w-full text-xs border border-gray-100 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-300">N/A</div>
-                                        )}
+                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Coverage %</label>
+                                        <input
+                                          type="number" step={1} min={1} max={100}
+                                          className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-blue-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono"
+                                          value={ci.coveragePct ?? 100}
+                                          onChange={e => updatePlyConsumable(index, ciIdx, { coveragePct: Math.min(100, Math.max(1, Number(e.target.value))) })}
+                                          placeholder="100"
+                                        />
                                       </div>
                                     </div>
                                   </div>
@@ -1024,7 +1086,7 @@ export default function GravureEstimationPage() {
             {/* ── Machine & Cylinder Cost ── */}
             <div>
               <SectionHeader label="Machine & Process Selection" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
                 <div className="sm:col-span-2">
                   <Select label="Printing Machine (Machine Master)"
                     value={form.machineId}
@@ -1045,7 +1107,7 @@ export default function GravureEstimationPage() {
               </div>
 
               {/* Cylinder cost field */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                 <Input label="Cylinder Cost / Color (₹)" type="number"
                   value={form.cylinderCostPerColor}
                   onChange={e => f("cylinderCostPerColor", Number(e.target.value))} />
@@ -1132,14 +1194,27 @@ export default function GravureEstimationPage() {
             {/* ── Production Plan Selection Table ── */}
             {showPlan && !isPlanApplied && (
               <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-                  <div>
-                    <p className="text-sm font-bold text-gray-800">Production Plan Selection</p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{form.machineId ? `Machine: ${form.machineName}` : `Showing all ${PRINT_MACHINES.length} gravure machines`} · {allPlans.length} plans</p>
+                <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">Production Plan Selection</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{form.machineId ? `Machine: ${form.machineName}` : `Showing all ${PRINT_MACHINES.length} gravure machines`} · {visiblePlans.length}/{allPlans.length} plans</p>
+                    </div>
+                    {selectedPlanId && (
+                      <Button onClick={() => setIsPlanApplied(true)} icon={<Check size={13} />}>Apply Selected Plan</Button>
+                    )}
                   </div>
-                  {selectedPlanId && (
-                    <Button onClick={() => setIsPlanApplied(true)} icon={<Check size={13} />}>Apply Selected Plan</Button>
-                  )}
+                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                    <Search size={13} className="text-gray-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Search machine, UPS, circ..."
+                      value={planSearch}
+                      onChange={e => setPlanSearch(e.target.value)}
+                      className="flex-1 text-xs outline-none placeholder-gray-400 bg-transparent"
+                    />
+                    {planSearch && <button onClick={() => setPlanSearch("")} className="text-gray-400 hover:text-gray-600"><X size={12} /></button>}
+                  </div>
                 </div>
 
                 {/* Desktop table */}
@@ -1147,13 +1222,42 @@ export default function GravureEstimationPage() {
                   <table className="min-w-full text-xs whitespace-nowrap">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {["", "Machine", "Cyl. Circ.", "Roll Width", "Ac UPS", "Repeat UPS", "Total UPS", "Req. RMT", "Total RMT", "Total Wt (Kg)", "Total Time", "Plan Cost", "Grand Total", "Unit Price"].map(h => (
-                          <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                        <th className="px-3 py-2.5 w-8" />
+                        {([
+                          { label: "Machine",        key: "" },
+                          { label: "Cyl. Circ.",     key: "cylCirc" },
+                          { label: "Film Size (mm)", key: "filmSize" },
+                          { label: "Ac UPS",         key: "acUps" },
+                          { label: "Repeat UPS",     key: "repeatUPS" },
+                          { label: "Total UPS",      key: "totalUPS" },
+                          { label: "Req. RMT",       key: "reqRMT" },
+                          { label: "Total RMT",      key: "totalRMT" },
+                          { label: "Total Wt (Kg)",  key: "totalWt" },
+                          { label: "Wastage (mm)",   key: "wastage" },
+                          { label: "Total Time",     key: "totalTime" },
+                          { label: "Plan Cost",      key: "planCost" },
+                          { label: "Grand Total",    key: "grandTotal" },
+                          { label: "Unit Price",     key: "unitPrice" },
+                        ] as { label: string; key: string }[]).map(col => (
+                          <th
+                            key={col.label}
+                            onClick={() => col.key && togglePlanSort(col.key)}
+                            className={`px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider select-none ${col.key ? "cursor-pointer hover:text-gray-800" : ""}`}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {col.label}
+                              {col.key && (
+                                <span className="text-[9px] text-gray-400">
+                                  {planSort.key === col.key ? (planSort.dir === "asc" ? "▲" : "▼") : "⇅"}
+                                </span>
+                              )}
+                            </span>
+                          </th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {allPlans.map(plan => {
+                      {visiblePlans.map(plan => {
                         const isSel = selectedPlanId === plan.planId;
                         return (
                           <tr key={plan.planId} onClick={() => setSelectedPlanId(plan.planId)}
@@ -1165,13 +1269,14 @@ export default function GravureEstimationPage() {
                             </td>
                             <td className="px-3 py-2.5 font-medium text-gray-800">{plan.machineName}</td>
                             <td className="px-3 py-2.5 text-center font-mono text-gray-600">{plan.cylCirc}</td>
-                            <td className="px-3 py-2.5 text-center text-gray-600">{plan.rollWidth}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-600">{plan.filmSize}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.acUps}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.repeatUPS}</td>
                             <td className="px-3 py-2.5 text-center font-bold text-gray-800">{plan.totalUPS}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.reqRMT}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.totalRMT}</td>
                             <td className="px-3 py-2.5 text-center font-semibold text-blue-600">{plan.totalWt}</td>
+                            <td className={`px-3 py-2.5 text-center font-semibold ${plan.wastage > 0 ? "text-amber-600" : "text-green-600"}`}>{plan.wastage}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.totalTime} hr</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">₹{plan.planCost.toLocaleString()}</td>
                             <td className="px-3 py-2.5 text-center font-bold text-purple-700">₹{plan.grandTotal.toLocaleString()}</td>
@@ -1185,7 +1290,7 @@ export default function GravureEstimationPage() {
 
                 {/* Mobile / Tablet cards */}
                 <div className="sm:hidden divide-y divide-gray-100">
-                  {allPlans.map(plan => {
+                  {visiblePlans.map(plan => {
                     const isSel = selectedPlanId === plan.planId;
                     return (
                       <div key={plan.planId} onClick={() => setSelectedPlanId(plan.planId)}
@@ -1201,8 +1306,10 @@ export default function GravureEstimationPage() {
                         </div>
                         <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500">
                           <span>Circ: <b className="text-gray-700">{plan.cylCirc}</b></span>
-                          <span>Total UPS: <b className="text-gray-700">{plan.totalUPS}</b></span>
+                          <span>Film: <b className="text-gray-700">{plan.filmSize}mm</b></span>
+                          <span>UPS: <b className="text-gray-700">{plan.totalUPS}</b></span>
                           <span>RMT: <b className="text-gray-700">{plan.totalRMT}</b></span>
+                          <span>Wastage: <b className="text-amber-600">{plan.wastage}mm</b></span>
                           <span>Wt: <b className="text-blue-600">{plan.totalWt} Kg</b></span>
                           <span>Time: <b className="text-gray-700">{plan.totalTime} hr</b></span>
                           <span>Total: <b className="text-purple-700">₹{plan.grandTotal.toLocaleString()}</b></span>
@@ -1350,10 +1457,11 @@ export default function GravureEstimationPage() {
                     <tr><td colSpan={16} className="px-4 py-6 text-center text-gray-400">No materials — select items in Ply Information (Tab 1)</td></tr>
                   ) : breakdown.matLines.map((m, i) => {
                     const sizeW = form.jobWidth || 340;
-                    const qtyScale = (activeQty || form.quantity) / (form.quantity || 1);
-                    // Running meter: use plan RMT if plan applied, else use quantity directly
-                    const basePlanRMT = isPlanApplied && selectedPlan ? selectedPlan.totalRMT : form.quantity;
-                    const reqMtr   = m.plyNo > 0 ? parseFloat((basePlanRMT * qtyScale).toFixed(2)) : 0;
+                    // Running meter: plan RMT scaled to activeQty, or activeQty directly
+                    const basePlanRMT = isPlanApplied && selectedPlan
+                      ? parseFloat((selectedPlan.totalRMT * (activeQty / (form.quantity || 1))).toFixed(2))
+                      : activeQty;
+                    const reqMtr   = m.plyNo > 0 ? parseFloat(basePlanRMT.toFixed(2)) : 0;
                     const reqSQM   = m.plyNo > 0 ? parseFloat((reqMtr * sizeW / 1000).toFixed(3)) : 0;
                     const reqWt    = m.plyNo > 0 && m.gsm > 0 ? parseFloat((reqSQM * m.gsm / 1000).toFixed(4)) : 0;
                     const wasteFrac = (form.wastagePct || 1) / 100;
@@ -1446,7 +1554,7 @@ export default function GravureEstimationPage() {
           {/* ── Section 4: Overhead, Profit & Advanced ────────── */}
           <div>
             <SectionHeader label="Overhead, Profit & Pricing" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Input label="Overhead (%)" type="number" value={form.overheadPct} onChange={e => f("overheadPct", Number(e.target.value))} />
               <Input label="Profit (%)" type="number" value={form.profitPct} onChange={e => f("profitPct", Number(e.target.value))} />
               <Input label="Wastage %" type="number" step={0.1} value={form.wastagePct}
@@ -1457,7 +1565,7 @@ export default function GravureEstimationPage() {
                 placeholder="Floor price" />
             </div>
             {/* Selling price for contribution / break-even */}
-            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 border-t border-gray-100 pt-3">
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-gray-100 pt-3">
               <Input label="Selling Price (₹/m)" type="number" step={0.01} value={form.sellingPrice || ""}
                 onChange={e => f("sellingPrice", Number(e.target.value))}
                 placeholder="Optional — for break-even" />
@@ -1474,7 +1582,7 @@ export default function GravureEstimationPage() {
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               {[
                 { label: "Material Cost",   val: `₹${activeCosts.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200 text-blue-700" },
                 { label: "Process Cost",    val: `₹${activeCosts.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200 text-purple-700" },
@@ -1491,7 +1599,7 @@ export default function GravureEstimationPage() {
             </div>
 
             {/* Overhead + Profit + Total row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                 <p className="text-xs font-medium text-yellow-700">Overhead ({form.overheadPct}%)</p>
                 <p className="text-base font-bold text-yellow-700">₹{activeCosts.overheadAmt.toLocaleString()}</p>
@@ -1515,7 +1623,7 @@ export default function GravureEstimationPage() {
             </div>
 
             {/* Rate / Break-even row */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
                 <p className="text-xs text-gray-500">Rate / {form.unit}</p>
                 <p className="text-sm font-bold text-gray-800">₹{activeCosts.perMeterRate}</p>
@@ -1574,7 +1682,7 @@ export default function GravureEstimationPage() {
             {/* Basic Info */}
             <div>
               <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Basic Information</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 {([
                   ["Estimation No",   viewRow.estimationNo],
                   ["Customer",        viewRow.customerName],
@@ -1599,13 +1707,16 @@ export default function GravureEstimationPage() {
             {/* Planning Specification */}
             <div>
               <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Planning Specification</p>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                 {([
-                  ["Job Width",      `${viewRow.jobWidth} mm`],
-                  ["Job Height",     `${viewRow.jobHeight} mm`],
-                  ["Act. Width",     `${viewRow.actualWidth} mm`],
-                  ["Act. Height",    `${viewRow.actualHeight} mm`],
-                  ["No. of Colors",  `${viewRow.noOfColors} C`],
+                  ["Job Width",       `${viewRow.jobWidth} mm`],
+                  ["Job Height",      `${viewRow.jobHeight} mm`],
+                  ["Trimming Size",   viewRow.trimmingSize ? `${viewRow.trimmingSize} mm` : "—"],
+                  ["Act. Width",      `${viewRow.actualWidth} mm`],
+                  ["Act. Height",     `${viewRow.actualHeight} mm`],
+                  ["Front Colors",    `${viewRow.frontColors ?? "—"} C`],
+                  ["Back Colors",     `${viewRow.backColors ?? "—"} C`],
+                  ["Total Colors",    `${viewRow.noOfColors} C`],
                   ["Print Type",     viewRow.printType],
                   ["Repeat Length",  viewRow.repeatLength ? `${viewRow.repeatLength} mm` : "—"],
                   ["Machine",        viewRow.machineName],
@@ -1641,7 +1752,7 @@ export default function GravureEstimationPage() {
                         {l.gsm > 0 && <span className="text-xs font-bold text-purple-700">{l.gsm} GSM</span>}
                       </div>
                       {l.consumableItems.length > 0 && (
-                        <div className="px-3 py-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="px-3 py-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
                           {l.consumableItems.map((ci, ci_i) => (
                             <div key={ci_i} className="bg-teal-50 border border-teal-100 rounded-lg px-2 py-1.5">
                               <p className="text-[10px] text-gray-400 font-semibold">{ci.itemGroup}</p>
@@ -1689,7 +1800,7 @@ export default function GravureEstimationPage() {
             {/* Cost Summary */}
             <div>
               <p className="text-[10px] font-bold text-purple-700 uppercase tracking-widest mb-2">Cost Summary</p>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   { label: "Material Cost",   val: `₹${viewRow.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200" },
                   { label: "Process Cost",    val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200" },

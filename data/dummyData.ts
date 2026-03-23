@@ -1579,9 +1579,10 @@ export type GravureEstimation = {
   categoryId?: string; categoryName?: string;
   content?: string;
   jobWidth: number; jobHeight: number; ups: number;
+  trimmingSize?: number;
   actualWidth: number; actualHeight: number;
   substrateItemId: string; substrateName: string;
-  width: number; noOfColors: number;
+  width: number; noOfColors: number; frontColors?: number; backColors?: number;
   printType: "Surface Print" | "Reverse Print" | "Combination";
   quantity: number; quantities: number[]; unit: string;
   machineId: string; machineName: string;

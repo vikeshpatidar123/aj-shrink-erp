@@ -159,7 +159,7 @@ export default function OrdersPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {(["Confirmed", "In Production", "Ready", "Dispatched"] as const).map(s => {
           const colors: Record<string, string> = {
             Confirmed:       "bg-blue-50 text-blue-700 border-blue-200",
@@ -221,7 +221,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <Input label="Order Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
 
           {/* Enquiry link — EXT uses enquiries, GRV uses gravureEnquiries */}
@@ -320,7 +320,7 @@ export default function OrdersPage() {
         </div>
 
         {form.totalAmount > 0 && (
-          <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div className="bg-gray-50 border rounded-xl p-3">
               <p className="text-xs text-gray-500">Total Amount</p>
               <p className="font-bold text-gray-800">₹{form.totalAmount.toLocaleString()}</p>
@@ -352,7 +352,7 @@ export default function OrdersPage() {
               <span className="text-xs text-gray-500">{viewRow.businessUnit} Unit</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {[
                 ["Customer",      viewRow.customerName],
                 ["Job Name",      viewRow.jobName],
@@ -377,7 +377,7 @@ export default function OrdersPage() {
               ))}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="bg-gray-50 border rounded-xl p-3">
                 <p className="text-xs text-gray-500">Total Amount</p>
                 <p className="font-bold">₹{viewRow.totalAmount.toLocaleString()}</p>

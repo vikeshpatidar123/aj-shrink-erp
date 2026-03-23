@@ -215,7 +215,7 @@ function LineRow({
         </div>
 
         {/* Product fields */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Input label="Product Code"  value={line.productCode}  onChange={e => u("productCode",  e.target.value)} placeholder="e.g. PARLE-100G" />
           <div className="sm:col-span-2">
             <Input label="Product Name *" value={line.productName} onChange={e => u("productName", e.target.value)} placeholder="e.g. Parle-G Biscuit Wrap" />
@@ -224,7 +224,7 @@ function LineRow({
         </div>
 
         {/* Gravure-specific */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
           <Select label="Film Type" value={line.filmType}
             onChange={e => u("filmType", e.target.value)}
             options={FILM_TYPES.map(f => ({ value: f, label: f }))} />
@@ -249,13 +249,13 @@ function LineRow({
         </div>
 
         {/* Size */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <Input label="Job Width (mm)"  type="number" value={line.jobWidth  || ""} onChange={e => u("jobWidth",  Number(e.target.value))} />
           <Input label="Job Height (mm)" type="number" value={line.jobHeight || ""} onChange={e => u("jobHeight", Number(e.target.value))} />
         </div>
 
         {/* Qty / Rate / Amount */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-teal-50 border border-teal-100 rounded-xl p-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-teal-50 border border-teal-100 rounded-xl p-3">
           <Input label="Order Qty *" type="number" value={line.orderQty || ""}
             onChange={e => {
               const qty = Number(e.target.value);
@@ -282,7 +282,7 @@ function LineRow({
         </div>
 
         {/* Delivery & Remarks */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Delivery Date" type="date" value={line.deliveryDate}
             onChange={e => u("deliveryDate", e.target.value)} />
           <Input label="Line Remarks" value={line.remarks}
@@ -445,7 +445,7 @@ export default function GravureOrdersPage() {
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {(["Confirmed", "In Production", "Ready", "Dispatched"] as const).map(s => (
           <div key={s} className={`rounded-xl border p-4 ${STATUS_COLORS[s]}`}>
             <p className="text-xs font-semibold">{s}</p>
@@ -495,7 +495,7 @@ export default function GravureOrdersPage() {
               options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
             />
             {form.customerId && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className={`rounded-xl border p-3 flex items-center gap-3 ${custEstimations.length ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
                   <Calculator size={18} className={custEstimations.length ? "text-blue-600" : "text-gray-300"} />
                   <div>
@@ -525,7 +525,7 @@ export default function GravureOrdersPage() {
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
               <FileText size={12} />Order Details
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input label="Order Date *" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
               <Select label="Sales Person" value={form.salesPerson}
                 onChange={e => f("salesPerson", e.target.value)}
@@ -609,7 +609,7 @@ export default function GravureOrdersPage() {
             <p className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
               <CreditCard size={12} />Payment
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <Select label="Status" value={form.status}
                 onChange={e => f("status", e.target.value as typeof form.status)}
                 options={[{ value: "Confirmed", label: "Confirmed" }, { value: "In Production", label: "In Production" }, { value: "Ready", label: "Ready" }, { value: "Dispatched", label: "Dispatched" }]} />
@@ -658,7 +658,7 @@ export default function GravureOrdersPage() {
             {/* Header grid */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Order Header</p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {([
                   ["Customer",     viewRow.customerName],
                   ["Order Date",   viewRow.date],
@@ -700,7 +700,7 @@ export default function GravureOrdersPage() {
                     </div>
                   </button>
                   {expandedView === line.id && (
-                    <div className="px-4 py-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
                       {([
                         ["Product Code",  line.productCode  || "—"],
                         ["Substrate",     line.substrate    || "—"],
@@ -733,7 +733,7 @@ export default function GravureOrdersPage() {
             </div>
 
             {/* Payment summary */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <div className="bg-gray-50 border rounded-xl p-3">
                 <p className="text-xs text-gray-500">Order Total</p>
                 <p className="font-bold text-gray-800 text-lg">₹{viewRow.totalAmount.toLocaleString()}</p>

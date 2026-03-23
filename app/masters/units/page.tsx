@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Plus, Pencil, Trash2, Layers, Printer, Factory } from "lucide-react";
+import { Plus, Pencil, Trash2, Layers, Printer, Factory, Search } from "lucide-react";
 
 type UnitType = "Production" | "Printing" | "Finishing" | "Quality" | "Utility";
 type UnitStatus = "Active" | "Inactive";
@@ -49,6 +49,14 @@ export default function UnitMasterPage() {
   const [editing, setEditing]     = useState<ProductionUnit | null>(null);
   const [form, setForm]           = useState<Omit<ProductionUnit, "id">>(blank);
   const [deleteTarget, setDeleteTarget] = useState<ProductionUnit | null>(null);
+  const [search, setSearch] = useState("");
+
+  const filtered = data.filter((r) =>
+    !search ||
+    r.unitName.toLowerCase().includes(search.toLowerCase()) ||
+    r.unitType.toLowerCase().includes(search.toLowerCase()) ||
+    r.description.toLowerCase().includes(search.toLowerCase())
+  );
 
   const f = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
@@ -122,6 +130,16 @@ export default function UnitMasterPage() {
 
       {/* ── Table ── */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+          <Search size={14} className="text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search units..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 text-sm outline-none placeholder-gray-400"
+          />
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -135,7 +153,7 @@ export default function UnitMasterPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data.map((row) => (
+              {filtered.map((row) => (
                 <tr key={row.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-5 py-3.5">
                     <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
@@ -178,7 +196,7 @@ export default function UnitMasterPage() {
                   </td>
                 </tr>
               ))}
-              {data.length === 0 && (
+              {filtered.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-5 py-10 text-center text-sm text-gray-400">
                     No units found. Click <strong>Add Unit</strong> to get started.

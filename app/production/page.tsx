@@ -76,7 +76,7 @@ export default function ProductionPage() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { label: "Total Produced", val: `${totalProduced.toLocaleString()} Kg`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
           { label: "Total Wastage", val: `${totalWastage.toLocaleString()} Kg`, cls: "bg-red-50 text-red-700 border-red-200" },
@@ -108,7 +108,7 @@ export default function ProductionPage() {
 
       {/* Form Modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Edit Entry" : "New Production Entry"} size="xl">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <Input label="Date" type="date" value={form.date} onChange={(e) => f("date", e.target.value)} />
           <Select
             label="Job Card *"
@@ -133,7 +133,7 @@ export default function ProductionPage() {
         </div>
 
         {/* Live calculation */}
-        <div className="mt-4 grid grid-cols-3 gap-3">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           <div className="bg-green-50 border border-green-200 rounded-lg p-3">
             <p className="text-xs text-gray-500">Net Qty</p>
             <p className="text-lg font-bold text-green-700">{netQty} Kg</p>
@@ -160,7 +160,7 @@ export default function ProductionPage() {
       {/* View Modal */}
       {viewRow && (
         <Modal open={!!viewRow} onClose={() => setViewRow(null)} title={`Production Entry – ${viewRow.entryNo}`} size="lg">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             {[
               ["Date", viewRow.date],
               ["Job Card", viewRow.jobCardNo],
@@ -175,7 +175,7 @@ export default function ProductionPage() {
               </div>
             ))}
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-3">
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
               <p className="text-xs text-gray-500">Produced</p>
               <p className="font-bold text-blue-700">{viewRow.producedQty} Kg</p>
