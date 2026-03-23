@@ -484,11 +484,44 @@ export default function GravureEstimationPage() {
     totalAmt: data.reduce((s, e) => s + e.totalAmount, 0),
   };
 
+  const PLY_BADGE_CLS: Record<string, string> = {
+    Film:       "bg-sky-100 text-sky-700 border-sky-200",
+    Printing:   "bg-indigo-100 text-indigo-700 border-indigo-200",
+    Lamination: "bg-orange-100 text-orange-700 border-orange-200",
+    Coating:    "bg-green-100 text-green-700 border-green-200",
+  };
+
   const columns: Column<GravureEstimation>[] = [
     { key: "estimationNo",  header: "Estimation No", sortable: true },
     { key: "date",          header: "Date",           sortable: true },
     { key: "customerName",  header: "Customer",       sortable: true },
     { key: "jobName",       header: "Job Name" },
+    {
+      key: "secondaryLayers", header: "Ply Structure",
+      render: r => r.secondaryLayers.length === 0
+        ? <span className="text-gray-300 text-xs">—</span>
+        : (
+          <div className="space-y-1 min-w-[200px]">
+            {r.secondaryLayers.map((l, i) => (
+              <div key={i} className="flex items-center gap-1 flex-wrap">
+                <span className="px-1.5 py-0.5 bg-purple-600 text-white rounded text-[9px] font-black">P{l.layerNo}</span>
+                <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${PLY_BADGE_CLS[l.plyType] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                  {l.plyType || "—"}
+                </span>
+                {l.itemSubGroup && (
+                  <span className="text-[9px] text-gray-700 font-medium">{l.itemSubGroup}</span>
+                )}
+                {l.thickness > 0 && (
+                  <span className="text-[9px] text-gray-400 font-mono">{l.thickness}μ</span>
+                )}
+                {l.gsm > 0 && (
+                  <span className="text-[9px] font-bold text-indigo-600 font-mono">{l.gsm}g</span>
+                )}
+              </div>
+            ))}
+          </div>
+        ),
+    },
     { key: "noOfColors",    header: "Colors", render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
     { key: "machineName",   header: "Machine", render: r => <span className="text-xs text-gray-600">{r.machineName}</span> },
     { key: "quantity",      header: "Qty", render: r => <span>{r.quantity.toLocaleString()} {r.unit}</span> },
