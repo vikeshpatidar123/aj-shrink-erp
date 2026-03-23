@@ -527,9 +527,12 @@ export default function GravureOrdersPage() {
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input label="Order Date *" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
-              <Select label="Sales Person" value={form.salesPerson}
-                onChange={e => f("salesPerson", e.target.value)}
-                options={[{ value: "", label: "-- Select --" }, ...SALES_PERSONS.map(s => ({ value: s, label: s }))]} />
+              <Input
+                label="Order No."
+                value={editing ? editing.orderNo : generateCode(UNIT_CODE.Gravure, MODULE_CODE.Order, data.map(d => d.orderNo))}
+                readOnly
+                className="bg-gray-50 font-semibold text-blue-700 border-blue-100"
+              />
               <Select label="Sales Type" value={form.salesType}
                 onChange={e => f("salesType", e.target.value)}
                 options={SALES_TYPES.map(s => ({ value: s, label: s }))} />
