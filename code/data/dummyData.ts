@@ -39,6 +39,7 @@ export type PlyConsumableItem = {
   itemName: string;
   gsm: number;
   rate: number;
+  coveragePct?: number;      // ink coverage % (0–100), only for Ink items
 };
 
 export type CategoryMaster = {
@@ -49,23 +50,79 @@ export type CategoryMaster = {
 
 export const categories: CategoryMaster[] = [
   {
-    id: "CAT001", name: "Roto - Label", description: "Label category", status: "Active",
-    contents: ["BOPP Label", "PET Label", "Shrink Sleeve"],
+    id: "CAT001",
+    name: "Flexible Packaging",
+    description: "Sabse common gravure printing — pouches, roll form, center seal",
+    status: "Active",
+    contents: [
+      "Pouch — 3 Side Seal",
+      "Pouch — Center Seal",
+      "Standup Pouch",
+      "Zipper Pouch",
+      "Roll Form — Milk",
+      "Roll Form — Oil",
+      "Roll Form — Snacks",
+    ],
     plyConsumables: [
-      { id: "PC001", plyType: "Printing", itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",   fieldDisplayName: "Ink Wet Weight",      defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
-      { id: "PC002", plyType: "Printing", itemGroup: "Solvent",  itemSubGroup: "Ethyl Acetate (EA)",  fieldDisplayName: "Solvent",             defaultValue: 2.0, minValue: 0.5, maxValue: 5,   sharePercentageFormula: "" },
-      { id: "PC003", plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive",       fieldDisplayName: "Adhesive Wet Weight", defaultValue: 3.5, minValue: 2,   maxValue: 6,   sharePercentageFormula: "" },
-      { id: "PC004", plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",       fieldDisplayName: "Hardener",            defaultValue: 0.7, minValue: 0.3, maxValue: 1.5, sharePercentageFormula: "" },
+      { id: "PC001", plyType: "Printing",   itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",   fieldDisplayName: "Ink Wet Weight",      defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
+      { id: "PC002", plyType: "Printing",   itemGroup: "Solvent",  itemSubGroup: "Ethyl Acetate (EA)",  fieldDisplayName: "Solvent",             defaultValue: 2.0, minValue: 0.5, maxValue: 5,   sharePercentageFormula: "" },
+      { id: "PC003", plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive",         fieldDisplayName: "Adhesive Wet Weight", defaultValue: 3.5, minValue: 2,   maxValue: 6,   sharePercentageFormula: "" },
+      { id: "PC004", plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",         fieldDisplayName: "Hardener",            defaultValue: 0.7, minValue: 0.3, maxValue: 1.5, sharePercentageFormula: "" },
     ],
   },
   {
-    id: "CAT002", name: "Pouch", description: "Pouch category", status: "Active",
-    contents: ["Standup Pouch", "Zipper Pouch", "3-Side Seal"],
+    id: "CAT002",
+    name: "Laminates",
+    description: "Multi-layer laminate structures — PET, BOPP, MET PET combinations",
+    status: "Active",
+    contents: [
+      "PET + PE",
+      "BOPP + CPP",
+      "PET + MET PET + PE",
+      "BOPP + BOPP",
+      "PET + AL Foil + PE",
+      "BOPP + MET BOPP",
+    ],
     plyConsumables: [
-      { id: "PC005", plyType: "Printing",   itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",    fieldDisplayName: "Ink Wet Weight",      defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
-      { id: "PC006", plyType: "Printing",   itemGroup: "Solvent",  itemSubGroup: "Ethyl Acetate (EA)",   fieldDisplayName: "Solvent",             defaultValue: 2.0, minValue: 0.5, maxValue: 5,   sharePercentageFormula: "" },
-      { id: "PC007", plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "Lamination Adhesive",  fieldDisplayName: "Adhesive Wet Weight", defaultValue: 4.0, minValue: 2,   maxValue: 7,   sharePercentageFormula: "" },
-      { id: "PC008", plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "Adhesive Hardener",    fieldDisplayName: "Hardener",            defaultValue: 0.8, minValue: 0.3, maxValue: 1.5, sharePercentageFormula: "" },
+      { id: "PC005", plyType: "Printing",   itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",   fieldDisplayName: "Ink Wet Weight",      defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
+      { id: "PC006", plyType: "Printing",   itemGroup: "Solvent",  itemSubGroup: "Ethyl Acetate (EA)",  fieldDisplayName: "Solvent",             defaultValue: 2.0, minValue: 0.5, maxValue: 5,   sharePercentageFormula: "" },
+      { id: "PC007", plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "Lamination Adhesive", fieldDisplayName: "Adhesive Wet Weight", defaultValue: 4.0, minValue: 2,   maxValue: 7,   sharePercentageFormula: "" },
+      { id: "PC008", plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "Adhesive Hardener",   fieldDisplayName: "Hardener",            defaultValue: 0.8, minValue: 0.3, maxValue: 1.5, sharePercentageFormula: "" },
+    ],
+  },
+  {
+    id: "CAT003",
+    name: "Labels & Stickers",
+    description: "Gravure printed labels — shrink sleeves, wrap around labels",
+    status: "Active",
+    contents: [
+      "Shrink Labels",
+      "Wrap Around Labels",
+      "Cut & Stack Labels",
+      "In-Mould Labels",
+    ],
+    plyConsumables: [
+      { id: "PC009", plyType: "Printing", itemGroup: "Ink",     itemSubGroup: "Solvent Based Ink",  fieldDisplayName: "Ink Wet Weight", defaultValue: 3.0, minValue: 1,   maxValue: 7,   sharePercentageFormula: "" },
+      { id: "PC010", plyType: "Printing", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", fieldDisplayName: "Solvent",        defaultValue: 1.8, minValue: 0.5, maxValue: 4,   sharePercentageFormula: "" },
+    ],
+  },
+  {
+    id: "CAT004",
+    name: "Industrial Packaging",
+    description: "Heavy duty packaging — fertilizer, cement, chemical",
+    status: "Active",
+    contents: [
+      "Fertilizer Bags",
+      "Cement Liner",
+      "Chemical Packaging",
+      "FIBC / Jumbo Bags",
+      "Woven Sack Liner",
+    ],
+    plyConsumables: [
+      { id: "PC011", plyType: "Printing",   itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",   fieldDisplayName: "Ink Wet Weight",      defaultValue: 4.0, minValue: 2,   maxValue: 9,   sharePercentageFormula: "" },
+      { id: "PC012", plyType: "Printing",   itemGroup: "Solvent",  itemSubGroup: "Ethyl Acetate (EA)",  fieldDisplayName: "Solvent",             defaultValue: 2.5, minValue: 1,   maxValue: 6,   sharePercentageFormula: "" },
+      { id: "PC013", plyType: "Lamination", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive",         fieldDisplayName: "Adhesive Wet Weight", defaultValue: 4.5, minValue: 3,   maxValue: 8,   sharePercentageFormula: "" },
+      { id: "PC014", plyType: "Lamination", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",         fieldDisplayName: "Hardener",            defaultValue: 0.9, minValue: 0.4, maxValue: 2.0, sharePercentageFormula: "" },
     ],
   },
 ];
@@ -1526,15 +1583,23 @@ export type GravureEstimation = {
   substrateItemId: string; substrateName: string;
   width: number; noOfColors: number;
   printType: "Surface Print" | "Reverse Print" | "Combination";
-  quantity: number; unit: string;
+  quantity: number; quantities: number[]; unit: string;
   machineId: string; machineName: string;
   cylinderCostPerColor: number;
+  repeatLength: number;                     // mm — cylinder circumference
+  wastagePct: number;                       // % — dynamic wastage
+  setupTime: number;                        // minutes
+  machineCostPerHour: number;               // ₹/hr — machine-specific setup cost
+  minimumOrderValue: number;                // ₹ — floor price
+  sellingPrice: number;                     // ₹/m — for contribution & break-even
   materials: GravureEstimationMaterial[];
   processes: GravureEstimationProcess[];
   overheadPct: number; profitPct: number;
   materialCost: number; processCost: number; cylinderCost: number;
+  setupCost: number;
   overheadAmt: number; profitAmt: number;
   totalAmount: number; perMeterRate: number; marginPct: number;
+  contribution: number; breakEvenQty: number;
   secondaryLayers: SecondaryLayer[];
   dryWeightRows: DryWeightRow[];
   dryWeightTotal: number;
@@ -1545,12 +1610,46 @@ export type GravureEstimation = {
   concernPerson?: string;
 };
 
+export type GravureOrderLine = {
+  id: string;
+  lineNo: number;
+  sourceType: "Estimation" | "Catalog" | "Direct";
+  estimationId: string; estimationNo: string;
+  catalogId: string; catalogNo: string;
+  productCode: string; productName: string;
+  categoryId: string; categoryName: string;
+  substrate: string;
+  jobWidth: number; jobHeight: number;
+  noOfColors: number;
+  printType: "Surface Print" | "Reverse Print" | "Combination";
+  cylinderStatus: "New" | "Existing";
+  cylinderCount: number;
+  filmType: string;
+  laminationRequired: boolean;
+  orderQty: number; unit: string;
+  rate: number; currency: string;
+  amount: number;
+  deliveryDate: string;
+  remarks: string;
+};
+
 export type GravureOrder = {
   id: string; orderNo: string; date: string;
+  // Header
+  customerId: string; customerName: string;
+  salesPerson: string; salesType: string; salesLedger: string;
+  poNo: string; poDate: string;
+  directDispatch: boolean;
+  // Lines
+  orderLines: GravureOrderLine[];
+  // Summary
+  totalAmount: number; advancePaid: number;
+  remarks: string;
+  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
+  // Legacy single-product fields (kept for workorder compatibility)
   sourceType: "Estimation" | "Catalog" | "Direct";
   enquiryId: string; estimationId: string;
   catalogId: string; catalogNo: string;
-  customerId: string; customerName: string;
   jobName: string; substrate: string; structure: string;
   categoryId: string; categoryName: string; content: string;
   jobWidth: number; jobHeight: number;
@@ -1558,14 +1657,11 @@ export type GravureOrder = {
   printType: string;
   quantity: number; unit: string;
   deliveryDate: string; cylinderSet: string;
-  totalAmount: number; advancePaid: number;
   perMeterRate: number;
   machineId: string; machineName: string;
   secondaryLayers: SecondaryLayer[];
   processes: GravureEstimationProcess[];
   overheadPct: number; profitPct: number;
-  remarks: string;
-  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
 };
 
 export type GravureProductCatalog = {
@@ -1586,6 +1682,8 @@ export type GravureProductCatalog = {
   perMeterRate: number;
   standardQty: number; standardUnit: string;
   sourceEstimationId: string; sourceEstimationNo: string;
+  sourceOrderId: string; sourceOrderNo: string;   // order → catalog link
+  sourceWorkOrderId: string; sourceWorkOrderNo: string; // WO → catalog link
   status: "Active" | "Inactive";
   remarks: string;
 };
@@ -1635,14 +1733,49 @@ export type GravureItemIssue = {
   status: "Pending" | "Partial" | "Issued";
 };
 
+export type MaterialConsumptionLine = {
+  itemId: string; itemName: string;
+  itemType: "Film" | "Ink" | "Solvent" | "Adhesive" | "Other";
+  plannedQty: number; actualQty: number;
+  unit: string; variance: number;
+};
+
+export type ProductionProcessEntry = {
+  id: string; processName: string;
+  startTime: string; endTime: string;
+  outputQty: number; wastageQty: number; remarks: string;
+};
+
 export type GravureProductionEntry = {
   id: string; entryNo: string; date: string;
+  // Header
   workOrderId: string; workOrderNo: string;
+  customerId: string; customerName: string; jobName: string;
   machineId: string; machineName: string;
-  shift: "A" | "B" | "C"; rollNo: string; substrate: string;
-  printedQty: number; wastageQty: number; netQty: number;
-  speed: number; inkConsumption: number; machineRuntime: number;
+  shift: "A" | "B" | "C";
+  operatorName: string; supervisorName: string;
+  // Machine Control
+  machineStatus: "Pending" | "Running" | "On Hold" | "Stopped";
+  startTime: string; pauseTime: string; resumeTime: string; stopTime: string;
+  pauseReason: "Breakdown" | "Ink Issue" | "Cylinder" | "Power" | "";
+  totalRunTime: number; downtime: number;
+  // Production Output
+  producedQty: number; goodQty: number; rejectedQty: number;
+  wastageQty: number; netQty: number;
+  efficiencyPct: number; wastagePct: number;
+  // Speed & Meters
+  speed: number; machineRuntime: number; machineUtilPct: number;
+  totalMeterRun: number; wasteMeter: number; netMeter: number;
+  // Color / Cylinder
+  noOfColors: number; cylinderCode: string; impressionCount: number;
+  // Detail grids
+  materialLines: MaterialConsumptionLine[];
+  processEntries: ProductionProcessEntry[];
+  // Legacy / quality
+  substrate: string; rollNo: string;
+  inkConsumption: number;
   printQuality: "Good" | "Rework" | "Rejected";
+  status: "Pending" | "In Progress" | "Completed" | "On Hold";
   remarks: string;
 };
 
@@ -1671,13 +1804,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE001", enquiryNo: "GRV-ENQ-2024-001",
     customerId: "C001", customerName: "Parle Products Pvt Ltd",
     jobName: "Parle-G Biscuit 100g Wrap",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
     substrateItemId: "ITM001", substrateName: "BOPP 90 MICRON 0.2 THICKNESS",
     jobWidth: 340, jobHeight: 450, ups: 2,
-    actualWidth: 341, actualHeight: 451,
+    actualWidth: 340, actualHeight: 450,
     width: 340, noOfColors: 8, printType: "Surface Print",
-    quantity: 200000, unit: "Meter",
+    quantity: 200000, quantities: [200000], unit: "Meter",
     machineId: "M004", machineName: "Roto Press 1 – 8 Color",
     cylinderCostPerColor: 3500,
+    salesPerson: "Rajesh Sharma", salesType: "Local", concernPerson: "Amit Parle",
     materials: [
       { itemId: "ITM001", itemCode: "RM-FIL-4475", itemName: "BOPP 90 MICRON 0.2 THICKNESS", group: "Film",    unit: "Kg", rate: 155, qty: 1200, amount: 186000 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",    group: "Ink",     unit: "Kg", rate: 460, qty:   38, amount:  17480 },
@@ -1695,9 +1830,28 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 282970, processCost: 413900, cylinderCost: 28000,
     overheadAmt: 86961, profitAmt: 108701,
     totalAmount: 920532, perMeterRate: 4.60, marginPct: 14.7,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL001", layerNo: 1, plyType: "Film", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 20, gsm: 18.2,
+        consumableItems: [],
+      },
+      {
+        id: "SL002", layerNo: 2, plyType: "Printing", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI001", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM007", itemName: "YELLOW INK SOLVENT BASED", gsm: 3.5, rate: 460 },
+          { consumableId: "CI002", fieldDisplayName: "Solvent", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 2.0, rate: 330 },
+        ],
+      },
+      {
+        id: "SL003", layerNo: 3, plyType: "Lamination", itemSubGroup: "CPP FILM", density: 0.90, thickness: 30, gsm: 27,
+        consumableItems: [
+          { consumableId: "CI003", fieldDisplayName: "Adhesive Wet Weight", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 3.5, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
+    repeatLength: 450, wastagePct: 1, setupTime: 30, machineCostPerHour: 1350,
+    minimumOrderValue: 50000, sellingPrice: 1.5, setupCost: 675, contribution: 0, breakEvenQty: 0,
     status: "Approved", remarks: "Price valid for 30 days",
   },
   {
@@ -1705,13 +1859,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE002", enquiryNo: "GRV-ENQ-2024-002",
     customerId: "C002", customerName: "Britannia Industries Ltd",
     jobName: "Britannia NutriChoice 200g",
+    categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal",
     substrateItemId: "ITM002", substrateName: "LLDPE C4 GRADE FILM",
     jobWidth: 420, jobHeight: 400, ups: 2,
-    actualWidth: 421, actualHeight: 401,
+    actualWidth: 420, actualHeight: 400,
     width: 420, noOfColors: 6, printType: "Reverse Print",
-    quantity: 150000, unit: "Meter",
+    quantity: 150000, quantities: [150000], unit: "Meter",
     machineId: "M003", machineName: "Roto Press 4 – 6 Color",
     cylinderCostPerColor: 0,
+    salesPerson: "Sanjay Gupta", salesType: "Local", concernPerson: "Priya Britannia",
     materials: [
       { itemId: "ITM002", itemCode: "RM-FIL-1022", itemName: "LLDPE C4 GRADE FILM",       group: "Film", unit: "Kg", rate:  98, qty: 900, amount:  88200 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",  group: "Ink",  unit: "Kg", rate: 460, qty:  30, amount:  13800 },
@@ -1728,9 +1884,27 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 144980, processCost: 330600, cylinderCost: 0,
     overheadAmt: 57069, profitAmt: 71336,
     totalAmount: 603985, perMeterRate: 4.03, marginPct: 13.2,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL004", layerNo: 1, plyType: "Film", itemSubGroup: "PET FILM", density: 1.38, thickness: 12, gsm: 16.56,
+        consumableItems: [],
+      },
+      {
+        id: "SL005", layerNo: 2, plyType: "Printing", itemSubGroup: "PET FILM", density: 1.38, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI004", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM007", itemName: "YELLOW INK SOLVENT BASED", gsm: 3.2, rate: 460 },
+        ],
+      },
+      {
+        id: "SL006", layerNo: 3, plyType: "Lamination", itemSubGroup: "LLDPE C4 GRADE", density: 0.92, thickness: 40, gsm: 36.8,
+        consumableItems: [
+          { consumableId: "CI005", fieldDisplayName: "Adhesive Wet Weight", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 3.5, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
+    repeatLength: 400, wastagePct: 1, setupTime: 20, machineCostPerHour: 1350,
+    minimumOrderValue: 40000, sellingPrice: 1.6, setupCost: 450, contribution: 0, breakEvenQty: 0,
     status: "Sent", remarks: "Cylinder cost absorbed (existing set)",
   },
   {
@@ -1738,13 +1912,15 @@ export const gravureEstimations: GravureEstimation[] = [
     enquiryId: "GE005", enquiryNo: "GRV-ENQ-2024-005",
     customerId: "C006", customerName: "Nestle India Ltd",
     jobName: "Maggi Noodles 70g Outer Wrap",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
     substrateItemId: "ITM001", substrateName: "BOPP 90 MICRON 0.2 THICKNESS",
     jobWidth: 300, jobHeight: 390, ups: 2,
-    actualWidth: 301, actualHeight: 391,
+    actualWidth: 300, actualHeight: 390,
     width: 300, noOfColors: 8, printType: "Reverse Print",
-    quantity: 250000, unit: "Meter",
+    quantity: 250000, quantities: [250000], unit: "Meter",
     machineId: "M005", machineName: "Roto Press 2 – 9 Color",
     cylinderCostPerColor: 3500,
+    salesPerson: "Anita Desai", salesType: "Inter-State", concernPerson: "Rahul Nestle",
     materials: [
       { itemId: "ITM001", itemCode: "RM-FIL-4475", itemName: "BOPP 90 MICRON 0.2 THICKNESS", group: "Film", unit: "Kg", rate: 155, qty: 1400, amount: 217000 },
       { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",     group: "Ink",  unit: "Kg", rate: 460, qty:   42, amount:  19320 },
@@ -1762,26 +1938,111 @@ export const gravureEstimations: GravureEstimation[] = [
     materialCost: 329870, processCost: 458500, cylinderCost: 28000,
     overheadAmt: 98124, profitAmt: 122655,
     totalAmount: 1037149, perMeterRate: 4.15, marginPct: 12.9,
-    secondaryLayers: [],
-    dryWeightRows: [],
-    dryWeightTotal: 0,
+    secondaryLayers: [
+      {
+        id: "SL007", layerNo: 1, plyType: "Film", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 20, gsm: 18.2,
+        consumableItems: [],
+      },
+      {
+        id: "SL008", layerNo: 2, plyType: "Printing", itemSubGroup: "BOPP FILM", density: 0.91, thickness: 0, gsm: 0,
+        consumableItems: [
+          { consumableId: "CI006", fieldDisplayName: "Ink Wet Weight", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM008", itemName: "CYAN INK SOLVENT BASED", gsm: 3.8, rate: 490 },
+          { consumableId: "CI007", fieldDisplayName: "Solvent", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM011", itemName: "PU ADHESIVE DRY BOND", gsm: 2.2, rate: 330 },
+        ],
+      },
+    ],
+    dryWeightRows: [], dryWeightTotal: 0,
+    repeatLength: 390, wastagePct: 1.5, setupTime: 25, machineCostPerHour: 1350,
+    minimumOrderValue: 60000, sellingPrice: 1.8, setupCost: 562.5, contribution: 0, breakEvenQty: 0,
     status: "Draft", remarks: "Awaiting design confirmation",
   },
 ];
 
 // ─── GRAVURE ORDERS ───────────────────────────────────────────
 export const gravureOrders: GravureOrder[] = [
-  { id: "GO001", orderNo: "GRV-ORD-2024-001", date: "2024-03-06", sourceType: "Estimation", enquiryId: "GE001", estimationId: "GEST001", catalogId: "", catalogNo: "", customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + Dry Lam + CPP 30μ", categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label", jobWidth: 340, jobHeight: 450, width: 340, noOfColors: 8, printType: "Surface Print", quantity: 200000, unit: "Meter", deliveryDate: "2024-03-28", cylinderSet: "CYL-P001", totalAmount: 272000, advancePaid: 80000, perMeterRate: 1.36, machineId: "M004", machineName: "Roto Press 1 – 8 Color", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "In Production" },
-  { id: "GO002", orderNo: "GRV-ORD-2024-002", date: "2024-03-10", sourceType: "Estimation", enquiryId: "GE002", estimationId: "GEST002", catalogId: "", catalogNo: "", customerId: "C002", customerName: "Britannia Industries Ltd", jobName: "Britannia NutriChoice 200g", substrate: "PET 12μ", structure: "PET 12μ + Dry Lam + PE 40μ", categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal", jobWidth: 420, jobHeight: 400, width: 420, noOfColors: 6, printType: "Reverse Print", quantity: 150000, unit: "Meter", deliveryDate: "2024-04-02", cylinderSet: "CYL-B001", totalAmount: 228000, advancePaid: 60000, perMeterRate: 1.52, machineId: "M003", machineName: "Roto Press 4 – 6 Color", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Confirmed" },
-  { id: "GO003", orderNo: "GRV-ORD-2024-003", date: "2024-03-14", sourceType: "Direct", enquiryId: "GE005", estimationId: "", catalogId: "", catalogNo: "", customerId: "C006", customerName: "Nestle India Ltd", jobName: "Maggi Noodles 70g Outer Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + PE 30μ", categoryId: "", categoryName: "", content: "", jobWidth: 300, jobHeight: 0, width: 300, noOfColors: 8, printType: "Reverse Print", quantity: 250000, unit: "Meter", deliveryDate: "2024-04-08", cylinderSet: "", totalAmount: 350000, advancePaid: 100000, perMeterRate: 1.40, machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Confirmed" },
-  { id: "GO004", orderNo: "GRV-ORD-2024-004", date: "2024-03-18", sourceType: "Direct", enquiryId: "GE004", estimationId: "", catalogId: "", catalogNo: "", customerId: "C005", customerName: "Amul Dairy", jobName: "Amul Butter Shrink Sleeve", substrate: "PVC 50μ", structure: "PVC 50μ Shrink", categoryId: "", categoryName: "", content: "", jobWidth: 260, jobHeight: 360, width: 260, noOfColors: 6, printType: "Surface Print", quantity: 500000, unit: "Meter", deliveryDate: "2024-04-15", cylinderSet: "CYL-A001", totalAmount: 450000, advancePaid: 150000, perMeterRate: 0.90, machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15, remarks: "", status: "Ready" },
+  {
+    id: "GO001", orderNo: "GRV-ORD-2024-001", date: "2024-03-06",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd",
+    salesPerson: "Rajesh Sharma", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-PARLE-2024-031", poDate: "2024-03-05", directDispatch: false,
+    orderLines: [
+      { id: "GL001-1", lineNo: 1, sourceType: "Estimation", estimationId: "GEST001", estimationNo: "GRV-EST-2024-001", catalogId: "", catalogNo: "", productCode: "PARLE-BISC-100G", productName: "Parle-G Biscuit 100g Wrap", categoryId: "CAT001", categoryName: "Roto - Label", substrate: "BOPP 20μ", jobWidth: 340, jobHeight: 450, noOfColors: 8, printType: "Surface Print", cylinderStatus: "New", cylinderCount: 8, filmType: "BOPP", laminationRequired: true, orderQty: 200000, unit: "Meter", rate: 1.36, currency: "INR", amount: 272000, deliveryDate: "2024-03-28", remarks: "Pantone matching required" },
+    ],
+    totalAmount: 272000, advancePaid: 80000, remarks: "Urgent – Feb launch",
+    status: "In Production",
+    // Legacy fields
+    sourceType: "Estimation", enquiryId: "GE001", estimationId: "GEST001", catalogId: "", catalogNo: "",
+    jobName: "Parle-G Biscuit 100g Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + Dry Lam + CPP 30μ",
+    categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label",
+    jobWidth: 340, jobHeight: 450, width: 340, noOfColors: 8, printType: "Surface Print",
+    quantity: 200000, unit: "Meter", deliveryDate: "2024-03-28", cylinderSet: "CYL-P001",
+    perMeterRate: 1.36, machineId: "M004", machineName: "Roto Press 1 – 8 Color",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO002", orderNo: "GRV-ORD-2024-002", date: "2024-03-10",
+    customerId: "C002", customerName: "Britannia Industries Ltd",
+    salesPerson: "Sanjay Gupta", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-BRIT-2024-058", poDate: "2024-03-09", directDispatch: false,
+    orderLines: [
+      { id: "GL002-1", lineNo: 1, sourceType: "Estimation", estimationId: "GEST002", estimationNo: "GRV-EST-2024-002", catalogId: "", catalogNo: "", productCode: "BRIT-NC-200G", productName: "Britannia NutriChoice 200g", categoryId: "CAT002", categoryName: "Pouch", substrate: "PET 12μ", jobWidth: 420, jobHeight: 400, noOfColors: 6, printType: "Reverse Print", cylinderStatus: "Existing", cylinderCount: 6, filmType: "PET", laminationRequired: true, orderQty: 150000, unit: "Meter", rate: 1.52, currency: "INR", amount: 228000, deliveryDate: "2024-04-02", remarks: "Matte OPV required" },
+    ],
+    totalAmount: 228000, advancePaid: 60000, remarks: "Existing cylinders available",
+    status: "Confirmed",
+    // Legacy fields
+    sourceType: "Estimation", enquiryId: "GE002", estimationId: "GEST002", catalogId: "", catalogNo: "",
+    jobName: "Britannia NutriChoice 200g", substrate: "PET 12μ", structure: "PET 12μ + Dry Lam + PE 40μ",
+    categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal",
+    jobWidth: 420, jobHeight: 400, width: 420, noOfColors: 6, printType: "Reverse Print",
+    quantity: 150000, unit: "Meter", deliveryDate: "2024-04-02", cylinderSet: "CYL-B001",
+    perMeterRate: 1.52, machineId: "M003", machineName: "Roto Press 4 – 6 Color",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO003", orderNo: "GRV-ORD-2024-003", date: "2024-03-14",
+    customerId: "C006", customerName: "Nestle India Ltd",
+    salesPerson: "Anita Desai", salesType: "Inter-State", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-NEST-2024-021", poDate: "2024-03-13", directDispatch: true,
+    orderLines: [
+      { id: "GL003-1", lineNo: 1, sourceType: "Direct", estimationId: "", estimationNo: "", catalogId: "", catalogNo: "", productCode: "NEST-MAGGI-70G", productName: "Maggi Noodles 70g Outer Wrap", categoryId: "", categoryName: "", substrate: "BOPP 20μ", jobWidth: 300, jobHeight: 0, noOfColors: 8, printType: "Reverse Print", cylinderStatus: "New", cylinderCount: 8, filmType: "BOPP", laminationRequired: false, orderQty: 250000, unit: "Meter", rate: 1.40, currency: "INR", amount: 350000, deliveryDate: "2024-04-08", remarks: "" },
+    ],
+    totalAmount: 350000, advancePaid: 100000, remarks: "",
+    status: "Confirmed",
+    // Legacy fields
+    sourceType: "Direct", enquiryId: "GE005", estimationId: "", catalogId: "", catalogNo: "",
+    jobName: "Maggi Noodles 70g Outer Wrap", substrate: "BOPP 20μ", structure: "BOPP 20μ + PE 30μ",
+    categoryId: "", categoryName: "", content: "",
+    jobWidth: 300, jobHeight: 0, width: 300, noOfColors: 8, printType: "Reverse Print",
+    quantity: 250000, unit: "Meter", deliveryDate: "2024-04-08", cylinderSet: "",
+    perMeterRate: 1.40, machineId: "", machineName: "",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
+  {
+    id: "GO004", orderNo: "GRV-ORD-2024-004", date: "2024-03-18",
+    customerId: "C005", customerName: "Amul Dairy",
+    salesPerson: "Rajesh Sharma", salesType: "Local", salesLedger: "Domestic Sales – Shrink Film",
+    poNo: "PO-AMUL-2024-009", poDate: "2024-03-17", directDispatch: false,
+    orderLines: [
+      { id: "GL004-1", lineNo: 1, sourceType: "Direct", estimationId: "", estimationNo: "", catalogId: "", catalogNo: "", productCode: "AMUL-BUT-SLV", productName: "Amul Butter Shrink Sleeve", categoryId: "", categoryName: "", substrate: "PVC 50μ", jobWidth: 260, jobHeight: 360, noOfColors: 6, printType: "Surface Print", cylinderStatus: "Existing", cylinderCount: 6, filmType: "PVC", laminationRequired: false, orderQty: 500000, unit: "Meter", rate: 0.90, currency: "INR", amount: 450000, deliveryDate: "2024-04-15", remarks: "UV ink required" },
+    ],
+    totalAmount: 450000, advancePaid: 150000, remarks: "UV ink required",
+    status: "Ready",
+    // Legacy fields
+    sourceType: "Direct", enquiryId: "GE004", estimationId: "", catalogId: "", catalogNo: "",
+    jobName: "Amul Butter Shrink Sleeve", substrate: "PVC 50μ", structure: "PVC 50μ Shrink",
+    categoryId: "", categoryName: "", content: "",
+    jobWidth: 260, jobHeight: 360, width: 260, noOfColors: 6, printType: "Surface Print",
+    quantity: 500000, unit: "Meter", deliveryDate: "2024-04-15", cylinderSet: "CYL-A001",
+    perMeterRate: 0.90, machineId: "", machineName: "",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  },
 ];
 
 // ─── GRAVURE PRODUCT CATALOG ──────────────────────────────────
 export const gravureProductCatalog: GravureProductCatalog[] = [
-  { id: "GPC001", catalogNo: "GRV-CAT-001", createdDate: "2024-03-05", productName: "Parle-G Biscuit 100g Wrap", customerId: "C001", customerName: "Parle Products Pvt Ltd", categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label", jobWidth: 340, jobHeight: 450, actualWidth: 341, actualHeight: 451, noOfColors: 8, printType: "Surface Print", substrate: "BOPP 20μ", secondaryLayers: [], processes: [], machineId: "M004", machineName: "Roto Press 1 – 8 Color", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 1.36, standardQty: 200000, standardUnit: "Meter", sourceEstimationId: "GEST001", sourceEstimationNo: "GRV-EST-2024-001", status: "Active", remarks: "" },
-  { id: "GPC002", catalogNo: "GRV-CAT-002", createdDate: "2024-03-08", productName: "Britannia NutriChoice 200g Pouch", customerId: "C002", customerName: "Britannia Industries Ltd", categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal", jobWidth: 420, jobHeight: 400, actualWidth: 421, actualHeight: 401, noOfColors: 6, printType: "Reverse Print", substrate: "PET 12μ + PE 40μ", secondaryLayers: [], processes: [], machineId: "M003", machineName: "Roto Press 4 – 6 Color", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 1.52, standardQty: 150000, standardUnit: "Meter", sourceEstimationId: "GEST002", sourceEstimationNo: "GRV-EST-2024-002", status: "Active", remarks: "" },
-  { id: "GPC003", catalogNo: "GRV-CAT-003", createdDate: "2024-03-12", productName: "Amul Butter Shrink Sleeve", customerId: "C005", customerName: "Amul Dairy", categoryId: "CAT001", categoryName: "Roto - Label", content: "Shrink Sleeve", jobWidth: 260, jobHeight: 360, actualWidth: 261, actualHeight: 361, noOfColors: 6, printType: "Surface Print", substrate: "PVC 50μ", secondaryLayers: [], processes: [], machineId: "", machineName: "", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 0.90, standardQty: 500000, standardUnit: "Meter", sourceEstimationId: "", sourceEstimationNo: "", status: "Active", remarks: "" },
+  { id: "GPC001", catalogNo: "GRV-CAT-001", createdDate: "2024-03-05", productName: "Parle-G Biscuit 100g Wrap", customerId: "C001", customerName: "Parle Products Pvt Ltd", categoryId: "CAT001", categoryName: "Roto - Label", content: "BOPP Label", jobWidth: 340, jobHeight: 450, actualWidth: 341, actualHeight: 451, noOfColors: 8, printType: "Surface Print", substrate: "BOPP 20μ", secondaryLayers: [], processes: [], machineId: "M004", machineName: "Roto Press 1 – 8 Color", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 1.36, standardQty: 200000, standardUnit: "Meter", sourceEstimationId: "", sourceEstimationNo: "", sourceOrderId: "GO001", sourceOrderNo: "GRV-ORD-2024-001", sourceWorkOrderId: "GWO001", sourceWorkOrderNo: "GRV-WO-2024-001", status: "Active", remarks: "" },
+  { id: "GPC002", catalogNo: "GRV-CAT-002", createdDate: "2024-03-08", productName: "Britannia NutriChoice 200g Pouch", customerId: "C002", customerName: "Britannia Industries Ltd", categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal", jobWidth: 420, jobHeight: 400, actualWidth: 421, actualHeight: 401, noOfColors: 6, printType: "Reverse Print", substrate: "PET 12μ + PE 40μ", secondaryLayers: [], processes: [], machineId: "M003", machineName: "Roto Press 4 – 6 Color", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 1.52, standardQty: 150000, standardUnit: "Meter", sourceEstimationId: "", sourceEstimationNo: "", sourceOrderId: "GO002", sourceOrderNo: "GRV-ORD-2024-002", sourceWorkOrderId: "GWO002", sourceWorkOrderNo: "GRV-WO-2024-002", status: "Active", remarks: "" },
+  { id: "GPC003", catalogNo: "GRV-CAT-003", createdDate: "2024-03-12", productName: "Amul Butter Shrink Sleeve", customerId: "C005", customerName: "Amul Dairy", categoryId: "CAT001", categoryName: "Roto - Label", content: "Shrink Sleeve", jobWidth: 260, jobHeight: 360, actualWidth: 261, actualHeight: 361, noOfColors: 6, printType: "Surface Print", substrate: "PVC 50μ", secondaryLayers: [], processes: [], machineId: "", machineName: "", cylinderCostPerColor: 3500, overheadPct: 12, profitPct: 15, perMeterRate: 0.90, standardQty: 500000, standardUnit: "Meter", sourceEstimationId: "", sourceEstimationNo: "", sourceOrderId: "GO004", sourceOrderNo: "GRV-ORD-2024-004", sourceWorkOrderId: "", sourceWorkOrderNo: "", status: "Active", remarks: "" },
 ];
 
 // ─── GRAVURE WORK ORDERS ──────────────────────────────────────
@@ -1824,10 +2085,98 @@ export const gravureItemIssues: GravureItemIssue[] = [
 
 // ─── GRAVURE PRODUCTION ENTRIES ───────────────────────────────
 export const gravureProductionEntries: GravureProductionEntry[] = [
-  { id: "GPE001", entryNo: "GRV-PROD-2024-001", date: "2024-03-09", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-001", substrate: "BOPP 20μ", printedQty: 45000, wastageQty: 1800, netQty: 43200, speed: 120, inkConsumption: 28, machineRuntime: 7.5, printQuality: "Good", remarks: "Color registration OK. Pantone match approved." },
-  { id: "GPE002", entryNo: "GRV-PROD-2024-002", date: "2024-03-10", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-002", substrate: "BOPP 20μ", printedQty: 48000, wastageQty: 1440, netQty: 46560, speed: 130, inkConsumption: 30, machineRuntime: 8, printQuality: "Good", remarks: "" },
-  { id: "GPE003", entryNo: "GRV-PROD-2024-003", date: "2024-03-11", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "B", rollNo: "GRV-ROLL-003", substrate: "BOPP 20μ", printedQty: 42000, wastageQty: 2100, netQty: 39900, speed: 110, inkConsumption: 26, machineRuntime: 8, printQuality: "Rework", remarks: "Yellow shade off. Ink viscosity corrected after 5000m." },
-  { id: "GPE004", entryNo: "GRV-PROD-2024-004", date: "2024-03-12", workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001", machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A", rollNo: "GRV-ROLL-004", substrate: "BOPP 20μ", printedQty: 52000, wastageQty: 1560, netQty: 50440, speed: 135, inkConsumption: 32, machineRuntime: 8, printQuality: "Good", remarks: "" },
+  {
+    id: "GPE001", entryNo: "GRV-PROD-2024-001", date: "2024-03-09",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "14:30",
+    pauseReason: "", totalRunTime: 450, downtime: 0,
+    producedQty: 45000, goodQty: 43200, rejectedQty: 0, wastageQty: 1800, netQty: 43200,
+    efficiencyPct: 90.0, wastagePct: 4.0, speed: 120, machineRuntime: 7.5, machineUtilPct: 93.8,
+    totalMeterRun: 45000, wasteMeter: 1800, netMeter: 43200,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 45000,
+    inkConsumption: 28, rollNo: "GRV-ROLL-001", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "Color registration OK. Pantone match approved.",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1250, actualQty: 1230, unit: "Kg",  variance: -20 },
+      { itemId: "INK001", itemName: "Cyan Gravure Ink (PU)",    itemType: "Ink",     plannedQty: 45,   actualQty: 28,   unit: "Kg",  variance: -17 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 150,  actualQty: 145,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "14:30", outputQty: 45000, wastageQty: 1800, remarks: "All 8 colors registered OK" },
+    ],
+  },
+  {
+    id: "GPE002", entryNo: "GRV-PROD-2024-002", date: "2024-03-10",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "15:00",
+    pauseReason: "", totalRunTime: 480, downtime: 0,
+    producedQty: 48000, goodQty: 46560, rejectedQty: 0, wastageQty: 1440, netQty: 46560,
+    efficiencyPct: 92.3, wastagePct: 3.0, speed: 130, machineRuntime: 8, machineUtilPct: 96.2,
+    totalMeterRun: 48000, wasteMeter: 1440, netMeter: 46560,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 48000,
+    inkConsumption: 30, rollNo: "GRV-ROLL-002", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1300, actualQty: 1280, unit: "Kg",  variance: -20 },
+      { itemId: "INK001", itemName: "Gravure Ink (Mixed)",       itemType: "Ink",     plannedQty: 50,   actualQty: 30,   unit: "Kg",  variance: -20 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 160,  actualQty: 155,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "15:00", outputQty: 48000, wastageQty: 1440, remarks: "" },
+    ],
+  },
+  {
+    id: "GPE003", entryNo: "GRV-PROD-2024-003", date: "2024-03-11",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "B",
+    operatorName: "Deepak Verma", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "15:00", pauseTime: "17:30", resumeTime: "17:55", stopTime: "23:00",
+    pauseReason: "Ink Issue", totalRunTime: 455, downtime: 25,
+    producedQty: 42000, goodQty: 39900, rejectedQty: 0, wastageQty: 2100, netQty: 39900,
+    efficiencyPct: 83.5, wastagePct: 5.0, speed: 110, machineRuntime: 8, machineUtilPct: 87.0,
+    totalMeterRun: 42000, wasteMeter: 2100, netMeter: 39900,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 42000,
+    inkConsumption: 26, rollNo: "GRV-ROLL-003", substrate: "BOPP 20μ", printQuality: "Rework",
+    status: "Completed", remarks: "Yellow shade off. Ink viscosity corrected after 5000m.",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1200, actualQty: 1195, unit: "Kg",  variance: -5  },
+      { itemId: "INK003", itemName: "Yellow Gravure Ink (PU)",  itemType: "Ink",     plannedQty: 35,   actualQty: 38,   unit: "Kg",  variance: 3   },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 140,  actualQty: 142,  unit: "Ltr", variance: 2   },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "15:00", endTime: "23:00", outputQty: 42000, wastageQty: 2100, remarks: "Ink pause at 17:30. Viscosity corrected." },
+    ],
+  },
+  {
+    id: "GPE004", entryNo: "GRV-PROD-2024-004", date: "2024-03-12",
+    workOrderId: "GWO001", workOrderNo: "GRV-WO-2024-001",
+    customerId: "C001", customerName: "Parle Products Pvt Ltd", jobName: "Parle-G Biscuit 100g Wrap",
+    machineId: "M004", machineName: "Roto Press 1 – 8 Color", shift: "A",
+    operatorName: "Amit Tiwari", supervisorName: "Rajesh Kumar",
+    machineStatus: "Stopped", startTime: "07:00", pauseTime: "", resumeTime: "", stopTime: "15:00",
+    pauseReason: "", totalRunTime: 480, downtime: 0,
+    producedQty: 52000, goodQty: 50440, rejectedQty: 0, wastageQty: 1560, netQty: 50440,
+    efficiencyPct: 94.5, wastagePct: 3.0, speed: 135, machineRuntime: 8, machineUtilPct: 97.2,
+    totalMeterRun: 52000, wasteMeter: 1560, netMeter: 50440,
+    noOfColors: 8, cylinderCode: "CYL-P001", impressionCount: 52000,
+    inkConsumption: 32, rollNo: "GRV-ROLL-004", substrate: "BOPP 20μ", printQuality: "Good",
+    status: "Completed", remarks: "",
+    materialLines: [
+      { itemId: "SUB001", itemName: "BOPP 20μ Plain (Treated)", itemType: "Film",    plannedQty: 1350, actualQty: 1340, unit: "Kg",  variance: -10 },
+      { itemId: "INK001", itemName: "Gravure Ink (Mixed)",       itemType: "Ink",     plannedQty: 55,   actualQty: 32,   unit: "Kg",  variance: -23 },
+      { itemId: "SOL001", itemName: "Ethyl Acetate (EA)",        itemType: "Solvent", plannedQty: 170,  actualQty: 165,  unit: "Ltr", variance: -5  },
+    ],
+    processEntries: [
+      { id: "P1", processName: "Printing", startTime: "07:00", endTime: "15:00", outputQty: 52000, wastageQty: 1560, remarks: "Best run of the batch. Speed increased." },
+    ],
+  },
 ];
 
 // ─── GRAVURE DISPATCHES ───────────────────────────────────────
