@@ -660,8 +660,7 @@ export default function GravureEstimationPage() {
                        .filter((x): x is GravureEstimationProcess => x !== null);
 
                      // Total colors from plan window (fallback to noOfColors)
-                     const totalColors = (enq.planFColor || 0) + (enq.planBColor || 0) +
-                       (enq.planSFColor || 0) + (enq.planSBColor || 0) || enq.noOfColors;
+                     const totalColors = (enq.frontColors || 0) + (enq.backColors || 0) || enq.noOfColors;
 
                      const cat = categories.find(c => c.id === enq.categoryId);
 

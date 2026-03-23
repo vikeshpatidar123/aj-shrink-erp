@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, useState, ReactNode } from "react";
-import { enquiries, gravureEnquiries, Enquiry, GravureEnquiry } from "@/data/dummyData";
+import { enquiries, gravureEnquiries, Enquiry, GravureEnquiry, SecondaryLayer } from "@/data/dummyData";
 
 // ─── Shared CombinedEnquiry type ─────────────────────────────
 export type CombinedEnquiry = {
@@ -22,12 +22,13 @@ export type CombinedEnquiry = {
   // Category & Content
   categoryId: string; categoryName: string; selectedContent: string;
   // Plan Window Details
-  planHeight?: number; planWidth?: number; planFColor?: number;
-  planBColor?: number; planSFColor?: number; planSBColor?: number;
+  planHeight?: number; planWidth?: number;
+  frontColors?: number; backColors?: number;
   wastageType?: string; finishedFormat?: string; labelRoll?: number;
   // Allocation
   processes?: string[];
   plys?: { id: string; itemQuality: string; thickness: number; gsm: number; mil: number }[];
+  secondaryLayers?: SecondaryLayer[];
 };
 
 // ─── Converters from static dummyData ────────────────────────
@@ -65,7 +66,7 @@ const fromGrv = (e: GravureEnquiry): CombinedEnquiry => ({
 const GRV_PATCHES: Record<string, Partial<CombinedEnquiry>> = {
   GE001: {
     categoryId: "CAT001", categoryName: "Roto - Label", selectedContent: "BOPP Label",
-    planHeight: 450, planWidth: 340, planFColor: 4, planBColor: 4, planSFColor: 0, planSBColor: 0,
+    planHeight: 450, planWidth: 340, frontColors: 4, backColors: 4,
     wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 5000,
     salesPersonName: "Rajesh Sharma", salesType: "Domestic", concernPerson: "Suresh Kumar",
     processes: ["8-Color Roto Printing", "Slitting & Rewinding"],
@@ -76,7 +77,7 @@ const GRV_PATCHES: Record<string, Partial<CombinedEnquiry>> = {
   },
   GE002: {
     categoryId: "CAT002", categoryName: "Pouch", selectedContent: "3-Side Seal",
-    planHeight: 400, planWidth: 420, planFColor: 3, planBColor: 3, planSFColor: 0, planSBColor: 0,
+    planHeight: 400, planWidth: 420, frontColors: 3, backColors: 3,
     wastageType: "Machine Default", finishedFormat: "Pouch Form", labelRoll: 0,
     salesPersonName: "Sanjay Gupta", salesType: "Domestic", concernPerson: "Priya Mehta",
     processes: ["6-Color Roto Printing", "Dry Bond Lamination", "3-Side Seal Pouch Making", "Slitting & Rewinding"],
@@ -88,7 +89,7 @@ const GRV_PATCHES: Record<string, Partial<CombinedEnquiry>> = {
   },
   GE003: {
     categoryId: "CAT002", categoryName: "Pouch", selectedContent: "Standup Pouch",
-    planHeight: 480, planWidth: 380, planFColor: 5, planBColor: 4, planSFColor: 0, planSBColor: 0,
+    planHeight: 480, planWidth: 380, frontColors: 5, backColors: 4,
     wastageType: "Manual", finishedFormat: "Pouch Form", labelRoll: 0,
     salesPersonName: "Anita Desai", salesType: "Domestic", concernPerson: "Ramesh Patel",
     processes: ["9-Color Roto Printing", "Dry Bond Lamination", "Stand-up Pouch (SUP)", "Slitting & Rewinding"],
@@ -101,7 +102,7 @@ const GRV_PATCHES: Record<string, Partial<CombinedEnquiry>> = {
   },
   GE004: {
     categoryId: "CAT001", categoryName: "Roto - Label", selectedContent: "Shrink Sleeve",
-    planHeight: 360, planWidth: 260, planFColor: 3, planBColor: 3, planSFColor: 0, planSBColor: 0,
+    planHeight: 360, planWidth: 260, frontColors: 3, backColors: 3,
     wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 8000,
     salesPersonName: "Rajesh Sharma", salesType: "Domestic", concernPerson: "Amit Joshi",
     processes: ["Cylinder Engraving", "Cylinder Chrome Plating", "6-Color Roto Printing", "Slitting & Rewinding"],
@@ -111,7 +112,7 @@ const GRV_PATCHES: Record<string, Partial<CombinedEnquiry>> = {
   },
   GE005: {
     categoryId: "CAT001", categoryName: "Roto - Label", selectedContent: "BOPP Label",
-    planHeight: 390, planWidth: 300, planFColor: 4, planBColor: 4, planSFColor: 0, planSBColor: 0,
+    planHeight: 390, planWidth: 300, frontColors: 4, backColors: 4,
     wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 5000,
     salesPersonName: "Sanjay Gupta", salesType: "Domestic", concernPerson: "Deepak Singh",
     processes: ["8-Color Roto Printing", "Matte OPV Coating", "Slitting & Rewinding"],

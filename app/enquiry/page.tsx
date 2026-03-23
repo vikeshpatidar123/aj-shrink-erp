@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check } from "lucide-react";
-import { customers, products, categories } from "@/data/dummyData";
+import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check, X } from "lucide-react";
+import { customers, products, categories, items, CATEGORY_GROUP_SUBGROUP, SecondaryLayer, PlyConsumableItem } from "@/data/dummyData";
 import { useUnit } from "@/context/UnitContext";
 import { useEnquiries, CombinedEnquiry } from "@/context/EnquiryContext";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
@@ -12,6 +12,14 @@ import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 
 type BU = "Extrusion" | "Gravure";
+
+const FILM_ITEMS = items.filter(i => i.group === "Film" && i.active);
+const FILM_SUBGROUPS = Array.from(
+  new Map(FILM_ITEMS.filter(i => i.subGroup).map(i => [i.subGroup, { subGroup: i.subGroup, density: parseFloat(i.density) || 0, thicknesses: new Set<number>() }])).entries()
+).map(([subGroup, data]) => {
+  FILM_ITEMS.filter(i => i.subGroup === subGroup).forEach(i => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
+  return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
+});
 
 // ─── Blank form ───────────────────────────────────────────────
 const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
@@ -27,9 +35,9 @@ const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
   cylinderStatus: "New", designRef: "", specialFinish: "",
   categoryId: "", categoryName: "", selectedContent: "",
   salesPersonId: "", salesPersonName: "", salesType: "Domestic", concernPerson: "",
-  planHeight: 0, planWidth: 0, planFColor: 0, planBColor: 0, planSFColor: 0, planSBColor: 0,
+  planHeight: 0, planWidth: 0, frontColors: 4, backColors: 2,
   wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 0,
-  processes: [], plys: [],
+  processes: [], plys: [], secondaryLayers: [],
 };
 
 const BU_BADGE: Record<BU, string> = {
@@ -78,16 +86,42 @@ export default function EnquiryPage() {
 
   const isGrv = form.businessUnit === "Gravure";
 
-  // Category master state — local (in real app would come from a shared store/API)
-  const GRAVURE_CONTENTS = [
-    "Roto - Label", "Roto - Center Seal Pouch", "Roto - Zipper Pouch",
-    "Roto - 3 Side Seal Pouch", "Roto - 4 Side Seal Pouch", "Roto - Stand Up Pouch",
-    "Roto - Back Seal Pouch", "Roto - Laminated Roll", "Roto - Shrink Film",
-    "Roto - Shrink Sleeve", "Roto - Wrap Around Label", "Roto - Flat Pouch",
-  ];
+  // ── Ply helpers ──────────────────────────────────────────────
+  const addPly = () => {
+    const layers = [...(form.secondaryLayers || [])];
+    layers.push({ id: Math.random().toString(), layerNo: layers.length + 1, plyType: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0, consumableItems: [] });
+    f("secondaryLayers", layers);
+  };
+  const removePly = (idx: number) => {
+    f("secondaryLayers", (form.secondaryLayers || []).filter((_, i) => i !== idx));
+  };
+  const onPlyTypeChange = (idx: number, plyType: string) => {
+    const layers = [...(form.secondaryLayers || [])];
+    layers[idx] = { ...layers[idx], plyType, itemSubGroup: "", density: 0, thickness: 0, gsm: 0 };
+    f("secondaryLayers", layers);
+  };
+  const addPlyConsumable = (idx: number) => {
+    const layers = [...(form.secondaryLayers || [])];
+    layers[idx].consumableItems = [...layers[idx].consumableItems, { consumableId: Math.random().toString(), fieldDisplayName: "", itemGroup: "", itemSubGroup: "", itemId: "", itemName: "", gsm: 0, rate: 0, coveragePct: 100 }];
+    f("secondaryLayers", layers);
+  };
+  const removePlyConsumable = (plyIdx: number, ciIdx: number) => {
+    const layers = [...(form.secondaryLayers || [])];
+    layers[plyIdx].consumableItems = layers[plyIdx].consumableItems.filter((_, i) => i !== ciIdx);
+    f("secondaryLayers", layers);
+  };
+  const updatePlyConsumable = (plyIdx: number, ciIdx: number, patch: Partial<PlyConsumableItem>) => {
+    const layers = [...(form.secondaryLayers || [])];
+    const ci = [...layers[plyIdx].consumableItems];
+    ci[ciIdx] = { ...ci[ciIdx], ...patch };
+    layers[plyIdx].consumableItems = ci;
+    f("secondaryLayers", layers);
+  };
 
-  // Derive available contents from selected category
-  const availableContents = form.categoryId ? GRAVURE_CONTENTS : [];
+  // Derive available contents from selected category (from categories master)
+  const availableContents = form.categoryId
+    ? (categories.find(c => c.id === form.categoryId)?.contents || [])
+    : [];
   const contentSelected = !!form.selectedContent;
 
   // Filter table by global unit
@@ -379,10 +413,8 @@ export default function EnquiryPage() {
                   {[
                     { label: "Height (MM)", key: "planHeight" as keyof typeof form, type: "number" },
                     { label: "Width (MM)", key: "planWidth" as keyof typeof form, type: "number" },
-                    { label: "F. Color", key: "planFColor" as keyof typeof form, type: "number" },
-                    { label: "B. Color", key: "planBColor" as keyof typeof form, type: "number" },
-                    { label: "S.F. Color", key: "planSFColor" as keyof typeof form, type: "number" },
-                    { label: "S.B. Color", key: "planSBColor" as keyof typeof form, type: "number" },
+                    { label: "Front Colors", key: "frontColors" as keyof typeof form, type: "number" },
+                    { label: "Back Colors", key: "backColors" as keyof typeof form, type: "number" },
                     { label: "Wastage Type", key: "wastageType" as keyof typeof form, type: "text", options: ["Machine Default", "Manual"] },
                     { label: "Finished Format", key: "finishedFormat" as keyof typeof form, type: "text", options: ["Roll Form", "Pouch Form"] },
                     { label: "Label/Roll", key: "labelRoll" as keyof typeof form, type: "number" },
@@ -437,73 +469,171 @@ export default function EnquiryPage() {
               </div>
             </div>
 
-            {/* Bottom Section: Item Quality / Plys */}
+            {/* Bottom Section: Ply Structure with Consumables */}
             <div className="mt-6">
-              <SH label="Grid Allocate Process / Plys" />
-              <div className="border border-gray-200 rounded-lg overflow-hidden flex flex-col mt-2">
-                <div className="flex bg-blue-800 text-white text-xs font-semibold">
-                  <div className="flex-1 px-3 py-2 border-r border-blue-700">Item Quality</div>
-                  <div className="w-24 px-3 py-2 border-r border-blue-700 text-center">Thickness</div>
-                  <div className="w-32 px-3 py-2 border-r border-blue-700 text-center">GSM</div>
-                  <div className="w-32 px-3 py-2 border-r border-blue-700 text-center">MIL</div>
-                  <div className="w-12 px-3 py-2 text-center flex items-center justify-center">
-                    <button className="bg-white/20 hover:bg-white/30 rounded p-0.5 transition-colors"
-                      onClick={() => f("plys", [...(form.plys || []), { id: Math.random().toString(), itemQuality: "film", thickness: 0, gsm: 0, mil: 0 }])}>
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                </div>
-                <div className="bg-white divide-y divide-gray-100 min-h-[100px]">
-                  {(form.plys || []).map((ply, i) => (
-                    <div key={ply.id} className="flex items-center text-xs">
-                      <div className="flex-1 px-2 py-1.5 border-r border-gray-200">
-                        <select className="w-full bg-transparent outline-none h-6 cursor-pointer"
-                          value={ply.itemQuality} onChange={e => {
-                            const newP = [...(form.plys || [])]; newP[i].itemQuality = e.target.value; f("plys", newP);
-                          }}>
-                          <option value="film">film</option>
-                          <option value="ink">ink</option>
-                          <option value="adhesive">adhesive</option>
-                        </select>
-                      </div>
-                      <div className="w-24 px-2 py-1.5 border-r border-gray-200 text-center">
-                        <input type="number" className="w-full text-center bg-transparent outline-none h-6"
-                          value={ply.thickness || ""} onChange={e => {
-                            const newP = [...(form.plys || [])]; newP[i].thickness = Number(e.target.value); f("plys", newP);
-                          }} />
-                      </div>
-                      <div className="w-32 px-2 py-1.5 border-r border-gray-200 text-center">
-                        <select className="w-full bg-transparent outline-none h-6 cursor-pointer"
-                          value={ply.gsm || ""} onChange={e => {
-                            const newP = [...(form.plys || [])]; newP[i].gsm = Number(e.target.value); f("plys", newP);
-                          }}>
-                          <option value="0">Select GSM</option>
-                          <option value="50">50 GSM</option>
-                          <option value="100">100 GSM</option>
-                        </select>
-                      </div>
-                      <div className="w-32 px-2 py-1.5 border-r border-gray-200 text-center">
-                        <select className="w-full bg-transparent outline-none h-6 cursor-pointer"
-                          value={ply.mil || ""} onChange={e => {
-                            const newP = [...(form.plys || [])]; newP[i].mil = Number(e.target.value); f("plys", newP);
-                          }}>
-                          <option value="0">Select MIL</option>
-                          <option value="1">1 MIL</option>
-                          <option value="2">2 MIL</option>
-                        </select>
-                      </div>
-                      <div className="w-12 px-2 py-1.5 flex justify-center items-center">
-                        <button className="text-red-500 hover:text-red-700 opacity-60 hover:opacity-100 transition-all p-1"
-                          onClick={() => f("plys", (form.plys || []).filter(x => x.id !== ply.id))}>
-                          <Trash2 size={13} />
+              <div className="flex items-center justify-between mb-3">
+                <SH label="Ply Structure & Consumables" />
+                <button onClick={addPly}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+                  <Plus size={12} /> Add Ply
+                </button>
+              </div>
+              <div className="space-y-3">
+                {(form.secondaryLayers || []).map((l, index) => {
+                  const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
+                  return (
+                    <div key={l.id} className="border border-purple-200 rounded-xl overflow-hidden">
+                      <div className="flex items-center justify-between bg-purple-700 text-white px-3 py-2">
+                        <span className="text-xs font-bold">Ply {index + 1}{l.plyType ? ` — ${l.plyType}` : ""}</span>
+                        <button onClick={() => removePly(index)} className="p-1 hover:bg-white/20 rounded transition">
+                          <X size={13} />
                         </button>
                       </div>
+                      <div className="p-3 space-y-3">
+                        {/* Ply Type */}
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
+                          <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-purple-400"
+                            value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
+                            <option value="">-- Select Ply Type --</option>
+                            <option value="Film">1st Ply (Film / Substrate)</option>
+                            <option value="Printing">2nd Ply (Printing)</option>
+                            <option value="Lamination">3rd Ply (Lamination)</option>
+                            <option value="Coating">4th Ply (Coating)</option>
+                          </select>
+                        </div>
+                        {/* Film section */}
+                        {l.plyType && (
+                          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
+                            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
+                              {l.plyType === "Film" ? "Film / Substrate" : l.plyType === "Lamination" ? "Laminating Film" : "Print Film"}
+                            </p>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
+                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                value={l.itemSubGroup}
+                                onChange={e => {
+                                  const sg = FILM_SUBGROUPS.find(s => s.subGroup === e.target.value);
+                                  const layers = [...(form.secondaryLayers || [])];
+                                  layers[index] = { ...l, itemSubGroup: e.target.value, density: sg?.density || 0, thickness: 0, gsm: 0 };
+                                  f("secondaryLayers", layers);
+                                }}>
+                                <option value="">Select Film Type</option>
+                                {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
+                              </select>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Density</label>
+                                <input readOnly value={l.density || ""} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-400" />
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
+                                <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                  value={l.thickness}
+                                  onChange={e => {
+                                    const thickness = Number(e.target.value);
+                                    const layers = [...(form.secondaryLayers || [])];
+                                    layers[index] = { ...l, thickness, gsm: parseFloat((thickness * l.density).toFixed(3)) };
+                                    f("secondaryLayers", layers);
+                                  }}>
+                                  <option value={0}>Select</option>
+                                  {thicknesses.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film GSM</label>
+                                <input readOnly value={l.gsm || ""} className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 text-purple-800 font-bold" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {/* Consumables */}
+                        {l.plyType && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Consumable Items ({l.consumableItems.length})</span>
+                              <button onClick={() => addPlyConsumable(index)}
+                                className="flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition">
+                                <Plus size={10} /> Add Consumable
+                              </button>
+                            </div>
+                            {l.consumableItems.map((ci, ciIdx) => {
+                              const CONSUMABLE_GROUPS = ["Ink", "Solvent", "Adhesive", "Hardner"];
+                              const subGroups = ci.itemGroup ? (CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? []) : [];
+                              const filteredItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
+                              return (
+                                <div key={ci.consumableId} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] font-bold text-teal-700 uppercase">Consumable {ciIdx + 1}</span>
+                                    <button onClick={() => removePlyConsumable(index, ciIdx)}
+                                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                                      <X size={12} />
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
+                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        value={ci.itemGroup}
+                                        onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", coveragePct: undefined })}>
+                                        <option value="">-- Group --</option>
+                                        {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
+                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        value={ci.itemSubGroup}
+                                        onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
+                                        disabled={!ci.itemGroup}>
+                                        <option value="">-- Sub Group --</option>
+                                        {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
+                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        value={ci.itemId}
+                                        onChange={e => {
+                                          const it = filteredItems.find(x => x.id === e.target.value);
+                                          updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "", rate: parseFloat(it?.estimationRate ?? "0") || 0 });
+                                        }}
+                                        disabled={!ci.itemGroup}>
+                                        <option value="">-- Select Item --</option>
+                                        {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}{it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">GSM / Wet Wt.</label>
+                                      <input type="number" step={0.1} min={0}
+                                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                        value={ci.gsm || ""}
+                                        onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Coverage %</label>
+                                      <input type="number" step={1} min={1} max={100}
+                                        className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-blue-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono"
+                                        value={ci.coveragePct ?? 100}
+                                        onChange={e => updatePlyConsumable(index, ciIdx, { coveragePct: Math.min(100, Math.max(1, Number(e.target.value))) })} />
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            {l.consumableItems.length === 0 && (
+                              <p className="text-[10px] text-gray-400 italic text-center py-2">Click "+ Add Consumable" to add ink, solvent, adhesive, etc.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  ))}
-                  {(!form.plys || form.plys.length === 0) && (
-                    <div className="p-4 text-center text-xs text-gray-400 font-medium">No ply allocated. Click '+' to add ply.</div>
-                  )}
-                </div>
+                  );
+                })}
+                {(!form.secondaryLayers || form.secondaryLayers.length === 0) && (
+                  <div className="p-6 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl">No ply added. Click &quot;Add Ply&quot; to define the structure.</div>
+                )}
               </div>
             </div>
           </div>

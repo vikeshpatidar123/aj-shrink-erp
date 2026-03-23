@@ -27,7 +27,7 @@ const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
   cylinderStatus: "New", designRef: "", specialFinish: "",
   categoryId: "", categoryName: "", selectedContent: "",
   salesPersonId: "", salesPersonName: "", salesType: "Domestic", concernPerson: "",
-  planHeight: 0, planWidth: 0, planFColor: 0, planBColor: 0, planSFColor: 0, planSBColor: 0,
+  planHeight: 0, planWidth: 0, frontColors: 4, backColors: 2,
   wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 0,
   processes: [], plys: [],
 };
