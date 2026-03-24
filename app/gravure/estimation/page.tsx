@@ -891,7 +891,7 @@ export default function GravureEstimationPage() {
                               l.plyType === "Coating"    ? "bg-green-50 text-green-700 border-green-200" :
                               "bg-indigo-50 text-indigo-700 border-indigo-200"
                             }`}>
-                              {l.plyType === "Film" ? "1st Ply (Film)" : l.plyType === "Printing" ? "2nd Ply (Printing)" : l.plyType === "Lamination" ? "3rd Ply (Lamination)" : l.plyType === "Coating" ? "4th Ply (Coating)" : l.plyType}
+                              {l.plyType}
                             </span>
                           )}
                         </div>
@@ -906,10 +906,10 @@ export default function GravureEstimationPage() {
                               onChange={e => onPlyTypeChange(index, e.target.value)}
                             >
                               <option value="">-- Select Ply Type --</option>
-                              <option value="Film">1st Ply (Film / Substrate)</option>
-                              <option value="Printing">2nd Ply (Printing)</option>
-                              <option value="Lamination">3rd Ply (Lamination)</option>
-                              <option value="Coating">4th Ply (Coating)</option>
+                              <option value="Film">Film</option>
+                              <option value="Printing">Printing</option>
+                              <option value="Lamination">Lamination</option>
+                              <option value="Coating">Coating</option>
                             </select>
                           </div>
 
@@ -917,7 +917,7 @@ export default function GravureEstimationPage() {
                           {l.plyType && (
                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                               <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
-                                {l.plyType === "Film" ? "1st Ply — Film / Substrate" : l.plyType === "Lamination" ? "3rd Ply — Laminating Film" : "2nd Ply — Print Film"}
+                                {l.plyType === "Film" ? "Film / Substrate" : l.plyType === "Lamination" ? "Laminating Film" : "Print Film"}
                               </p>
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>

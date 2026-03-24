@@ -84,12 +84,6 @@ const ORIENTATIONS = ["2D", "3D"];
 const DIVISIONS = ["Gravure", "Digital"];
 const PLYS = ["2 Ply", "3 Ply", "5 Ply", "Mono Ply"];
 const PLY_TYPES = ["Film", "Printing", "Lamination", "Coating"];
-const PLY_DISPLAY: Record<string, string> = {
-  Film:      "1st Ply (Film)",
-  Printing:  "2nd Ply (Printing)",
-  Lamination:"3rd Ply (Lamination)",
-  Coating:   "4th Ply (Coating)",
-};
 const RM_GROUPS = Object.keys(CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"] ?? {});
 
 const uid = () => Math.random().toString(36).slice(2, 8);
@@ -673,7 +667,7 @@ export default function CategoryMasterPage() {
                         <select className={selectCls + " text-xs"} value={consDraft.plyType}
                           onChange={e => setConsDraft(p => ({ ...p, plyType: e.target.value }))}>
                           <option value="">-- Select Ply Type --</option>
-                          {PLY_TYPES.map(pt => <option key={pt} value={pt}>{PLY_DISPLAY[pt]}</option>)}
+                          {PLY_TYPES.map(pt => <option key={pt} value={pt}>{pt}</option>)}
                         </select>
                         <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                       </div>
@@ -755,7 +749,7 @@ export default function CategoryMasterPage() {
                   return (
                     <div key={pt} className="border border-gray-200 rounded-lg overflow-hidden">
                       <div className="bg-teal-700 px-4 py-2 text-white text-xs font-bold uppercase tracking-widest">
-                        {PLY_DISPLAY[pt]} — Consumables
+                        {pt} — Consumables
                       </div>
                       <div className="overflow-x-auto">
                         <div className="min-w-[820px]">

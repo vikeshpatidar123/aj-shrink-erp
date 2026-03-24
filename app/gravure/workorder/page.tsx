@@ -754,10 +754,10 @@ export default function GravureWorkOrderPage() {
                           <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
                             value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
                             <option value="">-- Select Ply Type --</option>
-                            <option value="Film">1st Ply (Film / Substrate)</option>
-                            <option value="Printing">2nd Ply (Printing)</option>
-                            <option value="Lamination">3rd Ply (Lamination)</option>
-                            <option value="Coating">4th Ply (Coating)</option>
+                            <option value="Film">Film</option>
+                            <option value="Printing">Printing</option>
+                            <option value="Lamination">Lamination</option>
+                            <option value="Coating">Coating</option>
                           </select>
                         </div>
                         {l.plyType && (
