@@ -80,7 +80,7 @@ export default function ProductCatalogPage() {
   // ── Replan / Edit state ───────────────────────────────────
   const [replanOpen, setReplanOpen] = useState(false);
   const [replanForm, setReplanForm] = useState<GravureProductCatalog | null>(null);
-  const [replanTab,  setReplanTab]  = useState<"info" | "planning" | "material" | "preview">("info");
+  const [replanTab,  setReplanTab]  = useState<"info" | "planning" | "material">("info");
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; };
@@ -596,10 +596,9 @@ export default function ProductCatalogPage() {
           {/* Modal Tabs */}
           <div className="flex overflow-x-auto bg-gray-100 p-1 rounded-xl gap-1 mb-4">
             {([
-              { key: "info",     label: "① Basic Info"   },
-              { key: "planning", label: "② Planning"     },
-              { key: "material", label: "③ Film Req."    },
-              { key: "preview",  label: "④ Cost Preview" },
+              { key: "info",     label: "① Basic Info"        },
+              { key: "planning", label: "② Planning"          },
+              { key: "material", label: "③ Production Prep"   },
             ] as const).map(t => (
               <button key={t.key} onClick={() => setReplanTab(t.key)}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${replanTab === t.key ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
@@ -827,6 +826,43 @@ export default function ProductCatalogPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Live Cost Preview — inline in Planning tab */}
+                {replanCost && replanForm && (
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Calculator size={13} className="text-indigo-600" />
+                      <p className="text-xs font-bold text-indigo-800 uppercase tracking-widest">Live Cost Preview</p>
+                      <span className="ml-auto font-bold text-green-700 text-sm">₹{replanCost.perMeter.toFixed(3)}/m</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { label: "Material",   val: `₹${replanCost.materialCost.toFixed(2)}`,              cls: "bg-blue-50 border-blue-200 text-blue-800"    },
+                        { label: "Processes",  val: `₹${replanCost.processCost.toFixed(2)}`,               cls: "bg-indigo-50 border-indigo-200 text-indigo-800" },
+                        { label: "Cylinder",   val: `₹${replanCost.cylinderCost.toLocaleString()}`,        cls: "bg-purple-50 border-purple-200 text-purple-800" },
+                        { label: `OH (${replanForm.overheadPct}%)`, val: `₹${replanCost.overhead.toFixed(2)}`, cls: "bg-gray-50 border-gray-200 text-gray-700" },
+                        { label: `Profit (${replanForm.profitPct}%)`, val: `₹${replanCost.profit.toFixed(2)}`, cls: "bg-gray-50 border-gray-200 text-gray-700" },
+                        { label: "Grand Total",val: `₹${replanCost.total.toFixed(2)}`,                     cls: "bg-green-50 border-green-200 text-green-800"  },
+                        { label: "₹ / Meter",  val: `₹${replanCost.perMeter.toFixed(3)}`,                  cls: "bg-amber-50 border-amber-200 text-amber-800"  },
+                      ].map(s => (
+                        <div key={s.label} className={`rounded-xl border p-2.5 ${s.cls}`}>
+                          <p className="text-[10px] font-semibold opacity-60 mb-0.5">{s.label}</p>
+                          <p className="text-sm font-bold">{s.val}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <PlanViewer plan={{
+                      title: "Catalog Replan Preview", refNo: replanForm.catalogNo,
+                      jobWidth: replanForm.jobWidth, jobHeight: replanForm.jobHeight,
+                      quantity: replanForm.standardQty || 1000, unit: replanForm.standardUnit,
+                      noOfColors: replanForm.noOfColors,
+                      secondaryLayers: replanForm.secondaryLayers, processes: replanForm.processes,
+                      cylinderCostPerColor: replanForm.cylinderCostPerColor,
+                      overheadPct: replanForm.overheadPct, profitPct: replanForm.profitPct,
+                      trimmingSize: replanForm.trimmingSize, frontColors: replanForm.frontColors, backColors: replanForm.backColors,
+                    } satisfies PlanInput} />
+                  </div>
+                )}
 
                 <div className="flex justify-between">
                   <Button variant="secondary" onClick={() => setReplanTab("info")}>← Back</Button>
@@ -1161,54 +1197,6 @@ export default function ProductCatalogPage() {
 
                 <div className="flex justify-between pt-2">
                   <Button variant="secondary" onClick={() => setReplanTab("planning")}>← Back</Button>
-                  <Button onClick={() => setReplanTab("preview")}>Preview Cost <ChevronRight size={14} className="ml-1" /></Button>
-                </div>
-              </div>
-            )}
-
-            {/* ── Tab 4: Cost Preview ── */}
-            {replanTab === "preview" && replanForm && (
-              <div className="space-y-4">
-                {/* Live cost summary */}
-                {replanCost && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Material Cost",  val: `₹${replanCost.materialCost.toFixed(2)}`,  cls: "bg-blue-50 border-blue-200 text-blue-800"    },
-                      { label: "Process Cost",   val: `₹${replanCost.processCost.toFixed(2)}`,   cls: "bg-indigo-50 border-indigo-200 text-indigo-800" },
-                      { label: "Cylinder Cost",  val: `₹${replanCost.cylinderCost.toLocaleString()}`, cls: "bg-purple-50 border-purple-200 text-purple-800" },
-                      { label: `Overhead (${replanForm.overheadPct}%)`, val: `₹${replanCost.overhead.toFixed(2)}`, cls: "bg-gray-50 border-gray-200 text-gray-700" },
-                      { label: `Profit (${replanForm.profitPct}%)`, val: `₹${replanCost.profit.toFixed(2)}`, cls: "bg-gray-50 border-gray-200 text-gray-700" },
-                      { label: "Grand Total",    val: `₹${replanCost.total.toFixed(2)}`,          cls: "bg-green-50 border-green-200 text-green-800"  },
-                      { label: "₹ / Meter",      val: `₹${replanCost.perMeter.toFixed(3)}`,       cls: "bg-amber-50 border-amber-200 text-amber-800"  },
-                    ].map(s => (
-                      <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>
-                        <p className="text-[10px] font-semibold opacity-60 mb-0.5">{s.label}</p>
-                        <p className="text-sm font-bold">{s.val}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <PlanViewer plan={{
-                  title: "Catalog Replan Preview",
-                  refNo:  replanForm.catalogNo,
-                  jobWidth:    replanForm.jobWidth,
-                  jobHeight:   replanForm.jobHeight,
-                  quantity:    replanForm.standardQty || 1000,
-                  unit:        replanForm.standardUnit,
-                  noOfColors:  replanForm.noOfColors,
-                  secondaryLayers:      replanForm.secondaryLayers,
-                  processes:            replanForm.processes,
-                  cylinderCostPerColor: replanForm.cylinderCostPerColor,
-                  overheadPct: replanForm.overheadPct,
-                  profitPct:   replanForm.profitPct,
-                  trimmingSize: replanForm.trimmingSize,
-                  frontColors:  replanForm.frontColors,
-                  backColors:   replanForm.backColors,
-                } satisfies PlanInput} />
-
-                <div className="flex justify-between">
-                  <Button variant="secondary" onClick={() => setReplanTab("material")}>← Back</Button>
                   <Button icon={<Save size={14} />} onClick={saveReplan}>Save Updated Catalog</Button>
                 </div>
               </div>
