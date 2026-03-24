@@ -179,7 +179,7 @@ export default function EnquiryPage() {
     <div className="space-y-5">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-y-3">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
             <ClipboardList size={18} className="text-blue-600" />
@@ -213,7 +213,7 @@ export default function EnquiryPage() {
           columns={columns}
           searchKeys={["enquiryNo", "customerName", "jobName"]}
           actions={row => (
-            <div className="flex items-center gap-1.5 justify-end">
+            <div className="flex items-center gap-1.5 justify-end flex-wrap">
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
@@ -395,9 +395,9 @@ export default function EnquiryPage() {
           {/* ── Plan Window & Allocation — only shown after content is selected ── */}
           {contentSelected ? (
           <div className="pt-4 mt-2 border-t border-gray-100">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-start sm:items-center flex-wrap gap-2 mb-3">
               <SH label="Plan Window Details & Allocation" />
-              <span className="ml-auto px-2 py-0.5 bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-semibold rounded-full">
+              <span className="sm:ml-auto px-2 py-0.5 bg-teal-50 border border-teal-200 text-teal-700 text-[10px] font-semibold rounded-full">
                 {form.selectedContent}
               </span>
             </div>
@@ -522,7 +522,7 @@ export default function EnquiryPage() {
                                 {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
                               </select>
                             </div>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Density</label>
                                 <input readOnly value={l.density || ""} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-400" />
@@ -571,7 +571,7 @@ export default function EnquiryPage() {
                                       <X size={12} />
                                     </button>
                                   </div>
-                                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
                                     <div>
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
                                       <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
