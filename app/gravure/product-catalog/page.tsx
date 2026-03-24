@@ -115,6 +115,9 @@ export default function ProductCatalogPage() {
       sourceOrderNo:   sourceOrder.orderNo,
       sourceWorkOrderId:  wo?.id         || "",
       sourceWorkOrderNo:  wo?.workOrderNo || "",
+      trimmingSize: wo?.trimmingSize,
+      frontColors:  wo?.frontColors,
+      backColors:   wo?.backColors,
       status: "Active",
       remarks: editRemark,
     };
@@ -385,6 +388,9 @@ export default function ProductCatalogPage() {
                   cylinderCostPerColor: sourceWO.cylinderCostPerColor,
                   overheadPct: sourceWO.overheadPct,
                   profitPct:   sourceWO.profitPct,
+                  trimmingSize: sourceWO.trimmingSize,
+                  frontColors:  sourceWO.frontColors,
+                  backColors:   sourceWO.backColors,
                 } satisfies PlanInput} />
               ) : (
                 /* No WO — fallback to order data pills */
@@ -471,6 +477,9 @@ export default function ProductCatalogPage() {
                 cylinderCostPerColor: viewPlanRow.cylinderCostPerColor,
                 overheadPct: viewPlanRow.overheadPct,
                 profitPct:   viewPlanRow.profitPct,
+                trimmingSize: viewPlanRow.trimmingSize,
+                frontColors:  viewPlanRow.frontColors,
+                backColors:   viewPlanRow.backColors,
               } satisfies PlanInput} />
             ) : (
               <div className="space-y-3">

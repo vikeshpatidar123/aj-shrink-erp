@@ -1685,6 +1685,8 @@ export type GravureProductCatalog = {
   sourceEstimationId: string; sourceEstimationNo: string;
   sourceOrderId: string; sourceOrderNo: string;   // order → catalog link
   sourceWorkOrderId: string; sourceWorkOrderNo: string; // WO → catalog link
+  trimmingSize?: number;
+  frontColors?: number; backColors?: number;
   status: "Active" | "Inactive";
   remarks: string;
 };
@@ -1711,6 +1713,8 @@ export type GravureWorkOrder = {
   processes: GravureEstimationProcess[];
   secondaryLayers: SecondaryLayer[];
   selectedPlanId: string; ups: number;
+  trimmingSize?: number;
+  frontColors?: number; backColors?: number;
   // Operator & Production
   operatorId: string; operatorName: string;
   cylinderSet: string; inks: string[];

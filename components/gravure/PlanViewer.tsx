@@ -19,6 +19,9 @@ export type PlanInput = {
   overheadPct: number;
   profitPct:   number;
   wastagePct?: number;  // default 1
+  trimmingSize?: number;
+  frontColors?: number;
+  backColors?:  number;
 };
 
 // ─── Internal line types ──────────────────────────────────────
@@ -65,6 +68,7 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
     secondaryLayers, processes,
     cylinderCostPerColor, overheadPct, profitPct,
     wastagePct = 1,
+    trimmingSize = 0, frontColors, backColors,
   } = plan;
 
   const areaM2 = useMemo(() =>
@@ -88,11 +92,11 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
         });
       }
       l.consumableItems.forEach(ci => {
-        const effGsm = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+        const effGsm = (ci.coveragePct ?? 100) < 100
           ? parseFloat((ci.gsm * ((ci.coveragePct ?? 100) / 100)).toFixed(3))
           : ci.gsm;
         const kg     = parseFloat((effGsm * areaM2 / 1000).toFixed(3));
-        const label  = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+        const label  = (ci.coveragePct ?? 100) < 100
           ? `${ci.itemName || ci.fieldDisplayName} (${ci.coveragePct}% cov.)`
           : (ci.itemName || ci.fieldDisplayName);
         lines.push({
@@ -243,6 +247,9 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
             { label: "Job Height",          val: `${jobHeight} mm`,                      cls: "bg-gray-50   border-gray-200   text-gray-700"    },
             { label: "Total GSM",           val: `${totalGSM.toFixed(1)} g/m²`,          cls: "bg-green-50  border-green-200  text-green-700"   },
             { label: "Total Weight",        val: `${totalWeightKg} Kg`,                  cls: "bg-teal-50   border-teal-200   text-teal-700"    },
+            ...(trimmingSize > 0 ? [{ label: "Trimming Size", val: `${trimmingSize} mm`, cls: "bg-purple-50 border-purple-200 text-purple-700" }] : []),
+            ...(frontColors !== undefined ? [{ label: "Front Colors", val: `${frontColors}`, cls: "bg-blue-50 border-blue-200 text-blue-700" }] : []),
+            ...(backColors !== undefined  ? [{ label: "Back Colors",  val: `${backColors}`,  cls: "bg-teal-50  border-teal-200  text-teal-700"  }] : []),
           ] as { label: string; val: string; cls: string }[]).map(c => (
             <div key={c.label} className={`rounded-xl border p-3 ${c.cls}`}>
               <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60">{c.label}</p>

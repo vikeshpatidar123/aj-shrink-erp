@@ -74,6 +74,7 @@ const blankWO: Omit<GravureWorkOrder, "id" | "workOrderNo"> = {
   plannedDate: "",
   processes: [], secondaryLayers: [],
   selectedPlanId: "", ups: 0,
+  trimmingSize: 0, frontColors: 4, backColors: 2,
   overheadPct: 12, profitPct: 15,
   perMeterRate: 0, totalAmount: 0,
   specialInstructions: "",
@@ -100,9 +101,48 @@ export default function GravureWorkOrderPage() {
   const [modalTab,  setModalTab] = useState<"basic" | "planning" | "operator">("basic");
   const [showPlan,      setShowPlan]      = useState(false);
   const [isPlanApplied, setIsPlanApplied] = useState(false);
+  const [planSearch,    setPlanSearch]    = useState("");
+  const [planSort,      setPlanSort]      = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
 
   // ── View Plan ─────────────────────────────────────────────
   const [viewPlanWO, setViewPlanWO]   = useState<GravureWorkOrder | null>(null);
+
+  // ── Production Plan calculation ───────────────────────────
+  const allPlans = useMemo(() => {
+    const machine = PRINT_MACHINES.find(m => m.id === form.machineId);
+    if (!machine) return [];
+    const cylCircumferences: number[] = (machine as any).cylCircumferences || [600, 612, 624, 636, 648, 660, 672];
+    return cylCircumferences.map((cylCirc, i) => {
+      const filmSize = 340;
+      const trimSize = (form.trimmingSize && form.trimmingSize > 0) ? form.trimmingSize : (form.jobWidth || filmSize);
+      const acUps = Math.max(1, Math.floor(filmSize / trimSize));
+      const repeatUps = 1;
+      const totalUPS = acUps * repeatUps;
+      const totalRMT = form.quantity > 0 ? parseFloat((form.quantity / totalUPS).toFixed(2)) : 0;
+      const wastage = parseFloat((filmSize - acUps * trimSize).toFixed(1));
+      return { planId: `PLAN-${form.machineId}-${i}`, machineName: machine.name, cylCirc, acUps, repeatUps, totalUPS, totalRMT, filmSize, wastage };
+    });
+  }, [form.machineId, form.jobWidth, form.trimmingSize, form.quantity]);
+
+  const visiblePlans = useMemo(() => {
+    let rows = allPlans;
+    const q = planSearch.trim().toLowerCase();
+    if (q) rows = rows.filter(r => r.machineName.toLowerCase().includes(q) || String(r.cylCirc).includes(q) || String(r.totalUPS).includes(q) || String(r.filmSize).includes(q));
+    if (planSort.key) {
+      rows = [...rows].sort((a, b) => {
+        const av = (a as any)[planSort.key] ?? 0;
+        const bv = (b as any)[planSort.key] ?? 0;
+        const diff = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+        return planSort.dir === "asc" ? diff : -diff;
+      });
+    }
+    return rows;
+  }, [allPlans, planSearch, planSort]);
+
+  const togglePlanSort = (key: string) =>
+    setPlanSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+
+  const selectedPlan = useMemo(() => allPlans.find(p => p.planId === form.selectedPlanId) || null, [allPlans, form.selectedPlanId]);
 
   // ── Live Cost Breakdown ────────────────────────────────────
   type MaterialRow = {
@@ -236,6 +276,9 @@ export default function GravureWorkOrderPage() {
       sourceOrderNo: catSaveWO.orderNo || "",
       sourceWorkOrderId: catSaveWO.id,
       sourceWorkOrderNo: catSaveWO.workOrderNo,
+      trimmingSize: catSaveWO.trimmingSize,
+      frontColors:  catSaveWO.frontColors,
+      backColors:   catSaveWO.backColors,
       status: "Active",
       remarks: catSaveWO.specialInstructions || "",
     };
@@ -245,7 +288,13 @@ export default function GravureWorkOrderPage() {
   };
 
   const f = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
-    setForm(p => ({ ...p, [k]: v }));
+    setForm(p => {
+      const next = { ...p, [k]: v };
+      if (k === "frontColors" || k === "backColors") {
+        next.noOfColors = ((k === "frontColors" ? v : p.frontColors) as number || 0) + ((k === "backColors" ? v : p.backColors) as number || 0);
+      }
+      return next;
+    });
 
   // ── Ply helpers ─────────────────────────────────────────────
   const getCategoryConsumables = (categoryId: string, plyType: string): CategoryPlyConsumable[] => {
@@ -336,6 +385,9 @@ export default function GravureWorkOrderPage() {
       profitPct:       order.profitPct,
       perMeterRate:    order.perMeterRate,
       totalAmount:     order.totalAmount,
+      trimmingSize:    (order as any).trimmingSize || 0,
+      frontColors:     (order as any).frontColors || 0,
+      backColors:      (order as any).backColors || 0,
     });
     setModalTab("basic");
     setShowPlan(false); setIsPlanApplied(false);
@@ -528,7 +580,13 @@ export default function GravureWorkOrderPage() {
 
               <Input label="Job Width (mm)" type="number" value={form.jobWidth || ""} onChange={e => { const v = Number(e.target.value); setForm(p => ({ ...p, jobWidth: v, width: v, actualWidth: v })); }} />
               <Input label="Job Height (mm)" type="number" value={form.jobHeight || ""} onChange={e => { const v = Number(e.target.value); setForm(p => ({ ...p, jobHeight: v, actualHeight: v })); }} />
-              <Input label="No. of Colors" type="number" value={form.noOfColors} onChange={e => f("noOfColors", Number(e.target.value))} min={1} max={12} />
+              <Input label="Trimming Size (mm)" type="number" value={form.trimmingSize || ""} onChange={e => f("trimmingSize", Number(e.target.value))} placeholder="e.g. 118" />
+              <Input label="Front Colors" type="number" value={form.frontColors || ""} onChange={e => f("frontColors", Number(e.target.value))} min={0} max={12} />
+              <Input label="Back Colors" type="number" value={form.backColors || ""} onChange={e => f("backColors", Number(e.target.value))} min={0} max={12} />
+              <div>
+                <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Total Colors (Auto)</label>
+                <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700">{form.noOfColors} Colors</div>
+              </div>
               <Select label="Print Type" value={form.printType} onChange={e => f("printType", e.target.value as typeof form.printType)}
                 options={[{ value: "Surface Print", label: "Surface Print" }, { value: "Reverse Print", label: "Reverse Print" }, { value: "Combination", label: "Combination" }]} />
               <Input label="Quantity" type="number" value={form.quantity || ""} onChange={e => f("quantity", Number(e.target.value))} />
@@ -574,6 +632,8 @@ export default function GravureWorkOrderPage() {
                 options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
               />
               <Input label="Cylinder Cost/Color (₹)" type="number" value={form.cylinderCostPerColor || ""} onChange={e => f("cylinderCostPerColor", Number(e.target.value))} />
+              <Input label="Overhead %" type="number" value={form.overheadPct || ""} onChange={e => f("overheadPct", Number(e.target.value))} step={0.5} />
+              <Input label="Profit %" type="number" value={form.profitPct || ""} onChange={e => f("profitPct", Number(e.target.value))} step={0.5} />
               <Input label="Total Amount (₹)" type="number" value={form.totalAmount || ""} onChange={e => f("totalAmount", Number(e.target.value))} />
               <Input label="₹/Meter Rate" type="number" value={form.perMeterRate || ""} onChange={e => f("perMeterRate", Number(e.target.value))} />
             </div>
@@ -748,123 +808,155 @@ export default function GravureWorkOrderPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <SH label="Production Plan Selection" />
-                <button onClick={() => setShowPlan(!showPlan)}
-                  className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200">
-                  <Eye size={12} /> {showPlan ? "Hide Plan" : "View Plan"}
-                </button>
+                <div className="flex items-center gap-2">
+                  {isPlanApplied && (
+                    <button onClick={() => { setIsPlanApplied(false); setShowPlan(true); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg border border-gray-200">
+                      <RefreshCw size={11} /> Change Plan
+                    </button>
+                  )}
+                  <button onClick={() => setShowPlan(!showPlan)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200">
+                    <Eye size={12} /> {showPlan ? "Hide Plan" : "Select Plan"}
+                  </button>
+                </div>
               </div>
-              {form.selectedPlanId && !showPlan && (
+
+              {isPlanApplied && selectedPlan && !showPlan && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs text-green-700">
                   <CheckCircle2 size={14} className="text-green-600" />
-                  Plan applied: <strong>{form.selectedPlanId}</strong> — UPS: {form.ups}
+                  Plan applied — UPS: <strong>{selectedPlan.totalUPS}</strong> · Film: {selectedPlan.filmSize}mm · Wastage: {selectedPlan.wastage}mm · RMT: {selectedPlan.totalRMT}
                 </div>
               )}
+
               {showPlan && !isPlanApplied && (
                 <div className="border-2 border-indigo-100 rounded-2xl overflow-hidden shadow-lg">
-                  <div className="bg-gradient-to-r from-indigo-800 to-purple-800 p-3 flex items-center justify-between">
+                  <div className="bg-gradient-to-r from-indigo-800 to-purple-800 p-3 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-white font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
-                      <p className="text-indigo-200 text-[10px] mt-0.5">{form.machineName}</p>
+                      <p className="text-indigo-200 text-[10px] mt-0.5">{form.machineName} · {visiblePlans.length}/{allPlans.length} plans</p>
                     </div>
+                    <input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plans..."
+                      className="bg-indigo-700 text-white placeholder-indigo-300 text-xs rounded-lg px-3 py-1.5 border border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-400 w-36" />
                     {form.selectedPlanId && (
-                      <button onClick={() => { setIsPlanApplied(true); setShowPlan(false); }} className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg">Apply Plan</button>
+                      <button onClick={() => { setIsPlanApplied(true); setShowPlan(false); }} className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg flex-shrink-0">Apply Plan</button>
                     )}
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-[10px] whitespace-nowrap border-collapse">
                       <thead className="bg-slate-800 text-slate-300">
                         <tr>
-                          {["Select","Machine","Cyl. Circ.","Roll Name","Roll Width","Ac Ups","Repeat UPS","Total UPS","Req RMT","Total RMT","Total Wt","Time","Plan Cost","Grand Total","Unit Price"].map(h => (
-                            <th key={h} className="p-2 border border-slate-700 text-center whitespace-nowrap">{h}</th>
+                          <th className="p-2 border border-slate-700 text-center">Select</th>
+                          {[
+                            { key: "machineName", label: "Machine" },
+                            { key: "cylCirc",    label: "Cyl. Circ." },
+                            { key: "filmSize",   label: "Film Size (mm)" },
+                            { key: "wastage",    label: "Wastage (mm)" },
+                            { key: "acUps",      label: "Ac Ups" },
+                            { key: "repeatUps",  label: "Repeat UPS" },
+                            { key: "totalUPS",   label: "Total UPS" },
+                            { key: "totalRMT",   label: "Total RMT" },
+                          ].map(col => (
+                            <th key={col.key} className="p-2 border border-slate-700 text-center cursor-pointer select-none hover:bg-slate-700"
+                              onClick={() => togglePlanSort(col.key)}>
+                              {col.label}{planSort.key === col.key ? (planSort.dir === "asc" ? " ▲" : " ▼") : " ⇅"}
+                            </th>
                           ))}
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
-                        {[1,2,3,4,5,6,7].map((_, i) => {
-                          const planId = `PLAN-${form.machineId}-${i}`;
-                          const repeat = form.jobHeight ? form.jobHeight + (i * 12) : 600 + (i * 12);
-                          const upsCount = 10 + i;
-                          const isSelected = form.selectedPlanId === planId;
+                        {visiblePlans.map(plan => {
+                          const isSelected = form.selectedPlanId === plan.planId;
                           return (
-                            <tr key={planId} onClick={() => { f("selectedPlanId", planId); f("ups", upsCount); }}
+                            <tr key={plan.planId} onClick={() => { f("selectedPlanId", plan.planId); f("ups", plan.totalUPS); }}
                               className={`cursor-pointer transition-colors ${isSelected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
                               <td className="p-2 border border-gray-100 text-center">
                                 <div className={`w-4 h-4 rounded-full border-2 mx-auto flex items-center justify-center ${isSelected ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"}`}>
                                   {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                                 </div>
                               </td>
-                              <td className="p-2 border border-gray-100 font-medium text-gray-700">{form.machineName}</td>
-                              <td className="p-2 border border-gray-100 text-center font-mono">{repeat}</td>
-                              <td className="p-2 border border-gray-100 text-gray-500 max-w-[120px] truncate">W={form.jobWidth}mm</td>
-                              <td className="p-2 border border-gray-100 text-center">{form.jobWidth}</td>
-                              <td className="p-2 border border-gray-100 text-center">10</td>
-                              <td className="p-2 border border-gray-100 text-center">{upsCount}</td>
-                              <td className="p-2 border border-gray-100 text-center font-bold">{10 * upsCount}</td>
-                              <td className="p-2 border border-gray-100 text-center">1</td>
-                              <td className="p-2 border border-gray-100 text-center">101</td>
-                              <td className="p-2 border border-gray-100 text-center text-blue-600 font-semibold">0.07</td>
-                              <td className="p-2 border border-gray-100 text-center">1</td>
-                              <td className="p-2 border border-gray-100 text-center">3.85</td>
-                              <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">₹89.6</td>
-                              <td className="p-2 border border-gray-100 text-center text-indigo-600">0.09</td>
+                              <td className="p-2 border border-gray-100 font-medium text-gray-700">{plan.machineName}</td>
+                              <td className="p-2 border border-gray-100 text-center font-mono">{plan.cylCirc}</td>
+                              <td className="p-2 border border-gray-100 text-center font-mono text-indigo-700">{plan.filmSize}</td>
+                              <td className={`p-2 border border-gray-100 text-center font-mono ${plan.wastage > 0 ? "text-orange-600" : "text-green-600"}`}>{plan.wastage}</td>
+                              <td className="p-2 border border-gray-100 text-center">{plan.acUps}</td>
+                              <td className="p-2 border border-gray-100 text-center">{plan.repeatUps}</td>
+                              <td className="p-2 border border-gray-100 text-center font-bold">{plan.totalUPS}</td>
+                              <td className="p-2 border border-gray-100 text-center text-blue-600 font-semibold">{plan.totalRMT}</td>
                             </tr>
                           );
                         })}
+                        {visiblePlans.length === 0 && (
+                          <tr><td colSpan={9} className="p-4 text-center text-gray-400 text-xs">No plans match your search</td></tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
                   {form.selectedPlanId && (
                     <div className="bg-indigo-900 text-indigo-100 px-4 py-2.5 flex items-center justify-between text-[11px]">
-                      <span className="flex items-center gap-2"><Check size={12} className="text-green-400" /> Plan <strong>{form.selectedPlanId}</strong> selected</span>
+                      <span className="flex items-center gap-2"><Check size={12} className="text-green-400" /> Plan selected — UPS: {selectedPlan?.totalUPS}</span>
                       <button onClick={() => { setIsPlanApplied(true); setShowPlan(false); }} className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-lg">Apply</button>
                     </div>
                   )}
                 </div>
               )}
-              {isPlanApplied && form.secondaryLayers.length > 0 && (
+
+              {isPlanApplied && selectedPlan && form.secondaryLayers.length > 0 && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-indigo-900">Ply / Layer Calculation — Plan: {form.selectedPlanId}</p>
-                    <button onClick={() => { setIsPlanApplied(false); setShowPlan(true); }} className="text-xs text-indigo-600 hover:underline">Change Plan</button>
-                  </div>
+                  <p className="text-xs font-bold text-indigo-900">Ply / Layer Calculation — UPS: {selectedPlan.totalUPS} · Film: {selectedPlan.filmSize}mm · Wastage: {selectedPlan.wastage}mm · RMT: {selectedPlan.totalRMT}</p>
                   <div className="border-2 border-indigo-50 rounded-2xl overflow-hidden shadow-lg">
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-[10px] border-collapse">
                         <thead className="bg-indigo-700 text-white uppercase tracking-wider font-bold">
                           <tr>
-                            {["Layer","Item Code","Item Group","Item Name","Thick","Dens","GSM","Size W","Ratio","Req.Mtr","Req.SQM","Req.Wt","Wast.Mtr","Wast.SQM","Wast.Wt","Total Mtr","Total SQM","Total Wt"].map(h => (
+                            {["Layer","Type","Film / Material","Thick (μ)","Density","GSM","Width (mm)","Req.Mtr","Req.SQM","Req.Wt (Kg)","Waste Mtr","Waste Wt","Total Mtr","Total Wt (Kg)"].map(h => (
                               <th key={h} className="p-2 border border-indigo-600/30 text-center whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                          {form.secondaryLayers.map((l, idx) => (
-                            <tr key={l.id} className="hover:bg-indigo-50/30">
-                              <td className="p-2 border border-gray-100 text-center font-black text-indigo-900 bg-indigo-50/20">{idx + 1}</td>
-                              <td className="p-2 border border-gray-100 text-gray-500">RR000{idx + 2}</td>
-                              <td className="p-2 border border-gray-100 text-gray-500">Gravure Roll</td>
-                              <td className="p-2 border border-gray-100 font-medium text-gray-700 min-w-[150px] whitespace-normal">{l.itemSubGroup || "—"}</td>
-                              <td className="p-2 border border-gray-100 text-center font-mono">{l.thickness}</td>
-                              <td className="p-2 border border-gray-100 text-center font-mono">{l.density}</td>
-                              <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{l.gsm}</td>
-                              <td className="p-2 border border-gray-100 text-center font-mono">{form.jobWidth}</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-600">9.74</td>
-                              <td className="p-2 border border-gray-100 text-center font-mono">1</td>
-                              <td className="p-2 border border-gray-100 text-center">0.23</td>
-                              <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">0.001</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-500">100</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-500">23</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-500">0.069</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-600">101</td>
-                              <td className="p-2 border border-gray-100 text-center text-gray-600">23.23</td>
-                              <td className="p-2 border border-gray-100 text-center font-black text-gray-900 bg-gray-50">0.07</td>
-                            </tr>
-                          ))}
+                          {form.secondaryLayers.map((l, idx) => {
+                            const WASTE_PCT = 0.03;
+                            const rmt = selectedPlan.totalRMT;
+                            const widthM = form.jobWidth / 1000;
+                            const reqSQM = parseFloat((rmt * widthM).toFixed(3));
+                            const reqWt  = l.gsm > 0 ? parseFloat((l.gsm * reqSQM / 1000).toFixed(4)) : 0;
+                            const wasteMtr = parseFloat((rmt * WASTE_PCT).toFixed(2));
+                            const wasteWt  = parseFloat((reqWt * WASTE_PCT).toFixed(4));
+                            const totalMtr = parseFloat((rmt + wasteMtr).toFixed(2));
+                            const totalWt  = parseFloat((reqWt + wasteWt).toFixed(4));
+                            return (
+                              <tr key={l.id} className="hover:bg-indigo-50/30">
+                                <td className="p-2 border border-gray-100 text-center font-black text-indigo-900 bg-indigo-50/20">{idx + 1}</td>
+                                <td className="p-2 border border-gray-100 text-center">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${l.plyType === "Printing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : l.plyType === "Lamination" ? "bg-teal-50 text-teal-700 border-teal-200" : l.plyType === "Coating" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-blue-50 text-blue-700 border-blue-200"}`}>{l.plyType || "Film"}</span>
+                                </td>
+                                <td className="p-2 border border-gray-100 font-medium text-gray-700 min-w-[140px] whitespace-normal">{l.itemSubGroup || "—"}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono">{l.thickness || "—"}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono">{l.density || "—"}</td>
+                                <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{l.gsm || "—"}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono">{form.jobWidth}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono">{rmt}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono">{reqSQM}</td>
+                                <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">{reqWt}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono text-orange-600">{wasteMtr}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono text-orange-600">{wasteWt}</td>
+                                <td className="p-2 border border-gray-100 text-center font-mono text-gray-700">{totalMtr}</td>
+                                <td className="p-2 border border-gray-100 text-center font-black text-gray-900 bg-gray-50">{totalWt}</td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                         <tfoot className="bg-slate-50 border-t-2 border-indigo-200">
                           <tr className="font-bold">
-                            <td colSpan={17} className="p-3 text-right text-indigo-900 uppercase text-[10px]">Total Weight (Kg)</td>
-                            <td className="p-3 text-center bg-indigo-100 text-indigo-900 text-xs">{(form.secondaryLayers.length * 0.07).toFixed(3)}</td>
+                            <td colSpan={13} className="p-3 text-right text-indigo-900 uppercase text-[10px]">Total Weight (Kg)</td>
+                            <td className="p-3 text-center bg-indigo-100 text-indigo-900 text-xs">
+                              {form.secondaryLayers.reduce((sum, l) => {
+                                const rmt = selectedPlan.totalRMT;
+                                const reqSQM = rmt * form.jobWidth / 1000;
+                                const reqWt = l.gsm > 0 ? l.gsm * reqSQM / 1000 : 0;
+                                return sum + parseFloat((reqWt * 1.03).toFixed(4));
+                              }, 0).toFixed(3)}
+                            </td>
                           </tr>
                         </tfoot>
                       </table>
