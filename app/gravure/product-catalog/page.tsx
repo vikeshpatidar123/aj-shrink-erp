@@ -78,9 +78,10 @@ export default function ProductCatalogPage() {
   const [editRemark, setEditRemark] = useState("");
 
   // ── Replan / Edit state ───────────────────────────────────
-  const [replanOpen, setReplanOpen] = useState(false);
-  const [replanForm, setReplanForm] = useState<GravureProductCatalog | null>(null);
-  const [replanTab,  setReplanTab]  = useState<"info" | "planning" | "material">("info");
+  const [replanOpen,    setReplanOpen]    = useState(false);
+  const [replanForm,    setReplanForm]    = useState<GravureProductCatalog | null>(null);
+  const [replanTab,     setReplanTab]     = useState<"info" | "planning" | "material">("info");
+  const [isNewCatalog,  setIsNewCatalog]  = useState(false);
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; };
@@ -270,6 +271,7 @@ export default function ProductCatalogPage() {
   };
 
   const openReplan = (row: GravureProductCatalog) => {
+    setIsNewCatalog(false);
     setReplanForm({ ...row });
     setReplanTab("info");
     setCatalogFilmReqs([]); setCatalogColorShades([]); setCatalogMatAllocs([]); setCatalogCylAllocs([]); setCatalogPrepTab("film");
@@ -279,13 +281,19 @@ export default function ProductCatalogPage() {
 
   const saveReplan = () => {
     if (!replanForm) return;
-    const updated = {
+    const n = catalog.length + 1;
+    const updated: GravureProductCatalog = {
       ...replanForm,
       perMeterRate: replanCost?.perMeter ?? replanForm.perMeterRate,
+      ...(isNewCatalog && {
+        id:        `GPC${String(n).padStart(3, "0")}`,
+        catalogNo: `GRV-CAT-${String(n).padStart(3, "0")}`,
+      }),
     };
     saveCatalogItem(updated);
     setReplanOpen(false);
     setReplanForm(null);
+    if (isNewCatalog) { setIsNewCatalog(false); setCatalogTab("processed"); }
   };
 
   // ── Derived lists ─────────────────────────────────────────
@@ -305,16 +313,53 @@ export default function ProductCatalogPage() {
     [catalog]
   );
 
-  // ── Open Create ───────────────────────────────────────────
+  // ── Open Create — opens full 3-tab modal directly ─────────
   const openCreate = (order: GravureOrder) => {
     const wo   = workOrders.find(w => w.orderId === order.id) || null;
     const line = order.orderLines?.[0];
-    setSourceOrder(order);
-    setSourceWO(wo);
-    setEditName(wo?.jobName || line?.productName || order.jobName || "");
-    setEditRate(wo?.perMeterRate || line?.rate || order.perMeterRate || 0);
-    setEditRemark(wo?.specialInstructions || "");
-    setCreateOpen(true);
+    const n    = catalog.length + 1;
+    const draft: GravureProductCatalog = {
+      id:          `GPC${String(n).padStart(3, "0")}-DRAFT`,
+      catalogNo:   `GRV-CAT-${String(n).padStart(3, "0")}`,
+      createdDate: new Date().toISOString().slice(0, 10),
+      productName:  wo?.jobName || line?.productName || order.jobName || "",
+      customerId:   order.customerId,
+      customerName: order.customerName,
+      categoryId: "", categoryName: "", content: "",
+      jobWidth:    wo?.jobWidth  || line?.jobWidth  || order.jobWidth  || 0,
+      jobHeight:   wo?.jobHeight || line?.jobHeight || order.jobHeight || 0,
+      actualWidth:  wo?.actualWidth  || 0,
+      actualHeight: wo?.actualHeight || 0,
+      noOfColors:  wo?.noOfColors  || line?.noOfColors  || order.noOfColors  || 0,
+      printType:   (wo?.printType  || line?.printType  || order.printType   || "Surface Print") as GravureProductCatalog["printType"],
+      substrate:   wo?.substrate   || line?.substrate  || order.substrate   || "",
+      secondaryLayers: [...(wo?.secondaryLayers || order.secondaryLayers || [])],
+      processes:       [...(wo?.processes       || order.processes       || [])],
+      machineId:   wo?.machineId   || "",
+      machineName: wo?.machineName || "",
+      cylinderCostPerColor: wo?.cylinderCostPerColor || 3500,
+      overheadPct: wo?.overheadPct || 12,
+      profitPct:   wo?.profitPct   || 15,
+      perMeterRate: wo?.perMeterRate || line?.rate || order.perMeterRate || 0,
+      standardQty:  wo?.quantity   || line?.orderQty || order.quantity || 0,
+      standardUnit: wo?.unit       || line?.unit     || order.unit     || "Meter",
+      sourceEstimationId: "", sourceEstimationNo: "",
+      sourceOrderId:   order.id,
+      sourceOrderNo:   order.orderNo,
+      sourceWorkOrderId:  wo?.id         || "",
+      sourceWorkOrderNo:  wo?.workOrderNo || "",
+      trimmingSize: wo?.trimmingSize,
+      frontColors:  wo?.frontColors,
+      backColors:   wo?.backColors,
+      status: "Active",
+      remarks: wo?.specialInstructions || "",
+    };
+    setIsNewCatalog(true);
+    setReplanForm(draft);
+    setReplanTab("info");
+    setCatalogFilmReqs([]); setCatalogColorShades([]); setCatalogMatAllocs([]); setCatalogCylAllocs([]); setCatalogPrepTab("film");
+    setReplanSelPlanId(""); setReplanShowPlan(false); setReplanIsPlanApplied(false); setReplanPlanSearch(""); setReplanPlanSort({ key: "", dir: "asc" });
+    setReplanOpen(true);
   };
 
   // ── Save Catalog ──────────────────────────────────────────
@@ -626,22 +671,28 @@ export default function ProductCatalogPage() {
         </Modal>
       )}
 
-      {/* ══ REPLAN MODAL ══════════════════════════════════════════ */}
+      {/* ══ REPLAN / CREATE CATALOG MODAL ═════════════════════════ */}
       {replanOpen && replanForm && (
-        <Modal open={replanOpen} onClose={() => { setReplanOpen(false); setReplanForm(null); }}
-          title={`Replan — ${replanForm.catalogNo}`} size="xl">
+        <Modal open={replanOpen} onClose={() => { setReplanOpen(false); setReplanForm(null); setIsNewCatalog(false); }}
+          title={isNewCatalog ? `Create Catalog — ${replanForm.sourceOrderNo}` : `Replan — ${replanForm.catalogNo}`} size="xl">
 
           {/* Header info */}
-          <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs">
-            <div><p className="text-[10px] text-purple-500 uppercase font-semibold">Product</p>
-              <p className="font-bold text-purple-800">{replanForm.productName}</p></div>
-            <div><p className="text-[10px] text-purple-500 uppercase font-semibold">Customer</p>
-              <p className="font-bold text-purple-800">{replanForm.customerName}</p></div>
-            <div><p className="text-[10px] text-purple-500 uppercase font-semibold">Catalog No</p>
-              <p className="font-bold text-purple-800">{replanForm.catalogNo}</p></div>
+          <div className={`border rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs ${isNewCatalog ? "bg-teal-50 border-teal-200" : "bg-purple-50 border-purple-200"}`}>
+            <div><p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>Product</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.productName || "—"}</p></div>
+            <div><p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>Customer</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.customerName}</p></div>
+            <div><p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>{isNewCatalog ? "From Order" : "Catalog No"}</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{isNewCatalog ? replanForm.sourceOrderNo : replanForm.catalogNo}</p></div>
+            {isNewCatalog && replanForm.sourceWorkOrderNo && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-lg self-center">
+                <CheckCircle size={12} className="text-green-600" />
+                <span className="text-green-700 font-semibold text-[11px]">WO: {replanForm.sourceWorkOrderNo}</span>
+              </div>
+            )}
             {replanCost && (
               <div className="ml-auto text-right">
-                <p className="text-[10px] text-purple-500 uppercase font-semibold">Live Rate</p>
+                <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>Live Rate</p>
                 <p className="font-bold text-green-700 text-base">₹{replanCost.perMeter.toFixed(3)}/m</p>
               </div>
             )}
@@ -1474,7 +1525,7 @@ export default function ProductCatalogPage() {
 
                 <div className="flex justify-between pt-2">
                   <Button variant="secondary" onClick={() => setReplanTab("planning")}>← Back</Button>
-                  <Button icon={<Save size={14} />} onClick={saveReplan}>Save Updated Catalog</Button>
+                  <Button icon={<BookMarked size={14} />} onClick={saveReplan}>{isNewCatalog ? "Save to Catalog" : "Save Changes"}</Button>
                 </div>
               </div>
             )}
