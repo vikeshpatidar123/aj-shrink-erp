@@ -24,7 +24,15 @@
       "Bash(vercel --prod --yes)",
       "Bash(ls \"d:\\\\AJ shrink new code\\\\New updated code\\\\app\\\\orders\"\" 2>/dev/null && ls \"d:AJ shrink new codeNew updated codeappgravureorders\"\")",
       "Bash(npx next:*)",
-      "Bash(npx vercel:*)"
+      "Bash(npx vercel:*)",
+      "Read(//d/AJ shrink new code/**)",
+      "Bash(mkdir -p \"/d/AJ shrink new code/backend\")",
+      "Bash(npm init:*)",
+      "Bash(\"/d/AJ shrink:*)",
+      "Bash(gh repo:*)"
+    ],
+    "additionalDirectories": [
+      "D:\\AJ shrink new code\\backend"
     ]
   }
 }

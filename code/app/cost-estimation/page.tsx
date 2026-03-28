@@ -165,6 +165,7 @@ export default function CostEstimationPage() {
       totalGSM: parseFloat(totalGSM.toFixed(3)),
       totalCostPerSqM: parseFloat(totalCostPerSqM.toFixed(4)),
       machineCostPerSqM: fMachineCost,
+      labourCostPerSqM: 0,
       overheadCostPerSqM: fOverheadCost,
       sellingPricePerKg: fSellingPricePerKg,
       totalCostPerKg, marginPct,
