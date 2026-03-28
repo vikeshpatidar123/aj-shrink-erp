@@ -1,21 +1,60 @@
 "use client";
 import { useState, useMemo } from "react";
 import {
-  Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator, BookMarked,
-  X, Save, FileText, Truck, Search, ChevronDown, ChevronUp,
-  Check, Layers,
+  Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator,
+  X, Save, FileText, Truck, Search, Check,
 } from "lucide-react";
 import {
-  customers, gravureOrders as initData, GravureOrder, GravureOrderLine,
-  gravureEstimations, employees, ledgers,
+  customers, orders as initExtData, Order,
+  costEstimations, GravureOrder, GravureOrderLine,
+  employees, ledgers,
 } from "@/data/dummyData";
-import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
 import Button   from "@/components/ui/Button";
 import Modal    from "@/components/ui/Modal";
-import { Input, Select, Textarea } from "@/components/ui/Input";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
+
+// ─── Convert legacy Order → GravureOrder shape ────────────────
+function extOrderToGrv(o: Order): GravureOrder {
+  const rate = o.quantity > 0 ? parseFloat((o.totalAmount / o.quantity).toFixed(2)) : 0;
+  const line: GravureOrderLine = {
+    id: o.id + "-L1", lineNo: 1,
+    sourceType: o.estimationId ? "Estimation" : "Direct",
+    estimationId: o.estimationId, estimationNo: o.estimationId,
+    catalogId: "", catalogNo: "",
+    productCode: o.estimationId || o.id,
+    productName: o.productName || o.jobName,
+    categoryId: "", categoryName: "",
+    substrate: o.rollName,
+    jobWidth: 0, jobHeight: 0, noOfColors: 0,
+    printType: "Surface Print", cylinderStatus: "New", cylinderCount: 0,
+    filmType: "BOPP", laminationRequired: false,
+    orderQty: o.quantity, unit: o.unit,
+    rate, currency: "INR", amount: o.totalAmount,
+    deliveryDate: o.deliveryDate, remarks: "",
+  };
+  return {
+    id: o.id, orderNo: o.orderNo, date: o.date,
+    customerId: o.customerId, customerName: o.customerName,
+    salesPerson: "", salesType: "Local", salesLedger: "",
+    poNo: "", poDate: "", directDispatch: false,
+    orderLines: [line],
+    totalAmount: o.totalAmount, advancePaid: o.advancePaid,
+    remarks: "", status: o.status,
+    sourceType: o.estimationId ? "Estimation" : "Direct",
+    enquiryId: o.enquiryId, estimationId: o.estimationId,
+    catalogId: "", catalogNo: "",
+    jobName: o.jobName, substrate: o.rollName,
+    structure: "", categoryId: "", categoryName: "", content: "",
+    jobWidth: 0, jobHeight: 0, width: 0, noOfColors: 0,
+    printType: "Surface Print",
+    quantity: o.quantity, unit: o.unit,
+    deliveryDate: o.deliveryDate, cylinderSet: "", perMeterRate: rate,
+    machineId: "", machineName: "",
+    secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
+  };
+}
 
 // ─── Extended line type ───────────────────────────────────────
 type OBLine = GravureOrderLine & {
@@ -65,7 +104,7 @@ const RATE_TYPES  = ["UnitCost", "PerMeter", "PerKg", "PerNos"];
 const JOB_TYPES   = ["New", "Repeat", "Revision"];
 const REFERENCES  = ["Art Work Approved", "Sample Approved", "Existing Job", "New Development"];
 const PRIORITIES  = ["High", "Normal", "Low"];
-const DIVISIONS   = ["Gravure", "Flexo", "Offset", "Digital"];
+const DIVISIONS   = ["Extrusion"];
 
 const STATUS_COLORS: Record<string, string> = {
   Confirmed:       "bg-blue-50 text-blue-700 border-blue-200",
@@ -98,7 +137,7 @@ const blankLine = (): OBLine => ({
   categoryId: "", categoryName: "",
   substrate: "",
   jobWidth: 0, jobHeight: 0,
-  noOfColors: 6,
+  noOfColors: 0,
   printType: "Surface Print",
   cylinderStatus: "New", cylinderCount: 0,
   filmType: "BOPP", laminationRequired: false,
@@ -107,7 +146,7 @@ const blankLine = (): OBLine => ({
   deliveryDate: "",
   remarks: "",
   hsnGroup: "", minQuotedQty: 0,
-  rateType: "UnitCost", approvedCost: 0,
+  rateType: "PerKg", approvedCost: 0,
   discPct: 0, discAmt: 0,
   gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 18,
   cgstAmt: 0, sgstAmt: 0, igstAmt: 0,
@@ -115,7 +154,7 @@ const blankLine = (): OBLine => ({
   netAmount: 0,
   expectedDeliveryDate: "", finalDeliveryDate: "",
   jobType: "New", jobReference: "Art Work Approved",
-  jobPriority: "Normal", division: "Gravure",
+  jobPriority: "Normal", division: "Extrusion",
   prePressRemark: "", productRemark: "",
 });
 
@@ -147,7 +186,7 @@ const blankForm = (): FormState => ({
   // legacy
   sourceType: "Direct", enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
   jobName: "", substrate: "", structure: "", categoryId: "", categoryName: "", content: "",
-  jobWidth: 0, jobHeight: 0, width: 0, noOfColors: 6, printType: "Surface Print",
+  jobWidth: 0, jobHeight: 0, width: 0, noOfColors: 0, printType: "Surface Print",
   quantity: 0, unit: "Kg", deliveryDate: "", cylinderSet: "", perMeterRate: 0,
   machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
 });
@@ -164,7 +203,7 @@ function CI({ value, onChange, type = "text", placeholder = "", min, step, readO
       min={min} step={step}
       placeholder={placeholder}
       onChange={e => onChange?.(e.target.value)}
-      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white ${readOnly ? "bg-gray-50 text-gray-500" : ""} ${cls}`}
+      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white ${readOnly ? "bg-gray-50 text-gray-500" : ""} ${cls}`}
     />
   );
 }
@@ -175,72 +214,52 @@ function CS({ value, onChange, options, cls = "" }: {
 }) {
   return (
     <select value={value} onChange={e => onChange(e.target.value)}
-      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white ${cls}`}>
+      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white ${cls}`}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-export default function GravureOrdersPage() {
-  const { catalog } = useProductCatalog();
+export default function ExtrusionOrdersPage() {
+  const [data, setData] = useState<GravureOrder[]>(() => initExtData.map(extOrderToGrv));
 
-  const [data, setData] = useState<GravureOrder[]>(initData);
   const [formOpen,   setFormOpen]  = useState(false);
   const [editing,    setEditing]   = useState<GravureOrder | null>(null);
   const [form,       setForm]      = useState<FormState>(blankForm());
   const [deleteId,   setDelId]     = useState<string | null>(null);
   const [viewRow,    setViewRow]   = useState<GravureOrder | null>(null);
   const [enquirySearch, setEnquirySearch] = useState("");
-  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
-
-  // Delivery schedule input state
-  const [dlvInput, setDlvInput] = useState<DeliveryRow>(blankDelivery());
+  const [addedIds,   setAddedIds]  = useState<Set<string>>(new Set());
+  const [dlvInput,   setDlvInput]  = useState<DeliveryRow>(blankDelivery());
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(p => ({ ...p, [k]: v }));
 
-  // ── Customer records ────────────────────────────────────────
-  const custGrvEstimations = useMemo(() =>
-    gravureEstimations.filter(e => e.customerId === form.customerId),
+  // ── Customer estimations ────────────────────────────────────
+  const custEstimations = useMemo(() =>
+    costEstimations.filter(e => e.customerId === form.customerId),
     [form.customerId]
   );
-  const custCatalog = useMemo(() =>
-    catalog.filter(c => c.customerId === form.customerId && c.status === "Active"),
-    [form.customerId, catalog]
-  );
 
-  // Enquiry rows = estimations + catalog
+  // ── Enquiry rows = cost estimations for this customer ───────
   const enquiryRows = useMemo(() => {
-    const est = custGrvEstimations.map(e => ({
-      id: e.id, type: "Estimation" as const,
-      productCode: e.estimationNo, jobName: e.jobName,
-      category: e.categoryName || "—",
-      division: "Gravure",
-      salesPerson: e.salesPerson || "—",
-      quoteNo: e.estimationNo,
-      minQty: e.quantity, orderQty: e.quantity,
-      currency: "INR",
-      quoteRate: e.perMeterRate, apprRate: e.perMeterRate,
-      unit: e.unit, rateType: "UnitCost",
-    }));
-    const cat = custCatalog.map(c => ({
-      id: c.id, type: "Catalog" as const,
-      productCode: c.catalogNo, jobName: c.productName,
-      category: c.categoryName || "—",
-      division: "Gravure",
+    const rows = custEstimations.map(e => ({
+      id: e.id,
+      type: "Estimation" as const,
+      productCode: e.estimationNo,
+      jobName: `${e.recipeName} / ${e.rollName}`,
+      category: "—",
       salesPerson: "—",
-      quoteNo: c.catalogNo,
-      minQty: c.standardQty, orderQty: c.standardQty,
+      quoteNo: e.estimationNo,
+      minQty: 0, orderQty: 0,
       currency: "INR",
-      quoteRate: c.perMeterRate, apprRate: c.perMeterRate,
-      unit: c.standardUnit, rateType: "UnitCost",
+      quoteRate: e.totalCostPerKg, apprRate: e.totalCostPerKg,
+      unit: "Kg", rateType: "PerKg",
     }));
     const q = enquirySearch.toLowerCase();
-    return [...est, ...cat].filter(r =>
-      !q || r.jobName.toLowerCase().includes(q) || r.productCode.toLowerCase().includes(q)
-    );
-  }, [custGrvEstimations, custCatalog, enquirySearch]);
+    return rows.filter(r => !q || r.jobName.toLowerCase().includes(q) || r.productCode.toLowerCase().includes(q));
+  }, [custEstimations, enquirySearch]);
 
   // ── Computed totals ─────────────────────────────────────────
   const totalOrderQty = useMemo(() => form.obLines.reduce((s, l) => s + l.orderQty, 0), [form.obLines]);
@@ -250,63 +269,28 @@ export default function GravureOrdersPage() {
   // ── Line helpers ────────────────────────────────────────────
   const updateLine = (idx: number, line: OBLine) =>
     f("obLines", form.obLines.map((l, i) => i === idx ? computeLine(line) : l));
-
   const removeLine = (idx: number) =>
     f("obLines", form.obLines.filter((_, i) => i !== idx));
-
   const addLine = () =>
     f("obLines", [...form.obLines, { ...blankLine(), lineNo: form.obLines.length + 1 }]);
 
   // ── Add from enquiry ────────────────────────────────────────
   const addFromEnquiry = (row: typeof enquiryRows[0]) => {
-    if (row.type === "Estimation") {
-      const est = gravureEstimations.find(e => e.id === row.id);
-      if (!est) return;
-      const newLine = computeLine({
-        ...blankLine(),
-        lineNo: form.obLines.length + 1,
-        sourceType: "Estimation",
-        estimationId: est.id, estimationNo: est.estimationNo,
-        productCode: est.estimationNo,
-        productName: est.jobName,
-        categoryId: est.categoryId || "", categoryName: est.categoryName || "",
-        substrate: est.substrateName || "",
-        jobWidth: est.jobWidth, jobHeight: est.jobHeight,
-        noOfColors: est.noOfColors,
-        orderQty: est.quantity, unit: est.unit,
-        minQuotedQty: est.quantity,
-        approvedCost: est.perMeterRate,
-        rate: est.perMeterRate,
-        cylinderStatus: "New", cylinderCount: est.noOfColors,
-        division: "Gravure", jobType: "New",
-        expectedDeliveryDate: "", finalDeliveryDate: "",
-      });
-      f("obLines", [...form.obLines, newLine]);
-      setAddedIds(prev => new Set([...prev, row.id]));
-    } else {
-      const cat = custCatalog.find(c => c.id === row.id);
-      if (!cat) return;
-      const newLine = computeLine({
-        ...blankLine(),
-        lineNo: form.obLines.length + 1,
-        sourceType: "Catalog",
-        catalogId: cat.id, catalogNo: cat.catalogNo,
-        productCode: cat.catalogNo,
-        productName: cat.productName,
-        categoryId: cat.categoryId, categoryName: cat.categoryName,
-        substrate: cat.substrate || "",
-        jobWidth: cat.jobWidth, jobHeight: cat.jobHeight,
-        noOfColors: cat.noOfColors,
-        orderQty: cat.standardQty, unit: cat.standardUnit,
-        minQuotedQty: cat.standardQty,
-        approvedCost: cat.perMeterRate,
-        rate: cat.perMeterRate,
-        cylinderStatus: "Existing",
-        division: "Gravure", jobType: "Repeat",
-      });
-      f("obLines", [...form.obLines, newLine]);
-      setAddedIds(prev => new Set([...prev, row.id]));
-    }
+    const est = costEstimations.find(e => e.id === row.id);
+    if (!est) return;
+    const newLine = computeLine({
+      ...blankLine(), lineNo: form.obLines.length + 1,
+      sourceType: "Estimation",
+      estimationId: est.id, estimationNo: est.estimationNo,
+      productCode: est.estimationNo,
+      productName: `${est.recipeName} / ${est.rollName}`,
+      substrate: est.rollName,
+      orderQty: 0, unit: "Kg",
+      minQuotedQty: 0, approvedCost: est.totalCostPerKg,
+      rate: est.totalCostPerKg, division: "Extrusion", jobType: "New",
+    });
+    f("obLines", [...form.obLines, newLine]);
+    setAddedIds(prev => new Set([...prev, row.id]));
   };
 
   // ── Delivery schedule ───────────────────────────────────────
@@ -317,7 +301,7 @@ export default function GravureOrdersPage() {
       ...dlvInput,
       id: Math.random().toString(36).slice(2),
       pmCode:  dlvInput.pmCode  || singleLine?.productCode  || "",
-      quoteNo: dlvInput.quoteNo || singleLine?.estimationNo || singleLine?.catalogNo || "",
+      quoteNo: dlvInput.quoteNo || singleLine?.estimationNo || "",
       jobName: dlvInput.jobName || singleLine?.productName  || "",
     };
     f("deliverySchedule", [...form.deliverySchedule, row]);
@@ -325,31 +309,21 @@ export default function GravureOrdersPage() {
   };
 
   // ── Open / close form ───────────────────────────────────────
-  const openAdd = () => {
-    setEditing(null);
-    setForm(blankForm());
-    setFormOpen(true);
-  };
+  const openAdd = () => { setEditing(null); setForm(blankForm()); setFormOpen(true); };
 
   const openEdit = (row: GravureOrder) => {
     setEditing(row);
-    // Convert orderLines to OBLines
     const obLines: OBLine[] = (row.orderLines || []).map(l => computeLine({
       ...blankLine(), ...l,
       hsnGroup: "", minQuotedQty: l.orderQty,
-      approvedCost: l.rate, rateType: "UnitCost",
+      approvedCost: l.rate, rateType: "PerKg",
       discPct: 0, gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 18,
-      overheadPctLine: 0, division: "Gravure",
+      overheadPctLine: 0, division: "Extrusion",
       jobType: "New", jobReference: "Art Work Approved",
       jobPriority: "Normal", prePressRemark: "", productRemark: "",
       expectedDeliveryDate: l.deliveryDate, finalDeliveryDate: "",
     }));
-    setForm({
-      ...blankForm(), ...row,
-      obLines: obLines.length ? obLines : [blankLine()],
-      deliverySchedule: [],
-      orderPrefix: "",
-    });
+    setForm({ ...blankForm(), ...row, obLines: obLines.length ? obLines : [blankLine()], deliverySchedule: [], orderPrefix: "" });
     setFormOpen(true);
   };
 
@@ -389,7 +363,7 @@ export default function GravureOrdersPage() {
       categoryName: firstLine?.categoryName || "",
       content: "", jobWidth: firstLine?.jobWidth || 0,
       jobHeight: firstLine?.jobHeight || 0,
-      noOfColors: firstLine?.noOfColors || 6,
+      noOfColors: firstLine?.noOfColors || 0,
       printType: firstLine?.printType || "Surface Print",
       quantity: firstLine?.orderQty || 0,
       unit: firstLine?.unit || "Kg",
@@ -400,8 +374,8 @@ export default function GravureOrdersPage() {
     if (editing) {
       setData(d => d.map(r => r.id === editing.id ? { ...payload, id: editing.id, orderNo: editing.orderNo } : r));
     } else {
-      const orderNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.Order, data.map(d => d.orderNo));
-      const id = `GO${String(data.length + 1).padStart(3, "0")}`;
+      const orderNo = generateCode(UNIT_CODE.Extrusion, MODULE_CODE.Order, data.map(d => d.orderNo));
+      const id = `EO${String(data.length + 1).padStart(3, "0")}`;
       setData(d => [...d, { ...payload, id, orderNo }]);
     }
     closeForm();
@@ -409,22 +383,21 @@ export default function GravureOrdersPage() {
 
   const orderNo = editing
     ? editing.orderNo
-    : generateCode(UNIT_CODE.Gravure, MODULE_CODE.Order, data.map(d => d.orderNo));
+    : generateCode(UNIT_CODE.Extrusion, MODULE_CODE.Order, data.map(d => d.orderNo));
 
-  // ── Stats ───────────────────────────────────────────────────
   const totalRevenue = data.reduce((s, o) => s + o.totalAmount, 0);
 
   // ── List columns ─────────────────────────────────────────────
   const columns: Column<GravureOrder>[] = [
-    { key: "orderNo",      header: "Order No",   sortable: true },
-    { key: "date",         header: "Date",        sortable: true },
-    { key: "customerName", header: "Customer",    sortable: true },
+    { key: "orderNo",      header: "Order No",    sortable: true },
+    { key: "date",         header: "Date",         sortable: true },
+    { key: "customerName", header: "Customer",     sortable: true },
     {
       key: "orderLines", header: "Products",
       render: r => (
         <div className="flex flex-wrap gap-1">
           {(r.orderLines || []).slice(0, 2).map((l, i) => (
-            <span key={i} className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-100 rounded-full text-xs">{l.productName || "—"}</span>
+            <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-100 rounded-full text-xs">{l.productName || "—"}</span>
           ))}
           {(r.orderLines || []).length > 2 && (
             <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs">+{r.orderLines.length - 2}</span>
@@ -432,10 +405,10 @@ export default function GravureOrdersPage() {
         </div>
       ),
     },
-    { key: "poNo",         header: "PO No",       render: r => <span className="text-xs font-mono text-gray-500">{r.poNo || "—"}</span> },
-    { key: "salesPerson",  header: "Sales Person", render: r => <span className="text-sm">{r.salesPerson || "—"}</span> },
-    { key: "totalAmount",  header: "Amount (₹)",  render: r => <span className="font-semibold">₹{r.totalAmount.toLocaleString()}</span> },
-    { key: "status",       header: "Status",       render: r => statusBadge(r.status), sortable: true },
+    { key: "poNo",        header: "PO No",       render: r => <span className="text-xs font-mono text-gray-500">{r.poNo || "—"}</span> },
+    { key: "salesPerson", header: "Sales Person", render: r => <span className="text-sm">{r.salesPerson || "—"}</span> },
+    { key: "totalAmount", header: "Amount (₹)",   render: r => <span className="font-semibold">₹{r.totalAmount.toLocaleString()}</span> },
+    { key: "status",      header: "Status",        render: r => statusBadge(r.status), sortable: true },
   ];
 
   // ════════════════════════════════════════════════════════════
@@ -445,19 +418,17 @@ export default function GravureOrdersPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         {/* ── Top bar ── */}
-        <div className="bg-teal-800 text-white px-4 py-2 flex items-center justify-between">
+        <div className="bg-blue-800 text-white px-4 py-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <ShoppingCart size={16} />
             <span className="font-bold text-sm tracking-wide">
-              {editing ? `Edit Order — ${editing.orderNo}` : "New Gravure Order Booking"}
+              {editing ? `Edit Order — ${editing.orderNo}` : "New Extrusion Order Booking"}
             </span>
-            <span className="text-xs px-2 py-0.5 rounded font-bold bg-purple-500">GRV</span>
+            <span className="text-xs px-2 py-0.5 rounded font-bold bg-blue-600">EXT</span>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={closeForm} className="flex items-center gap-1 text-teal-200 hover:text-white text-xs px-3 py-1 rounded hover:bg-teal-700 transition-colors">
-              <X size={13} />Back
-            </button>
-          </div>
+          <button onClick={closeForm} className="flex items-center gap-1 text-blue-200 hover:text-white text-xs px-3 py-1 rounded hover:bg-blue-700 transition-colors">
+            <X size={13} />Back
+          </button>
         </div>
 
         <div className="p-4 space-y-4 max-w-[1600px] mx-auto">
@@ -468,11 +439,11 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Order Prefix</label>
                 <select value={form.orderPrefix} onChange={e => f("orderPrefix", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">Select...</option>
-                  <option value="GRV">GRV</option>
-                  <option value="FLX">FLX</option>
-                  <option value="EXP">EXP</option>
+                  <option value="EXT">EXT</option>
+                  <option value="EBO">EBO</option>
+                  <option value="EPO">EPO</option>
                 </select>
               </div>
               <div>
@@ -483,12 +454,12 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Order Date</label>
                 <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Rep.</label>
                 <select value={form.salesPerson} onChange={e => f("salesPerson", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">Select...</option>
                   {SALES_PERSONS.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
@@ -496,13 +467,13 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">PO No.</label>
                 <input value={form.poNo} onChange={e => f("poNo", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
                   placeholder="Customer PO No." />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">PO Date</label>
                 <input type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
               </div>
             </div>
 
@@ -517,7 +488,7 @@ export default function GravureOrdersPage() {
                     setAddedIds(new Set());
                     setEnquirySearch("");
                   }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">-- Select Customer --</option>
                   {customers.filter(c => c.status === "Active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -525,42 +496,42 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
                 <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   {SALES_TYPES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Ledger</label>
                 <select value={form.salesLedger} onChange={e => f("salesLedger", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="">-- Select --</option>
                   {SALES_LEDGERS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
             </div>
 
-            {/* Row 3: Direct Dispatch + status */}
+            {/* Row 3 */}
             <div className="flex items-center justify-between mt-3 flex-wrap gap-2">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={form.directDispatch} onChange={e => f("directDispatch", e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 accent-teal-600" />
+                  className="w-4 h-4 rounded border-gray-300 accent-blue-600" />
                 <span className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                  <Truck size={14} className="text-teal-600" />Direct Dispatch
+                  <Truck size={14} className="text-blue-600" />Direct Dispatch
                 </span>
               </label>
               <select value={form.status} onChange={e => f("status", e.target.value as FormState["status"])}
-                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
                 {["Confirmed", "In Production", "Ready", "Dispatched"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
 
-          {/* ── PRODUCT REFERENCE — Estimation & Catalog records for client ── */}
+          {/* ── PRODUCT REFERENCE — Estimation records for client ── */}
           {form.customerId && enquiryRows.length > 0 && (
             <div className="bg-white border-2 border-amber-300 rounded-xl overflow-hidden shadow-sm">
               <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
                 <div className="flex items-center gap-2">
-                  <Layers size={15} className="text-amber-600" />
+                  <Calculator size={15} className="text-amber-600" />
                   <span className="text-sm font-bold text-amber-800">
                     Product Reference — {form.customerName}
                   </span>
@@ -580,18 +551,10 @@ export default function GravureOrdersPage() {
                 <table className="min-w-full text-xs">
                   <thead className="bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide">
                     <tr>
-                      <th className="px-3 py-2 text-left">Type</th>
                       <th className="px-3 py-2 text-left">Job Name</th>
-                      <th className="px-3 py-2 text-left">Product Code</th>
-                      <th className="px-3 py-2 text-left">Category</th>
-                      <th className="px-3 py-2 text-left">Division</th>
-                      <th className="px-3 py-2 text-left">Sales Person</th>
-                      <th className="px-3 py-2 text-left">Quote No</th>
-                      <th className="px-3 py-2 text-right">Min Qty</th>
-                      <th className="px-3 py-2 text-right">Order Qty</th>
+                      <th className="px-3 py-2 text-left">Est. No</th>
                       <th className="px-3 py-2 text-left">Unit</th>
-                      <th className="px-3 py-2 text-right">Quote Rate</th>
-                      <th className="px-3 py-2 text-right">Appr. Rate</th>
+                      <th className="px-3 py-2 text-right">Rate/Kg</th>
                       <th className="px-3 py-2 text-center w-24">Action</th>
                     </tr>
                   </thead>
@@ -603,24 +566,10 @@ export default function GravureOrdersPage() {
                           className={`border-t border-amber-100 transition-colors ${
                             isAdded ? "bg-green-50" : i % 2 === 0 ? "bg-white hover:bg-amber-50/60" : "bg-amber-50/30 hover:bg-amber-50/60"
                           }`}>
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              row.type === "Estimation" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
-                              {row.type === "Estimation" ? <Calculator size={9} /> : <BookMarked size={9} />}
-                              {row.type}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-semibold text-gray-800 max-w-[180px] truncate" title={row.jobName}>{row.jobName}</td>
+                          <td className="px-3 py-2 font-semibold text-gray-800">{row.jobName}</td>
                           <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.productCode}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.category}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.division}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.salesPerson}</td>
-                          <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.quoteNo}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{row.minQty.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{row.orderQty.toLocaleString()}</td>
                           <td className="px-3 py-2 text-gray-600">{row.unit}</td>
-                          <td className="px-3 py-2 text-right text-teal-700 font-semibold">₹{row.quoteRate}</td>
-                          <td className="px-3 py-2 text-right text-blue-700 font-semibold">₹{row.apprRate}</td>
+                          <td className="px-3 py-2 text-right text-blue-700 font-semibold">₹{row.quoteRate}</td>
                           <td className="px-3 py-2 text-center">
                             {isAdded ? (
                               <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
@@ -628,7 +577,7 @@ export default function GravureOrdersPage() {
                               </span>
                             ) : (
                               <button onClick={() => addFromEnquiry(row)}
-                                className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
                                 <Plus size={11} />Add
                               </button>
                             )}
@@ -644,12 +593,12 @@ export default function GravureOrdersPage() {
 
           {/* ── SECTION 2: Product Lines Table ── */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-teal-700 text-white">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-blue-700 text-white">
               <span className="text-xs font-bold uppercase tracking-wide">Product Lines</span>
               <div className="flex items-center gap-3">
-                <span className="text-teal-200 text-xs">{form.obLines.length} line{form.obLines.length !== 1 ? "s" : ""}</span>
+                <span className="text-blue-200 text-xs">{form.obLines.length} line{form.obLines.length !== 1 ? "s" : ""}</span>
                 <button onClick={addLine}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-500 rounded text-xs font-semibold transition-colors">
+                  className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-semibold transition-colors">
                   <Plus size={12} />Add Row
                 </button>
               </div>
@@ -657,9 +606,9 @@ export default function GravureOrdersPage() {
 
             <div className="overflow-x-auto">
               <table className="text-xs border-separate border-spacing-0 w-auto min-w-full">
-                <thead className="bg-teal-800 text-white text-[10px] uppercase tracking-wide">
+                <thead className="bg-blue-800 text-white text-[10px] uppercase tracking-wide">
                   <tr>
-                    <th className="px-2 py-2 text-left sticky left-0 z-10 bg-teal-800 min-w-[30px]">#</th>
+                    <th className="px-2 py-2 text-left sticky left-0 z-10 bg-blue-800 min-w-[30px]">#</th>
                     <th className="px-2 py-2 text-left min-w-[90px]">Product Code</th>
                     <th className="px-2 py-2 text-left min-w-[150px]">Product Name</th>
                     <th className="px-2 py-2 text-left min-w-[100px]">Category</th>
@@ -698,121 +647,86 @@ export default function GravureOrdersPage() {
                 <tbody>
                   {form.obLines.map((l, idx) => {
                     const odd = idx % 2 === 0;
-                    const srcCls = l.sourceType === "Estimation" ? "border-l-4 border-l-blue-400"
-                      : l.sourceType === "Catalog" ? "border-l-4 border-l-purple-400"
-                      : "";
+                    const srcCls = l.sourceType === "Estimation" ? "border-l-4 border-l-blue-400" : "";
                     return (
-                      <tr key={l.id} className={`${odd ? "bg-white" : "bg-gray-50/60"} hover:bg-teal-50/30 ${srcCls}`}>
+                      <tr key={l.id} className={`${odd ? "bg-white" : "bg-gray-50/60"} hover:bg-blue-50/30 ${srcCls}`}>
                         <td className={`px-2 py-1 sticky left-0 z-10 font-bold text-gray-400 ${odd ? "bg-white" : "bg-gray-50"}`}>{idx + 1}</td>
-                        {/* Product Code - read only, auto-filled */}
                         <td className="px-2 py-1">
                           {l.productCode
                             ? <span className="text-[10px] font-mono text-gray-600 bg-gray-100 border border-gray-200 px-2 py-1 rounded whitespace-nowrap">{l.productCode}</span>
                             : <span className="text-[10px] text-gray-300">—</span>}
                         </td>
-                        {/* Product Name */}
                         <td className="px-1 py-0.5"><CI value={l.productName} onChange={v => updateLine(idx, { ...l, productName: v })} placeholder="Product name" cls="min-w-[145px]" /></td>
-                        {/* Category */}
                         <td className="px-1 py-0.5"><CI value={l.categoryName} onChange={v => updateLine(idx, { ...l, categoryName: v })} placeholder="Category" /></td>
-                        {/* HSN */}
                         <td className="px-1 py-0.5"><CI value={l.hsnGroup} onChange={v => updateLine(idx, { ...l, hsnGroup: v })} placeholder="HSN" /></td>
-                        {/* Min Qty */}
                         <td className="px-1 py-0.5"><CI value={l.minQuotedQty || ""} onChange={v => updateLine(idx, { ...l, minQuotedQty: Number(v) })} type="number" min={0} cls="text-right" /></td>
-                        {/* Order Qty */}
                         <td className="px-1 py-0.5">
                           <CI value={l.orderQty || ""} type="number" min={0}
                             onChange={v => updateLine(idx, { ...l, orderQty: Number(v) })}
-                            cls="text-right font-semibold text-teal-700 border-teal-300" />
+                            cls="text-right font-semibold text-blue-700 border-blue-300" />
                         </td>
-                        {/* Unit */}
                         <td className="px-1 py-0.5">
                           <CS value={l.unit} onChange={v => updateLine(idx, { ...l, unit: v })}
                             options={["Kg","Pcs","Nos"].map(u => ({ value: u, label: u }))} />
                         </td>
-                        {/* Rate Type */}
                         <td className="px-1 py-0.5">
                           <CS value={l.rateType} onChange={v => updateLine(idx, { ...l, rateType: v })}
                             options={RATE_TYPES.map(r => ({ value: r, label: r }))} />
                         </td>
-                        {/* Appr Cost */}
                         <td className="px-1 py-0.5"><CI value={l.approvedCost || ""} type="number" min={0} step={0.01}
                           onChange={v => updateLine(idx, { ...l, approvedCost: Number(v) })} cls="text-right" /></td>
-                        {/* Rate */}
                         <td className="px-1 py-0.5">
                           <CI value={l.rate || ""} type="number" min={0} step={0.01}
                             onChange={v => updateLine(idx, { ...l, rate: Number(v) })}
                             cls="text-right font-semibold text-blue-700 border-blue-300" />
                         </td>
-                        {/* Currency */}
                         <td className="px-1 py-0.5">
                           <CS value={l.currency} onChange={v => updateLine(idx, { ...l, currency: v })}
                             options={CURRENCIES.map(c => ({ value: c, label: c }))} />
                         </td>
-                        {/* Disc% */}
                         <td className="px-1 py-0.5"><CI value={l.discPct || ""} type="number" min={0} step={0.5}
                           onChange={v => updateLine(idx, { ...l, discPct: Number(v) })} cls="text-right" /></td>
-                        {/* Dis Amt (readonly) */}
                         <td className="px-1 py-0.5"><CI value={l.discAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* Total Amt (readonly) */}
-                        <td className="px-1 py-0.5"><CI value={l.amount} readOnly cls="text-right font-bold text-teal-700 bg-teal-50" /></td>
-                        {/* GST% */}
+                        <td className="px-1 py-0.5"><CI value={l.amount} readOnly cls="text-right font-bold text-blue-700 bg-blue-50" /></td>
                         <td className="px-1 py-0.5"><CI value={l.gstPct} type="number" min={0}
                           onChange={v => {
                             const g = Number(v);
                             updateLine(idx, { ...l, gstPct: g, cgstPct: g / 2, sgstPct: g / 2, igstPct: g });
                           }} cls="text-right" /></td>
-                        {/* CGST% */}
                         <td className="px-1 py-0.5"><CI value={l.cgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* SGST% */}
                         <td className="px-1 py-0.5"><CI value={l.sgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* IGST% */}
                         <td className="px-1 py-0.5"><CI value={l.igstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* CGST Amt */}
                         <td className="px-1 py-0.5"><CI value={l.cgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* SGST Amt */}
                         <td className="px-1 py-0.5"><CI value={l.sgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* IGST Amt */}
                         <td className="px-1 py-0.5"><CI value={l.igstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* OH% */}
                         <td className="px-1 py-0.5"><CI value={l.overheadPctLine || ""} type="number" min={0} step={0.5}
                           onChange={v => updateLine(idx, { ...l, overheadPctLine: Number(v) })} cls="text-right" /></td>
-                        {/* OH Amt */}
                         <td className="px-1 py-0.5"><CI value={l.overheadAmtLine} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* Net Amount */}
                         <td className="px-1 py-0.5"><CI value={l.netAmount} readOnly cls="text-right font-bold text-purple-700 bg-purple-50" /></td>
-                        {/* Expected Del */}
                         <td className="px-1 py-0.5"><CI value={l.expectedDeliveryDate} type="date"
                           onChange={v => updateLine(idx, { ...l, expectedDeliveryDate: v })} /></td>
-                        {/* Final Del */}
                         <td className="px-1 py-0.5"><CI value={l.finalDeliveryDate} type="date"
                           onChange={v => updateLine(idx, { ...l, finalDeliveryDate: v })} /></td>
-                        {/* Job Type */}
                         <td className="px-1 py-0.5">
                           <CS value={l.jobType} onChange={v => updateLine(idx, { ...l, jobType: v })}
                             options={JOB_TYPES.map(j => ({ value: j, label: j }))} />
                         </td>
-                        {/* Job Reference */}
                         <td className="px-1 py-0.5">
                           <CS value={l.jobReference} onChange={v => updateLine(idx, { ...l, jobReference: v })}
                             options={REFERENCES.map(r => ({ value: r, label: r }))} />
                         </td>
-                        {/* Priority */}
                         <td className="px-1 py-0.5">
                           <CS value={l.jobPriority} onChange={v => updateLine(idx, { ...l, jobPriority: v })}
                             options={PRIORITIES.map(p => ({ value: p, label: p }))} />
                         </td>
-                        {/* Division */}
                         <td className="px-1 py-0.5">
                           <CS value={l.division} onChange={v => updateLine(idx, { ...l, division: v })}
                             options={DIVISIONS.map(d => ({ value: d, label: d }))} />
                         </td>
-                        {/* Pre Press Remark */}
                         <td className="px-1 py-0.5"><CI value={l.prePressRemark}
                           onChange={v => updateLine(idx, { ...l, prePressRemark: v })} placeholder="Pre press…" /></td>
-                        {/* Product Remark */}
                         <td className="px-1 py-0.5"><CI value={l.productRemark}
                           onChange={v => updateLine(idx, { ...l, productRemark: v })} placeholder="Product note…" /></td>
-                        {/* Delete */}
                         <td className="px-1 py-0.5 text-center">
                           <button onClick={() => removeLine(idx)}
                             className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
@@ -823,8 +737,8 @@ export default function GravureOrdersPage() {
                     );
                   })}
                   {/* Totals row */}
-                  <tr className="bg-teal-700 text-white font-bold text-xs">
-                    <td colSpan={6} className="px-3 py-2 text-right text-teal-200 text-[10px] uppercase tracking-wide">Totals</td>
+                  <tr className="bg-blue-700 text-white font-bold text-xs">
+                    <td colSpan={6} className="px-3 py-2 text-right text-blue-200 text-[10px] uppercase tracking-wide">Totals</td>
                     <td className="px-2 py-2 text-right">{totalOrderQty.toLocaleString()}</td>
                     <td colSpan={7}></td>
                     <td className="px-2 py-2 text-right">₹{totalAmount.toLocaleString()}</td>
@@ -842,19 +756,16 @@ export default function GravureOrdersPage() {
             <div className="px-4 py-2.5 bg-gray-700 text-white">
               <span className="text-xs font-bold uppercase tracking-wide">Delivery Schedule</span>
             </div>
-            {/* Input row */}
             <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 border-b border-gray-100">
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
                 {form.obLines.length > 1 ? (
-                  <select
-                    value={dlvInput.pmCode}
+                  <select value={dlvInput.pmCode}
                     onChange={e => {
                       const line = form.obLines.find(l => l.productCode === e.target.value);
                       setDlvInput(p => ({
-                        ...p,
-                        pmCode: e.target.value,
-                        quoteNo: line ? (line.estimationNo || line.catalogNo || "") : p.quoteNo,
+                        ...p, pmCode: e.target.value,
+                        quoteNo: line ? (line.estimationNo || "") : p.quoteNo,
                         jobName: line ? (line.productName || p.jobName) : p.jobName,
                       }));
                     }}
@@ -873,7 +784,7 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">Quote No</label>
                 <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
-                  {dlvInput.quoteNo || form.obLines[0]?.estimationNo || form.obLines[0]?.catalogNo || <span className="text-gray-300 text-xs">Auto-filled</span>}
+                  {dlvInput.quoteNo || form.obLines[0]?.estimationNo || <span className="text-gray-300 text-xs">Auto-filled</span>}
                 </div>
               </div>
               <div>
@@ -913,15 +824,14 @@ export default function GravureOrdersPage() {
               </div>
               <div className="flex items-end">
                 <button onClick={addDeliveryRow}
-                  className="w-full px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition-colors">
+                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
                   + Add
                 </button>
               </div>
             </div>
 
-            {/* Schedule table */}
             <table className="min-w-full text-xs">
-              <thead className="bg-teal-800 text-white text-[10px] uppercase">
+              <thead className="bg-blue-800 text-white text-[10px] uppercase">
                 <tr>
                   {["PM Code", "Approval Code", "Job Name", "Schedule Qty", "Delivery Date", "Consignee Name", "Transporter", ""].map(h => (
                     <th key={h} className="px-3 py-2 text-left font-semibold">{h}</th>
@@ -930,9 +840,7 @@ export default function GravureOrdersPage() {
               </thead>
               <tbody>
                 {form.deliverySchedule.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-4 py-6 text-center text-gray-400 text-sm">No data</td>
-                  </tr>
+                  <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400 text-sm">No data</td></tr>
                 ) : form.deliverySchedule.map((row, i) => (
                   <tr key={row.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="px-3 py-2">{row.pmCode || "—"}</td>
@@ -960,12 +868,12 @@ export default function GravureOrdersPage() {
               <label className="text-[10px] font-bold text-gray-500 uppercase">Remark</label>
               <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
                 rows={4} placeholder="Special instructions, notes…"
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
+                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-semibold text-gray-500">Advance Paid (₹)</label>
                   <input type="number" value={form.advancePaid || ""} onChange={e => f("advancePaid", Number(e.target.value))}
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
                 </div>
                 <div className="flex flex-col justify-end">
                   <span className="text-[10px] text-gray-500">Balance Pending</span>
@@ -983,15 +891,11 @@ export default function GravureOrdersPage() {
               </div>
               <div className="flex items-center justify-between py-2 border-b border-gray-100">
                 <span className="text-sm font-medium text-gray-600">Total Amount</span>
-                <span className="text-base font-bold text-teal-700">₹{totalAmount.toLocaleString()}</span>
+                <span className="text-base font-bold text-blue-700">₹{totalAmount.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between py-2 border-b border-gray-100">
                 <span className="text-sm font-medium text-gray-600">Net Amount</span>
                 <span className="text-lg font-black text-purple-700">₹{netAmount.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span className="text-sm font-medium text-gray-600">INR</span>
-                <span className="text-xs text-gray-400">1</span>
               </div>
             </div>
           </div>
@@ -1017,7 +921,6 @@ export default function GravureOrdersPage() {
             </button>
           </div>
         </div>
-
       </div>
     );
   }
@@ -1027,12 +930,11 @@ export default function GravureOrdersPage() {
   // ════════════════════════════════════════════════════════════
   return (
     <div className="space-y-5">
-      {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <ShoppingCart size={18} className="text-teal-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Gravure Order Booking</h2>
+            <ShoppingCart size={18} className="text-blue-600" />
+            <h2 className="text-lg font-semibold text-gray-800">Extrusion Order Booking</h2>
           </div>
           <p className="text-sm text-gray-500">
             {data.length} orders · ₹{totalRevenue.toLocaleString()} revenue
@@ -1107,18 +1009,13 @@ export default function GravureOrdersPage() {
                   <div className="col-span-2 sm:col-span-4">
                     <span className="text-xs font-bold text-gray-400">#{i + 1}</span>
                     <span className="ml-2 font-semibold text-gray-800">{line.productName}</span>
-                    <span className={`ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      line.sourceType === "Estimation" ? "bg-blue-50 text-blue-700" :
-                      line.sourceType === "Catalog" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
-                      {line.sourceType}
-                    </span>
                   </div>
                   {([
                     ["Code", line.productCode || "—"],
                     ["Qty", `${line.orderQty.toLocaleString()} ${line.unit}`],
                     ["Rate", `₹${line.rate}`],
                     ["Amount", `₹${line.amount.toLocaleString()}`],
-                  ] as [string,string][]).map(([k,v]) => (
+                  ] as [string, string][]).map(([k, v]) => (
                     <div key={k}>
                       <p className="text-[10px] text-gray-400">{k}</p>
                       <p className="font-semibold text-gray-800">{v}</p>
@@ -1150,7 +1047,7 @@ export default function GravureOrdersPage() {
             <Button variant="secondary" onClick={() => setViewRow(null)}>Close</Button>
             <div className="flex gap-3">
               <Button variant="ghost" icon={<Pencil size={14} />} onClick={() => { setViewRow(null); openEdit(viewRow); }}>Edit</Button>
-              <Button icon={<Layers size={14} />} onClick={() => { setViewRow(null); window.location.href = "/gravure/workorder"; }}>Create Work Order</Button>
+              <Button icon={<FileText size={14} />} onClick={() => { setViewRow(null); window.location.href = "/extrusion/workorder"; }}>Create Work Order</Button>
             </div>
           </div>
         </Modal>

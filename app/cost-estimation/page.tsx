@@ -23,39 +23,76 @@ function distributeByRatio(totalMicron: number, ratioStr: string, layerCount: nu
   return parts.map(p => parseFloat(((p / totalParts) * totalMicron).toFixed(2)));
 }
 
-// ─── Auto-calculation engine ────────────────────────────────
-function computeLayerResults(recipe: Recipe, layerMicrons: number[]): CostLayerResult[] {
+// ─── Auto-calculation engine (dynamic blend density + blend rate from editable pcts) ─────
+function computeLayerResults(
+  recipe: Recipe,
+  layerMicrons: number[],
+  layerMaterialPcts: number[][],   // editable percentages per layer per material
+  layerMaterialRates: number[][]   // editable rates per layer per material
+): CostLayerResult[] {
   return recipe.layers.map((layer, i) => {
     const micron = layerMicrons[i] ?? 0;
-    const density = layer.blendDensity;
-    const gsm = parseFloat((micron * density).toFixed(4));          // g/m²
-    const consumptionPerSqM = parseFloat((gsm / 1000).toFixed(6));  // kg/m²
-    const costPerSqM = parseFloat((consumptionPerSqM * layer.blendRate).toFixed(4));
+    const pcts = layerMaterialPcts[i] ?? layer.materials.map(m => m.percentage);
+    // Dynamic blend density: Σ (materialDensity × pct / 100)
+    const density = parseFloat(
+      layer.materials.reduce((s, m, j) => s + m.density * ((pcts[j] ?? m.percentage) / 100), 0).toFixed(6)
+    );
+    const gsm = parseFloat((micron * density).toFixed(4));
+    const consumptionPerSqM = parseFloat((gsm / 1000).toFixed(6));
+    // Dynamic blend rate: Σ (rate × pct / 100)
+    const rates = layerMaterialRates[i] ?? layer.materials.map(m => m.rate);
+    const blendRate = parseFloat(
+      layer.materials.reduce((s, m, j) => s + (rates[j] ?? m.rate) * ((pcts[j] ?? m.percentage) / 100), 0).toFixed(4)
+    );
+    const costPerSqM = parseFloat((consumptionPerSqM * blendRate).toFixed(4));
+    return { layerNo: layer.layerNo, layerName: layer.name, micron, density, gsm, consumptionPerSqM, blendRate, costPerSqM };
+  });
+}
+
+// ─── Per-layer material breakdown ────────────────────────────
+type LayerMatLine = { layerNo: number; layerName: string; micron: number; gsm: number; materials: { name: string; pct: number; qty: number; rate: number; cost: number }[] };
+
+function computeLayerMaterials(
+  recipe: Recipe,
+  layerResults: CostLayerResult[],
+  layerMaterialPcts: number[][],
+  layerMaterialRates: number[][],
+  orderQtyKg: number
+): LayerMatLine[] {
+  return recipe.layers.map((layer, i) => {
+    const lr = layerResults[i];
+    const pcts = layerMaterialPcts[i] ?? layer.materials.map(m => m.percentage);
     return {
-      layerNo: layer.layerNo, layerName: layer.name,
-      micron, density, gsm, consumptionPerSqM,
-      blendRate: layer.blendRate, costPerSqM,
+      layerNo: layer.layerNo,
+      layerName: layer.name,
+      micron: lr?.micron ?? 0,
+      gsm: lr?.gsm ?? 0,
+      materials: layer.materials.map((m, j) => {
+        const pct  = pcts[j] ?? m.percentage;
+        const rate = (layerMaterialRates[i] ?? [])[j] ?? m.rate;
+        const qty  = parseFloat(((lr?.consumptionPerSqM ?? 0) * (pct / 100) * orderQtyKg).toFixed(2));
+        const cost = parseFloat((qty * rate).toFixed(2));
+        return { name: m.rawMaterialName, pct, qty, rate, cost };
+      }),
     };
   });
 }
 
-function computeRequiredMaterials(recipe: Recipe, layerResults: CostLayerResult[], orderQtyKg: number) {
+// ─── Flat required materials for save snapshot ───────────────
+function computeRequiredMaterials(recipe: Recipe, layerResults: CostLayerResult[], layerMaterialPcts: number[][], layerMaterialRates: number[][], orderQtyKg: number) {
   const matMap: Record<string, { materialName: string; quantityKg: number; ratePerKg: number }> = {};
   recipe.layers.forEach((layer, i) => {
     const consumptionPerSqM = layerResults[i]?.consumptionPerSqM ?? 0;
-    const totalKgPerSqM = consumptionPerSqM;
-    // Distribute to materials by percentage
-    layer.materials.forEach((m) => {
-      const qty = parseFloat((totalKgPerSqM * (m.percentage / 100) * orderQtyKg).toFixed(2));
-      if (!matMap[m.rawMaterialId]) {
-        matMap[m.rawMaterialId] = { materialName: m.rawMaterialName, quantityKg: 0, ratePerKg: m.rate };
-      }
+    const pcts = layerMaterialPcts[i] ?? layer.materials.map(m => m.percentage);
+    layer.materials.forEach((m, j) => {
+      const rate = (layerMaterialRates[i] ?? [])[j] ?? m.rate;
+      const qty = parseFloat((consumptionPerSqM * ((pcts[j] ?? m.percentage) / 100) * orderQtyKg).toFixed(2));
+      if (!matMap[m.rawMaterialId]) matMap[m.rawMaterialId] = { materialName: m.rawMaterialName, quantityKg: 0, ratePerKg: rate };
       matMap[m.rawMaterialId].quantityKg += qty;
     });
   });
   return Object.values(matMap).map(m => ({
-    ...m,
-    quantityKg: parseFloat(m.quantityKg.toFixed(2)),
+    ...m, quantityKg: parseFloat(m.quantityKg.toFixed(2)),
     totalCost: parseFloat((m.quantityKg * m.ratePerKg).toFixed(2)),
   }));
 }
@@ -71,8 +108,11 @@ export default function CostEstimationPage() {
   const [fCustomerName, setFCustomerName] = useState("");
   const [fRecipeId, setFRecipeId] = useState("");
   const [fRollId, setFRollId] = useState("");
-  const [fLayerMicrons, setFLayerMicrons] = useState<number[]>([]);
+  const [fLayerMicrons,     setFLayerMicrons]     = useState<number[]>([]);
+  const [fLayerMaterialPcts, setFLayerMaterialPcts] = useState<number[][]>([]);
+  const [fLayerMaterialRates, setFLayerMaterialRates] = useState<number[][]>([]);
   const [fMachineCost, setFMachineCost] = useState(0.80);
+  const [fLabourCost, setFLabourCost] = useState(0.20);
   const [fOverheadCost, setFOverheadCost] = useState(0.40);
   const [fSellingPricePerKg, setFSellingPricePerKg] = useState(0);
   const [fDeliveryDate, setFDeliveryDate] = useState("");
@@ -85,27 +125,33 @@ export default function CostEstimationPage() {
 
   const layerResults = useMemo(() => {
     if (!selectedRecipe || fLayerMicrons.length === 0) return [];
-    return computeLayerResults(selectedRecipe, fLayerMicrons);
-  }, [selectedRecipe, fLayerMicrons]);
+    return computeLayerResults(selectedRecipe, fLayerMicrons, fLayerMaterialPcts, fLayerMaterialRates);
+  }, [selectedRecipe, fLayerMicrons, fLayerMaterialPcts, fLayerMaterialRates]);
 
   const totalGSM = layerResults.reduce((s, r) => s + r.gsm, 0);
   const totalMaterialCostPerSqM = layerResults.reduce((s, r) => s + r.costPerSqM, 0);
-  const totalCostPerSqM = totalMaterialCostPerSqM + fMachineCost + fOverheadCost;
+  const totalCostPerSqM = totalMaterialCostPerSqM + fMachineCost + fLabourCost + fOverheadCost;
   // Cost per kg = totalCostPerSqM / (totalGSM/1000)
   const totalCostPerKg = totalGSM > 0 ? parseFloat((totalCostPerSqM / (totalGSM / 1000)).toFixed(2)) : 0;
   const marginPct = fSellingPricePerKg > 0
     ? parseFloat((((fSellingPricePerKg - totalCostPerKg) / fSellingPricePerKg) * 100).toFixed(2))
     : 0;
 
+  const layerMaterials = useMemo(() => {
+    if (!selectedRecipe || layerResults.length === 0) return [];
+    return computeLayerMaterials(selectedRecipe, layerResults, fLayerMaterialPcts, fLayerMaterialRates, fOrderQty);
+  }, [selectedRecipe, layerResults, fLayerMaterialPcts, fLayerMaterialRates, fOrderQty]);
+
   const requiredMaterials = useMemo(() => {
     if (!selectedRecipe || layerResults.length === 0) return [];
-    return computeRequiredMaterials(selectedRecipe, layerResults, fOrderQty);
-  }, [selectedRecipe, layerResults, fOrderQty]);
+    return computeRequiredMaterials(selectedRecipe, layerResults, fLayerMaterialPcts, fLayerMaterialRates, fOrderQty);
+  }, [selectedRecipe, layerResults, fLayerMaterialPcts, fLayerMaterialRates, fOrderQty]);
 
   const openAdd = () => {
     setEditing(null);
     setFCustomerId(""); setFCustomerName(""); setFRecipeId(""); setFRollId("");
-    setFLayerMicrons([]); setFMachineCost(0.80); setFOverheadCost(0.40);
+    setFLayerMicrons([]); setFLayerMaterialPcts([]); setFLayerMaterialRates([]);
+    setFMachineCost(0.80); setFLabourCost(0.20); setFOverheadCost(0.40);
     setFSellingPricePerKg(0); setFDeliveryDate(""); setFEstDays(7); setFStatus("Draft");
     setFOrderQty(5000);
     setModalOpen(true);
@@ -116,7 +162,13 @@ export default function CostEstimationPage() {
     setEditing(row);
     setFCustomerId(row.customerId); setFCustomerName(row.customerName);
     setFRecipeId(row.recipeId); setFRollId(row.rollMasterId);
-    setFLayerMicrons(row.layerMicrons); setFMachineCost(row.machineCostPerSqM);
+    setFLayerMicrons(row.layerMicrons);
+    // Init pcts from recipe defaults (or saved if available)
+    const rec = recipes.find(r => r.id === row.recipeId);
+    setFLayerMaterialPcts(rec ? rec.layers.map(l => l.materials.map(m => m.percentage)) : []);
+    setFLayerMaterialRates(rec ? rec.layers.map(l => l.materials.map(m => m.rate)) : []);
+    setFMachineCost(row.machineCostPerSqM);
+    setFLabourCost(row.labourCostPerSqM ?? 0.20);
     setFOverheadCost(row.overheadCostPerSqM); setFSellingPricePerKg(row.sellingPricePerKg);
     setFDeliveryDate(row.deliveryDate); setFEstDays(row.estimatedDays); setFStatus(row.status);
     setFOrderQty(5000);
@@ -130,6 +182,9 @@ export default function CostEstimationPage() {
     } else {
       setFLayerMicrons(recipe.layers.map(() => 0));
     }
+    // Init editable percentages and rates from recipe defaults
+    setFLayerMaterialPcts(recipe.layers.map(l => l.materials.map(m => m.percentage)));
+    setFLayerMaterialRates(recipe.layers.map(l => l.materials.map(m => m.rate)));
   };
 
   const handleRecipeSelect = (recipeId: string) => {
@@ -165,6 +220,7 @@ export default function CostEstimationPage() {
       totalGSM: parseFloat(totalGSM.toFixed(3)),
       totalCostPerSqM: parseFloat(totalCostPerSqM.toFixed(4)),
       machineCostPerSqM: fMachineCost,
+      labourCostPerSqM: fLabourCost,
       overheadCostPerSqM: fOverheadCost,
       sellingPricePerKg: fSellingPricePerKg,
       totalCostPerKg, marginPct,
@@ -193,9 +249,6 @@ export default function CostEstimationPage() {
     { key: "totalGSM", header: "Total GSM", render: r => <span className="font-semibold text-blue-700">{r.totalGSM.toFixed(2)}</span> },
     { key: "totalCostPerKg", header: "Cost/Kg (₹)", render: r => <span>₹{r.totalCostPerKg}</span> },
     { key: "sellingPricePerKg", header: "Sell/Kg (₹)", render: r => <span className="font-semibold">₹{r.sellingPricePerKg}</span> },
-    { key: "marginPct", header: "Margin %", render: r => (
-      <span className={`font-bold ${r.marginPct >= 10 ? "text-green-600" : "text-red-500"}`}>{r.marginPct}%</span>
-    )},
     { key: "status", header: "Status", render: r => statusBadge(r.status) },
   ];
 
@@ -210,11 +263,10 @@ export default function CostEstimationPage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Total Estimations", val: data.length, cls: "bg-blue-50 text-blue-700 border-blue-200" },
           { label: "Approved", val: data.filter(d => d.status === "Approved").length, cls: "bg-green-50 text-green-700 border-green-200" },
-          { label: "Avg Margin", val: `${data.length ? (data.reduce((s, d) => s + d.marginPct, 0) / data.length).toFixed(1) : 0}%`, cls: "bg-purple-50 text-purple-700 border-purple-200" },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 ${s.cls}`}>
             <p className="text-xs font-medium">{s.label}</p>
@@ -243,7 +295,7 @@ export default function CostEstimationPage() {
           {/* Step 1: Setup */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase mb-3 flex items-center gap-2"><Calculator size={13} /> Step 1 – Setup</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Select
                 label="Customer *"
                 value={fCustomerId}
@@ -262,61 +314,141 @@ export default function CostEstimationPage() {
                 onChange={(e) => handleRollSelect(e.target.value)}
                 options={rollMasters.filter(r => r.status === "Active").map(r => ({ value: r.id, label: `${r.name} – ${r.width}mm` }))}
               />
+              <Input
+                label="Estimated Qty (Kg)"
+                type="number"
+                value={fOrderQty}
+                onChange={(e) => setFOrderQty(Number(e.target.value))}
+              />
               {selectedRoll && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 col-span-1">
-                  <p className="font-semibold text-blue-900 mb-1">📋 Job Name: {selectedRoll.jobName ?? selectedRoll.name}</p>
-                  <p><strong>Width:</strong> {selectedRoll.width} mm &nbsp;|&nbsp; <strong>Micron:</strong> {selectedRoll.micron} μ &nbsp;|&nbsp; <strong>Density:</strong> {selectedRoll.density} g/cm³</p>
-                  <p><strong>Stock Unit:</strong> {selectedRoll.stockUnit} &nbsp;|&nbsp; <strong>Purchase Unit:</strong> {selectedRoll.purchaseUnit}</p>
-                  {selectedRecipe?.layerRatio && <p className="mt-1 text-green-700 font-medium">✓ Layer Ratio: {selectedRecipe.layerRatio} → Auto-distributed {selectedRoll.micron}μ across {selectedRecipe.layers.length} layers</p>}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800 col-span-2 sm:col-span-4">
+                  <div className="flex flex-wrap items-start gap-x-6 gap-y-1">
+                    <div>
+                      <p className="font-bold text-blue-900 text-sm mb-1">📋 {selectedRoll.jobName ?? selectedRoll.name}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-x-5 gap-y-0.5 text-xs">
+                      <span><strong>Width:</strong> {selectedRoll.width} mm</span>
+                      <span><strong>Micron:</strong> {selectedRoll.micron} μ</span>
+                      <span><strong>Density:</strong> {selectedRoll.density} g/cm³</span>
+                      <span><strong>Stock Unit:</strong> {selectedRoll.stockUnit}</span>
+                      <span><strong>Purchase Unit:</strong> {selectedRoll.purchaseUnit}</span>
+                      {selectedRecipe && <span><strong>Layers:</strong> {selectedRecipe.layers.length}</span>}
+                      {selectedRecipe?.layerRatio && <span><strong>Layer Ratio:</strong> {selectedRecipe.layerRatio}</span>}
+                    </div>
+                  </div>
+                  {selectedRecipe?.layerRatio && (
+                    <p className="mt-1.5 text-green-700 font-semibold text-[11px]">
+                      ✓ Layer Ratio {selectedRecipe.layerRatio} → Auto-distributed {selectedRoll.micron}μ across {selectedRecipe.layers.length} layers
+                    </p>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Step 2: Layer Microns */}
+          {/* Step 2: Layer Microns + per-material % editing */}
           {selectedRecipe && (
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Step 2 – Enter Layer Microns (μ)</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Step 2 – Enter Layer Microns (μ) & Material %</p>
               <div className="space-y-3">
                 {selectedRecipe.layers.map((layer, i) => {
-                  const micron = fLayerMicrons[i] ?? 0;
-                  const gsm = parseFloat((micron * layer.blendDensity).toFixed(3));
-                  const costPerSqM = parseFloat((gsm / 1000 * layer.blendRate).toFixed(4));
+                  const micron      = fLayerMicrons[i] ?? 0;
+                  const pcts        = fLayerMaterialPcts[i] ?? layer.materials.map(m => m.percentage);
+                  const pctTotal    = pcts.reduce((s, p) => s + p, 0);
+                  // Dynamic blend density from editable %
+                  const blendDensity = parseFloat(
+                    layer.materials.reduce((s, m, j) => s + m.density * ((pcts[j] ?? m.percentage) / 100), 0).toFixed(4)
+                  );
+                  const rates       = fLayerMaterialRates[i] ?? layer.materials.map(m => m.rate);
+                  const blendRate   = layer.materials.reduce((s, m, j) => s + (rates[j] ?? m.rate) * ((pcts[j] ?? m.percentage) / 100), 0);
+                  const gsm         = parseFloat((micron * blendDensity).toFixed(3));
+                  const consumpt    = gsm / 1000;
+                  const costPerSqM  = parseFloat((consumpt * blendRate).toFixed(4));
                   return (
-                    <div key={i} className="flex items-center gap-4 bg-gray-50 rounded-xl px-4 py-3">
-                      <div className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">{layer.layerNo}</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{layer.name}</p>
-                        <p className="text-xs text-gray-600">
-                          {layer.materials.map(m => `${m.rawMaterialName} ${m.percentage}%`).join(" + ")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0} step={1}
-                          value={micron}
-                          onChange={(e) => {
-                            const v = Number(e.target.value);
-                            setFLayerMicrons(prev => { const n = [...prev]; n[i] = v; return n; });
-                          }}
-                          className="w-20 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-center"
-                          placeholder="μ"
-                        />
-                        <span className="text-xs text-gray-600 font-medium w-4">μ</span>
-                      </div>
-                      {micron > 0 && (
-                        <div className="flex gap-4 text-xs text-right min-w-0">
-                          <div>
-                            <p className="text-gray-600 font-medium">GSM</p>
-                            <p className="font-bold text-blue-700">{gsm}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600 font-medium">Cost/m²</p>
-                            <p className="font-bold text-purple-700">₹{costPerSqM}</p>
-                          </div>
+                    <div key={i} className="bg-gray-50 rounded-xl px-4 py-3 space-y-2">
+                      {/* Layer header */}
+                      <div className="flex items-center gap-4">
+                        <div className="w-6 h-6 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">{layer.layerNo}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800">{layer.name}</p>
                         </div>
-                      )}
+                        {/* Micron input */}
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number" min={0} step={1} placeholder="μ"
+                            value={micron}
+                            onChange={e => {
+                              const v = Number(e.target.value);
+                              setFLayerMicrons(prev => { const n = [...prev]; n[i] = v; return n; });
+                            }}
+                            className="w-20 border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-900 font-semibold focus:ring-2 focus:ring-blue-500 outline-none text-center"
+                          />
+                          <span className="text-xs text-gray-500 font-medium">μ</span>
+                        </div>
+                        {micron > 0 && (
+                          <div className="flex gap-4 text-xs text-right">
+                            <div><p className="text-gray-500">Density</p><p className="font-bold text-gray-700">{blendDensity} g/cm³</p></div>
+                            <div><p className="text-gray-500">GSM</p><p className="font-bold text-blue-700">{gsm}</p></div>
+                            <div><p className="text-gray-500">Cost/m²</p><p className="font-bold text-purple-700">₹{costPerSqM}</p></div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Per-material rows with editable % */}
+                      <div className="ml-9 space-y-1">
+                        {layer.materials.map((m, j) => {
+                          const pct   = pcts[j] ?? m.percentage;
+                          const kgNeeded = consumpt > 0 && fOrderQty > 0
+                            ? parseFloat((consumpt * (pct / 100) * fOrderQty).toFixed(2)) : 0;
+                          const matCost  = parseFloat((kgNeeded * m.rate).toFixed(2));
+                          return (
+                            <div key={j} className="flex items-center gap-2 bg-white rounded-lg px-3 py-1.5 border border-gray-100">
+                              <span className="flex-1 text-xs font-medium text-gray-700 truncate">{m.rawMaterialName}</span>
+                              <input
+                                type="number" min={0} step={0.01}
+                                value={(fLayerMaterialRates[i] ?? [])[j] ?? m.rate}
+                                onChange={e => {
+                                  const v = Math.max(0, Number(e.target.value));
+                                  setFLayerMaterialRates(prev => {
+                                    const n = prev.map(row => [...row]);
+                                    if (!n[i]) n[i] = layer.materials.map(x => x.rate);
+                                    n[i][j] = v;
+                                    return n;
+                                  });
+                                }}
+                                className="w-20 text-xs border border-orange-200 bg-orange-50 rounded-md px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-orange-400 text-right"
+                              />
+                              <span className="text-[10px] text-gray-400">₹/kg</span>
+                              {/* Editable % */}
+                              <input
+                                type="number" min={0} max={100} step={1}
+                                value={pct}
+                                onChange={e => {
+                                  const v = Math.min(100, Math.max(0, Number(e.target.value)));
+                                  setFLayerMaterialPcts(prev => {
+                                    const n = prev.map(row => [...row]);
+                                    if (!n[i]) n[i] = layer.materials.map(x => x.percentage);
+                                    n[i][j] = v;
+                                    return n;
+                                  });
+                                }}
+                                className="w-14 text-xs border border-gray-300 rounded-md px-2 py-1 text-center font-semibold focus:ring-1 focus:ring-blue-400 outline-none"
+                              />
+                              <span className="text-xs text-gray-400">%</span>
+                              {kgNeeded > 0 && (
+                                <>
+                                  <span className="text-xs font-mono text-gray-700 w-20 text-right">{kgNeeded.toLocaleString()} Kg</span>
+                                  <span className="text-xs font-mono text-gray-500 w-16 text-right">₹{matCost.toLocaleString()}</span>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {/* % total warning */}
+                        {pctTotal !== 100 && (
+                          <p className="text-[10px] text-red-500 font-semibold pl-1">⚠ Total = {pctTotal}% (should be 100%)</p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -346,9 +478,9 @@ export default function CostEstimationPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Step 3 – Additional Costs & Pricing</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Input label="Machine Cost (₹/m²)" type="number" step={0.01} value={fMachineCost} onChange={(e) => setFMachineCost(Number(e.target.value))} />
+              <Input label="Labour Cost (₹/m²)" type="number" step={0.01} value={fLabourCost} onChange={(e) => setFLabourCost(Number(e.target.value))} />
               <Input label="Overhead (₹/m²)" type="number" step={0.01} value={fOverheadCost} onChange={(e) => setFOverheadCost(Number(e.target.value))} />
               <Input label="Selling Price (₹/Kg)" type="number" value={fSellingPricePerKg} onChange={(e) => setFSellingPricePerKg(Number(e.target.value))} />
-              <Input label="Order Qty (Kg)" type="number" value={fOrderQty} onChange={(e) => setFOrderQty(Number(e.target.value))} />
             </div>
 
             {totalGSM > 0 && (
@@ -361,42 +493,59 @@ export default function CostEstimationPage() {
                   <p className="text-xs font-semibold text-gray-600">Selling Price/Kg</p>
                   <p className="text-2xl font-bold text-blue-700">₹{fSellingPricePerKg}</p>
                 </div>
-                <div className={`rounded-xl p-4 border ${marginPct >= 10 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
-                  <p className="text-xs font-semibold text-gray-600">Margin</p>
-                  <p className={`text-2xl font-bold ${marginPct >= 10 ? "text-green-700" : "text-red-600"}`}>{marginPct}%</p>
-                  {marginPct < 10 && <p className="text-xs text-red-600 font-medium mt-1">Below target (10%)</p>}
-                </div>
               </div>
             )}
           </div>
 
-          {/* Required Materials Preview */}
-          {requiredMaterials.length > 0 && (
+          {/* Required Materials — per-layer breakdown */}
+          {layerMaterials.length > 0 && fOrderQty > 0 && (
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">Required Materials (for {fOrderQty} Kg order)</p>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-3">
+                Required Materials — Layer-wise Breakdown &nbsp;
+                <span className="normal-case font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5">
+                  Order Qty: {fOrderQty.toLocaleString()} Kg
+                </span>
+              </p>
               <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-100 text-xs text-gray-700 uppercase">
                     <tr>
-                      {["Material", "Qty (Kg)", "Rate (₹/Kg)", "Total Cost (₹)"].map(h => (
+                      {["Layer", "Material", "%", "Qty (Kg)", "Rate (₹/Kg)", "Cost (₹)"].map(h => (
                         <th key={h} className="px-4 py-2 text-left font-bold tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {requiredMaterials.map((m, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
-                        <td className="px-4 py-2 font-semibold text-gray-900">{m.materialName}</td>
-                        <td className="px-4 py-2 text-gray-800 font-medium">{m.quantityKg.toLocaleString()}</td>
-                        <td className="px-4 py-2 text-gray-800 font-medium">₹{m.ratePerKg}</td>
-                        <td className="px-4 py-2 font-semibold text-gray-900">₹{m.totalCost.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-gray-100 font-semibold">
-                      <td className="px-4 py-2 text-gray-900 font-bold">Total</td>
-                      <td className="px-4 py-2 text-gray-900 font-bold">{requiredMaterials.reduce((s, m) => s + m.quantityKg, 0).toFixed(0)}</td>
+                    {layerMaterials.map((lm, li) =>
+                      lm.materials.map((mat, mi) => (
+                        <tr key={`${li}-${mi}`} className="hover:bg-gray-50">
+                          {mi === 0 && (
+                            <td className="px-4 py-2 font-semibold text-blue-700 align-top" rowSpan={lm.materials.length}>
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="w-5 h-5 bg-blue-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{lm.layerNo}</span>
+                                <span className="text-xs text-gray-700">{lm.layerName}</span>
+                              </span>
+                              <p className="text-[10px] text-gray-400 mt-0.5 ml-6.5">{lm.micron}μ · {lm.gsm.toFixed(2)} GSM</p>
+                            </td>
+                          )}
+                          <td className="px-4 py-2 text-gray-800">{mat.name}</td>
+                          <td className="px-4 py-2 font-semibold text-purple-700">{mat.pct}%</td>
+                          <td className="px-4 py-2 font-mono text-gray-800">{mat.qty.toLocaleString()}</td>
+                          <td className="px-4 py-2 text-gray-600">₹{mat.rate}</td>
+                          <td className="px-4 py-2 font-semibold text-gray-900">₹{mat.cost.toLocaleString()}</td>
+                        </tr>
+                      ))
+                    )}
+                    {/* Grand total row */}
+                    <tr className="bg-gray-100 font-bold text-sm">
+                      <td colSpan={3} className="px-4 py-2 text-gray-900">Grand Total</td>
+                      <td className="px-4 py-2 text-gray-900">
+                        {layerMaterials.reduce((s, lm) => s + lm.materials.reduce((ss, m) => ss + m.qty, 0), 0).toFixed(1)} Kg
+                      </td>
                       <td></td>
-                      <td className="px-4 py-2 font-bold text-blue-700">₹{requiredMaterials.reduce((s, m) => s + m.totalCost, 0).toLocaleString()}</td>
+                      <td className="px-4 py-2 text-blue-700">
+                        ₹{layerMaterials.reduce((s, lm) => s + lm.materials.reduce((ss, m) => ss + m.cost, 0), 0).toLocaleString()}
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -475,10 +624,6 @@ export default function CostEstimationPage() {
               <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
                 <p className="text-xs text-gray-500">Selling Price/Kg</p>
                 <p className="text-xl font-bold text-blue-700">₹{viewRow.sellingPricePerKg}</p>
-              </div>
-              <div className={`rounded-xl p-4 border ${viewRow.marginPct >= 10 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
-                <p className="text-xs text-gray-500">Margin</p>
-                <p className={`text-xl font-bold ${viewRow.marginPct >= 10 ? "text-green-700" : "text-red-600"}`}>{viewRow.marginPct}%</p>
               </div>
             </div>
 

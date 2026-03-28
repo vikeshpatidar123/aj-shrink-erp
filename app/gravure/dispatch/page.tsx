@@ -168,7 +168,7 @@ export default function GravureDispatchPage() {
           <Input label="Customer" value={form.customerName} readOnly className="bg-gray-50" />
           <Input label="Job Name" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Job name" />
           <Input label="Dispatch Quantity (m)" type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))} />
-          <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)} options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }]} />
+          <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)} options={[{ value: "Pcs", label: "Pcs" }, { value: "Kg", label: "Kg" }]} />
           <Input label="No. of Rolls" type="number" value={form.noOfRolls} onChange={e => f("noOfRolls", Number(e.target.value))} />
           <Input label="Vehicle No" value={form.vehicleNo} onChange={e => f("vehicleNo", e.target.value)} placeholder="e.g. MH-01-AB-1234" />
           <Input label="Driver Name" value={form.driverName} onChange={e => f("driverName", e.target.value)} />

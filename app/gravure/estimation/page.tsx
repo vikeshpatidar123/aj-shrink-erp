@@ -10,6 +10,7 @@ import {
   GravureEstimation, GravureEstimationMaterial, GravureEstimationProcess,
   SecondaryLayer, DryWeightRow, PlyConsumableItem,
   CATEGORY_GROUP_SUBGROUP,
+  tools as allTools, toolInventory,
 } from "@/data/dummyData";
 import { useCategories }     from "@/context/CategoriesContext";
 import { useEnquiries }      from "@/context/EnquiryContext";
@@ -33,6 +34,17 @@ const PRINT_MACHINES  = machines.filter(m => m.department === "Printing");
 
 const ROTO_PROCESSES  = processMasters.filter(p => p.module === "Rotogravure");
 
+// ─── Tool inventory helpers ────────────────────────────────
+const AVAILABLE_TOOL_IDS = new Set(
+  toolInventory.filter(ti => ti.status === "Available").map(ti => ti.toolId)
+);
+const SLEEVE_TOOLS = allTools
+  .filter(t => t.toolType === "Sleeve" && AVAILABLE_TOOL_IDS.has(t.id))
+  .sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
+const CYLINDER_TOOLS = allTools
+  .filter(t => t.toolType === "Cylinder" && AVAILABLE_TOOL_IDS.has(t.id))
+  .sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
+
 // ─── Blank form ───────────────────────────────────────────────
 const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   date: new Date().toISOString().slice(0, 10),
@@ -49,6 +61,8 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   quantity: 0, quantities: [], unit: "Kg",
   machineId: "", machineName: "",
   cylinderCostPerColor: 3500,
+  cylinderRatePerSqInch: 2.5,
+  sleeveWidth: 0,
   repeatLength: 0,
   wastagePct: 1,
   setupTime: 0,
@@ -58,6 +72,7 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   materials: [],
   processes: [],
   overheadPct: 12, profitPct: 15,
+  labourCost: 0, transportationCost: 0, interestCost: 0,
   materialCost: 0, processCost: 0, cylinderCost: 0,
   setupCost: 0,
   overheadAmt: 0, profitAmt: 0,
@@ -108,7 +123,7 @@ function calcCosts(form: typeof blank) {
   form.secondaryLayers.forEach(l => {
     // Film substrate
     if (l.gsm > 0) {
-      const filmRate = parseFloat(FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup)?.estimationRate || "0");
+      const filmRate = l.filmRate ?? parseFloat(FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup)?.estimationRate || "0");
       if (filmRate > 0) plyMaterialCost += (l.gsm * areaM2 / 1000) * filmRate;
     }
     // Consumable items — apply coverage % for all consumables
@@ -140,7 +155,11 @@ function calcCosts(form: typeof blank) {
     ? parseFloat(((form.setupTime / 60) * form.machineCostPerHour).toFixed(2))
     : 0;
 
-  const sub         = materialCost + processCost + cylinderCost + setupCost;
+  const labourCost       = form.labourCost       || 0;
+  const transportationCost = form.transportationCost || 0;
+  const interestCost     = form.interestCost     || 0;
+
+  const sub         = materialCost + processCost + cylinderCost + setupCost + labourCost + transportationCost + interestCost;
   const overheadAmt = parseFloat(((sub * form.overheadPct) / 100).toFixed(2));
   const profitBase  = sub + overheadAmt;
   const profitAmt   = parseFloat(((profitBase * form.profitPct) / 100).toFixed(2));
@@ -157,10 +176,10 @@ function calcCosts(form: typeof blank) {
   const variableCost   = form.quantity > 0 ? parseFloat(((materialCost + processCost) / form.quantity).toFixed(4)) : 0;
   const sellingPriceEff = form.sellingPrice > 0 ? form.sellingPrice : perMeterRate;
   const contribution   = parseFloat((sellingPriceEff - variableCost).toFixed(4));
-  const fixedCost      = cylinderCost + setupCost + overheadAmt;
+  const fixedCost      = cylinderCost + setupCost + overheadAmt + labourCost + transportationCost + interestCost;
   const breakEvenQty   = contribution > 0 ? Math.ceil(fixedCost / contribution) : 0;
 
-  return { materialCost, processCost, cylinderCost, setupCost, overheadAmt, profitAmt, totalAmount, perMeterRate, marginPct, contribution, breakEvenQty };
+  return { materialCost, processCost, cylinderCost, setupCost, labourCost, transportationCost, interestCost, overheadAmt, profitAmt, totalAmount, perMeterRate, marginPct, contribution, breakEvenQty };
 }
 
 // ─── Detailed breakdown (for Tab 3 display) ──────────────────
@@ -176,7 +195,7 @@ function getCostBreakdown(form: typeof blank): { matLines: MatLine[]; procLines:
     // Film
     if (l.gsm > 0) {
       const filmItem = FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup);
-      const rate     = parseFloat(filmItem?.estimationRate || "0");
+      const rate = l.filmRate ?? parseFloat(filmItem?.estimationRate || "0");
       const kg       = parseFloat((l.gsm * areaM2 / 1000).toFixed(3));
       matLines.push({ plyNo: idx + 1, plyType: l.plyType || "Film", name: l.itemSubGroup || "Film Substrate", group: "Film", gsm: l.gsm, kg, rate, amount: parseFloat((kg * rate).toFixed(2)) });
     }
@@ -257,11 +276,33 @@ export default function GravureEstimationPage() {
   const [planSort, setPlanSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
   const [extraQtys, setExtraQtys] = useState<number[]>([]);
   const [activeQtyIdx, setActiveQtyIdx] = useState<number>(0); // 0 = base qty
+  const [qtyOverrides, setQtyOverrides] = useState<Array<{
+    labourCost?: number; transportationCost?: number; interestCost?: number;
+    overheadPct?: number; profitPct?: number;
+  }>>([]);
+  const setQtyOverride = (qi: number, field: string, val: number) => {
+    setQtyOverrides(prev => {
+      const next = [...prev];
+      next[qi] = { ...(next[qi] ?? {}), [field]: val };
+      return next;
+    });
+  };
 
   // Derived costs (live)
   const costs     = useMemo(() => calcCosts(form), [form]);
   const allQtys   = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
-  const allCosts  = useMemo(() => allQtys.map(qty => calcCosts({ ...form, quantity: qty })), [form, allQtys]);
+  const allCosts      = useMemo(() => allQtys.map((qty, qi) => {
+    const ov = qtyOverrides[qi] ?? {};
+    return calcCosts({
+      ...form, quantity: qty,
+      labourCost:         ov.labourCost         ?? form.labourCost,
+      transportationCost: ov.transportationCost ?? form.transportationCost,
+      interestCost:       ov.interestCost       ?? form.interestCost,
+      overheadPct:        ov.overheadPct        ?? form.overheadPct,
+      profitPct:          ov.profitPct          ?? form.profitPct,
+    });
+  }), [form, allQtys, qtyOverrides]);
+  const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty })), [form, allQtys]);
   const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
   const activeCosts = allCosts[safeIdx] ?? costs;
   const activeQty   = allQtys[safeIdx] ?? form.quantity;
@@ -274,33 +315,153 @@ export default function GravureEstimationPage() {
     [form.secondaryLayers]);
 
   const allPlans = useMemo(() => {
+    if (!form.actualWidth || form.actualWidth <= 0) return [];
     const machinesToPlan = form.machineId
       ? PRINT_MACHINES.filter(m => m.id === form.machineId)
       : PRINT_MACHINES;
-    return machinesToPlan.flatMap(machine => {
-      const baseCirc = form.jobHeight ? Math.ceil(form.jobHeight / 12) * 12 : 450;
-      const filmSize = 340;
-      const acUps = form.jobWidth > 0 ? Math.max(1, Math.floor(filmSize / form.jobWidth)) : 10;
-      const trimSize = form.trimmingSize && form.trimmingSize > 0 ? form.trimmingSize : (form.jobWidth || filmSize);
+
+    const rawPlans = machinesToPlan.flatMap(machine => {
+      const machineMaxFilm = parseFloat(machine.maxWebWidth) || 1300;
+      const baseCirc   = form.jobHeight ? Math.ceil(form.jobHeight / 12) * 12 : 450;
+      const laneWidth  = form.actualWidth + (form.trimmingSize || 0);
       const costPerHour = parseFloat(machine.costPerHour as string) || 1350;
-      const speed = parseFloat(machine.speedMax) || 150;
-      return Array.from({ length: 7 }, (_, i) => {
-        const cylCirc = baseCirc + i * 12;
-        const repeatUPS = 10 + i;
-        const totalUPS = acUps * repeatUPS;
-        const reqRMT = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
-        const totalRMT = Math.ceil(reqRMT * 1.01);
-        const totalWt = parseFloat((totalRMT * ((form.jobWidth || filmSize) / 1000) * totalPlyGSM / 1000).toFixed(3));
-        const totalTime = parseFloat((totalRMT / (speed * 60)).toFixed(2));
-        const planCost = parseFloat((totalTime * costPerHour).toFixed(2));
-        const cylCost = form.noOfColors * form.cylinderCostPerColor;
-        const grandTotal = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
-        const unitPrice = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
-        const wastage = parseFloat((filmSize - acUps * trimSize).toFixed(1));
-        return { planId: `PLAN-${machine.id}-${i}`, machineId: machine.id, machineName: machine.name, cylCirc, filmSize, acUps, repeatUPS, totalUPS, reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice, wastage };
+      const speed       = parseFloat(machine.speedMax) || 150;
+
+      const trim = form.trimmingSize || 0;
+      const repeatUPS = form.jobHeight > 0 ? Math.max(1, Math.floor(baseCirc / form.jobHeight)) : 10;
+
+      // ── LOOP A: Sleeve in stock → find cylinder (or SPECIAL CYLINDER if missing) ──
+      const loopA = SLEEVE_TOOLS.flatMap(sleeve => {
+        const sleeveWidthVal = parseFloat(sleeve.printWidth);
+        if (sleeveWidthVal > machineMaxFilm) return [];
+        const maxAcUps = Math.floor(sleeveWidthVal / laneWidth);
+        if (maxAcUps === 0) return [];
+
+        return Array.from({ length: maxAcUps }, (_, i) => {
+          const acUps         = i + 1;
+          const printingWidth = acUps * laneWidth;
+          const filmWidth     = printingWidth + 2 * trim;
+          if (filmWidth > sleeveWidthVal) return [];
+
+          const req    = filmWidth + 100;
+          const minCyl = req < sleeveWidthVal ? req : sleeveWidthVal + 100;
+          const validCylinders = CYLINDER_TOOLS.filter(t => parseFloat(t.printWidth) >= minCyl);
+          const cylList = validCylinders.length > 0
+            ? validCylinders.map(c => ({ id: c.id, name: c.name, code: c.code, printWidth: c.printWidth, repeatLength: c.repeatLength || String(baseCirc), isSpecial: false, isSpecialSleeve: false }))
+            : [{ id: "SPECIAL-CYL", name: "Special Order", code: "SPL", printWidth: String(Math.ceil(minCyl)), repeatLength: String(baseCirc), isSpecial: true, isSpecialSleeve: false }];
+
+          const sideWaste  = parseFloat((2 * trim).toFixed(1));
+          const deadMargin = parseFloat((sleeveWidthVal - filmWidth).toFixed(1));
+          const totalWaste = parseFloat((sideWaste + deadMargin).toFixed(1));
+          const totalUPS   = acUps * repeatUPS;
+          const reqRMT     = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
+          const totalRMT   = Math.ceil(reqRMT * 1.01);
+          const totalWt    = parseFloat((totalRMT * (form.actualWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
+          const totalTime  = parseFloat((totalRMT / (speed * 60)).toFixed(2));
+          const planCost   = parseFloat((totalTime * costPerHour).toFixed(2));
+
+          return cylList.map(cylinder => {
+            const cylinderWidthVal = parseFloat(cylinder.printWidth);
+            const cylRepeatLength  = parseFloat(cylinder.repeatLength) || baseCirc;
+            const cylAreaSqMm      = cylinderWidthVal * cylRepeatLength;
+            const cylAreaSqInch    = parseFloat((cylAreaSqMm / 645.16).toFixed(2));
+            const rate             = form.cylinderRatePerSqInch ?? 0;
+            const cylCostByArea    = parseFloat((cylAreaSqInch * rate * form.noOfColors).toFixed(2));
+            const cylCost          = rate > 0 ? cylCostByArea : (form.noOfColors * form.cylinderCostPerColor);
+            const grandTotal       = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
+            const unitPrice        = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
+            return {
+              planId: `PLAN-${machine.id}-${sleeve.id}-UPS${acUps}-${cylinder.id}`,
+              machineId: machine.id, machineName: machine.name,
+              filmSize: filmWidth, acUps, printingWidth,
+              sleeveId: sleeve.id, sleeveName: sleeve.name, sleeveCode: sleeve.code, sleeveWidthVal,
+              cylinderId: cylinder.id, cylinderName: cylinder.name, cylinderCode: cylinder.code,
+              cylinderWidthVal, cylRepeatLength, cylAreaSqMm, cylAreaSqInch, cylCostByArea,
+              usedWidth: printingWidth, sideWaste, deadMargin, totalWaste,
+              cylCirc: baseCirc, repeatUPS, totalUPS,
+              reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice,
+              isSpecial: cylinder.isSpecial, isSpecialSleeve: false, isBest: false,
+            };
+          });
+        }).flat();
       });
+
+      // ── LOOP B: Cylinder in stock → find sleeve (or SPECIAL SLEEVE if no sleeve covers filmWidth) ──
+      const loopB = CYLINDER_TOOLS.flatMap(cylinder => {
+        const cylWidthVal = parseFloat(cylinder.printWidth);
+        const maxAcUps    = Math.floor(cylWidthVal / laneWidth);
+        if (maxAcUps === 0) return [];
+
+        return Array.from({ length: maxAcUps }, (_, i) => {
+          const acUps         = i + 1;
+          const printingWidth = acUps * laneWidth;
+          const filmWidth     = printingWidth + 2 * trim;
+          if (filmWidth > machineMaxFilm) return []; // film too wide for machine
+
+          // Check if any real sleeve already handles this filmWidth (Loop A covers it)
+          const realSleeveExists = SLEEVE_TOOLS.some(s => {
+            const sw  = parseFloat(s.printWidth);
+            if (sw < filmWidth || sw > machineMaxFilm) return false;
+            const req = filmWidth + 100;
+            const minCyl = req < sw ? req : sw + 100;
+            return cylWidthVal >= minCyl;
+          });
+          if (realSleeveExists) return []; // already in Loop A results
+
+          // No real sleeve → SPECIAL ORDER SLEEVE (ideal width = filmWidth, zero dead margin)
+          const specialSleeveW = filmWidth;
+          // Validate cylinder for this special sleeve (CASE 2 since filmWidth+100 >= filmWidth)
+          if (cylWidthVal < filmWidth + 100) return []; // cylinder too narrow
+
+          const sideWaste  = parseFloat((2 * trim).toFixed(1));
+          const deadMargin = 0; // special sleeve = exact filmWidth
+          const totalWaste = sideWaste;
+          const totalUPS   = acUps * repeatUPS;
+          const reqRMT     = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
+          const totalRMT   = Math.ceil(reqRMT * 1.01);
+          const totalWt    = parseFloat((totalRMT * (form.actualWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
+          const totalTime  = parseFloat((totalRMT / (speed * 60)).toFixed(2));
+          const planCost   = parseFloat((totalTime * costPerHour).toFixed(2));
+          const cylRepeatLength = parseFloat(cylinder.repeatLength) || baseCirc;
+          const cylAreaSqMm    = cylWidthVal * cylRepeatLength;
+          const cylAreaSqInch  = parseFloat((cylAreaSqMm / 645.16).toFixed(2));
+          const rate           = form.cylinderRatePerSqInch ?? 0;
+          const cylCostByArea  = parseFloat((cylAreaSqInch * rate * form.noOfColors).toFixed(2));
+          const cylCost        = rate > 0 ? cylCostByArea : (form.noOfColors * form.cylinderCostPerColor);
+          const grandTotal     = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
+          const unitPrice      = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
+
+          return [{
+            planId: `PLAN-${machine.id}-SPLSLV-UPS${acUps}-${cylinder.id}`,
+            machineId: machine.id, machineName: machine.name,
+            filmSize: filmWidth, acUps, printingWidth,
+            sleeveId: "SPECIAL-SLV", sleeveName: "Special Order", sleeveCode: "SPL-S",
+            sleeveWidthVal: specialSleeveW,
+            cylinderId: cylinder.id, cylinderName: cylinder.name, cylinderCode: cylinder.code,
+            cylinderWidthVal: cylWidthVal, cylRepeatLength, cylAreaSqMm, cylAreaSqInch, cylCostByArea,
+            usedWidth: printingWidth, sideWaste, deadMargin, totalWaste,
+            cylCirc: baseCirc, repeatUPS, totalUPS,
+            reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice,
+            isSpecial: true, isSpecialSleeve: true, isBest: false,
+          }];
+        }).flat();
+      });
+
+      return [...loopA, ...loopB];
     });
-  }, [form.machineId, form.jobHeight, form.jobWidth, form.trimmingSize, form.quantity, form.noOfColors, form.cylinderCostPerColor, totalPlyGSM, costs.processCost]);
+
+    if (rawPlans.length === 0) return rawPlans;
+
+    // ── Sort by waste (special plans mixed in — if waste is less, they come first) ──
+    const sorted = [...rawPlans].sort((a, b) =>
+      a.totalWaste  !== b.totalWaste  ? a.totalWaste  - b.totalWaste  :
+      a.deadMargin  !== b.deadMargin  ? a.deadMargin  - b.deadMargin  :
+      a.sideWaste   !== b.sideWaste   ? a.sideWaste   - b.sideWaste   :
+      b.acUps       !== a.acUps       ? b.acUps        - a.acUps       :
+      0
+    );
+    return sorted.map((p, idx) => ({ ...p, isBest: !(p.isSpecial) && idx === 0 }));
+  }, [form.machineId, form.jobHeight, form.actualWidth, form.trimmingSize, form.quantity, form.noOfColors, form.cylinderCostPerColor, form.cylinderRatePerSqInch, totalPlyGSM, costs.processCost]);
 
   const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId), [allPlans, selectedPlanId]);
 
@@ -310,9 +471,12 @@ export default function GravureEstimationPage() {
       const q = planSearch.toLowerCase();
       rows = rows.filter(p =>
         p.machineName.toLowerCase().includes(q) ||
-        String(p.cylCirc).includes(q) ||
+        p.sleeveName.toLowerCase().includes(q) ||
+        p.cylinderName.toLowerCase().includes(q) ||
+        String(p.acUps).includes(q) ||
         String(p.totalUPS).includes(q) ||
-        String(p.filmSize).includes(q)
+        String(p.sleeveWidthVal).includes(q) ||
+        String(p.cylinderWidthVal).includes(q)
       );
     }
     if (planSort.key) {
@@ -862,7 +1026,7 @@ export default function GravureEstimationPage() {
                 value={form.unit}
                 onChange={e => f("unit", e.target.value)}
                 options={[
-                  { value: "Meter", label: "Meter" },
+                  { value: "Pcs", label: "Pcs" },
                   { value: "Kg",    label: "Kg" },
                 ]}
               />
@@ -884,16 +1048,6 @@ export default function GravureEstimationPage() {
                           <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
                             {l.layerNo === 1 ? "1st" : l.layerNo === 2 ? "2nd" : l.layerNo === 3 ? "3rd" : `${l.layerNo}th`} Ply
                           </span>
-                          {l.plyType && (
-                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                              l.plyType === "Printing"   ? "bg-blue-50 text-blue-700 border-blue-200" :
-                              l.plyType === "Lamination" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                              l.plyType === "Coating"    ? "bg-green-50 text-green-700 border-green-200" :
-                              "bg-indigo-50 text-indigo-700 border-indigo-200"
-                            }`}>
-                              {l.plyType === "Film" ? "Ply 1" : l.plyType === "Printing" ? "Ply 2" : l.plyType === "Lamination" ? "Ply 3" : l.plyType === "Coating" ? "Ply 4" : l.plyType}
-                            </span>
-                          )}
                         </div>
 
                         <div className="p-3 space-y-3">
@@ -916,9 +1070,6 @@ export default function GravureEstimationPage() {
                           {/* ── Film / Substrate section (always shown once ply type chosen) ── */}
                           {l.plyType && (
                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
-                              <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
-                                {l.plyType === "Film" ? "Film / Substrate" : l.plyType === "Lamination" ? "Laminating Film" : "Print Film"}
-                              </p>
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
                                 <select
@@ -929,14 +1080,15 @@ export default function GravureEstimationPage() {
                                     const sg = FILM_SUBGROUPS.find(s => s.subGroup === subGroup);
                                     const density = sg ? sg.density : 0;
                                     const layers = [...form.secondaryLayers];
-                                    layers[index] = { ...l, itemSubGroup: subGroup, density, thickness: 0, gsm: 0 };
+                                    const masterRate = parseFloat(FILM_ITEMS.find(fi => fi.subGroup === subGroup)?.estimationRate || "0");
+                                    layers[index] = { ...l, itemSubGroup: subGroup, density, thickness: 0, gsm: 0, filmRate: masterRate };
                                     f("secondaryLayers", layers);
                                   }}>
                                   <option value="">Select Film Type</option>
                                   {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
                                 </select>
                               </div>
-                              <div className="grid grid-cols-3 gap-2">
+                              <div className="grid grid-cols-4 gap-2">
                                 <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                                 <div>
                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
@@ -954,6 +1106,20 @@ export default function GravureEstimationPage() {
                                   </select>
                                 </div>
                                 <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
+                                <div>
+                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Rate (₹/Kg)</label>
+                                  <input
+                                    type="number" step={0.01} min={0}
+                                    className="w-full text-xs border border-orange-200 bg-orange-50 rounded-xl px-2 py-2 font-mono outline-none focus:ring-2 focus:ring-orange-400"
+                                    value={l.filmRate !== undefined ? l.filmRate : (parseFloat(FILM_ITEMS.find(fi => fi.subGroup === l.itemSubGroup)?.estimationRate || "0") || "")}
+                                    onChange={e => {
+                                      const layers = [...form.secondaryLayers];
+                                      layers[index] = { ...l, filmRate: Number(e.target.value) };
+                                      f("secondaryLayers", layers);
+                                    }}
+                                    placeholder="₹/Kg"
+                                  />
+                                </div>
                               </div>
                             </div>
                           )}
@@ -987,7 +1153,7 @@ export default function GravureEstimationPage() {
                                         <X size={12} />
                                       </button>
                                     </div>
-                                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
                                       {/* Item Group */}
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
@@ -1056,6 +1222,17 @@ export default function GravureEstimationPage() {
                                           placeholder="100"
                                         />
                                       </div>
+                                      {/* Rate — editable, defaults from master */}
+                                      <div>
+                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Rate (₹/Kg)</label>
+                                        <input
+                                          type="number" step={0.01} min={0}
+                                          className="w-full text-xs border border-orange-200 bg-orange-50 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-orange-400 font-mono"
+                                          value={ci.rate || ""}
+                                          onChange={e => updatePlyConsumable(index, ciIdx, { rate: Number(e.target.value) })}
+                                          placeholder="₹/Kg"
+                                        />
+                                      </div>
                                     </div>
                                   </div>
                                 );
@@ -1105,18 +1282,28 @@ export default function GravureEstimationPage() {
                   onChange={e => f("machineCostPerHour", Number(e.target.value))} />
               </div>
 
-              {/* Cylinder cost field */}
+              {/* Cylinder cost fields */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
                 <Input label="Cylinder Cost / Color (₹)" type="number"
                   value={form.cylinderCostPerColor}
                   onChange={e => f("cylinderCostPerColor", Number(e.target.value))} />
+                <Input label="Cylinder Rate (₹/sq.inch)" type="number"
+                  value={form.cylinderRatePerSqInch ?? ""}
+                  onChange={e => f("cylinderRatePerSqInch", Number(e.target.value))}
+                  placeholder="e.g. 2.5" />
               </div>
 
               {/* Summary badges */}
               <div className="flex flex-wrap gap-2 mb-3">
-                <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-semibold">
-                  Cylinder Cost: ₹{(form.cylinderCostPerColor * form.noOfColors).toLocaleString()} ({form.noOfColors}C × ₹{form.cylinderCostPerColor})
-                </span>
+                {(form.cylinderRatePerSqInch ?? 0) > 0 ? (
+                  <span className="text-xs px-3 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-semibold">
+                    Cylinder costing: area × ₹{form.cylinderRatePerSqInch}/sq.in × {form.noOfColors} colors — shown per plan row
+                  </span>
+                ) : (
+                  <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-semibold">
+                    Cylinder Cost (per color): ₹{(form.cylinderCostPerColor * form.noOfColors).toLocaleString()} ({form.noOfColors}C × ₹{form.cylinderCostPerColor})
+                  </span>
+                )}
                 {form.setupTime > 0 && (
                   <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold">
                     Setup Cost: ₹{((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)} ({form.setupTime} min × ₹{form.machineCostPerHour}/hr)
@@ -1223,25 +1410,35 @@ export default function GravureEstimationPage() {
                       <tr>
                         <th className="px-3 py-2.5 w-8" />
                         {([
-                          { label: "Machine",        key: "" },
-                          { label: "Cyl. Circ.",     key: "cylCirc" },
-                          { label: "Film Size (mm)", key: "filmSize" },
-                          { label: "Ac UPS",         key: "acUps" },
-                          { label: "Repeat UPS",     key: "repeatUPS" },
-                          { label: "Total UPS",      key: "totalUPS" },
-                          { label: "Req. RMT",       key: "reqRMT" },
-                          { label: "Total RMT",      key: "totalRMT" },
-                          { label: "Total Wt (Kg)",  key: "totalWt" },
-                          { label: "Wastage (mm)",   key: "wastage" },
-                          { label: "Total Time",     key: "totalTime" },
-                          { label: "Plan Cost",      key: "planCost" },
-                          { label: "Grand Total",    key: "grandTotal" },
-                          { label: "Unit Price",     key: "unitPrice" },
-                        ] as { label: string; key: string }[]).map(col => (
+                          { label: "Machine",           key: "" },
+                          { label: "AC UPS",            key: "acUps" },
+                          { label: "Printing W (mm)",   key: "printingWidth" },
+                          { label: "Sleeve",            key: "" },
+                          { label: "Sleeve W (mm)",     key: "sleeveWidthVal",   waste: true },
+                          { label: "Side Waste (mm)",   key: "sideWaste",        waste: true },
+                          { label: "Film Size (mm)",    key: "filmSize" },
+                          { label: "Dead Margin (mm)",  key: "deadMargin",       waste: true },
+                          { label: "Total Waste (mm)",  key: "totalWaste",       waste: true },
+                          { label: "Cylinder",          key: "" },
+                          { label: "Cylinder W (mm)",   key: "cylinderWidthVal" },
+                          { label: "Cyl Circ (mm)",     key: "cylRepeatLength" },
+                          { label: "Cyl Area (sq.in)",  key: "cylAreaSqInch" },
+                          { label: "Rate (₹/sq.in)",    key: "" },
+                          { label: "Cyl Cost (₹)",      key: "cylCostByArea" },
+                          { label: "Repeat UPS",        key: "repeatUPS" },
+                          { label: "Total UPS",         key: "totalUPS" },
+                          { label: "Req. RMT",          key: "reqRMT" },
+                          { label: "Total RMT",         key: "totalRMT" },
+                          { label: "Total Wt (Kg)",     key: "totalWt" },
+                          { label: "Total Time",        key: "totalTime" },
+                          { label: "Plan Cost",         key: "planCost" },
+                          { label: "Grand Total",       key: "grandTotal" },
+                          { label: "Unit Price",        key: "unitPrice" },
+                        ] as { label: string; key: string; waste?: boolean }[]).map(col => (
                           <th
                             key={col.label}
                             onClick={() => col.key && togglePlanSort(col.key)}
-                            className={`px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider select-none ${col.key ? "cursor-pointer hover:text-gray-800" : ""}`}
+                            className={`px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider select-none ${col.waste && (form.sleeveWidth ?? 0) > 0 ? "text-orange-600 bg-orange-50" : "text-gray-500"} ${col.key ? "cursor-pointer hover:text-gray-800" : ""}`}
                           >
                             <span className="inline-flex items-center gap-1">
                               {col.label}
@@ -1260,22 +1457,49 @@ export default function GravureEstimationPage() {
                         const isSel = selectedPlanId === plan.planId;
                         return (
                           <tr key={plan.planId} onClick={() => setSelectedPlanId(plan.planId)}
-                            className={`cursor-pointer transition-colors ${isSel ? "bg-purple-50 hover:bg-purple-100" : "hover:bg-gray-50"}`}>
+                            className={`cursor-pointer transition-colors ${(plan as any).isSpecialSleeve ? "bg-rose-50 hover:bg-rose-100" : (plan as any).isSpecial ? "bg-amber-50 hover:bg-amber-100" : plan.isBest ? "ring-2 ring-inset ring-green-400 bg-green-50" : isSel ? "bg-purple-50 hover:bg-purple-100" : "hover:bg-gray-50"}`}>
                             <td className="px-3 py-2.5 w-8">
                               <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSel ? "border-purple-600 bg-purple-600" : "border-gray-300"}`}>
                                 {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 font-medium text-gray-800">{plan.machineName}</td>
-                            <td className="px-3 py-2.5 text-center font-mono text-gray-600">{plan.cylCirc}</td>
-                            <td className="px-3 py-2.5 text-center text-gray-600">{plan.filmSize}</td>
-                            <td className="px-3 py-2.5 text-center text-gray-600">{plan.acUps}</td>
+                            <td className="px-3 py-2.5 font-medium text-gray-800 whitespace-nowrap">
+                              {plan.machineName}
+                              {plan.isBest && <span className="ml-1.5 px-1.5 py-0.5 bg-green-500 text-white text-[9px] font-bold rounded-full">BEST</span>}
+                              {(plan as any).isSpecial && !(plan as any).isSpecialSleeve && <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">SPECIAL CYL</span>}
+                              {(plan as any).isSpecialSleeve && <span className="ml-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full">SPECIAL SLV</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-bold text-indigo-700">{plan.acUps}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-600 font-mono">{plan.printingWidth}</td>
+                            {/* Sleeve */}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <div className="flex flex-col">
+                                <span className={`text-[10px] font-semibold ${(plan as any).isSpecialSleeve ? "text-rose-600" : "text-sky-700"}`}>{plan.sleeveCode}</span>
+                                <span className={`text-[9px] truncate max-w-[140px] ${(plan as any).isSpecialSleeve ? "text-rose-500 font-semibold" : "text-gray-500"}`} title={plan.sleeveName}>{plan.sleeveName}</span>
+                              </div>
+                            </td>
+                            <td className={`px-3 py-2.5 text-center font-mono font-semibold ${(plan as any).isSpecialSleeve ? "text-rose-600" : "text-sky-700"}`}>{plan.sleeveWidthVal}</td>
+                            <td className={`px-3 py-2.5 text-center font-mono font-semibold ${plan.sideWaste > 30 ? "text-orange-600" : "text-green-600"}`}>{plan.sideWaste}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-500 font-mono">{plan.filmSize}</td>
+                            <td className={`px-3 py-2.5 text-center font-mono font-semibold ${plan.deadMargin > 100 ? "text-orange-600" : "text-amber-600"}`}>{plan.deadMargin}</td>
+                            <td className={`px-3 py-2.5 text-center font-bold ${plan.isBest ? "text-green-700" : plan.totalWaste > 300 ? "text-red-600" : "text-amber-600"}`}>{plan.totalWaste}</td>
+                            {/* Cylinder */}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <div className="flex flex-col">
+                                <span className={`text-[10px] font-semibold ${(plan as any).isSpecial ? "text-amber-600" : "text-violet-700"}`}>{plan.cylinderCode}</span>
+                                <span className={`text-[9px] truncate max-w-[140px] ${(plan as any).isSpecial ? "text-amber-500 font-semibold" : "text-gray-500"}`} title={plan.cylinderName}>{plan.cylinderName}</span>
+                              </div>
+                            </td>
+                            <td className={`px-3 py-2.5 text-center font-mono font-semibold ${(plan as any).isSpecial ? "text-amber-600" : "text-violet-700"}`}>{plan.cylinderWidthVal}</td>
+                            <td className="px-3 py-2.5 text-center font-mono text-gray-500">{plan.cylRepeatLength}</td>
+                            <td className="px-3 py-2.5 text-center font-mono text-indigo-600 font-semibold">{plan.cylAreaSqInch}</td>
+                            <td className="px-3 py-2.5 text-center text-gray-400 text-[10px]">₹{form.cylinderRatePerSqInch ?? 0}</td>
+                            <td className={`px-3 py-2.5 text-center font-bold ${plan.isBest ? "text-green-700" : "text-violet-800"}`}>₹{plan.cylCostByArea.toLocaleString()}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.repeatUPS}</td>
                             <td className="px-3 py-2.5 text-center font-bold text-gray-800">{plan.totalUPS}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.reqRMT}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.totalRMT}</td>
                             <td className="px-3 py-2.5 text-center font-semibold text-blue-600">{plan.totalWt}</td>
-                            <td className={`px-3 py-2.5 text-center font-semibold ${plan.wastage > 0 ? "text-amber-600" : "text-green-600"}`}>{plan.wastage}</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">{plan.totalTime} hr</td>
                             <td className="px-3 py-2.5 text-center text-gray-600">₹{plan.planCost.toLocaleString()}</td>
                             <td className="px-3 py-2.5 text-center font-bold text-purple-700">₹{plan.grandTotal.toLocaleString()}</td>
@@ -1293,22 +1517,32 @@ export default function GravureEstimationPage() {
                     const isSel = selectedPlanId === plan.planId;
                     return (
                       <div key={plan.planId} onClick={() => setSelectedPlanId(plan.planId)}
-                        className={`p-3 cursor-pointer transition-colors ${isSel ? "bg-purple-50" : "hover:bg-gray-50"}`}>
+                        className={`p-3 cursor-pointer transition-colors ${(plan as any).isSpecial ? "bg-amber-50 hover:bg-amber-100" : isSel ? "bg-purple-50" : "hover:bg-gray-50"}`}>
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${isSel ? "border-purple-600 bg-purple-600" : "border-gray-300"}`}>
                               {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                             </div>
+                            <div className="flex items-center gap-1.5">
                             <span className="text-xs font-semibold text-gray-800">{plan.machineName}</span>
+                            {plan.isBest && <span className="px-1.5 py-0.5 bg-green-500 text-white text-[9px] font-bold rounded-full">BEST</span>}
+                            {(plan as any).isSpecial && <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">SPECIAL</span>}
                           </div>
-                          <span className={`text-xs font-bold ${isSel ? "text-purple-700" : "text-gray-500"}`}>₹{plan.unitPrice}/unit</span>
+                          </div>
+                          <span className={`text-xs font-bold ${isSel ? "text-purple-700" : "text-gray-500"}`}>₹{plan.unitPrice}/m</span>
+                        </div>
+                        <div className="mb-1.5 text-[10px] flex flex-wrap gap-1">
+                          <span className="px-1.5 py-0.5 bg-sky-50 text-sky-700 rounded border border-sky-200">{plan.sleeveCode} ({plan.sleeveWidthVal}mm)</span>
+                          <span className={`px-1.5 py-0.5 rounded border ${(plan as any).isSpecial ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-violet-50 text-violet-700 border-violet-200"}`}>{plan.cylinderCode} ({plan.cylinderWidthVal}×{plan.cylRepeatLength}mm)</span>
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200">{plan.cylAreaSqInch} in² · ₹{plan.cylCostByArea.toLocaleString()}</span>
                         </div>
                         <div className="grid grid-cols-3 gap-1 text-[10px] text-gray-500">
-                          <span>Circ: <b className="text-gray-700">{plan.cylCirc}</b></span>
-                          <span>Film: <b className="text-gray-700">{plan.filmSize}mm</b></span>
-                          <span>UPS: <b className="text-gray-700">{plan.totalUPS}</b></span>
+                          <span>AC UPS: <b className="text-indigo-700">{plan.acUps}</b></span>
+                          <span>Total UPS: <b className="text-gray-700">{plan.totalUPS}</b></span>
                           <span>RMT: <b className="text-gray-700">{plan.totalRMT}</b></span>
-                          <span>Wastage: <b className="text-amber-600">{plan.wastage}mm</b></span>
+                          <span>Side Waste: <b className="text-orange-600">{plan.sideWaste}mm</b></span>
+                          <span>Dead Margin: <b className="text-orange-600">{plan.deadMargin}mm</b></span>
+                          <span>Total Waste: <b className={plan.isBest ? "text-green-700" : "text-red-600"}>{plan.totalWaste}mm</b></span>
                           <span>Wt: <b className="text-blue-600">{plan.totalWt} Kg</b></span>
                           <span>Time: <b className="text-gray-700">{plan.totalTime} hr</b></span>
                           <span>Total: <b className="text-purple-700">₹{plan.grandTotal.toLocaleString()}</b></span>
@@ -1378,7 +1612,7 @@ export default function GravureEstimationPage() {
                             className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-purple-400"
                             value={form.unit}
                             onChange={e => f("unit", e.target.value)}>
-                            <option value="Meter">Meter</option>
+                            <option value="Pcs">Pcs</option>
                             <option value="Kg">Kg</option>
                           </select>
                         </td>
@@ -1571,74 +1805,233 @@ export default function GravureEstimationPage() {
             </div>
           </div>
 
-          {/* ── Section 5: Live Cost Summary ──────────────────── */}
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <SectionHeader label={`Cost Summary — ${activeQtyIdx === 0 ? "Base Qty" : `Q${activeQtyIdx + 1}`} (${activeQty.toLocaleString()} ${form.unit})`} />
-              {activeQtyIdx > 0 && (
-                <span className="text-[10px] bg-purple-200 text-purple-800 font-bold px-2 py-0.5 rounded-full">
-                  Simulated View
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              {[
-                { label: "Material Cost",   val: `₹${activeCosts.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200 text-blue-700" },
-                { label: "Process Cost",    val: `₹${activeCosts.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200 text-purple-700" },
-                { label: `Cylinder (${form.noOfColors}C × ₹${form.cylinderCostPerColor})`,
-                                            val: `₹${activeCosts.cylinderCost.toLocaleString()}`,  cls: "bg-indigo-50 border-indigo-200 text-indigo-700" },
-                { label: `Setup (${form.setupTime}min × ₹${form.machineCostPerHour}/hr)`,
-                                            val: `₹${activeCosts.setupCost.toLocaleString()}`,     cls: "bg-amber-50 border-amber-200 text-amber-700" },
-              ].map(s => (
-                <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>
-                  <p className="text-xs font-medium opacity-80">{s.label}</p>
-                  <p className="text-base font-bold mt-0.5">{s.val}</p>
-                </div>
-              ))}
-            </div>
+          {/* ── Section 5: Cost Summary — Comparison Table ──── */}
+          <div>
+            <SectionHeader label="Cost Summary — All Quantities" />
+            <div className="mt-2 overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+              <table className="w-auto text-xs border-separate border-spacing-0">
+                {/* HEADER */}
+                <thead>
+                  <tr>
+                    <th className="sticky left-0 z-20 bg-gray-100 border-b-2 border-r-2 border-gray-300 px-3 py-2.5 text-left text-[10px] font-bold text-gray-600 uppercase tracking-wide w-[150px] min-w-[150px]">
+                      Cost Item
+                    </th>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <th key={qi} className={`border-b-2 border-r border-gray-200 px-3 py-2 text-center w-[180px] min-w-[180px] ${qi === 0 ? "bg-purple-100" : "bg-blue-100"}`}>
+                        <div className={`text-[10px] font-black uppercase tracking-wide ${qi === 0 ? "text-purple-700" : "text-blue-700"}`}>
+                          {qi === 0 ? "Q1 — Base" : `Q${qi + 1}`}
+                          {qi === 0 && <span className="ml-1.5 text-[9px] bg-purple-300 text-purple-900 rounded-full px-1.5 py-0.5 normal-case">BASE</span>}
+                        </div>
+                        <div className="text-xs font-semibold text-gray-700 mt-0.5 normal-case">{qty.toLocaleString()} {form.unit}</div>
+                      </th>
+                    ) : null)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* ── MATERIAL ROWS ── */}
+                  {(allBreakdowns[0]?.matLines ?? []).map((m, mi) => (
+                    <tr key={`mat-${mi}`} className="hover:bg-blue-50/40">
+                      <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5">
+                        <p className="font-semibold text-gray-800 truncate max-w-[140px]" title={m.name}>{m.name}</p>
+                        {m.plyType && <p className="text-[9px] text-gray-400">{m.plyType}</p>}
+                      </td>
+                      {allQtys.map((qty, qi) => qty > 0 ? (
+                        <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-blue-700 font-semibold">
+                          ₹{(allBreakdowns[qi]?.matLines[mi]?.amount ?? 0).toLocaleString()}
+                        </td>
+                      ) : null)}
+                    </tr>
+                  ))}
 
-            {/* Overhead + Profit + Total row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
-                <p className="text-xs font-medium text-yellow-700">Overhead ({form.overheadPct}%)</p>
-                <p className="text-base font-bold text-yellow-700">₹{activeCosts.overheadAmt.toLocaleString()}</p>
-              </div>
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                <p className="text-xs font-medium text-green-700">Profit ({form.profitPct}%)</p>
-                <p className="text-base font-bold text-green-700">₹{activeCosts.profitAmt.toLocaleString()}</p>
-              </div>
-              <div className="bg-white border-2 border-purple-400 rounded-xl p-3 sm:col-span-2">
-                <p className="text-xs font-bold text-purple-700 uppercase tracking-wide flex items-center gap-2">
-                  Total Amount
-                  {form.minimumOrderValue > 0 && activeCosts.totalAmount <= form.minimumOrderValue && (
-                    <span className="text-[10px] bg-amber-100 text-amber-700 border border-amber-300 px-1.5 py-0.5 rounded font-semibold">MOV Applied</span>
-                  )}
-                </p>
-                <p className="text-2xl font-black text-purple-800">₹{activeCosts.totalAmount.toLocaleString()}</p>
-                {form.minimumOrderValue > 0 && (
-                  <p className="text-[10px] text-gray-400 mt-0.5">Min. Order Value: ₹{form.minimumOrderValue.toLocaleString()}</p>
-                )}
-              </div>
-            </div>
+                  {/* Total Material */}
+                  <tr className="bg-blue-50">
+                    <td className="sticky left-0 z-10 bg-blue-50 border-b-2 border-r-2 border-blue-200 px-3 py-2 text-[10px] font-black text-blue-700 uppercase tracking-wide">
+                      Total Material
+                    </td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b-2 border-r border-blue-100 px-3 py-2 text-right font-black text-blue-700">
+                        ₹{(allCosts[qi]?.materialCost ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
 
-            {/* Rate / Break-even row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                <p className="text-xs text-gray-500">Rate / {form.unit}</p>
-                <p className="text-sm font-bold text-gray-800">₹{activeCosts.perMeterRate}</p>
-              </div>
-              <div className="bg-teal-50 border border-teal-200 rounded-xl p-3">
-                <p className="text-xs text-teal-600">Contribution / {form.unit}</p>
-                <p className="text-sm font-bold text-teal-800">
-                  {activeCosts.contribution > 0 ? `₹${activeCosts.contribution}` : "—"}
-                </p>
-              </div>
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-                <p className="text-xs text-orange-600">Break-even Qty</p>
-                <p className="text-sm font-bold text-orange-800">
-                  {activeCosts.breakEvenQty > 0 ? `${activeCosts.breakEvenQty.toLocaleString()} ${form.unit}` : "—"}
-                </p>
-              </div>
+                  {/* Process Cost */}
+                  <tr className="hover:bg-purple-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Process Cost</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-purple-700 font-semibold">
+                        ₹{(allCosts[qi]?.processCost ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Cylinder Cost */}
+                  <tr className="hover:bg-indigo-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Cylinder ({form.noOfColors}C)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-indigo-700 font-semibold">
+                        ₹{(allCosts[qi]?.cylinderCost ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Setup Cost */}
+                  <tr className="hover:bg-amber-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Setup Cost</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-amber-700 font-semibold">
+                        ₹{(allCosts[qi]?.setupCost ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Labour Cost — editable per qty */}
+                  <tr className="bg-lime-50/50">
+                    <td className="sticky left-0 z-10 bg-lime-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-lime-800">Labour Cost (₹)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <input
+                          type="number" min={0} step={1} placeholder="0"
+                          className="w-full text-right text-xs font-semibold text-lime-800 bg-white border border-lime-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-lime-400"
+                          value={(qtyOverrides[qi]?.labourCost ?? form.labourCost) || ""}
+                          onChange={e => setQtyOverride(qi, "labourCost", Number(e.target.value))}
+                        />
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Transportation Cost — editable per qty */}
+                  <tr className="bg-cyan-50/50">
+                    <td className="sticky left-0 z-10 bg-cyan-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-cyan-800">Transport Cost (₹)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <input
+                          type="number" min={0} step={1} placeholder="0"
+                          className="w-full text-right text-xs font-semibold text-cyan-800 bg-white border border-cyan-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                          value={(qtyOverrides[qi]?.transportationCost ?? form.transportationCost) || ""}
+                          onChange={e => setQtyOverride(qi, "transportationCost", Number(e.target.value))}
+                        />
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Interest Cost — editable per qty */}
+                  <tr className="bg-rose-50/50">
+                    <td className="sticky left-0 z-10 bg-rose-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-rose-800">Interest Cost (₹)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <input
+                          type="number" min={0} step={1} placeholder="0"
+                          className="w-full text-right text-xs font-semibold text-rose-800 bg-white border border-rose-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                          value={(qtyOverrides[qi]?.interestCost ?? form.interestCost) || ""}
+                          onChange={e => setQtyOverride(qi, "interestCost", Number(e.target.value))}
+                        />
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Overhead % — editable per qty */}
+                  <tr className="bg-yellow-50/50">
+                    <td className="sticky left-0 z-10 bg-yellow-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-yellow-800">Overhead %</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number" min={0} step={0.5}
+                            className="w-full text-right text-xs font-semibold text-yellow-800 bg-white border border-yellow-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-yellow-400"
+                            value={qtyOverrides[qi]?.overheadPct ?? form.overheadPct}
+                            onChange={e => setQtyOverride(qi, "overheadPct", Number(e.target.value))}
+                          />
+                          <span className="text-[10px] text-yellow-700 font-bold flex-shrink-0">%</span>
+                        </div>
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Overhead Amount */}
+                  <tr className="bg-yellow-50">
+                    <td className="sticky left-0 z-10 bg-yellow-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-semibold text-yellow-800 pl-5 text-[11px]">↳ Overhead Amt</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-yellow-100 px-3 py-1.5 text-right text-yellow-700 font-bold">
+                        ₹{(allCosts[qi]?.overheadAmt ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Profit % — editable per qty */}
+                  <tr className="bg-green-50/50">
+                    <td className="sticky left-0 z-10 bg-green-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-green-800">Profit %</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number" min={0} step={0.5}
+                            className="w-full text-right text-xs font-semibold text-green-800 bg-white border border-green-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-green-400"
+                            value={qtyOverrides[qi]?.profitPct ?? form.profitPct}
+                            onChange={e => setQtyOverride(qi, "profitPct", Number(e.target.value))}
+                          />
+                          <span className="text-[10px] text-green-700 font-bold flex-shrink-0">%</span>
+                        </div>
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Profit Amount */}
+                  <tr className="bg-green-50">
+                    <td className="sticky left-0 z-10 bg-green-50 border-b-2 border-r-2 border-gray-200 px-3 py-1.5 font-semibold text-green-800 pl-5 text-[11px]">↳ Profit Amt</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b-2 border-r border-green-100 px-3 py-1.5 text-right text-green-700 font-bold">
+                        ₹{(allCosts[qi]?.profitAmt ?? 0).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* TOTAL AMOUNT */}
+                  <tr className="bg-purple-100">
+                    <td className="sticky left-0 z-10 bg-purple-100 border-b-2 border-r-2 border-purple-300 px-3 py-2.5 font-black text-purple-800 uppercase text-[11px] tracking-wide">
+                      Total Amount
+                    </td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className={`border-b-2 border-r border-purple-200 px-3 py-2.5 text-right font-black text-lg ${qi === 0 ? "text-purple-800" : "text-blue-800"}`}>
+                        ₹{(allCosts[qi]?.totalAmount ?? 0).toLocaleString()}
+                        {form.minimumOrderValue > 0 && (allCosts[qi]?.totalAmount ?? 0) <= form.minimumOrderValue && (
+                          <span className="block text-[9px] text-amber-700 font-bold">MOV</span>
+                        )}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Rate / Unit */}
+                  <tr className="hover:bg-gray-50">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Rate / {form.unit}</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-gray-800 font-bold">
+                        ₹{allCosts[qi]?.perMeterRate ?? "—"}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Contribution */}
+                  <tr className="hover:bg-teal-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-teal-700">Contribution</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-teal-700 font-semibold">
+                        {(allCosts[qi]?.contribution ?? 0) > 0 ? `₹${allCosts[qi]?.contribution}` : "—"}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Break-even */}
+                  <tr className="hover:bg-orange-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-orange-700">Break-even Qty</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-orange-700 font-semibold">
+                        {(allCosts[qi]?.breakEvenQty ?? 0) > 0 ? `${allCosts[qi]?.breakEvenQty?.toLocaleString()} ${form.unit}` : "—"}
+                      </td>
+                    ) : null)}
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
 

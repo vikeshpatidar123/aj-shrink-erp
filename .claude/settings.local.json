@@ -8,7 +8,23 @@
       "Bash(done)",
       "Bash(grep -n 'sourceOrderType === \"\"Order\"\"\\\\|key: \"\"sourceType\"\"' app/gravure/workorder/page.tsx)",
       "Bash(npm run:*)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(vercel --prod)",
+      "Bash(find context:*)",
+      "Bash(head -20 grep -n \"export\\\\|interface\\\\|type\\\\|function\" 'd:/AJ shrink new code/New updated code/components/ui/Input.tsx')",
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $f ===\")",
+      "Read(//d/AJ shrink new code/New updated code/**)",
+      "Bash(vercel whoami:*)",
+      "Read(//c/Users/hp/.claude/projects/d--AJ-shrink-new-code-New-updated-code/**)",
+      "Bash(powershell -Command \"Select-String -Path ''C:\\\\Users\\\\hp\\\\.claude\\\\projects\\\\d--AJ-shrink-new-code-New-updated-code\\\\ee92dd8b-9fc1-4a28-b921-584411e830f0.jsonl'' -Pattern ''hide|hata|chupa|hatao|mat dikh'' -SimpleMatch | Select-Object -First 20 | ForEach-Object { $_Line.Substring\\(0, [Math]::Min\\(500, $_Line.Length\\)\\) }\")",
+      "Bash(powershell -Command \"Get-Content ''C:/Users/hp/.claude/projects/d--AJ-shrink-new-code-New-updated-code/ee92dd8b-9fc1-4a28-b921-584411e830f0.jsonl'' | Select-String ''Overhead|Profit|overhead|profit|hide|hidden'' | Select-Object -First 20\")",
+      "Bash(find 'd:/AJ shrink new code/New updated code' -name EnquiryContext* -o -name enquiryContext*)",
+      "Bash(vercel --prod --yes)",
+      "Bash(ls \"d:\\\\AJ shrink new code\\\\New updated code\\\\app\\\\orders\"\" 2>/dev/null && ls \"d:AJ shrink new codeNew updated codeappgravureorders\"\")",
+      "Bash(npx next:*)",
+      "Bash(npx vercel:*)"
     ]
   }
 }

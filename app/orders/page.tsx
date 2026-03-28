@@ -306,7 +306,7 @@ export default function OrdersPage() {
 
           <Input label="Quantity" type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))} />
           <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)}
-            options={[{ value: "Kg", label: "Kg" }, { value: "Meter", label: "Meter" }, { value: "Roll", label: "Roll" }]} />
+            options={[{ value: "Kg", label: "Kg" }, { value: "Pcs", label: "Pcs" }, { value: "Roll", label: "Roll" }]} />
           <Input label="Delivery Date" type="date" value={form.deliveryDate} onChange={e => f("deliveryDate", e.target.value)} />
           <Select label="Status" value={form.status} onChange={e => f("status", e.target.value)}
             options={[

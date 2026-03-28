@@ -30,7 +30,7 @@ export default function Modal({ open, onClose, title, children, size = "md" }: M
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-3">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" />
 
       {/* Modal panel */}
       <div

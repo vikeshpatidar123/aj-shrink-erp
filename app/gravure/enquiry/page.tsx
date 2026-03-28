@@ -169,7 +169,7 @@ export default function GravureEnquiryPage() {
 
           <Input label="Quantity *" type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))} />
           <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)}
-            options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }]} />
+            options={[{ value: "Pcs", label: "Pcs" }, { value: "Kg", label: "Kg" }]} />
 
           <Select label="Cylinder Status" value={form.cylinderStatus} onChange={e => f("cylinderStatus", e.target.value)}
             options={[

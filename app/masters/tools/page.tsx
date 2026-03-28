@@ -8,10 +8,11 @@ import { inputCls } from "@/lib/styles";
 
 // ─── Tool types & their colors ────────────────────────────────
 
-const TOOL_TYPES: ToolType[] = ["Cylinder", "Die", "Anilox Roll", "Doctor Blade", "Impression Roller", "Slitter Knife"];
+const TOOL_TYPES: ToolType[] = ["Cylinder", "Sleeve", "Die", "Anilox Roll", "Doctor Blade", "Impression Roller", "Slitter Knife"];
 
 const toolColor: Record<ToolType, string> = {
   "Cylinder":         "bg-blue-100 text-blue-700",
+  "Sleeve":           "bg-sky-100 text-sky-700",
   "Die":              "bg-rose-100 text-rose-700",
   "Anilox Roll":      "bg-amber-100 text-amber-700",
   "Doctor Blade":     "bg-emerald-100 text-emerald-700",
@@ -21,6 +22,7 @@ const toolColor: Record<ToolType, string> = {
 
 const toolDesc: Record<ToolType, string> = {
   "Cylinder":          "Gravure printing cylinder with engraved cells",
+  "Sleeve":            "Printing sleeve — mounts on cylinder for sleeve-based gravure",
   "Die":               "Cutting die for pouches, sleeves and labels",
   "Anilox Roll":       "Metering roll for coating / varnish decks",
   "Doctor Blade":      "Blade that wipes excess ink off the cylinder",
@@ -291,9 +293,39 @@ function SlitterKnifeSpecs({ form, f }: { form: any; f: any }) {
   );
 }
 
+function SleeveSpecs({ form, f }: { form: any; f: any }) {
+  return (
+    <div className="space-y-8">
+      <div>
+        <SectionTitle title="Sleeve Dimensions" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <Field label="Sleeve Width (Internal)">
+            <SuffixInput value={form.printWidth} onChange={(e: any) => f("printWidth", e.target.value)} suffix="mm" placeholder="e.g. 640" type="number" />
+          </Field>
+          <Field label="Sleeve Length">
+            <SuffixInput value={form.repeatLength} onChange={(e: any) => f("repeatLength", e.target.value)} suffix="mm" placeholder="e.g. 500" type="number" />
+          </Field>
+        </div>
+      </div>
+      <div>
+        <SectionTitle title="Material & Finish" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <Field label="Sleeve Material">
+            <Sel value={form.cylinderMaterial} onChange={(v: string) => f("cylinderMaterial", v)} options={["PVC", "PETG", "OPS", "PE", "Other"]} />
+          </Field>
+          <Field label="Surface Finish">
+            <Sel value={form.surfaceFinish} onChange={(v: string) => f("surfaceFinish", v)} options={["Glossy", "Semi-Gloss", "Matte"]} />
+          </Field>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ToolSpecs({ form, f }: { form: any; f: any }) {
   switch (form.toolType) {
     case "Cylinder":          return <CylinderSpecs form={form} f={f} />;
+    case "Sleeve":            return <SleeveSpecs form={form} f={f} />;
     case "Die":               return <DieSpecs form={form} f={f} />;
     case "Anilox Roll":       return <AniloxSpecs form={form} f={f} />;
     case "Doctor Blade":      return <DoctorBladeSpecs form={form} f={f} />;

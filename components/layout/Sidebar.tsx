@@ -7,7 +7,7 @@ import {
   FileText, PlayCircle, Truck, ChevronDown, ChevronRight, X,
   Printer, BookOpen, Barcode, Tag, Workflow, Wrench, Boxes, Building2,
   Warehouse, ShoppingBag, ReceiptText, PackageCheck, ArrowLeftRight, ClipboardCheck, PackageMinus, ArrowRightLeft,
-  Package, BookMarked,
+  Package, BookMarked, Layers, RotateCcw, Shuffle, ScanSearch, PackagePlus, ClipboardSignature,
 } from "lucide-react";
 import { useState } from "react";
 import { useUnit } from "@/context/UnitContext";
@@ -29,14 +29,15 @@ type NavItem   = FlatItem | GroupItem;
 
 const navItems: NavItem[] = [
   { label: "Dashboard",     href: "/dashboard",          icon: LayoutDashboard },
-  { label: "Enquiry",       href: "/enquiry",            icon: ClipboardList,  badge: null },
+  { label: "Enquiry",        href: "/extrusion/enquiry",  icon: ClipboardList,  badge: "EXT" },
+  { label: "Enquiry",        href: "/enquiry",            icon: ClipboardList,  badge: "GRV" },
   { label: "Estimation",    href: "/cost-estimation",    icon: Calculator,     badge: "EXT" },
   { label: "Estimation",       href: "/gravure/estimation",    icon: Calculator,   badge: "GRV" },
-  { label: "Product Catalog",  href: "/gravure/product-catalog", icon: BookMarked, badge: "GRV" },
-  { label: "Order Booking",    href: "/orders",                icon: ShoppingCart, badge: "EXT" },
-  { label: "Order Booking",    href: "/gravure/orders",        icon: ShoppingCart, badge: "GRV" },
-  { label: "Job Card",      href: "/jobcard",            icon: FileText,       badge: "EXT" },
-  { label: "Work Order",    href: "/gravure/workorder",  icon: Printer,        badge: "GRV" },
+  { label: "Product Catalog",  href: "/extrusion/product-catalog", icon: BookMarked, badge: "EXT" },
+  { label: "Product Catalog",  href: "/gravure/product-catalog",   icon: BookMarked, badge: "GRV" },
+  { label: "Order Booking",    href: "/gravure/orders",        icon: ShoppingCart,   badge: "GRV" },
+  { label: "Work Order",    href: "/extrusion/workorder",  icon: Printer,       badge: "EXT" },
+  { label: "Work Order",    href: "/gravure/workorder",    icon: Printer,       badge: "GRV" },
   { label: "Production",    href: "/production",         icon: PlayCircle,     badge: "EXT" },
   { label: "Production",    href: "/gravure/production", icon: PlayCircle,     badge: "GRV" },
   { label: "Dispatch",      href: "/dispatch",           icon: Truck,          badge: null },
@@ -67,6 +68,18 @@ const navItems: NavItem[] = [
       { label: "Return to Stock",       href: "/inventory/return-to-stock",       icon: ArrowLeftRight },
       { label: "Stock Transfer",        href: "/inventory/stock-transfer",        icon: Truck },
       { label: "Physical Verification", href: "/inventory/physical-verification", icon: ClipboardCheck },
+    ],
+  },
+  {
+    label: "Tool Inventory", icon: Wrench, children: [
+      { label: "Stock Summary",         href: "/tool-inventory/stock-summary",          icon: Layers },
+      { label: "Purchase Requisition",  href: "/tool-inventory/purchase-requisition",   icon: ClipboardSignature },
+      { label: "Purchase Order",        href: "/tool-inventory/purchase-order",         icon: ReceiptText },
+      { label: "Tool Receipt",          href: "/tool-inventory/tool-receipt",           icon: PackagePlus },
+      { label: "Tool Issue",            href: "/tool-inventory/tool-issue",             icon: PackageMinus },
+      { label: "Tool Return",           href: "/tool-inventory/tool-return",            icon: RotateCcw },
+      { label: "Tool Transfer",         href: "/tool-inventory/tool-transfer",          icon: Shuffle },
+      { label: "Physical Verification", href: "/tool-inventory/physical-verification",  icon: ScanSearch },
     ],
   },
 ];

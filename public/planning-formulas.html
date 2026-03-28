@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gravure Production Planning – Formula Documentation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; color: #1a1a2e; background: #fff; }
+
+    @media print {
+      .no-print { display: none; }
+      body { font-size: 11px; }
+      .page-break { page-break-before: always; }
+      section { page-break-inside: avoid; }
+    }
+
+    .no-print {
+      position: fixed; top: 20px; right: 20px; z-index: 99;
+    }
+    .no-print button {
+      background: #1a56db; color: #fff; border: none;
+      padding: 10px 22px; border-radius: 8px; font-size: 14px;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+    .no-print button:hover { background: #1e429f; }
+
+    .cover {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #fff; padding: 60px 50px; min-height: 220px;
+    }
+    .cover h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; margin-bottom: 8px; }
+    .cover .sub { font-size: 15px; color: #a5b4fc; margin-bottom: 20px; }
+    .cover .meta { display: flex; gap: 40px; margin-top: 24px; }
+    .cover .meta-item { border-left: 3px solid #6366f1; padding-left: 12px; }
+    .cover .meta-item .label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .cover .meta-item .value { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+
+    .toc { padding: 30px 50px; background: #f8fafc; border-bottom: 2px solid #e2e8f0; }
+    .toc h2 { font-size: 14px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .toc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .toc-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #334155; }
+    .toc-num { background: #6366f1; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+
+    .content { padding: 30px 50px; }
+
+    section { margin-bottom: 32px; }
+    section h2 {
+      font-size: 16px; font-weight: 700; color: #1e40af;
+      padding: 10px 16px; background: #eff6ff; border-left: 4px solid #3b82f6;
+      border-radius: 0 8px 8px 0; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    section h2 .num {
+      background: #3b82f6; color: #fff; border-radius: 50%;
+      width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+
+    .formula-box {
+      background: #0f172a; color: #e2e8f0;
+      border-radius: 10px; padding: 16px 20px; margin: 10px 0;
+      font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.8;
+    }
+    .formula-box .comment { color: #64748b; }
+    .formula-box .keyword { color: #818cf8; font-weight: 600; }
+    .formula-box .value   { color: #34d399; }
+    .formula-box .var     { color: #f472b6; }
+    .formula-box .op      { color: #fbbf24; }
+
+    .rule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .rule-card {
+      border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px;
+      background: #fafafa;
+    }
+    .rule-card.green  { border-color: #bbf7d0; background: #f0fdf4; }
+    .rule-card.red    { border-color: #fecaca; background: #fef2f2; }
+    .rule-card.blue   { border-color: #bfdbfe; background: #eff6ff; }
+    .rule-card.amber  { border-color: #fde68a; background: #fffbeb; }
+    .rule-card.purple { border-color: #ddd6fe; background: #faf5ff; }
+    .rule-card h3 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; color: #475569; }
+    .rule-card.green  h3 { color: #16a34a; }
+    .rule-card.red    h3 { color: #dc2626; }
+    .rule-card.blue   h3 { color: #2563eb; }
+    .rule-card.amber  h3 { color: #d97706; }
+    .rule-card.purple h3 { color: #7c3aed; }
+    .rule-card p  { font-size: 12px; color: #334155; line-height: 1.6; }
+    .rule-card .formula { font-family: monospace; font-size: 12px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 10px; margin-top: 8px; color: #0f172a; }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+    th { background: #1e40af; color: #fff; padding: 9px 12px; font-size: 11px; text-align: left; font-weight: 600; }
+    td { padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    tr:hover td { background: #eff6ff; }
+
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700;
+    }
+    .badge-green  { background: #dcfce7; color: #16a34a; }
+    .badge-red    { background: #fee2e2; color: #dc2626; }
+    .badge-blue   { background: #dbeafe; color: #1d4ed8; }
+    .badge-amber  { background: #fef3c7; color: #d97706; }
+
+    .example-box {
+      border: 2px solid #e0e7ff; border-radius: 10px; padding: 16px; margin: 12px 0;
+      background: #f5f3ff;
+    }
+    .example-box h4 { color: #6d28d9; font-size: 12px; font-weight: 700; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .example-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+    .example-chip { background: #fff; border: 1px solid #c4b5fd; border-radius: 6px; padding: 4px 10px; font-size: 11px; font-family: monospace; color: #4c1d95; }
+    .example-chip.result { background: #6d28d9; color: #fff; border-color: #6d28d9; font-weight: 700; }
+
+    .flow-steps { counter-reset: step; display: flex; flex-direction: column; gap: 8px; }
+    .flow-step { display: flex; gap: 14px; align-items: flex-start; }
+    .flow-step::before {
+      counter-increment: step; content: counter(step);
+      background: #6366f1; color: #fff; border-radius: 50%;
+      width: 24px; height: 24px; min-width: 24px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; margin-top: 2px;
+    }
+    .flow-step p { font-size: 12px; line-height: 1.7; color: #334155; }
+    .flow-step strong { color: #1e40af; }
+
+    .sort-table th { background: #059669; }
+    .sort-table td:first-child { font-weight: 700; color: #047857; }
+
+    footer {
+      margin-top: 40px; padding: 20px 50px;
+      background: #f1f5f9; border-top: 2px solid #e2e8f0;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 11px; color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+<div class="no-print">
+  <button onclick="window.print()">⬇ Save / Print as PDF</button>
+</div>
+
+<!-- COVER -->
+<div class="cover">
+  <h1>Gravure Production Planning</h1>
+  <div class="sub">Formula &amp; Logic Documentation — AJ Shrink ERP</div>
+  <div class="meta">
+    <div class="meta-item"><div class="label">Module</div><div class="value">Estimation · Work Order · Product Catalog</div></div>
+    <div class="meta-item"><div class="label">Version</div><div class="value">Final (March 2026)</div></div>
+    <div class="meta-item"><div class="label">Constraint</div><div class="value">Film ≤ Sleeve &lt; Roll Width</div></div>
+  </div>
+</div>
+
+<!-- TOC -->
+<div class="toc">
+  <h2>Table of Contents</h2>
+  <div class="toc-grid">
+    <div class="toc-item"><div class="toc-num">1</div> Width Hierarchy &amp; Constraints</div>
+    <div class="toc-item"><div class="toc-num">2</div> Input Definitions</div>
+    <div class="toc-item"><div class="toc-num">3</div> Lane Width &amp; Printing Width</div>
+    <div class="toc-item"><div class="toc-num">4</div> Film Width Formula</div>
+    <div class="toc-item"><div class="toc-num">5</div> Sleeve Selection &amp; Validation</div>
+    <div class="toc-item"><div class="toc-num">6</div> Cylinder Selection (Case 1 &amp; 2)</div>
+    <div class="toc-item"><div class="toc-num">7</div> Waste Calculations</div>
+    <div class="toc-item"><div class="toc-num">8</div> Plan Generation Flow</div>
+    <div class="toc-item"><div class="toc-num">9</div> Plan Sort &amp; BEST Selection</div>
+    <div class="toc-item"><div class="toc-num">10</div> Cylinder Cost Formula</div>
+    <div class="toc-item"><div class="toc-num">11</div> Production Metrics</div>
+    <div class="toc-item"><div class="toc-num">12</div> Worked Examples</div>
+  </div>
+</div>
+
+<div class="content">
+
+<!-- SECTION 1 -->
+<section>
+  <h2><span class="num">1</span> Width Hierarchy &amp; Constraints</h2>
+  <div class="rule-grid">
+    <div class="rule-card green">
+      <h3>Golden Rule</h3>
+      <p>Three widths must always satisfy this strict ordering:</p>
+      <div class="formula">Film Width &nbsp;≤&nbsp; Sleeve Width &nbsp;&lt;&nbsp; Roll Width</div>
+    </div>
+    <div class="rule-card blue">
+      <h3>Roll Width</h3>
+      <p>The machine's maximum web width. Film must fit within this. Sleeve must also be narrower than the roll.</p>
+      <div class="formula">rollWidth = machine.maxWebWidth</div>
+    </div>
+    <div class="rule-card purple">
+      <h3>Sleeve Width</h3>
+      <p>Must be wide enough to hold the film + trimming. Must be strictly less than roll width.</p>
+      <div class="formula">sleeve &lt; rollWidth<br/>film ≤ sleeve</div>
+    </div>
+    <div class="rule-card amber">
+      <h3>Film Width</h3>
+      <p>Actual film roll used. Defined by printing + trimming. Must not exceed sleeve width.</p>
+      <div class="formula">filmWidth = printing + 2 × trim</div>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 2 -->
+<section>
+  <h2><span class="num">2</span> Input Definitions</h2>
+  <table>
+    <tr><th>Field</th><th>Description</th><th>Used In</th></tr>
+    <tr><td><strong>Actual Width</strong></td><td>Width of the finished product including seal/fold margins (mm)</td><td>Lane Width</td></tr>
+    <tr><td><strong>Job Width</strong></td><td>Raw job width (mm) — used as fallback if Actual Width not set</td><td>Fallback</td></tr>
+    <tr><td><strong>Trimming Size</strong></td><td>Total trimming per lane (mm) — applied to both sides</td><td>Film Width, Cylinder</td></tr>
+    <tr><td><strong>Job Height</strong></td><td>Job height used to calculate repeat UPS per revolution (mm)</td><td>Repeat UPS</td></tr>
+    <tr><td><strong>Quantity</strong></td><td>Order quantity (pcs / kg / m)</td><td>RMT, Total UPS</td></tr>
+    <tr><td><strong>No. of Colors</strong></td><td>Number of print colors for cylinder cost</td><td>Cyl Cost</td></tr>
+    <tr><td><strong>Cylinder Rate (₹/sq.in)</strong></td><td>Rate per square inch for area-based cylinder costing</td><td>Cyl Cost</td></tr>
+  </table>
+</section>
+
+<!-- SECTION 3 -->
+<section>
+  <h2><span class="num">3</span> Lane Width &amp; Printing Width</h2>
+  <div class="formula-box">
+    <span class="comment">// Lane Width = width each UPS lane occupies on the sleeve</span><br/>
+    <span class="var">laneWidth</span> <span class="op">=</span> <span class="var">actualWidth</span> <span class="op">+</span> <span class="var">trimmingSize</span>
+    <br/><br/>
+    <span class="comment">// Printing Width = total width of all lanes combined</span><br/>
+    <span class="var">printingWidth</span> <span class="op">=</span> <span class="var">acUps</span> <span class="op">×</span> <span class="var">laneWidth</span>
+    <br/><br/>
+    <span class="comment">// Max AC UPS a given sleeve can accommodate</span><br/>
+    <span class="var">maxAcUps</span> <span class="op">=</span> <span class="keyword">floor</span>( <span class="var">sleeveWidth</span> <span class="op">/</span> <span class="var">laneWidth</span> )
+  </div>
+  <div class="rule-grid">
+    <div class="rule-card blue">
+      <h3>Example</h3>
+      <p>Actual Width = 250mm, Trimming = 10mm<br/>
+      laneWidth = 260mm<br/>
+      For Sleeve 1130mm → maxUPS = floor(1130/260) = <strong>4</strong></p>
+    </div>
+    <div class="rule-card amber">
+      <h3>Note</h3>
+      <p>Plans are generated by iterating <strong>sleeves first</strong>, then computing how many UPS fit in each sleeve. Not by iterating UPS first.</p>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 4 -->
+<section>
+  <h2><span class="num">4</span> Film Width Formula</h2>
+  <div class="formula-box">
+    <span class="comment">// Film Width = actual film roll width needed for this plan</span><br/>
+    <span class="var">filmWidth</span> <span class="op">=</span> <span class="var">printingWidth</span> <span class="op">+</span> <span class="value">2</span> <span class="op">×</span> <span class="var">trimmingSize</span>
+    <br/><br/>
+    <span class="comment">// VALIDATION — reject plan if film exceeds sleeve</span><br/>
+    <span class="keyword">IF</span> <span class="var">filmWidth</span> <span class="op">&gt;</span> <span class="var">sleeveWidth</span> → <span class="keyword">REJECT PLAN</span>
+    <br/><br/>
+    <span class="comment">// Guaranteed constraint after validation:</span><br/>
+    <span class="var">filmWidth</span> <span class="op">≤</span> <span class="var">sleeveWidth</span> <span class="op">&lt;</span> <span class="var">rollWidth</span>
+  </div>
+  <div class="rule-grid">
+    <div class="rule-card green">
+      <h3>Valid (Film = Sleeve)</h3>
+      <p>printing=1120, trim=10, sleeve=1140<br/>filmWidth = 1120+20 = <strong>1140 ≤ 1140</strong> ✓</p>
+    </div>
+    <div class="rule-card red">
+      <h3>Invalid (Film &gt; Sleeve)</h3>
+      <p>printing=1125, trim=10, sleeve=1130<br/>filmWidth = 1125+20 = <strong>1145 &gt; 1130</strong> ✗ → REJECTED</p>
+    </div>
+  </div>
+</section>
+
+<!-- SECTION 5 -->
+<section>
+  <h2><span class="num">5</span> Sleeve Selection &amp; Validation</h2>
+  <div class="formula-box">
+    <span class="comment">// All available sleeves from Tool Inventory (status = "Available")</span><br/>
+    <span class="var">SLEEVE_TOOLS</span> <span class="op">=</span> tools.filter( toolType <span class="op">==</span> <span class="value">"Sleeve"</span> &amp;&amp; status <span class="op">==</span> <span class="value">"Available"</span> )<br/>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.sort( ascending by printWidth )
+    <br/><br/>
+    <span class="comment">// Sleeve is valid for a UPS if it can physically accommodate the lanes</span><br/>
+    <span class="keyword">VALID IF:</span> sleeveWidth <span class="op">≤</span> rollWidth &nbsp;&amp;&amp;&nbsp; floor(sleeveWidth / laneWidth) <span class="op">&gt;</span> <span class="value">0</span>
+    <br/><br/>
+    <span class="comment">// After film calculation, reject if film > sleeve</span><br/>
+    <span class="keyword">REJECT IF:</span> ( printingWidth <span class="op">+</span> <span class="value">2</span> <span class="op">×</span> trim ) <span class="op">&gt;</span> sleeveWidth
+  </div>
+</section>
+
+<!-- SECTION 6 -->
+<section>
+  <h2><span class="num">6</span> Cylinder Selection (Case 1 &amp; Case 2)</h2>
+  <div class="formula-box">
+    <span class="comment">// Minimum cylinder requirement based on printing area</span><br/>
+    <span class="var">req</span> <span class="op">=</span> <span class="var">filmWidth</span> <span class="op">+</span> <span class="value">100</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">// = printingWidth + 2×trim + 100 (50mm each side of film)</span>
+    <br/><br/>
+    <span class="keyword">CASE 1</span> (Normal — sleeve is wider than req):<br/>
+    &nbsp;&nbsp;<span class="keyword">IF</span> <span class="var">req</span> <span class="op">&lt;</span> <span class="var">sleeveWidth</span><br/>
+    &nbsp;&nbsp;<span class="keyword">THEN</span> <span class="var">minCylinder</span> <span class="op">=</span> <span class="var">req</span>
+    &nbsp;&nbsp;<span class="comment">// cylinder sized for printing area</span>
+    <br/><br/>
+    <span class="keyword">CASE 2</span> (Tight — req meets or exceeds sleeve):<br/>
+    &nbsp;&nbsp;<span class="keyword">IF</span> <span class="var">req</span> <span class="op">≥</span> <span class="var">sleeveWidth</span><br/>
+    &nbsp;&nbsp;<span class="keyword">THEN</span> <span class="var">minCylinder</span> <span class="op">=</span> <span class="var">sleeveWidth</span> <span class="op">+</span> <span class="value">100</span>
+    &nbsp;&nbsp;<span class="comment">// cylinder sized for sleeve + clearance</span>
+    <br/><br/>
+    <span class="comment">// Cylinder must be available in inventory (status = "Available")</span><br/>
+    <span class="var">validCylinders</span> <span class="op">=</span> CYLINDER_TOOLS.filter( printWidth <span class="op">≥</span> <span class="var">minCylinder</span> )
+  </div>
+  <div class="rule-grid">
+    <div class="rule-card blue">
+      <h3>Case 1 — Example</h3>
+      <p>printing=660, trim=10, sleeve=1000<br/>
+      filmWidth = 680<br/>
+      req = 780<br/>
+      780 &lt; 1000 → <strong>CASE 1 → minCyl = 780mm</strong></p>
+    </div>
+    <div class="rule-card amber">
+      <h3>Case 2 — Example</h3>
+      <p>printing=690, trim=10, sleeve=740<br/>
+      filmWidth = 710<br/>
+      req = 810<br/>
+      810 ≥ 740 → <strong>CASE 2 → minCyl = 740+100 = 840mm</strong></p>
+    </div>
+  </div>
+  <p style="font-size:12px;color:#475569;margin-top:10px;">
+    One plan row is generated per <strong>(Sleeve × UPS × Cylinder)</strong> combination — multiple cylinders show different cost/size options.
+  </p>
+</section>
+
+<!-- SECTION 7 -->
+<section>
+  <h2><span class="num">7</span> Waste Calculations</h2>
+  <div class="formula-box">
+    <span class="comment">// Side Waste — trimming margins on the film (both sides)</span><br/>
+    <span class="var">sideWaste</span> <span class="op">=</span> <span class="value">2</span> <span class="op">×</span> <span class="var">trimmingSize</span>
+    <br/><br/>
+    <span class="comment">// Dead Margin — sleeve width beyond the film edge</span><br/>
+    <span class="var">deadMargin</span> <span class="op">=</span> <span class="var">sleeveWidth</span> <span class="op">-</span> <span class="var">filmWidth</span>
+    &nbsp;&nbsp;<span class="comment">// always ≥ 0 (guaranteed by filmWidth ≤ sleeve)</span>
+    <br/><br/>
+    <span class="comment">// Total Waste — full unused material per UPS combination</span><br/>
+    <span class="var">totalWaste</span> <span class="op">=</span> <span class="var">sideWaste</span> <span class="op">+</span> <span class="var">deadMargin</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="op">=</span> <span class="var">sleeveWidth</span> <span class="op">-</span> <span class="var">printingWidth</span>
+  </div>
+  <table>
+    <tr><th>Metric</th><th>Formula</th><th>Meaning</th></tr>
+    <tr><td>Film Width</td><td>printingWidth + 2×trim</td><td>Actual film roll width consumed</td></tr>
+    <tr><td>Side Waste</td><td>2 × trimmingSize</td><td>Cut-off trimming margins on both sides of film</td></tr>
+    <tr><td>Dead Margin</td><td>sleeveWidth − filmWidth</td><td>Sleeve area beyond the film edge (always ≥ 0)</td></tr>
+    <tr><td>Total Waste</td><td>sideWaste + deadMargin</td><td>= sleeveWidth − printingWidth (minimum = best)</td></tr>
+  </table>
+</section>
+
+<!-- SECTION 8 -->
+<div class="page-break"></div>
+<section>
+  <h2><span class="num">8</span> Plan Generation Flow</h2>
+  <div class="flow-steps">
+    <div class="flow-step"><p><strong>For each Machine</strong> — filter machines by department = "Printing". If specific machine selected, use only that machine. Get <code>rollWidth = machine.maxWebWidth</code>.</p></div>
+    <div class="flow-step"><p><strong>For each Available Sleeve</strong> — from Tool Inventory (status = "Available"), sorted by width ascending. Skip if sleeve ≥ rollWidth.</p></div>
+    <div class="flow-step"><p><strong>Calculate maxAcUps</strong> — <code>floor(sleeveWidth / laneWidth)</code>. Skip sleeve if maxAcUps = 0.</p></div>
+    <div class="flow-step"><p><strong>For each UPS (1 to maxAcUps)</strong> — compute <code>printingWidth = acUps × laneWidth</code>, then <code>filmWidth = printingWidth + 2×trim</code>. Reject if filmWidth &gt; sleeveWidth.</p></div>
+    <div class="flow-step"><p><strong>Select Cylinders</strong> — compute <code>req = filmWidth + 100</code>, apply CASE 1 or CASE 2 to get minCylinder. Filter available cylinders ≥ minCylinder.</p></div>
+    <div class="flow-step"><p><strong>Generate Plan Row</strong> — one row per (Machine × Sleeve × UPS × Cylinder). Calculate waste, cost, production metrics.</p></div>
+    <div class="flow-step"><p><strong>Sort &amp; Mark BEST</strong> — sort by totalWaste → deadMargin → sideWaste → max acUps. First row = BEST.</p></div>
+  </div>
+</section>
+
+<!-- SECTION 9 -->
+<section>
+  <h2><span class="num">9</span> Plan Sort &amp; BEST Selection</h2>
+  <table class="sort-table">
+    <tr><th>Priority</th><th>Field</th><th>Direction</th><th>Reason</th></tr>
+    <tr><td>1st</td><td>Total Waste</td><td>↑ Ascending (min first)</td><td>Minimize material waste</td></tr>
+    <tr><td>2nd</td><td>Dead Margin</td><td>↑ Ascending (min first)</td><td>Better sleeve utilization</td></tr>
+    <tr><td>3rd</td><td>Side Waste</td><td>↑ Ascending (min first)</td><td>Tighter trimming fit</td></tr>
+    <tr><td>4th</td><td>AC UPS</td><td>↓ Descending (max first)</td><td>Higher productivity per run</td></tr>
+  </table>
+  <div class="formula-box">
+    <span class="comment">// Sort implementation</span><br/>
+    sorted.sort( (a, b) =&gt;<br/>
+    &nbsp;&nbsp;a.totalWaste  <span class="op">≠</span> b.totalWaste  ? a.totalWaste  <span class="op">-</span> b.totalWaste  :<br/>
+    &nbsp;&nbsp;a.deadMargin  <span class="op">≠</span> b.deadMargin  ? a.deadMargin  <span class="op">-</span> b.deadMargin  :<br/>
+    &nbsp;&nbsp;a.sideWaste   <span class="op">≠</span> b.sideWaste   ? a.sideWaste   <span class="op">-</span> b.sideWaste   :<br/>
+    &nbsp;&nbsp;b.acUps       <span class="op">-</span> a.acUps<br/>
+    )<br/>
+    <span class="comment">// Row at index 0 = BEST (shown with green highlight)</span>
+  </div>
+</section>
+
+<!-- SECTION 10 -->
+<section>
+  <h2><span class="num">10</span> Cylinder Cost Formula</h2>
+  <div class="formula-box">
+    <span class="comment">// Cylinder dimensions</span><br/>
+    <span class="var">cylRepeatLength</span> <span class="op">=</span> cylinder.repeatLength &nbsp;<span class="comment">// from Tool Master (mm)</span><br/>
+    <span class="var">cylAreaSqMm</span>     <span class="op">=</span> <span class="var">cylinderWidth</span> <span class="op">×</span> <span class="var">cylRepeatLength</span><br/>
+    <span class="var">cylAreaSqInch</span>   <span class="op">=</span> <span class="var">cylAreaSqMm</span> <span class="op">/</span> <span class="value">645.16</span>
+    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="comment">// 1 sq.inch = 645.16 sq.mm</span>
+    <br/><br/>
+    <span class="comment">// Area-based cylinder cost (when rate is set)</span><br/>
+    <span class="var">cylCostByArea</span> <span class="op">=</span> <span class="var">cylAreaSqInch</span> <span class="op">×</span> <span class="var">ratePerSqInch</span> <span class="op">×</span> <span class="var">noOfColors</span>
+    <br/><br/>
+    <span class="comment">// Fallback: per-color cost (when rate = 0)</span><br/>
+    <span class="var">cylCost</span> <span class="op">=</span> <span class="keyword">rate</span> <span class="op">&gt;</span> <span class="value">0</span>
+    &nbsp;&nbsp;? <span class="var">cylCostByArea</span>
+    &nbsp;&nbsp;: noOfColors <span class="op">×</span> cylinderCostPerColor
+  </div>
+</section>
+
+<!-- SECTION 11 -->
+<section>
+  <h2><span class="num">11</span> Production Metrics</h2>
+  <div class="formula-box">
+    <span class="comment">// Repeat UPS — how many impressions per cylinder revolution</span><br/>
+    <span class="var">baseCirc</span>   <span class="op">=</span> <span class="keyword">ceil</span>( jobHeight <span class="op">/</span> <span class="value">12</span> ) <span class="op">×</span> <span class="value">12</span>
+    &nbsp;&nbsp;<span class="comment">// rounded up to nearest 12mm</span><br/>
+    <span class="var">repeatUPS</span>  <span class="op">=</span> <span class="keyword">floor</span>( baseCirc <span class="op">/</span> jobHeight )
+    <br/><br/>
+    <span class="comment">// Total UPS = across UPS × repeat UPS</span><br/>
+    <span class="var">totalUPS</span>   <span class="op">=</span> <span class="var">acUps</span> <span class="op">×</span> <span class="var">repeatUPS</span>
+    <br/><br/>
+    <span class="comment">// Required material (metres)</span><br/>
+    <span class="var">reqRMT</span>     <span class="op">=</span> <span class="keyword">ceil</span>( quantity <span class="op">/</span> totalUPS )
+    <br/>
+    <span class="var">totalRMT</span>   <span class="op">=</span> <span class="keyword">ceil</span>( reqRMT <span class="op">×</span> <span class="value">1.01</span> )
+    &nbsp;&nbsp;<span class="comment">// +1% for startup/waste</span>
+    <br/><br/>
+    <span class="comment">// Machine time and cost</span><br/>
+    <span class="var">totalTime</span>  <span class="op">=</span> totalRMT <span class="op">/</span> ( speed <span class="op">×</span> <span class="value">60</span> )
+    &nbsp;&nbsp;<span class="comment">// hours (speed in m/min)</span><br/>
+    <span class="var">planCost</span>   <span class="op">=</span> totalTime <span class="op">×</span> machine.costPerHour
+    <br/><br/>
+    <span class="comment">// Grand total and unit price</span><br/>
+    <span class="var">grandTotal</span> <span class="op">=</span> planCost <span class="op">+</span> processCost <span class="op">+</span> cylCost<br/>
+    <span class="var">unitPrice</span>  <span class="op">=</span> grandTotal <span class="op">/</span> quantity
+  </div>
+</section>
+
+<!-- SECTION 12 -->
+<section>
+  <h2><span class="num">12</span> Worked Examples</h2>
+
+  <div class="example-box">
+    <h4>Example A — Case 1 (Normal)</h4>
+    <p style="font-size:12px;color:#4c1d95;margin-bottom:8px;">Actual Width=250mm · Trim=10mm · Sleeve=1130mm · 4 UPS</p>
+    <div class="example-row">
+      <span class="example-chip">laneWidth = 250+10 = 260mm</span>
+      <span class="example-chip">printingWidth = 4×260 = 1040mm</span>
+      <span class="example-chip">filmWidth = 1040+20 = 1060mm</span>
+      <span class="example-chip">1060 ≤ 1130 ✓</span>
+    </div>
+    <div class="example-row">
+      <span class="example-chip">req = 1060+100 = 1160mm</span>
+      <span class="example-chip">1160 ≥ 1130 → CASE 2</span>
+      <span class="example-chip result">minCyl = 1130+100 = 1230mm</span>
+    </div>
+    <div class="example-row">
+      <span class="example-chip">sideWaste = 20mm</span>
+      <span class="example-chip">deadMargin = 1130-1060 = 70mm</span>
+      <span class="example-chip result">totalWaste = 90mm</span>
+    </div>
+  </div>
+
+  <div class="example-box">
+    <h4>Example B — Case 1 (Wide Sleeve)</h4>
+    <p style="font-size:12px;color:#4c1d95;margin-bottom:8px;">Actual Width=250mm · Trim=10mm · Sleeve=1430mm · 4 UPS</p>
+    <div class="example-row">
+      <span class="example-chip">printingWidth = 4×260 = 1040mm</span>
+      <span class="example-chip">filmWidth = 1060mm</span>
+      <span class="example-chip">1060 ≤ 1430 ✓</span>
+    </div>
+    <div class="example-row">
+      <span class="example-chip">req = 1160mm</span>
+      <span class="example-chip">1160 &lt; 1430 → CASE 1</span>
+      <span class="example-chip result">minCyl = 1160mm</span>
+    </div>
+    <div class="example-row">
+      <span class="example-chip">sideWaste = 20mm</span>
+      <span class="example-chip">deadMargin = 1430-1060 = 370mm</span>
+      <span class="example-chip result">totalWaste = 390mm (high — not BEST)</span>
+    </div>
+  </div>
+
+  <div class="example-box">
+    <h4>Example C — Rejection (Film &gt; Sleeve)</h4>
+    <p style="font-size:12px;color:#4c1d95;margin-bottom:8px;">Actual Width=250mm · Trim=10mm · Sleeve=1130mm · 5 UPS</p>
+    <div class="example-row">
+      <span class="example-chip">printingWidth = 5×260 = 1300mm</span>
+      <span class="example-chip">filmWidth = 1300+20 = 1320mm</span>
+      <span class="example-chip result">1320 &gt; 1130 → REJECTED ✗</span>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<footer>
+  <div><strong>AJ Shrink ERP</strong> — Gravure Production Planning Documentation</div>
+  <div>Generated March 2026 · All formulas applied in Estimation, Work Order &amp; Product Catalog modules</div>
+</footer>
+
+</body>
+</html>

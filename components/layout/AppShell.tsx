@@ -7,6 +7,7 @@ import { UnitProvider } from "@/context/UnitContext";
 import { CategoriesProvider } from "@/context/CategoriesContext";
 import { EnquiryProvider } from "@/context/EnquiryContext";
 import { ProductCatalogProvider } from "@/context/ProductCatalogContext";
+import { ExtrusionCatalogProvider } from "@/context/ExtrusionCatalogContext";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -24,7 +25,9 @@ const pageTitles: Record<string, string> = {
   "/enquiry": "Enquiry Management",
   "/cost-estimation": "Cost Estimation & Planning",
   "/gravure/estimation": "Gravure Estimation",
-  "/gravure/product-catalog": "Product Catalog",
+  "/gravure/product-catalog": "Gravure Product Catalog",
+  "/extrusion/product-catalog": "Extrusion Product Catalog",
+  "/extrusion/workorder": "Extrusion Work Order",
   "/gravure/orders": "Gravure Order Booking",
   "/orders": "Order Booking",
   "/jobcard": "Job Card",
@@ -32,6 +35,14 @@ const pageTitles: Record<string, string> = {
   "/production": "Production Entry",
   "/gravure/production": "Gravure Production",
   "/dispatch": "Dispatch",
+  "/tool-inventory/stock-summary":         "Tool Stock Summary",
+  "/tool-inventory/purchase-requisition":  "Tool Purchase Requisition",
+  "/tool-inventory/purchase-order":        "Tool Purchase Order",
+  "/tool-inventory/tool-receipt":          "Tool Receipt",
+  "/tool-inventory/tool-issue":            "Tool Issue",
+  "/tool-inventory/tool-return":           "Tool Return",
+  "/tool-inventory/tool-transfer":         "Tool Transfer",
+  "/tool-inventory/physical-verification": "Tool Physical Verification",
 };
 
 const AUTH_PATHS = ["/login", "/login/user"];
@@ -56,6 +67,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <ExtrusionCatalogProvider>
     <ProductCatalogProvider>
     <EnquiryProvider>
     <CategoriesProvider>
@@ -75,5 +87,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </CategoriesProvider>
     </EnquiryProvider>
     </ProductCatalogProvider>
+    </ExtrusionCatalogProvider>
   );
 }

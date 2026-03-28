@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check, X } from "lucide-react";
+import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check, X, RefreshCw } from "lucide-react";
 import { customers, products, categories, items, CATEGORY_GROUP_SUBGROUP, SecondaryLayer, PlyConsumableItem } from "@/data/dummyData";
 import { useUnit } from "@/context/UnitContext";
 import { useEnquiries, CombinedEnquiry } from "@/context/EnquiryContext";
@@ -24,7 +24,7 @@ const FILM_SUBGROUPS = Array.from(
 // ─── Blank form ───────────────────────────────────────────────
 const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
   date: new Date().toISOString().slice(0, 10),
-  businessUnit: "Extrusion",
+  businessUnit: "Gravure",
   customerId: "", customerName: "",
   jobName: "", quantity: 0, uom: "Kg",
   status: "Pending", remarks: "",
@@ -128,9 +128,8 @@ export default function EnquiryPage() {
   const displayData = globalUnit === "Both" ? data : data.filter(d => d.businessUnit === globalUnit);
 
   const openAdd = () => {
-    const defaultUnit: BU = globalUnit === "Both" ? "Extrusion" : globalUnit;
     setEditing(null);
-    setForm({ ...blank, businessUnit: defaultUnit, uom: defaultUnit === "Gravure" ? "Meter" : "Kg" });
+    setForm({ ...blank, businessUnit: "Gravure", uom: "Meter" });
     setModal(true);
   };
   const openEdit = (row: CombinedEnquiry) => {
@@ -145,7 +144,7 @@ export default function EnquiryPage() {
     if (editing) {
       saveEnquiry({ ...form, id: editing.id, enquiryNo: editing.enquiryNo });
     } else {
-      const unitCode = UNIT_CODE[form.businessUnit];
+      const unitCode = UNIT_CODE.Gravure;
       const enquiryNo = generateCode(unitCode, MODULE_CODE.Enquiry, data.map(d => d.enquiryNo));
       const id = `${unitCode}EQ${String(data.length + 1).padStart(3, "0")}`;
       saveEnquiry({ ...form, id, enquiryNo });
@@ -155,19 +154,12 @@ export default function EnquiryPage() {
 
   // Stats
   const total = data.length;
-  const extCount = data.filter(d => d.businessUnit === "Extrusion").length;
-  const grvCount = data.filter(d => d.businessUnit === "Gravure").length;
   const pending = data.filter(d => d.status === "Pending").length;
   const converted = data.filter(d => d.status === "Converted").length;
 
   const columns: Column<CombinedEnquiry>[] = [
     { key: "enquiryNo", header: "Enquiry No", sortable: true },
     { key: "date", header: "Date", sortable: true },
-    {
-      key: "businessUnit", header: "Unit", render: r => (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold border ${BU_BADGE[r.businessUnit]}`}>{r.businessUnit}</span>
-      )
-    },
     { key: "customerName", header: "Customer", sortable: true },
     { key: "jobName", header: "Job / Product" },
     { key: "salesPersonName", header: "Sales Person" },
@@ -182,20 +174,18 @@ export default function EnquiryPage() {
       <div className="flex items-center justify-between flex-wrap gap-y-3">
         <div>
           <div className="flex items-center gap-2 mb-0.5">
-            <ClipboardList size={18} className="text-blue-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Enquiry</h2>
+            <ClipboardList size={18} className="text-purple-600" />
+            <h2 className="text-lg font-semibold text-gray-800">Gravure Enquiry</h2>
           </div>
-          <p className="text-sm text-gray-500">{total} enquiries — {extCount} Extrusion · {grvCount} Gravure</p>
+          <p className="text-sm text-gray-500">{total} enquiries — {pending} Pending · {converted} Converted</p>
         </div>
         <Button icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: "Total", val: total, cls: "bg-gray-50 text-gray-700 border-gray-200" },
-          { label: "Extrusion", val: extCount, cls: "bg-blue-50 text-blue-700 border-blue-200" },
-          { label: "Gravure", val: grvCount, cls: "bg-purple-50 text-purple-700 border-purple-200" },
           { label: "Pending", val: pending, cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
           { label: "Converted", val: converted, cls: "bg-green-50 text-green-700 border-green-200" },
         ].map(s => (
@@ -227,25 +217,10 @@ export default function EnquiryPage() {
         title={editing ? "Edit Enquiry" : "New Enquiry"} size="xl">
         <div className="space-y-5">
 
-          {/* Unit Selector — only when global unit is "Both" */}
-          {globalUnit === "Both" ? (
-            <div className="flex gap-3">
-              {(["Extrusion", "Gravure"] as BU[]).map(bu => (
-                <button key={bu} onClick={() => f("businessUnit", bu)}
-                  className={`flex-1 py-3 rounded-xl border-2 text-sm font-semibold transition-all
-                    ${form.businessUnit === bu
-                      ? bu === "Extrusion" ? "border-blue-500 bg-blue-50 text-blue-800" : "border-purple-500 bg-purple-50 text-purple-800"
-                      : "border-gray-200 text-gray-500 hover:border-gray-300"}`}>
-                  {bu === "Extrusion" ? "⚙️" : "🖨️"} {bu}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border font-semibold text-sm
-              ${form.businessUnit === "Extrusion" ? "bg-blue-50 border-blue-300 text-blue-800" : "bg-purple-50 border-purple-300 text-purple-800"}`}>
-              {form.businessUnit === "Extrusion" ? "⚙️" : "🖨️"} {form.businessUnit} Unit
-            </div>
-          )}
+          {/* Gravure Unit badge */}
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border font-semibold text-sm bg-purple-50 border-purple-300 text-purple-800">
+            🖨️ Gravure Enquiry
+          </div>
 
           {/* Common fields */}
           <div>
@@ -253,7 +228,7 @@ export default function EnquiryPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input
                 label="Enquiry No."
-                value={editing ? editing.enquiryNo : generateCode(UNIT_CODE[form.businessUnit as BU], MODULE_CODE.Enquiry, data.map(d => d.enquiryNo))}
+                value={editing ? editing.enquiryNo : generateCode(UNIT_CODE.Gravure, MODULE_CODE.Enquiry, data.map(d => d.enquiryNo))}
                 readOnly
                 className="bg-gray-50 font-semibold text-teal-700 border-teal-100"
               />
@@ -324,70 +299,49 @@ export default function EnquiryPage() {
           {form.categoryId && (
             <div>
               <SH label={`Select Content — ${form.categoryName}`} />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {availableContents.map(content => {
-                  const isSelected = form.selectedContent === content;
-                  return (
+              {form.selectedContent ? (
+                /* ── Collapsed: show only selected + Change button ── */
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-1 p-3 rounded-xl border-2 border-teal-500 bg-teal-50 shadow-sm">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold leading-tight text-center bg-teal-600 text-white">
+                      {form.selectedContent.split(" - ")[1]?.split(" ").slice(0, 2).join("\n") || form.selectedContent.slice(0, 4)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold leading-tight truncate text-teal-700">{form.selectedContent}</p>
+                      <p className="text-[11px] text-teal-600 mt-0.5 flex items-center gap-1"><Check size={11} /> Selected</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => f("selectedContent", "")}
+                    className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    <RefreshCw size={12} /> Change
+                  </button>
+                </div>
+              ) : (
+                /* ── Expanded: show all cards ── */
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {availableContents.map(content => (
                     <button
                       key={content}
                       type="button"
-                      onClick={() => f("selectedContent", isSelected ? "" : content)}
-                      className={`flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all
-                        ${isSelected
-                          ? "border-teal-500 bg-teal-50 shadow-md"
-                          : "border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"}`}
+                      onClick={() => f("selectedContent", content)}
+                      className="flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"
                     >
-                      {/* Mini icon */}
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold leading-tight text-center
-                        ${isSelected ? "bg-teal-600 text-white" : "bg-yellow-300 text-yellow-800"}`}>
+                      <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold leading-tight text-center bg-yellow-300 text-yellow-800">
                         {content.split(" - ")[1]?.split(" ").slice(0, 2).join("\n") || content.slice(0, 4)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-semibold leading-tight truncate ${isSelected ? "text-teal-700" : "text-blue-700"}`}>
-                          {content}
-                        </p>
-                        {isSelected && (
-                          <p className="text-[11px] text-teal-600 mt-0.5 flex items-center gap-1">
-                            <Check size={11} /> Selected
-                          </p>
-                        )}
+                        <p className="text-xs font-semibold leading-tight truncate text-blue-700">{content}</p>
                       </div>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Unit-specific fields */}
-          {!isGrv ? (
-            /* ── Extrusion fields ── */
-            <div>
-              <SH label="Extrusion Specifications" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                <Select
-                  label="Product"
-                  value={form.productId}
-                  onChange={e => {
-                    const p = products.find(x => x.id === e.target.value);
-                    f("productId", e.target.value);
-                    if (p) { f("productName", p.name); f("width", p.width); f("thickness", p.thickness); }
-                  }}
-                  options={[{ value: "", label: "-- Select Product --" }, ...products.filter(p => p.status === "Active" && (p.category === "Extrusion" || p.category === "Both")).map(p => ({ value: p.id, label: p.name }))]}
-                />
-                <Input label="Width (mm)" type="number" value={form.width} onChange={e => f("width", Number(e.target.value))} />
-                <Input label="Thickness (μ)" type="number" value={form.thickness} onChange={e => f("thickness", Number(e.target.value))} />
-                <Input label="Printing Colors" type="number" value={form.printingColors} onChange={e => f("printingColors", Number(e.target.value))} />
-                <div className="flex items-center gap-3 mt-1">
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Printing Required</label>
-                  <button onClick={() => f("printingRequired", !form.printingRequired)}
-                    className={`w-10 h-5 rounded-full transition-colors relative ${form.printingRequired ? "bg-blue-500" : "bg-gray-200"}`}>
-                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${form.printingRequired ? "left-5" : "left-0.5"}`} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
 
           <Textarea label="Remarks" value={form.remarks} onChange={e => f("remarks", e.target.value)}
             placeholder="Special requirements, urgency, other notes..." />

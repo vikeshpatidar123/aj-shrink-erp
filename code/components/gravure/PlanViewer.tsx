@@ -19,21 +19,13 @@ export type PlanInput = {
   overheadPct: number;
   profitPct:   number;
   wastagePct?: number;  // default 1
+  trimmingSize?: number;
+  frontColors?: number;
+  backColors?:  number;
 };
 
 // ─── Internal line types ──────────────────────────────────────
 type MatLine  = { plyNo: number; plyType: string; name: string; group: string; thickness: number; gsm: number; effGsm: number; kg: number; rate: number; amount: number };
-type ProcLine = { name: string; chargeUnit: string; qty: number; rate: number; setupCharge: number; amount: number };
-
-// ─── Helpers ──────────────────────────────────────────────────
-function autoProcessQty(chargeUnit: string, quantity: number, areaM2: number, noOfColors: number) {
-  if (chargeUnit === "m²")       return areaM2;
-  if (chargeUnit === "m")        return quantity;
-  if (chargeUnit === "Cylinder") return noOfColors;
-  if (chargeUnit === "1000 Pcs") return quantity / 1000;
-  if (chargeUnit === "Job")      return 1;
-  return 0;
-}
 
 const GROUP_BADGE: Record<string, string> = {
   Film:     "bg-blue-50   text-blue-700   border-blue-200",
@@ -61,10 +53,10 @@ const SH = ({ icon, label }: { icon: string; label: string }) => (
 // ─── Main component ───────────────────────────────────────────
 export function PlanViewer({ plan }: { plan: PlanInput }) {
   const {
-    jobWidth, jobHeight, quantity, unit, noOfColors,
-    secondaryLayers, processes,
-    cylinderCostPerColor, overheadPct, profitPct,
+    jobWidth, jobHeight, quantity, unit,
+    secondaryLayers,
     wastagePct = 1,
+    trimmingSize = 0, frontColors, backColors,
   } = plan;
 
   const areaM2 = useMemo(() =>
@@ -88,11 +80,11 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
         });
       }
       l.consumableItems.forEach(ci => {
-        const effGsm = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+        const effGsm = (ci.coveragePct ?? 100) < 100
           ? parseFloat((ci.gsm * ((ci.coveragePct ?? 100) / 100)).toFixed(3))
           : ci.gsm;
         const kg     = parseFloat((effGsm * areaM2 / 1000).toFixed(3));
-        const label  = ci.itemGroup === "Ink" && (ci.coveragePct ?? 100) < 100
+        const label  = (ci.coveragePct ?? 100) < 100
           ? `${ci.itemName || ci.fieldDisplayName} (${ci.coveragePct}% cov.)`
           : (ci.itemName || ci.fieldDisplayName);
         lines.push({
@@ -106,27 +98,6 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
     return lines;
   }, [secondaryLayers, areaM2]);
 
-  // ── Process lines ───────────────────────────────────────────
-  const procLines = useMemo<ProcLine[]>(() =>
-    processes.map(p => {
-      const qty    = p.qty > 0 ? p.qty : parseFloat(autoProcessQty(p.chargeUnit, quantity, areaM2, noOfColors).toFixed(2));
-      const amount = parseFloat((p.rate * qty + p.setupCharge).toFixed(2));
-      return { name: p.processName || "—", chargeUnit: p.chargeUnit, qty, rate: p.rate, setupCharge: p.setupCharge, amount };
-    }),
-    [processes, quantity, areaM2, noOfColors]
-  );
-
-  // ── Cost totals ─────────────────────────────────────────────
-  const materialCost = matLines.reduce((s, l) => s + l.amount, 0);
-  const processCost  = procLines.reduce((s, l) => s + l.amount, 0);
-  const cylinderCost = cylinderCostPerColor * noOfColors;
-  const sub          = materialCost + processCost + cylinderCost;
-  const overheadAmt  = parseFloat(((sub * overheadPct) / 100).toFixed(2));
-  const profitBase   = sub + overheadAmt;
-  const profitAmt    = parseFloat(((profitBase * profitPct) / 100).toFixed(2));
-  const totalAmount  = parseFloat((profitBase + profitAmt).toFixed(2));
-  const perMeterRate = quantity > 0 ? parseFloat((totalAmount / quantity).toFixed(3)) : 0;
-
   // ── Running meter / weight ──────────────────────────────────
   const reqMtr      = quantity;
   const wasteMtr    = parseFloat((reqMtr * wastagePct / 100).toFixed(2));
@@ -138,7 +109,7 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
   }, 0);
   const totalWeightKg = parseFloat((areaM2 * totalGSM / 1000).toFixed(3));
 
-  const noData = secondaryLayers.length === 0 && processes.length === 0;
+  const noData = secondaryLayers.length === 0;
 
   return (
     <div className="space-y-5 text-sm">
@@ -197,9 +168,7 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
                   <th className="text-left px-3 py-2.5 font-semibold">Item / Material</th>
                   <th className="text-left px-3 py-2.5 font-semibold">Group</th>
                   <th className="text-right px-3 py-2.5 font-semibold">GSM</th>
-                  <th className="text-right px-3 py-2.5 font-semibold">Rate ₹/Kg</th>
                   <th className="text-right px-3 py-2.5 font-semibold">Wt (Kg)</th>
-                  <th className="text-right px-3 py-2.5 font-semibold">Cost (₹)</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,17 +182,9 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
                       </span>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-gray-600">{l.effGsm > 0 ? l.effGsm : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-mono text-gray-600">{l.rate > 0 ? `₹${l.rate}` : "—"}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-gray-700">{l.kg > 0 ? l.kg : "—"}</td>
-                    <td className="px-3 py-2.5 text-right font-semibold text-gray-800">{l.amount > 0 ? `₹${l.amount.toFixed(2)}` : "—"}</td>
                   </tr>
                 ))}
-                <tr className="border-t-2 border-purple-200 bg-purple-50">
-                  <td colSpan={6} className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-                    Material Total
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-bold text-purple-700">₹{materialCost.toFixed(2)}</td>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -243,6 +204,9 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
             { label: "Job Height",          val: `${jobHeight} mm`,                      cls: "bg-gray-50   border-gray-200   text-gray-700"    },
             { label: "Total GSM",           val: `${totalGSM.toFixed(1)} g/m²`,          cls: "bg-green-50  border-green-200  text-green-700"   },
             { label: "Total Weight",        val: `${totalWeightKg} Kg`,                  cls: "bg-teal-50   border-teal-200   text-teal-700"    },
+            ...(trimmingSize > 0 ? [{ label: "Trimming Size", val: `${trimmingSize} mm`, cls: "bg-purple-50 border-purple-200 text-purple-700" }] : []),
+            ...(frontColors !== undefined ? [{ label: "Front Colors", val: `${frontColors}`, cls: "bg-blue-50 border-blue-200 text-blue-700" }] : []),
+            ...(backColors !== undefined  ? [{ label: "Back Colors",  val: `${backColors}`,  cls: "bg-teal-50  border-teal-200  text-teal-700"  }] : []),
           ] as { label: string; val: string; cls: string }[]).map(c => (
             <div key={c.label} className={`rounded-xl border p-3 ${c.cls}`}>
               <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60">{c.label}</p>
@@ -252,65 +216,6 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
         </div>
       </div>
 
-      {/* ── 4. COST BREAKDOWN ────────────────────────────────────── */}
-      <div>
-        <SH icon="💰" label="4. Cost Breakdown" />
-
-        {/* Process table */}
-        {procLines.length > 0 && (
-          <div className="mb-4">
-            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-widest mb-2">Process Costs</p>
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-500 uppercase tracking-widest text-[10px]">
-                    <th className="text-left px-3 py-2.5 font-semibold">Process</th>
-                    <th className="text-left px-3 py-2.5 font-semibold">Unit</th>
-                    <th className="text-right px-3 py-2.5 font-semibold">Qty</th>
-                    <th className="text-right px-3 py-2.5 font-semibold">Rate (₹)</th>
-                    <th className="text-right px-3 py-2.5 font-semibold">Setup (₹)</th>
-                    <th className="text-right px-3 py-2.5 font-semibold">Amount (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {procLines.map((p, i) => (
-                    <tr key={i} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
-                      <td className="px-3 py-2.5 font-medium text-gray-800">{p.name}</td>
-                      <td className="px-3 py-2.5 text-gray-500">{p.chargeUnit}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">{p.qty.toFixed(2)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-700">₹{p.rate}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-gray-500">{p.setupCharge > 0 ? `₹${p.setupCharge}` : "—"}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-gray-800">₹{p.amount.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                  <tr className="border-t-2 border-purple-200 bg-purple-50">
-                    <td colSpan={5} className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-widest">Process Total</td>
-                    <td className="px-3 py-2.5 text-right font-bold text-purple-700">₹{processCost.toFixed(2)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Cost summary cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {([
-            { label: "Material Cost",                                        val: `₹${materialCost.toFixed(2)}`,            cls: "bg-blue-50    border-blue-200    text-blue-700"    },
-            { label: "Process Cost",                                         val: `₹${processCost.toFixed(2)}`,             cls: "bg-indigo-50   border-indigo-200   text-indigo-700"  },
-            { label: `Cylinder (${noOfColors}C × ₹${cylinderCostPerColor})`,val: `₹${cylinderCost.toLocaleString()}`,      cls: "bg-purple-50   border-purple-200   text-purple-700"  },
-            { label: `Overhead (${overheadPct}%)`,                           val: `₹${overheadAmt.toFixed(2)}`,             cls: "bg-gray-50     border-gray-200     text-gray-700"    },
-            { label: `Profit (${profitPct}%)`,                               val: `₹${profitAmt.toFixed(2)}`,               cls: "bg-green-50    border-green-200    text-green-700"   },
-            { label: "Total Amount",                                         val: `₹${totalAmount.toFixed(2)}`,             cls: "bg-emerald-50  border-emerald-200  text-emerald-700" },
-            { label: "Rate / Meter",                                         val: `₹${perMeterRate.toFixed(3)}/m`,          cls: "bg-amber-50    border-amber-200    text-amber-700"   },
-          ] as { label: string; val: string; cls: string }[]).map(c => (
-            <div key={c.label} className={`rounded-xl border p-3 ${c.cls}`}>
-              <p className="text-[10px] font-semibold uppercase tracking-wide opacity-60">{c.label}</p>
-              <p className="font-bold text-base mt-0.5">{c.val}</p>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
