@@ -114,9 +114,9 @@ export function DataTable<T extends { id: string }>({
                 </td>
               </tr>
             ) : (
-              paged.map((row) => (
+              paged.map((row, idx) => (
                 <tr
-                  key={row.id}
+                  key={row.id ?? idx}
                   className="erp-table-row transition-colors"
                 >
                   {columns.map((col) => (
@@ -144,9 +144,9 @@ export function DataTable<T extends { id: string }>({
             No records found.
           </div>
         ) : (
-          paged.map((row) => (
+          paged.map((row, idx) => (
             <div
-              key={row.id}
+              key={row.id ?? idx}
               className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden"
             >
               {/* Card header — primary-light tint */}

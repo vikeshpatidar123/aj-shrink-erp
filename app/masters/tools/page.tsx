@@ -1,57 +1,23 @@
 "use client";
-import { useState } from "react";
-import { Plus, Pencil, Trash2, Save, Check, List } from "lucide-react";
-import { tools as initData, Tool, ToolType } from "@/data/dummyData";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Pencil, Trash2, Check, Loader2, List, ChevronRight } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
-import { inputCls } from "@/lib/styles";
+import { authHeaders } from "@/lib/auth";
 
-// ─── Tool types & their colors ────────────────────────────────
+const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE = `${BASE_URL}/api/toolmaster`;
 
-const TOOL_TYPES: ToolType[] = ["Cylinder", "Sleeve", "Die", "Anilox Roll", "Doctor Blade", "Impression Roller", "Slitter Knife"];
+function unwrap(v: any): any {
+  let r = v;
+  while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
+  return r;
+}
 
-const toolColor: Record<ToolType, string> = {
-  "Cylinder":         "bg-blue-100 text-blue-700",
-  "Sleeve":           "bg-sky-100 text-sky-700",
-  "Die":              "bg-rose-100 text-rose-700",
-  "Anilox Roll":      "bg-amber-100 text-amber-700",
-  "Doctor Blade":     "bg-emerald-100 text-emerald-700",
-  "Impression Roller":"bg-purple-100 text-purple-700",
-  "Slitter Knife":    "bg-cyan-100 text-cyan-700",
-};
-
-const toolDesc: Record<ToolType, string> = {
-  "Cylinder":          "Gravure printing cylinder with engraved cells",
-  "Sleeve":            "Printing sleeve — mounts on cylinder for sleeve-based gravure",
-  "Die":               "Cutting die for pouches, sleeves and labels",
-  "Anilox Roll":       "Metering roll for coating / varnish decks",
-  "Doctor Blade":      "Blade that wipes excess ink off the cylinder",
-  "Impression Roller": "Rubber / PU nip roller pressing web to cylinder",
-  "Slitter Knife":     "Upper / lower knife set for slitter-rewinder",
-};
-
-const blank: Omit<Tool, "id"> = {
-  code: "", name: "", toolType: "Cylinder",
-  clientName: "", jobCardNo: "", jobName: "",
-  location: "", hsnCode: "", purchaseUnit: "Nos", stockUnit: "Nos",
-  category: "", description: "", status: "Active",
-  repeatLength: "", printWidth: "", noOfColors: "", colorName: "",
-  engravingType: "", screen: "", engravingAngle: "", cellDepth: "",
-  cylinderMaterial: "", surfaceFinish: "", chromeStatus: "",
-  toolPrefix: "", toolRefCode: "", dieType: "",
-  length: "", width: "", height: "", upsL: "", upsW: "", totalUps: "",
-  machine: "", deckNo: "", lineCount: "", volume: "",
-  rollWidth: "", rollDiameter: "", aniloxEngravingType: "", aniloxMaterial: "",
-  material: "", bladeWidth: "", bladeThickness: "", bladeLength: "",
-  hardness: "", knifeType: "", knifeDiameter: "", knifeThickness: "",
-};
-
-// ─── Helpers ──────────────────────────────────────────────────
-
+// ── Shared UI ──────────────────────────────────────────────────────────────────
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
-
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -60,523 +26,813 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
     {children}
   </div>
 );
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
+const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-const Sel = ({ value, onChange, options, placeholder = "Select..." }: { value: string; onChange: (v: string) => void; options: string[]; placeholder?: string }) => (
-  <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
-    <option value="">{placeholder}</option>
-    {options.map(o => <option key={o} value={o}>{o}</option>)}
-  </select>
-);
+// ── Types ──────────────────────────────────────────────────────────────────────
+type ToolGroup = { ToolGroupID: string; ToolGroupName: string; };
 
-const SuffixInput = ({ value, onChange, suffix, placeholder, type = "text" }: any) => (
-  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
-    <input type={type} value={value} onChange={onChange} placeholder={placeholder} className="flex-1 px-3 py-2 text-sm text-gray-800 outline-none" />
-    <div className="bg-gray-50 px-3 py-2 text-xs text-gray-500 border-l border-gray-300 font-medium whitespace-nowrap">{suffix}</div>
-  </div>
-);
+type ToolRow = {
+  id: string;
+  ToolID: string;
+  ToolCode: string;
+  ToolGroupID: string;
+  [key: string]: any;
+};
 
-// ─── Spec sections per tool type ─────────────────────────────
+type GridColDef = { key: string; header: string; };
 
-function CylinderSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div className="space-y-8">
-      <div>
-        <SectionTitle title="Cylinder Dimensions" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Repeat Length (Circumference)">
-            <SuffixInput value={form.repeatLength} onChange={(e: any) => f("repeatLength", e.target.value)} suffix="mm" placeholder="e.g. 450" type="number" />
-          </Field>
-          <Field label="Print Width">
-            <SuffixInput value={form.printWidth} onChange={(e: any) => f("printWidth", e.target.value)} suffix="mm" placeholder="e.g. 1100" type="number" />
-          </Field>
-          <Field label="No. of Colors">
-            <Sel value={form.noOfColors} onChange={(v) => f("noOfColors", v)} options={["1","2","3","4","5","6","7","8","9","10","11","12"]} />
-          </Field>
-          <Field label="Color Name / Station">
-            <input type="text" value={form.colorName} onChange={(e) => f("colorName", e.target.value)} placeholder="e.g. Cyan, Black, Spot 1" className={inputCls} />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <SectionTitle title="Engraving Details" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Engraving Type">
-            <Sel value={form.engravingType} onChange={(v) => f("engravingType", v)} options={["Electromechanical", "Laser", "Chemical Etching"]} />
-          </Field>
-          <Field label="Screen (L/cm)">
-            <SuffixInput value={form.screen} onChange={(e: any) => f("screen", e.target.value)} suffix="L/cm" placeholder="e.g. 70" type="number" />
-          </Field>
-          <Field label="Engraving Angle">
-            <SuffixInput value={form.engravingAngle} onChange={(e: any) => f("engravingAngle", e.target.value)} suffix="°" placeholder="e.g. 45" type="number" />
-          </Field>
-          <Field label="Cell Depth">
-            <SuffixInput value={form.cellDepth} onChange={(e: any) => f("cellDepth", e.target.value)} suffix="μ" placeholder="e.g. 32" type="number" />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <SectionTitle title="Material & Surface" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Cylinder Material">
-            <Sel value={form.cylinderMaterial} onChange={(v) => f("cylinderMaterial", v)} options={["Steel", "Aluminium"]} />
-          </Field>
-          <Field label="Surface Finish">
-            <Sel value={form.surfaceFinish} onChange={(v) => f("surfaceFinish", v)} options={["Hard Chrome", "Chrome Plated", "Base (Unplated)", "Copper Base"]} />
-          </Field>
-          <Field label="Chrome Status">
-            <Sel value={form.chromeStatus} onChange={(v) => f("chromeStatus", v)} options={["Plated", "Not Plated", "Needs Re-chrome", "In Plating"]} />
-          </Field>
-        </div>
-      </div>
-    </div>
-  );
+type FieldDef = {
+  ToolGroupFieldID: string;
+  FieldName: string;
+  FieldType: string;
+  FieldDisplayName: string;
+  IsDisplay: any;
+  IsRequiredFieldValidator: any;
+  SelectBoxQueryDB: string | null;
+  SelectBoxDefault: string | null;
+  FieldDrawSequence: string;
+  FieldDataType: string;
+};
+
+// SelectBox can be simple string list OR value+display object list
+type SimpleSelectOpt = { type: "simple"; items: string[] };
+type ObjectSelectOpt = { type: "object"; valueExpr: string; displayExpr: string; descriptionExpr?: string; items: Record<string, any>[] };
+type SelectOptConfig = SimpleSelectOpt | ObjectSelectOpt;
+
+type FormValues = Record<string, any>;
+
+function isTruthy(v: any): boolean {
+  return v === true || v === "True" || v === "true" || v === 1 || v === "1";
 }
 
-function DieSpecs({ form, f }: { form: any; f: any }) {
-  const totalUps = form.upsL && form.upsW ? String(Number(form.upsL) * Number(form.upsW)) : form.totalUps;
-  return (
-    <div className="space-y-8">
-      <div>
-        <SectionTitle title="Die Identity" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Tool Prefix">
-            <Sel value={form.toolPrefix} onChange={(v) => f("toolPrefix", v)} options={["3SS","4SS","SUP","BACK SEAL","ZIP","SLEEVE","LABEL","FLAT","ROTARY"]} />
-          </Field>
-          <Field label="Tool Ref Code">
-            <input type="text" value={form.toolRefCode} onChange={(e) => f("toolRefCode", e.target.value)} placeholder="e.g. DIE-REF-005" className={inputCls} />
-          </Field>
-          <Field label="Die Type">
-            <Sel value={form.dieType} onChange={(v) => f("dieType", v)} options={["Flat Die", "Rotary Die", "Steel Rule Die", "Punch Die"]} />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <SectionTitle title="Die Dimensions" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Length">
-            <SuffixInput value={form.length} onChange={(e: any) => f("length", e.target.value)} suffix="mm" placeholder="e.g. 200" type="number" />
-          </Field>
-          <Field label="Width">
-            <SuffixInput value={form.width} onChange={(e: any) => f("width", e.target.value)} suffix="mm" placeholder="e.g. 130" type="number" />
-          </Field>
-          <Field label="Height / Thickness">
-            <SuffixInput value={form.height} onChange={(e: any) => f("height", e.target.value)} suffix="mm" placeholder="e.g. 25" type="number" />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <SectionTitle title="Ups Layout" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Ups (Length direction)">
-            <input type="number" value={form.upsL} onChange={(e) => { f("upsL", e.target.value); f("totalUps", String(Number(e.target.value) * Number(form.upsW || 1))); }} placeholder="e.g. 4" className={inputCls} />
-          </Field>
-          <Field label="Ups (Width direction)">
-            <input type="number" value={form.upsW} onChange={(e) => { f("upsW", e.target.value); f("totalUps", String(Number(form.upsL || 1) * Number(e.target.value))); }} placeholder="e.g. 2" className={inputCls} />
-          </Field>
-          <Field label="Total Ups">
-            <div className="px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm font-semibold text-blue-700">
-              {totalUps || "0"}
-            </div>
-          </Field>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AniloxSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div>
-      <SectionTitle title="Anilox Roll Parameters" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <Field label="Assigned Machine">
-          <input type="text" value={form.machine} onChange={(e) => f("machine", e.target.value)} placeholder="e.g. ROTO-01" className={inputCls} />
-        </Field>
-        <Field label="Deck / Color Station">
-          <input type="text" value={form.deckNo} onChange={(e) => f("deckNo", e.target.value)} placeholder="e.g. Deck 9 (Coating)" className={inputCls} />
-        </Field>
-        <Field label="Line Count">
-          <SuffixInput value={form.lineCount} onChange={(e: any) => f("lineCount", e.target.value)} suffix="L/cm" placeholder="e.g. 140" type="number" />
-        </Field>
-        <Field label="Cell Volume">
-          <SuffixInput value={form.volume} onChange={(e: any) => f("volume", e.target.value)} suffix="BCM" placeholder="e.g. 4.5" type="number" />
-        </Field>
-        <Field label="Roll Width">
-          <SuffixInput value={form.rollWidth} onChange={(e: any) => f("rollWidth", e.target.value)} suffix="mm" placeholder="e.g. 1400" type="number" />
-        </Field>
-        <Field label="Roll Diameter">
-          <SuffixInput value={form.rollDiameter} onChange={(e: any) => f("rollDiameter", e.target.value)} suffix="mm" placeholder="e.g. 140" type="number" />
-        </Field>
-        <Field label="Engraving Pattern">
-          <Sel value={form.aniloxEngravingType} onChange={(v) => f("aniloxEngravingType", v)} options={["Hexagonal", "Tri-helical", "Quad-helical", "Knurl"]} />
-        </Field>
-        <Field label="Material">
-          <Sel value={form.aniloxMaterial} onChange={(v) => f("aniloxMaterial", v)} options={["Ceramic", "Chrome"]} />
-        </Field>
-      </div>
-    </div>
-  );
-}
-
-function DoctorBladeSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div>
-      <SectionTitle title="Doctor Blade Parameters" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <Field label="Compatible Machine">
-          <input type="text" value={form.machine} onChange={(e) => f("machine", e.target.value)} placeholder="e.g. ROTO-01" className={inputCls} />
-        </Field>
-        <Field label="Blade Material">
-          <Sel value={form.material} onChange={(v) => f("material", v)} options={["Steel", "Stainless Steel", "Plastic", "Composite", "Carbon Fiber"]} />
-        </Field>
-        <Field label="Blade Width">
-          <SuffixInput value={form.bladeWidth} onChange={(e: any) => f("bladeWidth", e.target.value)} suffix="mm" placeholder="e.g. 60" type="number" />
-        </Field>
-        <Field label="Blade Thickness">
-          <SuffixInput value={form.bladeThickness} onChange={(e: any) => f("bladeThickness", e.target.value)} suffix="mm" placeholder="e.g. 0.15" type="number" />
-        </Field>
-        <Field label="Blade Length">
-          <SuffixInput value={form.bladeLength} onChange={(e: any) => f("bladeLength", e.target.value)} suffix="mm" placeholder="e.g. 1400" type="number" />
-        </Field>
-      </div>
-    </div>
-  );
-}
-
-function ImpressionRollerSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div>
-      <SectionTitle title="Impression Roller Parameters" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <Field label="Compatible Machine">
-          <input type="text" value={form.machine} onChange={(e) => f("machine", e.target.value)} placeholder="e.g. ROTO-01" className={inputCls} />
-        </Field>
-        <Field label="Roller Material">
-          <Sel value={form.material} onChange={(v) => f("material", v)} options={["Rubber", "Polyurethane", "Silicone", "EPDM"]} />
-        </Field>
-        <Field label="Roller Diameter">
-          <SuffixInput value={form.rollDiameter} onChange={(e: any) => f("rollDiameter", e.target.value)} suffix="mm" placeholder="e.g. 220" type="number" />
-        </Field>
-        <Field label="Roller Width">
-          <SuffixInput value={form.rollWidth} onChange={(e: any) => f("rollWidth", e.target.value)} suffix="mm" placeholder="e.g. 1400" type="number" />
-        </Field>
-        <Field label="Hardness">
-          <SuffixInput value={form.hardness} onChange={(e: any) => f("hardness", e.target.value)} suffix="Shore A" placeholder="e.g. 70" type="number" />
-        </Field>
-      </div>
-    </div>
-  );
-}
-
-function SlitterKnifeSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div>
-      <SectionTitle title="Slitter Knife Parameters" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <Field label="Compatible Machine">
-          <input type="text" value={form.machine} onChange={(e) => f("machine", e.target.value)} placeholder="e.g. SLT-01" className={inputCls} />
-        </Field>
-        <Field label="Knife Type">
-          <Sel value={form.knifeType} onChange={(v) => f("knifeType", v)} options={["Upper Knife", "Lower Knife", "Score Cut", "Razor Blade"]} />
-        </Field>
-        <Field label="Knife Material">
-          <Sel value={form.material} onChange={(v) => f("material", v)} options={["Tungsten Carbide", "HSS (High Speed Steel)", "Ceramic"]} />
-        </Field>
-        <Field label="Knife Diameter">
-          <SuffixInput value={form.knifeDiameter} onChange={(e: any) => f("knifeDiameter", e.target.value)} suffix="mm" placeholder="e.g. 150" type="number" />
-        </Field>
-        <Field label="Knife Thickness">
-          <SuffixInput value={form.knifeThickness} onChange={(e: any) => f("knifeThickness", e.target.value)} suffix="mm" placeholder="e.g. 0.4" type="number" />
-        </Field>
-      </div>
-    </div>
-  );
-}
-
-function SleeveSpecs({ form, f }: { form: any; f: any }) {
-  return (
-    <div className="space-y-8">
-      <div>
-        <SectionTitle title="Sleeve Dimensions" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Sleeve Width (Internal)">
-            <SuffixInput value={form.printWidth} onChange={(e: any) => f("printWidth", e.target.value)} suffix="mm" placeholder="e.g. 640" type="number" />
-          </Field>
-          <Field label="Sleeve Length">
-            <SuffixInput value={form.repeatLength} onChange={(e: any) => f("repeatLength", e.target.value)} suffix="mm" placeholder="e.g. 500" type="number" />
-          </Field>
-        </div>
-      </div>
-      <div>
-        <SectionTitle title="Material & Finish" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Sleeve Material">
-            <Sel value={form.cylinderMaterial} onChange={(v: string) => f("cylinderMaterial", v)} options={["PVC", "PETG", "OPS", "PE", "Other"]} />
-          </Field>
-          <Field label="Surface Finish">
-            <Sel value={form.surfaceFinish} onChange={(v: string) => f("surfaceFinish", v)} options={["Glossy", "Semi-Gloss", "Matte"]} />
-          </Field>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ToolSpecs({ form, f }: { form: any; f: any }) {
-  switch (form.toolType) {
-    case "Cylinder":          return <CylinderSpecs form={form} f={f} />;
-    case "Sleeve":            return <SleeveSpecs form={form} f={f} />;
-    case "Die":               return <DieSpecs form={form} f={f} />;
-    case "Anilox Roll":       return <AniloxSpecs form={form} f={f} />;
-    case "Doctor Blade":      return <DoctorBladeSpecs form={form} f={f} />;
-    case "Impression Roller": return <ImpressionRollerSpecs form={form} f={f} />;
-    case "Slitter Knife":     return <SlitterKnifeSpecs form={form} f={f} />;
-    default: return null;
-  }
-}
-
-// ─── Page ─────────────────────────────────────────────────────
-
+// ── Page ───────────────────────────────────────────────────────────────────────
 export default function ToolMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<Tool[]>(initData);
-  const [editing, setEditing] = useState<Tool | null>(null);
-  const [form, setForm] = useState<Omit<Tool, "id">>(blank);
   const [activeTab, setActiveTab] = useState<"detail" | "specs">("detail");
-  const [filterType, setFilterType] = useState<"All" | ToolType>("All");
 
-  const f = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }));
+  // Groups
+  const [toolGroups, setToolGroups] = useState<ToolGroup[]>([]);
+  const [selectedGroupID, setSelectedGroupID] = useState("");
 
-  const onToolTypeChange = (t: ToolType) => setForm((p) => ({ ...blank, toolType: t, code: p.code, name: p.name, clientName: p.clientName, location: p.location, status: p.status }));
+  // List
+  const [listData, setListData] = useState<ToolRow[]>([]);
+  const [gridCols, setGridCols] = useState<GridColDef[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
 
-  const openAdd = () => { setEditing(null); setForm(blank); setActiveTab("detail"); setView("form"); };
-  const openEdit = (row: Tool) => {
-    setEditing(row);
-    const { id, ...rest } = row;
-    setForm(rest);
-    setActiveTab("detail");
-    setView("form");
-  };
+  // Form
+  const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
+  const [selectOptions, setSelectOptions] = useState<Record<string, SelectOptConfig>>({});
+  const [formValues, setFormValues] = useState<FormValues>({});
+  const [prefixOptions, setPrefixOptions] = useState<string[]>([]);
+  const [toolNumber, setToolNumber] = useState(""); // auto-generated tool code for new tool
+  const [editing, setEditing] = useState<ToolRow | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [loadingForm, setLoadingForm] = useState(false);
 
-  const save = () => {
-    if (!form.code || !form.name) return;
-    if (editing) {
-      setData((d) => d.map((r) => r.id === editing.id ? { ...form, id: editing.id } : r));
-    } else {
-      const n = data.length + 1;
-      setData((d) => [...d, { ...form, id: `T${String(n).padStart(3, "0")}` }]);
+  const [companyName] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("companyName") || "Tool Master" : "Tool Master"
+  );
+
+  const fv = (key: string, value: any) => setFormValues(p => ({ ...p, [key]: value }));
+
+  // ── Load tool groups on mount ─────────────────────────────────────────────────
+  useEffect(() => {
+    fetch(`${BASE}/gettoolgroups`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        if (Array.isArray(raw) && raw.length > 0) {
+          setToolGroups(raw);
+          setSelectedGroupID(String(raw[0].ToolGroupID));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // ── Load list when group changes ───────────────────────────────────────────────
+  const loadList = useCallback((groupID: string) => {
+    if (!groupID) return;
+    setLoadingList(true);
+    setListData([]);
+    setGridCols([]);
+
+    Promise.all([
+      fetch(`${BASE}/mastergridcolumn/${groupID}`, { headers: authHeaders() })
+        .then(r => r.text()).then(unwrap),
+      fetch(`${BASE}/mastergrid/${groupID}`, { headers: authHeaders() })
+        .then(r => r.text()).then(unwrap),
+    ]).then(([colRaw, dataRaw]) => {
+      if (Array.isArray(colRaw) && colRaw.length > 0 && colRaw[0]?.GridColumnName) {
+        const cols: GridColDef[] = String(colRaw[0].GridColumnName)
+          .split(",")
+          .map((s: string) => {
+            const parts = s.trim().split(/ as /i);
+            return { key: parts[0].trim(), header: (parts[1] || parts[0]).trim() };
+          })
+          .filter(c => c.key);
+        setGridCols(cols);
+      }
+      if (Array.isArray(dataRaw)) {
+        setListData(dataRaw.map((r: any) => ({ ...r, id: String(r.ToolID) })));
+      }
+    }).catch(() => {})
+      .finally(() => setLoadingList(false));
+  }, []);
+
+  useEffect(() => {
+    if (selectedGroupID) loadList(selectedGroupID);
+  }, [selectedGroupID, loadList]);
+
+  // ── Auto-generate tool number from prefix ────────────────────────────────────
+  const generateToolNo = useCallback(async (prefix: string, groupID: string) => {
+    if (!prefix || !groupID) return;
+    try {
+      const res = await fetch(`${BASE}/getgeneratetoolno/${encodeURIComponent(prefix)}/${groupID}`, { headers: authHeaders() });
+      const raw = unwrap(await res.text());
+      setToolNumber(typeof raw === "string" ? raw.trim() : String(raw));
+    } catch {
+      setToolNumber("");
     }
-    setView("list");
+  }, []);
+
+  // ── Load field definitions + select options ────────────────────────────────────
+  const loadFormSetup = useCallback(async (groupID: string) => {
+    const res = await fetch(`${BASE}/gettoolgroupfields/${groupID}`, { headers: authHeaders() });
+    const raw = unwrap(await res.text());
+    const defs: FieldDef[] = Array.isArray(raw) ? raw : [];
+    setFieldDefs(defs);
+
+    const opts: Record<string, SelectOptConfig> = {};
+
+    // Static options from SelectBoxDefault (no DB query)
+    defs.forEach(f => {
+      if (f.SelectBoxDefault && f.SelectBoxDefault !== "null" && !f.SelectBoxQueryDB) {
+        const items = f.SelectBoxDefault.split(",").map((s: string) => s.trim()).filter(Boolean);
+        opts[f.FieldName] = { type: "simple", items };
+      }
+    });
+
+    // DB-backed options via selectboxload
+    const dbFields = defs.filter(f => f.SelectBoxQueryDB && f.SelectBoxQueryDB !== "null");
+    if (dbFields.length > 0) {
+      const fieldIDs = dbFields.map(f => f.ToolGroupFieldID).join(",");
+      try {
+        const r2 = await fetch(`${BASE}/selectboxload/${fieldIDs}`, { headers: authHeaders() });
+        const ds = unwrap(await r2.text());
+        if (ds && typeof ds === "object" && !Array.isArray(ds)) {
+          for (const [tableName, rows] of Object.entries(ds)) {
+            if (!Array.isArray(rows) || rows.length === 0) continue;
+            const cols = Object.keys(rows[0] as object);
+
+            if (cols.length >= 3) {
+              // 3-column: col[0]=ID, col[1]=code/name (shown in dropdown), col[2]=description (auto-fill)
+              // Sentinel at index 0 — skip it
+              const actualRows = (rows as Record<string, any>[]).slice(1);
+              opts[tableName] = { type: "object", valueExpr: cols[0], displayExpr: cols[1], descriptionExpr: cols[2], items: actualRows };
+            } else if (cols.length >= 2) {
+              // 2-column: col[0]=ID, col[1]=display; sentinel at index 0 — skip
+              const actualRows = (rows as Record<string, any>[]).slice(1);
+              opts[tableName] = { type: "object", valueExpr: cols[0], displayExpr: cols[1], items: actualRows };
+            } else if (cols.length === 1) {
+              // 1-column result: sentinel row appended at end by controller
+              // Skip last row (sentinel = FieldName)
+              const actualRows = (rows as Record<string, any>[]).slice(0, -1);
+              opts[tableName] = { type: "simple", items: actualRows.map(r => String(r[cols[0]])) };
+            }
+          }
+        }
+      } catch {}
+    }
+
+    setSelectOptions(opts);
+    return { defs, opts };
+  }, []);
+
+  // ── Open Add ───────────────────────────────────────────────────────────────────
+  const openAdd = async () => {
+    setEditing(null);
+    setError("");
+    setSubmitAttempted(false);
+    setActiveTab("detail");
+    setLoadingForm(true);
+    setToolNumber("");
+    setPrefixOptions([]);
+    setView("form");
+
+    try {
+      const [setup, defaultsRaw] = await Promise.all([
+        loadFormSetup(selectedGroupID),
+        fetch(`${BASE}/mastergridloadeddata/${selectedGroupID}/0`, { headers: authHeaders() })
+          .then(r => r.text())
+          .then(unwrap),
+      ]);
+
+      if (Array.isArray(defaultsRaw) && defaultsRaw.length > 0) {
+        const row = defaultsRaw[0];
+
+        // Extract prefix options from ToolGroupPrefix (comma-separated)
+        const prefixes = String(row.Prefix || "")
+          .split(",").map((s: string) => s.trim()).filter(Boolean);
+        setPrefixOptions(prefixes);
+
+        const defaults: FormValues = { IsToolActive: true, ToolName: "", ToolRefCode: "", ToolLocation: "" };
+        Object.entries(row).forEach(([k, v]) => {
+          if (k !== "ToolID" && k !== "ToolCode") {
+            defaults[k] = v != null ? String(v) : "";
+          }
+        });
+        // Ensure these are blank for a new record
+        defaults.IsToolActive = true;
+        defaults.ToolName = "";
+        defaults.ToolRefCode = "";
+        defaults.ToolLocation = "";
+        defaults.ToolID = "0";
+
+        setFormValues(defaults);
+
+        // Auto-generate tool no for first prefix
+        if (prefixes.length > 0) {
+          defaults.Prefix = prefixes[0];
+          setFormValues({ ...defaults });
+          await generateToolNo(prefixes[0], selectedGroupID);
+        }
+      }
+    } catch {
+      setError("Failed to load form data.");
+    } finally {
+      setLoadingForm(false);
+    }
   };
 
-  const deleteRow = (id: string) => {
-    if (confirm("Delete this tool?")) setData((d) => d.filter((r) => r.id !== id));
+  // ── Open Edit ──────────────────────────────────────────────────────────────────
+  const openEdit = async (row: ToolRow) => {
+    setEditing(row);
+    setError("");
+    setSubmitAttempted(false);
+    setActiveTab("detail");
+    setLoadingForm(true);
+    setToolNumber("");
+    setView("form");
+
+    try {
+      const [setup, toolRaw] = await Promise.all([
+        loadFormSetup(selectedGroupID),
+        fetch(`${BASE}/mastergridloadeddata/${selectedGroupID}/${row.ToolID}`, { headers: authHeaders() })
+          .then(r => r.text())
+          .then(unwrap),
+      ]);
+
+      if (Array.isArray(toolRaw) && toolRaw.length > 0) {
+        const vals: FormValues = {};
+        Object.entries(toolRaw[0]).forEach(([k, v]) => {
+          vals[k] = v != null ? String(v) : "";
+        });
+        vals.IsToolActive = isTruthy(toolRaw[0].IsToolActive);
+
+        // SP may return ToolDescription instead of ToolName — use fallback chain
+        if (!vals.ToolName) {
+          vals.ToolName = vals.ToolDescription || String(row.ToolName ?? "") || "";
+        }
+
+        // Prefix for edit: show current value, build options from it
+        const currentPrefix = String(toolRaw[0].Prefix || "");
+        const prefixes = currentPrefix.split(",").map((s: string) => s.trim()).filter(Boolean);
+        setPrefixOptions(prefixes);
+        if (!vals.Prefix && prefixes.length > 0) vals.Prefix = prefixes[0];
+
+        // Auto-fill HSN Description (DisplayName) from selectbox opts — edit data only stores ProductHSNID
+        const loadedOpts = setup?.opts ?? {};
+        const hsnIDVal = String(vals.ProductHSNID ?? "");
+        if (hsnIDVal && hsnIDVal !== "0") {
+          const hsnCfg = loadedOpts["ProductHSNID"] as ObjectSelectOpt | undefined;
+          if (hsnCfg?.type === "object") {
+            const match = hsnCfg.items.find(item => String(item[hsnCfg.valueExpr]) === hsnIDVal);
+            if (match) {
+              vals.ProductHSNName = hsnCfg.descriptionExpr ? String(match[hsnCfg.descriptionExpr] ?? "") : "";
+            }
+          }
+        }
+
+        setFormValues(vals);
+      }
+    } catch {
+      setError("Failed to load tool data.");
+    } finally {
+      setLoadingForm(false);
+    }
   };
 
-  // ── FORM VIEW ─────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────────
+  const saveTool = async () => {
+    setSubmitAttempted(true);
+    if (!String(formValues.ToolName ?? "").trim()) {
+      setError("Tool Name is required.");
+      setActiveTab("detail");
+      return;
+    }
+    if (!String(formValues.Prefix ?? "").trim()) {
+      setError("Prefix is required.");
+      setActiveTab("detail");
+      return;
+    }
+
+    // Validate required dynamic fields
+    const displayed = fieldDefs.filter(f => isTruthy(f.IsDisplay));
+    for (const fd of displayed) {
+      if (isTruthy(fd.IsRequiredFieldValidator)) {
+        const val = String(formValues[fd.FieldName] ?? "").trim();
+        if (!val || val === "null" || val === "0") {
+          setError(`${fd.FieldDisplayName} is required.`);
+          setActiveTab("specs");
+          return;
+        }
+      }
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      // Known valid ToolMaster table columns (whitelist — anything not here is either
+      // a dynamic spec field for ToolMasterDetails, or a display-only field to skip)
+      const TOOL_MASTER_COLS = new Set([
+        'ToolGroupID', 'ToolName', 'ToolDescription', 'ToolRefCode', 'ToolLocation',
+        'ProductHSNID', 'SizeH', 'SizeL', 'SizeW', 'TotalUps',
+        'IsToolActive', 'PurchaseRate', 'EstimationRate', 'StockUnit', 'EstimationUnit',
+        'Prefix', 'PurchaseUnit',
+      ]);
+
+      const dynamicFieldNames = new Set(fieldDefs.map(f => f.FieldName));
+
+      const obj: Record<string, any> = {};
+      const dynamicFields: Array<{ FieldName: string; FieldValue: string }> = [];
+
+      Object.entries(formValues).forEach(([k, v]) => {
+        if (k === 'id') return;
+        if (dynamicFieldNames.has(k)) {
+          // Configured spec field → ToolMasterDetails
+          dynamicFields.push({ FieldName: k, FieldValue: String(v ?? "") });
+        } else if (TOOL_MASTER_COLS.has(k)) {
+          // Known static ToolMaster column
+          obj[k] = v;
+        }
+        // Anything else (defaults-query artifacts like JobCardNo, UpsAcross etc.) → skip
+      });
+
+      obj.ToolName = String(formValues.ToolName ?? "").trim();
+      obj.ToolDescription = obj.ToolName;
+      obj.ToolRefCode = String(formValues.ToolRefCode ?? "").trim();
+      obj.ToolLocation = String(formValues.ToolLocation ?? "").trim();
+      obj.ToolGroupID = selectedGroupID;
+      obj.IsToolActive = isTruthy(formValues.IsToolActive);
+      obj.EstimationUnit = String(formValues.PurchaseUnit ?? formValues.EstimationUnit ?? "");
+      obj.EstimationRate = String(formValues.PurchaseRate ?? formValues.EstimationRate ?? "");
+      obj.Prefix = String(formValues.Prefix ?? "").trim();
+
+      let res: Response;
+      if (editing) {
+        res = await fetch(`${BASE}/updatetoolmasterdata`, {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            JsonArrObjMainData: [obj],
+            ToolID: String(editing.ToolID),
+            ToolGroupID: selectedGroupID,
+            DynamicFields: dynamicFields,
+            FilejsonObjectsTransactionMain: null,
+          }),
+        });
+      } else {
+        res = await fetch(`${BASE}/savetoolmaster`, {
+          method: "POST",
+          headers: { ...authHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify({
+            JsonArrObjMainData: [obj],
+            ToolGroupID: selectedGroupID,
+            DynamicFields: dynamicFields,
+            FilejsonObjectsTransactionMain: null,
+          }),
+        });
+      }
+
+      const result = unwrap(await res.text());
+      if (typeof result === "string" && result.includes("Success")) {
+        loadList(selectedGroupID);
+        setView("list");
+      } else {
+        setError("Save failed: " + result);
+      }
+    } catch (e: any) {
+      setError("Error: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  // ── Delete ─────────────────────────────────────────────────────────────────────
+  const deleteTool = async (row: ToolRow) => {
+    if (!confirm("Delete this tool?")) return;
+    try {
+      const permRes = await fetch(`${BASE}/checkpermission/${row.ToolID}`, { headers: authHeaders() });
+      const permResult = unwrap(await permRes.text());
+      if (permResult === "Exist") {
+        alert("This tool is used in another process and cannot be deleted.");
+        return;
+      }
+      const groupID = row.ToolGroupID || selectedGroupID;
+      const delRes = await fetch(`${BASE}/deletetoolmasterdata/${row.ToolID}/${groupID}`, { headers: authHeaders() });
+      const result = unwrap(await delRes.text());
+      if (typeof result === "string" && result.includes("Success")) {
+        loadList(selectedGroupID);
+      } else {
+        alert(result || "Delete failed.");
+      }
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    }
+  };
+
+  // ── For 2-column selectbox: resolve stored ID → display text for showing in input ──
+  const resolveDisplay = (fieldName: string, optConfig: ObjectSelectOpt): string => {
+    const stored = String(formValues[fieldName] ?? "");
+    if (!stored) return "";
+    // If stored value matches a valueExpr, show the corresponding displayExpr
+    const match = optConfig.items.find(item => String(item[optConfig.valueExpr]) === stored);
+    return match ? String(match[optConfig.displayExpr]) : stored;
+  };
+
+  // ── Render a single dynamic field ──────────────────────────────────────────────
+  const renderDynField = (fd: FieldDef) => {
+    if (!isTruthy(fd.IsDisplay)) return null;
+
+    const required = isTruthy(fd.IsRequiredFieldValidator);
+    const val = formValues[fd.FieldName];
+    const optConfig = selectOptions[fd.FieldName];
+    const listId = `dl-${fd.FieldName}`;
+
+    switch ((fd.FieldType || "").toLowerCase()) {
+      case "number":
+        return (
+          <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+            <input type="number" value={String(val ?? "")}
+              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} min="0" />
+          </Field>
+        );
+
+      case "textarea":
+        return (
+          <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+            <textarea value={String(val ?? "")}
+              onChange={e => fv(fd.FieldName, e.target.value)}
+              rows={2}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none" />
+          </Field>
+        );
+
+      case "checkbox":
+        return (
+          <Field key={fd.FieldName} label={fd.FieldDisplayName}>
+            <label className="flex items-center gap-2 cursor-pointer mt-1">
+              <input type="checkbox"
+                checked={isTruthy(val)}
+                onChange={e => fv(fd.FieldName, e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+              <span className="text-sm text-gray-700">{fd.FieldDisplayName}</span>
+            </label>
+          </Field>
+        );
+
+      case "datebox":
+        return (
+          <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+            <input type="date" value={String(val ?? "").split("T")[0]}
+              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} />
+          </Field>
+        );
+
+      case "selectbox":
+        if (optConfig?.type === "object") {
+          // DB-backed 2-column: combobox — shows display name, stores ID
+          // If user picks a suggestion: maps displayExpr → valueExpr (stores ID)
+          // If user types custom text: stores the typed text as-is
+          // HSN pattern: ProductHSNID → also auto-fills ProductHSNName with display text
+          const isHSNSelect = /ProductHSN.*ID$/i.test(fd.FieldName);
+          return (
+            <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+              <input
+                type="text"
+                list={listId}
+                value={resolveDisplay(fd.FieldName, optConfig)}
+                onChange={e => {
+                  const typed = e.target.value;
+                  const match = optConfig.items.find(
+                    item => String(item[optConfig.displayExpr]) === typed
+                  );
+                  const storedVal = match ? String(match[optConfig.valueExpr]) : typed;
+                  setFormValues(prev => {
+                    const updates: FormValues = { ...prev, [fd.FieldName]: storedVal };
+                    // Auto-fill HSN Description (DisplayName) from descriptionExpr column
+                    if (isHSNSelect) {
+                      const nameKey = fd.FieldName.replace(/ID$/i, "Name");
+                      updates[nameKey] = (match && optConfig.descriptionExpr)
+                        ? String(match[optConfig.descriptionExpr] ?? "")
+                        : "";
+                    }
+                    return updates;
+                  });
+                }}
+                placeholder={`Select or type…`}
+                className={inputCls}
+                autoComplete="off"
+              />
+              <datalist id={listId}>
+                {optConfig.items.map((item, idx) => (
+                  <option key={idx} value={String(item[optConfig.displayExpr])} />
+                ))}
+              </datalist>
+            </Field>
+          );
+        } else {
+          // Simple string list — combobox: pick from suggestions or type freely
+          const items: string[] = optConfig?.type === "simple" ? optConfig.items : [];
+          return (
+            <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+              <input
+                type="text"
+                list={listId}
+                value={String(val ?? "")}
+                onChange={e => fv(fd.FieldName, e.target.value)}
+                placeholder={`Select or type…`}
+                className={inputCls}
+                autoComplete="off"
+              />
+              <datalist id={listId}>
+                {items.map(o => <option key={o} value={o} />)}
+              </datalist>
+            </Field>
+          );
+        }
+
+      default: // text
+        return (
+          <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
+            <input type="text" value={String(val ?? "")}
+              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} />
+          </Field>
+        );
+    }
+  };
+
+  const selectedGroup = toolGroups.find(g => String(g.ToolGroupID) === selectedGroupID);
+  const displayedDynFields = fieldDefs.filter(f => isTruthy(f.IsDisplay));
+  const hasSpecs = displayedDynFields.length > 0;
+
+  const columns: Column<ToolRow>[] = (
+    gridCols.length > 0
+      ? gridCols.slice(0, 6).map(col => ({
+          key: col.key as keyof ToolRow,
+          header: col.header,
+          sortable: true,
+          render: (r: ToolRow) => <span className="text-sm text-gray-800">{r[col.key] != null ? String(r[col.key]) : "—"}</span>,
+        }))
+      : [
+          { key: "ToolCode" as keyof ToolRow, header: "Tool Code", sortable: true },
+          { key: "ToolName" as keyof ToolRow, header: "Tool Name", sortable: true },
+        ]
+  );
+
+  // ── FORM VIEW ──────────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
-            <h2 className="text-xl font-bold text-gray-800">Tool Master</h2>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{companyName}</p>
+            <h2 className="text-xl font-bold text-gray-800">
+              {editing ? "Edit Tool" : "New Tool"}
+              {selectedGroup && (
+                <span className="ml-2 text-sm font-normal text-gray-500">— {selectedGroup.ToolGroupName}</span>
+              )}
+            </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <List size={16} /> List ({data.length})
+            <button onClick={() => setView("list")}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+              <List size={16} /> Back to List
             </button>
-            <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-              <Plus size={16} /> New
-            </button>
-            <button onClick={save} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-              <Save size={16} /> Save
+            <button onClick={saveTool} disabled={saving || loadingForm}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Save Tool
             </button>
           </div>
         </div>
 
-        {/* Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-            {form.code && <span className="inline-block px-3 py-1 mb-4 text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-200 rounded-full">{form.code}</span>}
-            <div className="flex gap-8">
-              {(["detail", "specs"] as const).map((t) => (
-                <button key={t} onClick={() => setActiveTab(t)}
-                  className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === t ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>
-                  {{ detail: "Tool Details", specs: "Specifications" }[t]}
-                </button>
-              ))}
-            </div>
+        {error && (
+          <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+        )}
+
+        {loadingForm ? (
+          <div className="flex items-center justify-center h-48 bg-white rounded-xl border border-gray-200">
+            <Loader2 size={28} className="animate-spin text-blue-500" />
           </div>
-
-          <div className="p-8">
-
-            {/* ── TOOL DETAILS ── */}
-            {activeTab === "detail" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-
-                {/* Tool Type selector */}
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 block">Tool Type <span className="text-red-500">*</span></label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {TOOL_TYPES.map((t) => (
-                      <button key={t} onClick={() => onToolTypeChange(t)}
-                        className={`flex flex-col items-start gap-1 p-4 rounded-xl border-2 text-left transition-all ${form.toolType === t ? "border-blue-500 bg-blue-50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${toolColor[t]}`}>{t}</span>
-                        <span className="text-xs text-gray-500 leading-relaxed">{toolDesc[t]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Identity */}
-                <div>
-                  <SectionTitle title="Tool Identity" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="Tool Code" required>
-                      <input type="text" value={form.code} onChange={(e) => f("code", e.target.value)} placeholder={form.toolType === "Cylinder" ? "e.g. CYL-P005" : form.toolType === "Die" ? "e.g. DIE-004" : "e.g. TOOL-001"} className={inputCls} />
-                    </Field>
-                    <div className="md:col-span-2">
-                      <Field label="Tool Name / Description" required>
-                        <input type="text" value={form.name} onChange={(e) => f("name", e.target.value)} placeholder={form.toolType === "Cylinder" ? "e.g. Parle-G 100g – Back Print – 8C" : form.toolType === "Die" ? "e.g. 3-Side Seal Pouch Die – Parle 100g" : "e.g. Tool name"} className={inputCls} />
-                      </Field>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Job / Client (show for Cylinder & Die) */}
-                {(form.toolType === "Cylinder" || form.toolType === "Die") && (
-                  <div>
-                    <SectionTitle title="Client & Job" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <Field label="Client Name">
-                        <input type="text" value={form.clientName} onChange={(e) => f("clientName", e.target.value)} placeholder="e.g. Parle Products Pvt Ltd" className={inputCls} />
-                      </Field>
-                      <Field label="Job Card No">
-                        <input type="text" value={form.jobCardNo} onChange={(e) => f("jobCardNo", e.target.value)} placeholder="e.g. JC-2024-050" className={inputCls} />
-                      </Field>
-                      <Field label="Job Name">
-                        <input type="text" value={form.jobName} onChange={(e) => f("jobName", e.target.value)} placeholder="e.g. Parle-G 100g Wrap" className={inputCls} />
-                      </Field>
-                    </div>
-                  </div>
-                )}
-
-                {/* Common fields */}
-                <div>
-                  <SectionTitle title="Storage & Classification" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="Storage Location">
-                      <input type="text" value={form.location} onChange={(e) => f("location", e.target.value)} placeholder="e.g. Rack A-1, Die Store-1" className={inputCls} />
-                    </Field>
-                    <Field label="HSN Code">
-                      <input type="text" value={form.hsnCode} onChange={(e) => f("hsnCode", e.target.value)} placeholder="e.g. 8207" className={inputCls} />
-                    </Field>
-                    <Field label="Category">
-                      <input type="text" value={form.category} onChange={(e) => f("category", e.target.value)} placeholder="e.g. Printing Tool" className={inputCls} />
-                    </Field>
-                    <Field label="Purchase Unit">
-                      <Sel value={form.purchaseUnit} onChange={(v) => f("purchaseUnit", v)} options={["Nos", "Set", "Roll", "Box", "Kg"]} />
-                    </Field>
-                    <Field label="Stock Unit">
-                      <Sel value={form.stockUnit} onChange={(v) => f("stockUnit", v)} options={["Nos", "Set", "Roll", "Box", "Kg"]} />
-                    </Field>
-                    <Field label="Status">
-                      <Sel value={form.status} onChange={(v) => f("status", v)} options={["Active", "Inactive", "In Use", "Under Maintenance", "Damaged"]} />
-                    </Field>
-                  </div>
-                </div>
-
-                <Field label="Remarks">
-                  <textarea value={form.description} onChange={(e) => f("description", e.target.value)} placeholder="Any notes..." rows={2} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none" />
-                </Field>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                  <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <button onClick={() => setActiveTab("specs")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">
-                    Specifications →
+        ) : (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Tab bar */}
+            <div className="px-6 pt-5 pb-0 border-b border-gray-200 bg-gray-50/30">
+              {editing && (
+                <span className="inline-block px-3 py-1 mb-3 text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-200 rounded-full">
+                  ID: {editing.ToolID} &nbsp;·&nbsp; Code: {editing.ToolCode}
+                </span>
+              )}
+              <div className="flex gap-8">
+                <button onClick={() => setActiveTab("detail")}
+                  className={`pb-3 text-sm font-medium border-b-2 ${
+                    activeTab === "detail" ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
+                  }`}>
+                  Tool Details
+                </button>
+                {hasSpecs && (
+                  <button onClick={() => setActiveTab("specs")}
+                    className={`pb-3 text-sm font-medium border-b-2 ${
+                      activeTab === "specs" ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
+                    }`}>
+                    Specifications
                   </button>
-                </div>
+                )}
               </div>
-            )}
+            </div>
 
-            {/* ── SPECIFICATIONS ── */}
-            {activeTab === "specs" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="p-8 space-y-8">
+              {/* ── TOOL DETAILS TAB ── */}
+              {activeTab === "detail" && (
+                <>
+                  <div>
+                    <SectionTitle title="Tool Identity" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                        <Field label="Tool Name / Description" required>
+                          <input type="text" value={String(formValues.ToolName ?? "")}
+                            onChange={e => fv("ToolName", e.target.value)}
+                            placeholder="e.g. Cylinder Set A — Client Name"
+                            className={ic(submitAttempted && !String(formValues.ToolName ?? "").trim())} />
+                        </Field>
+                      </div>
+                      <Field label="Tool Ref Code">
+                        <input type="text" value={String(formValues.ToolRefCode ?? "")}
+                          onChange={e => fv("ToolRefCode", e.target.value)}
+                          placeholder="e.g. REF-001" className={inputCls} />
+                      </Field>
 
-                {/* Type badge */}
-                <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${toolColor[form.toolType as ToolType]}`}>{form.toolType}</span>
+                      {/* Prefix — dropdown from ToolGroupPrefix, triggers tool no generation */}
+                      <Field label="Prefix" required>
+                        {prefixOptions.length > 0 ? (
+                          <select
+                            value={String(formValues.Prefix ?? "")}
+                            onChange={async e => {
+                              fv("Prefix", e.target.value);
+                              if (!editing) await generateToolNo(e.target.value, selectedGroupID);
+                            }}
+                            disabled={!!editing}
+                            className={ic(submitAttempted && !String(formValues.Prefix ?? "").trim()) + (editing ? " bg-gray-50 cursor-not-allowed" : "")}>
+                            <option value="">— Select Prefix —</option>
+                            {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        ) : (
+                          <input type="text" value={String(formValues.Prefix ?? "")}
+                            onChange={async e => {
+                              fv("Prefix", e.target.value);
+                              if (!editing && e.target.value) await generateToolNo(e.target.value, selectedGroupID);
+                            }}
+                            readOnly={!!editing}
+                            placeholder="e.g. CYL"
+                            className={ic(submitAttempted && !String(formValues.Prefix ?? "").trim()) + (editing ? " bg-gray-50 cursor-not-allowed" : "")} />
+                        )}
+                      </Field>
 
-                <ToolSpecs form={form} f={f} />
+                      {/* Auto-generated Tool No — shown for new tools only */}
+                      {!editing && (
+                        <Field label="Tool No (Auto Generated)">
+                          <input type="text" value={toolNumber}
+                            readOnly
+                            placeholder="Will be generated on save"
+                            className={inputCls + " bg-gray-50 text-gray-600 cursor-not-allowed"} />
+                        </Field>
+                      )}
+                    </div>
+                  </div>
 
-                {/* Footer */}
-                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                  <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setActiveTab("detail")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">← Details</button>
-                    <button onClick={save} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                      <Check size={16} /> Save Tool
+                  <div>
+                    <SectionTitle title="Storage & Status" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                        <Field label="Storage Location">
+                          <input type="text" value={String(formValues.ToolLocation ?? "")}
+                            onChange={e => fv("ToolLocation", e.target.value)}
+                            placeholder="e.g. Rack A-1, Die Store" className={inputCls} />
+                        </Field>
+                      </div>
+                      <div className="flex items-center gap-3 pt-1">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox"
+                            checked={isTruthy(formValues.IsToolActive)}
+                            onChange={e => fv("IsToolActive", e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                          <span className="text-sm font-semibold text-gray-700">Active Tool</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {hasSpecs && (
+                    <div className="flex justify-end pt-4 border-t border-gray-100">
+                      <button onClick={() => setActiveTab("specs")}
+                        className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 shadow-sm">
+                        Specifications <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* ── SPECIFICATIONS TAB ── */}
+              {activeTab === "specs" && hasSpecs && (
+                <>
+                  <div>
+                    <SectionTitle title={`${selectedGroup?.ToolGroupName ?? "Tool"} Specifications`} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {displayedDynFields.map(fd => renderDynField(fd))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                    <button onClick={() => setActiveTab("detail")}
+                      className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                      ← Details
+                    </button>
+                    <button onClick={saveTool} disabled={saving}
+                      className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-60">
+                      {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                      Save Tool
                     </button>
                   </div>
-                </div>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
-  // ── LIST VIEW ─────────────────────────────────────────────
-  const filteredData = filterType === "All" ? data : data.filter((r) => r.toolType === filterType);
-
-  const columns: Column<Tool>[] = [
-    { key: "code", header: "Code", sortable: true },
-    { key: "name", header: "Tool Name", sortable: true },
-    { key: "toolType", header: "Type", sortable: true, render: (r) => (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${toolColor[r.toolType]}`}>{r.toolType}</span>
-    )},
-    { key: "clientName", header: "Client" },
-    { key: "location", header: "Location" },
-    { key: "status", header: "Status", sortable: true, render: (r) => {
-      const c = { Active: "bg-green-100 text-green-700", "In Use": "bg-blue-100 text-blue-700", Inactive: "bg-gray-100 text-gray-500", Damaged: "bg-red-100 text-red-700", "Under Maintenance": "bg-amber-100 text-amber-700" }[r.status] ?? "bg-gray-100 text-gray-500";
-      return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c}`}>{r.status}</span>;
-    }},
-  ];
-
+  // ── LIST VIEW ──────────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Tool Master</h2>
-          <p className="text-sm text-gray-500">{filteredData.length} of {data.length} tools</p>
+          <p className="text-sm text-gray-500">
+            {loadingList
+              ? "Loading..."
+              : `${listData.length} tool${listData.length !== 1 ? "s" : ""}${selectedGroup ? ` — ${selectedGroup.ToolGroupName}` : ""}`}
+          </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+        <button onClick={openAdd} disabled={!selectedGroupID}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
           <Plus size={16} /> Add Tool
         </button>
       </div>
 
-      {/* Filter */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Type</span>
-          {(["All", ...TOOL_TYPES] as const).map((t) => (
-            <button key={t} onClick={() => setFilterType(t)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterType === t ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              {t === "All" ? "All Types" : t}
-            </button>
-          ))}
+      {/* Tool Group filter pills */}
+      {toolGroups.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Tool Group</span>
+            {toolGroups.map(g => (
+              <button key={g.ToolGroupID} onClick={() => setSelectedGroupID(String(g.ToolGroupID))}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  selectedGroupID === String(g.ToolGroupID)
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}>
+                {g.ToolGroupName}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <DataTable data={filteredData} columns={columns} searchKeys={["name", "code", "clientName", "location", "jobName"]}
-          actions={(row) => (
+        <DataTable
+          data={listData}
+          columns={columns}
+          searchKeys={["ToolCode", "ToolName", "ToolLocation", "ToolRefCode"]}
+          actions={row => (
             <div className="flex items-center gap-2 justify-end">
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.id)}>Delete</Button>
+              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteTool(row)}>Delete</Button>
             </div>
           )}
         />

@@ -1,9 +1,11 @@
 "use client";
-import { useState } from "react";
-import { Plus, Pencil, Trash2, ArrowLeft, Save, List, Check } from "lucide-react";
-import { items as initData, Item, hsnMasters, units, subGroups, CATEGORY_GROUP_SUBGROUP } from "@/data/dummyData";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Pencil, Trash2, Save, List, Check, Loader2 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { authHeaders } from "@/lib/auth";
+
+const BASE_URL = "https://api.indusanalytics.co.in";
 
 // ── Shared UI components (must be outside main component to avoid focus loss) ──
 const SectionTitle = ({ title }: { title: string }) => (
@@ -21,575 +23,817 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
   </div>
 );
 
-const SuffixInput = ({ value, onChange, placeholder, suffix, type = "text" }: any) => (
-  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
-    <input
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="flex-1 w-full px-4 py-2 text-sm text-gray-800 outline-none"
-    />
-    <div className="bg-gray-50 px-4 py-2 text-sm text-gray-500 border-l border-gray-300 font-medium">
-      {suffix}
-    </div>
-  </div>
-);
+// ── Dynamic field renderer ────────────────────────────────────────────────────
+// Each selectbox option carries both the DB value (col[0]) and display label (col[1])
+// For 1-col tables: value === label; For 2-col tables: value = ID, label = display name
+type SelectOpt = { value: string; label: string; description?: string };
 
-const PrefixInput = ({ value, onChange, placeholder, prefix, type = "text" }: any) => (
-  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all">
-    <div className="bg-gray-50 px-4 py-2 text-sm text-gray-500 border-r border-gray-300 font-medium">
-      {prefix}
-    </div>
-    <input
-      type={type}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      className="flex-1 w-full px-4 py-2 text-sm text-gray-800 outline-none"
-    />
-  </div>
-);
+// Strip special characters — allow letters, numbers, spaces, dot, hyphen, slash
+function stripSpecial(v: string): string {
+  return v.replace(/[^a-zA-Z0-9 .\-\/]/g, "");
+}
 
-const SelectField = ({ value, onChange, options }: any) => (
-  <select
-    value={value}
-    onChange={onChange}
-    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-  >
-    <option value="">Select...</option>
-    {options.map((o: any) => (
-      <option key={o.value} value={o.value}>{o.label}</option>
-    ))}
-  </select>
-);
+function DynamicField({ field, value, options, onChange, submitAttempted }: {
+  field: any;
+  value: any;
+  options: SelectOpt[];
+  onChange: (v: any) => void;
+  submitAttempted?: boolean;
+}) {
+  const inputCls = "w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
-const Checkbox = ({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) => (
-  <label className="flex items-center gap-2.5 cursor-pointer select-none">
-    <div
-      onClick={onChange}
-      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${checked ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"}`}
-    >
-      {checked && <Check size={12} className="text-white" strokeWidth={3} />}
-    </div>
-    <span className="text-sm font-medium text-gray-700">{label}</span>
-  </label>
-);
+  // HSN fields stay as locked dropdowns — all other selectboxes become free-type combos
+  const isHSN = /hsn/i.test(field.FieldName ?? "");
 
-const blank: Omit<Item, "id"> = {
-  category: "Raw Material (RM)",
-  group: "Film",
-  subGroup: "PET Film (Plain / Treated)",
-  code: "",
-  name: "",
-  hsnCode: "",
-  gstRate: "18%",
-  stockUom: "Kg",
-  active: true,
-  // Procurement
-  supplier: "",
-  supplierRef: "",
-  purchaseUnit: "Kg",
-  estimationUnit: "Kg",
-  // Stock Management
-  reOrderQty: "",
-  minStockQty: "",
-  shelfLife: "",
-  leadTime: "",
-  stockType: "Moving",
-  isStandardItem: false,
-  isRegularItem: false,
-  stockRefCode: "",
-  refItemCode: "",
-  tallyCode: "",
-  // Specifications
-  substrate: "BOPP",
-  webWidth: "",
-  thickness: "",
-  density: "",
-  shrinkage: "0",
-  purchaseRate: "0.00",
-  estimationRate: "0.00",
-  colour: "",
-  pantoneNo: "",
-  remarks: ""
-};
+  const inner = () => {
+    if (field.FieldType === "selectbox") {
+      if (isHSN || !!field.IsLocked) {
+        // HSN fields: keep as regular dropdown (read-only / auto-filled)
+        return (
+          <select
+            value={value ?? ""}
+            onChange={e => onChange(e.target.value)}
+            disabled={!!field.IsLocked}
+            className={inputCls}
+          >
+            <option value="">-- Select --</option>
+            {options.map((o, i) => (
+              <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        );
+      }
+
+      // All other selectbox fields: free-type input with dropdown suggestions (datalist)
+      const listId = `dl_${field.FieldName}`;
+      return (
+        <>
+          <input
+            type="text"
+            list={listId}
+            value={value ?? ""}
+            onChange={e => onChange(stripSpecial(e.target.value))}
+            disabled={false}
+            placeholder={options.length > 0 ? "Type or choose from list..." : (field.FieldDefaultValue ?? "Type here...")}
+            className={inputCls}
+          />
+          {options.length > 0 && (
+            <datalist id={listId}>
+              {options.map((o, i) => (
+                <option key={`${i}-${o.value}`} value={o.label} />
+              ))}
+            </datalist>
+          )}
+        </>
+      );
+    }
+
+    if (field.FieldType === "checkbox") {
+      const checked = value === true || value === "true" || value === 1 || value === "1";
+      return (
+        <label className="flex items-center gap-2.5 cursor-pointer select-none mt-1">
+          <div
+            onClick={() => onChange(checked ? "false" : "true")}
+            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${checked ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"}`}
+          >
+            {checked && <Check size={12} className="text-white" strokeWidth={3} />}
+          </div>
+          <span className="text-sm text-gray-700">Yes</span>
+        </label>
+      );
+    }
+    if (field.FieldType === "textarea") {
+      return (
+        <textarea
+          value={value ?? ""}
+          onChange={e => onChange(stripSpecial(e.target.value))}
+          rows={3}
+          disabled={!!field.IsLocked}
+          placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""}
+          className={inputCls + " resize-none"}
+        />
+      );
+    }
+    if (field.FieldType === "datebox") {
+      return (
+        <input
+          type="date"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          disabled={!!field.IsLocked}
+          className={inputCls}
+        />
+      );
+    }
+    // text / number (default)
+    return (
+      <div className={"flex items-center border rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all " + (submitAttempted && field.IsRequiredFieldValidator && !String(value ?? "").trim() ? "border-red-400 bg-red-50/50" : "border-gray-300")}>
+        <input
+          type={field.FieldType === "number" ? "number" : "text"}
+          value={value ?? ""}
+          onChange={e => {
+            if (field.FieldType === "number") {
+              // Numbers only — reject any non-numeric input
+              const v = e.target.value;
+              if (v === "" || v === "-" || /^-?\d*\.?\d*$/.test(v)) onChange(v);
+            } else {
+              // Text — strip special characters
+              onChange(stripSpecial(e.target.value));
+            }
+          }}
+          disabled={!!field.IsLocked}
+          min={field.MinimumValue ?? 0}
+          max={field.MaximumValue > 0 ? field.MaximumValue : undefined}
+          placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""}
+          className="flex-1 w-full px-4 py-2 text-sm text-gray-800 outline-none disabled:bg-gray-50"
+        />
+        {field.UnitMeasurement && (
+          <div className="bg-gray-50 px-4 py-2 text-sm text-gray-500 border-l border-gray-300 font-medium whitespace-nowrap">
+            {field.UnitMeasurement}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <Field label={field.FieldDisplayName ?? field.FieldName} required={!!field.IsRequiredFieldValidator}>
+      {inner()}
+    </Field>
+  );
+}
+
+// ── Helper: unwrap triple-encoded JSON ───────────────────────────────────────
+function unwrap(raw: any): any {
+  let result = raw;
+  while (typeof result === "string") {
+    try { result = JSON.parse(result); } catch { break; }
+  }
+  return result;
+}
 
 export default function ItemMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<Item[]>(initData);
-  const [editing, setEditing] = useState<Item | null>(null);
-  const [form, setForm] = useState<Omit<Item, "id">>(blank);
-  const [activeTab, setActiveTab] = useState<"basic" | "specs">("basic");
-  const [filterCategory, setFilterCategory] = useState<string>("All");
-  const [filterGroup, setFilterGroup] = useState<string>("All");
+  const [companyName] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("companyName") || "Item Master" : "Item Master"
+  );
+
+  // ── Dynamic form state ──────────────────────────────────────────────────────
+  const [editing, setEditing] = useState<any | null>(null);
+  const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
+  const [formGroupID, setFormGroupID] = useState("");
+  const [formGroupName, setFormGroupName] = useState("");
+  const [formFields, setFormFields] = useState<any[]>([]);
+  const [formValues, setFormValues] = useState<Record<string, any>>({});
+  const [selectOpts, setSelectOpts] = useState<Record<string, SelectOpt[]>>({});
+  const [formSaving, setFormSaving] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [itemNameFormula, setItemNameFormula] = useState<string[]>([]);
+
+  // ── Live grid state (real backend data) ────────────────────────────────────
+  const [allGroups, setAllGroups] = useState<{ ItemGroupID: string; ItemGroupName: string }[]>([]);
+  const [gridData, setGridData] = useState<any[]>([]);
+  const [gridLoading, setGridLoading] = useState(false);
+  const [activeGroupID, setActiveGroupID] = useState("");
+
+  // Date filter — default: last 30 days
+  const todayStr = new Date().toISOString().split("T")[0];
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const [fromDate, setFromDate] = useState(thirtyDaysAgoStr);
+  const [toDate, setToDate] = useState(todayStr);
+
+  // Common date field names the backend might use
+  const DATE_FIELDS = ["CreatedDate", "ModifiedDate", "EntryDate", "ItemDate", "Date", "AddedDate"];
+
+  const filteredGridData = useMemo(() => {
+    if (!gridData.length) return gridData;
+    const dateField = DATE_FIELDS.find(f => f in gridData[0]);
+    if (!dateField) return gridData;
+    return gridData.filter(row => {
+      const raw = row[dateField];
+      if (!raw) return true;
+      try {
+        const d = new Date(raw).toISOString().split("T")[0];
+        return d >= fromDate && d <= toDate;
+      } catch {
+        return true; // unparseable date → show row
+      }
+    });
+  }, [gridData, fromDate, toDate]);
+
+  // Load all item groups from backend on mount
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/itemmaster/items`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(raw => {
+        try {
+          const result = unwrap(raw);
+          setAllGroups(Array.isArray(result) ? result : []);
+        } catch { setAllGroups([]); }
+      })
+      .catch(() => setAllGroups([]));
+  }, []);
+
+  // Fetch item grid for a specific group
+  const loadGridForGroup = useCallback((masterID: string) => {
+    if (!masterID) { setGridData([]); return; }
+    setGridLoading(true);
+    fetch(`${BASE_URL}/api/itemmaster/grid/${masterID}`, { headers: authHeaders() })
+      .then(async r => {
+        const text = await r.text();
+        return text;
+      })
+      .then(text => {
+        try {
+          const result = unwrap(text);
+          setGridData(Array.isArray(result) ? result.map((r: any) => ({ ...r, id: String(r.ItemID) })) : []);
+        } catch { setGridData([]); }
+      })
+      .catch(() => setGridData([]))
+      .finally(() => setGridLoading(false));
+  }, []);
+
+  // Load form fields for a group from backend
+  const loadFormFields = useCallback(async (groupID: string, _groupName: string, prefill?: Record<string, any>) => {
+    setFormLoading(true);
+    setFormError("");
+    try {
+      // Fetch fields + ItemNameFormula in parallel
+      const [fieldsRes, formulaRes] = await Promise.all([
+        fetch(`${BASE_URL}/api/itemmaster/getmasterfields/${groupID}`, { headers: authHeaders() }),
+        fetch(`${BASE_URL}/api/itemmaster/grid-column-hide/${groupID}`, { headers: authHeaders() }),
+      ]);
+
+      const raw = await fieldsRes.text();
+      const fields = unwrap(raw);
+
+      if (!Array.isArray(fields)) {
+        setFormError("Could not load form fields from server.");
+        setFormLoading(false);
+        return;
+      }
+
+      // Extract ItemNameFormula — comma-separated field names e.g. "Type,GroupName,GSM,ItemSize"
+      try {
+        const formulaRaw = await formulaRes.text();
+        const formulaData = unwrap(formulaRaw);
+        const formula: string = (Array.isArray(formulaData) ? formulaData[0]?.ItemNameFormula : formulaData?.ItemNameFormula) ?? "";
+        setItemNameFormula(formula ? formula.split(",").map((s: string) => s.trim()).filter(Boolean) : []);
+      } catch { setItemNameFormula([]); }
+
+      setFormFields(fields);
+
+      // Initialize values: prefill > FieldDefaultValue > ""
+      // DB often stores "false"/"null" as FieldDefaultValue for numeric/empty fields — show blank instead
+      const defaults: Record<string, any> = { ISItemActive: "true" };
+      fields.forEach((f: any) => {
+        let dv = prefill?.[f.FieldName] ?? f.FieldDefaultValue ?? "";
+        if (f.FieldType !== "checkbox" && (dv === "false" || dv === "null" || dv === null)) {
+          dv = "";
+        }
+        defaults[f.FieldName] = dv;
+      });
+      // NOTE: setFormValues(defaults) is called AFTER opts are built so HSN auto-fill can use opts
+
+      // Load selectbox options
+      // Strategy (mirrors old VB DynamicMasters.js):
+      //   1. SelectBoxDefault (comma/semicolon-separated static list) → use immediately
+      //   2. SelectBoxQueryDB present but no default → call selectboxload ONE field at a
+      //      time to avoid the backend's early-return bug on null queries
+      const sbFields = fields.filter((f: any) => f.FieldType === "selectbox");
+      const opts: Record<string, SelectOpt[]> = {};
+
+      for (const f of sbFields) {
+        // ── Priority 1: static defaults (SelectBoxDefault) — no API call needed ─
+        if (f.SelectBoxDefault && f.SelectBoxDefault !== "null") {
+          const staticOpts = f.SelectBoxDefault
+            .split(/[,;|]/)
+            .map((x: string) => x.trim())
+            .filter(Boolean);
+          if (staticOpts.length > 0) {
+            // Static options: value === label (1-col equivalent)
+            opts[f.FieldName] = staticOpts.map((s: string) => ({ value: s, label: s }));
+            continue;
+          }
+        }
+
+        // ── Priority 2: DB query via selectboxload ────────────────────────────
+        // Guard: skip if no FieldID or no SelectBoxQueryDB (backend returns "" for null query → early-return bug)
+        if (!f.ItemGroupFieldID || !f.SelectBoxQueryDB || f.SelectBoxQueryDB === "null") continue;
+
+        try {
+          const sbRes = await fetch(`${BASE_URL}/api/itemmaster/selectboxload`, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify([{ FieldID: f.ItemGroupFieldID, FieldName: f.FieldName }]),
+          });
+          const sbRaw = await sbRes.text();
+          const sbData = unwrap(sbRaw);
+
+          if (sbData && typeof sbData === "object") {
+            const tableKey = "tbl_" + f.FieldName;
+            const rows: any[] = sbData[tableKey] ?? [];
+
+            // Backend always appends 1 metadata row at end — strip it if we have more than 1 row
+            const dataRows = rows.length > 1 ? rows.slice(0, -1) : rows;
+
+            if (dataRows.length > 0) {
+              const cols = Object.keys(dataRows[0]);
+              const is3col = cols.length >= 3;
+              const is2col = cols.length >= 2;
+              // 3-col: col[0]=ID, col[1]=code/name (shown), col[2]=description (auto-fill)
+              // 2-col: col[0]=ID, col[1]=display name
+              // 1-col: col[0] is both value and label
+              opts[f.FieldName] = dataRows
+                .map((r: any) => ({
+                  value: String(r[cols[0]] ?? ""),
+                  label: is2col ? String(r[cols[1]] ?? "") : String(r[cols[0]] ?? ""),
+                  description: is3col ? String(r[cols[2]] ?? "") : undefined,
+                }))
+                .filter(o => o.value !== "");
+            }
+          }
+        } catch { /* silent — field renders as empty select */ }
+      }
+
+      // Auto-fill HSN Description when editing — use description field from 3-col selectbox opts
+      if (prefill) {
+        fields.forEach((f: any) => {
+          if (/ProductHSNID$/i.test(f.FieldName) && f.FieldType === "selectbox") {
+            const storedID = String(prefill[f.FieldName] ?? "");
+            if (storedID && storedID !== "0") {
+              const nameKey = f.FieldName.replace(/ID$/i, "Name");
+              if (fields.find((ff: any) => ff.FieldName === nameKey)) {
+                const hsnOpts = opts[f.FieldName] ?? [];
+                const match = hsnOpts.find((o: SelectOpt) => o.value === storedID);
+                defaults[nameKey] = match?.description ?? "";
+              }
+            }
+          }
+        });
+      }
+
+      setSelectOpts(opts);
+      setFormValues(defaults);
+      setFormStep("fill-form");
+    } catch {
+      setFormError("Network error loading form fields.");
+    }
+    setFormLoading(false);
+  }, []);
+
+  // Build ItemName from ItemNameFormula (mirrors old DynamicMasters.js logic)
+  const buildItemName = (values: Record<string, any>, fields: any[], formula: string[]): string => {
+    let name = "";
+    for (const fieldName of formula) {
+      const field = fields.find((f: any) => f.FieldName === fieldName);
+      const raw = values[fieldName];
+      const val = raw !== undefined && raw !== null ? String(raw).trim() : "";
+      if (!val || val === "0" || val === "-") continue;
+
+      const unit = field?.UnitMeasurement ?? "";
+      let part = "";
+      if (fieldName === "GSM") part = val + " GSM";
+      else if (fieldName === "ItemSize") part = val + " MM";
+      else if (unit) part = val + " " + unit;
+      else part = val;
+
+      name = name === "" ? part : name + ", " + part;
+    }
+    return name;
+  };
+
+  // Save item to backend
+  const saveItem = async () => {
+    setSubmitAttempted(true);
+    // Validate required fields
+    const missing = formFields.find(f => f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
+    if (missing) { setFormError((missing.FieldDisplayName || missing.FieldName) + " is required."); return; }
+    setFormSaving(true);
+    setFormError("");
+    try {
+      const masterRecord: Record<string, any> = {
+        ItemGroupID: formGroupID,
+        ItemType: formGroupName,   // old VB sends group name as ItemType
+        ...formValues,
+        // Generate ItemName from formula before sanitization (need raw string values)
+        ItemName: buildItemName(formValues, formFields, itemNameFormula),
+      };
+
+      // Sanitize field values before sending to backend
+      // DB columns can be bigint/real/int — "false"/"null"/"" strings cause type conversion errors
+      formFields.forEach((f: any) => {
+        const v = masterRecord[f.FieldName];
+
+        if (f.FieldType === "checkbox") {
+          // Checkbox: always send "true" or "false" string
+          const checked = v === true || v === "true" || v === 1 || v === "1";
+          masterRecord[f.FieldName] = checked ? "true" : "false";
+
+        } else if (f.FieldType === "number" || String(f.FieldName).endsWith("ID")) {
+          // Strictly numeric DB columns — send number or null, never a string
+          const n = Number(v);
+          masterRecord[f.FieldName] = (v !== "" && v !== null && v !== undefined && !isNaN(n)) ? n : null;
+
+        } else {
+          // text / selectbox / textarea / datebox
+          // "false", "null", "" are never valid real-column values — convert to null
+          // so SQL Server doesn't try to cast the string "false" → real and fail
+          if (v === "false" || v === "null" || v === null || v === undefined || v === "") {
+            masterRecord[f.FieldName] = null;
+          }
+          // otherwise keep the string as-is (valid for varchar columns)
+        }
+      });
+
+      const isEdit = !!editing;
+      const payload: Record<string, any> = {
+        CostingDataItemMaster: [masterRecord],
+        ItemGroupID: formGroupID,
+        ActiveItem: formValues["ISItemActive"] ?? "true",
+        StockRefCode: formValues["StockRefCode"] ?? "",
+      };
+
+      if (isEdit) {
+        payload.ItemID = editing.ItemID ?? editing.id;
+        payload.UnderGroupID = formGroupID;
+        // Also pass CostingDataItemDetailMaster as empty array (backend may need it)
+        payload.CostingDataItemDetailMaster = [];
+      }
+
+      const endpoint = isEdit ? "update" : "save";
+      const res = await fetch(`${BASE_URL}/api/itemmaster/${endpoint}`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      const text = (await res.text()).replace(/^"|"$/g, ""); // unwrap surrounding quotes if any
+      if (res.ok && !text.toLowerCase().includes("fail") && !text.toLowerCase().includes("error")) {
+        // Go back to list and auto-select the saved item's group so it appears in grid
+        setActiveGroupID(formGroupID);
+        setView("list");
+        loadGridForGroup(formGroupID);
+      } else {
+        setFormError(text || `${isEdit ? "Update" : "Save"} failed. Please try again.`);
+      }
+    } catch {
+      setFormError("Network error. Could not save item.");
+    }
+    setFormSaving(false);
+  };
 
   const openAdd = () => {
     setEditing(null);
-    setForm(blank);
-    setActiveTab("basic");
+    setFormStep("select-group");
+    setFormGroupID("");
+    setFormGroupName("");
+    setFormFields([]);
+    setFormValues({});
+    setSelectOpts({});
+    setFormError("");
     setView("form");
   };
 
-  const openEdit = (row: Item) => {
+  const openEdit = (row: any) => {
     setEditing(row);
-    setForm({ ...row });
-    setActiveTab("basic");
+    setFormError("");
+    const gid = String(row.ItemGroupID ?? activeGroupID ?? "");
+    const gname = allGroups.find(g => g.ItemGroupID === gid)?.ItemGroupName ?? "";
+    setFormGroupID(gid);
+    setFormGroupName(gname);
+    setFormFields([]);
+    setFormValues({});
+    setSelectOpts({});
     setView("form");
+    if (gid) loadFormFields(gid, gname, row);
+    else setFormStep("select-group");
   };
 
-  const save = () => {
-    if (!form.code || !form.name) return;
-    if (editing) {
-      setData((d) => d.map((r) => r.id === editing.id ? { ...form, id: editing.id } : r));
-    } else {
-      const id = `ITM${String(data.length + 1).padStart(3, "0")}`;
-      setData((d) => [...d, { ...form, id }]);
-    }
-    setView("list");
+  const deleteRow = (itemID: string, itemGroupID: string) => {
+    if (!confirm("Are you sure you want to delete this item?")) return;
+    fetch(`${BASE_URL}/api/itemmaster/deleteitem?itemID=${itemID}&itemgroupID=${itemGroupID}`, {
+      method: "POST",
+      headers: authHeaders(),
+    })
+      .then(r => r.text())
+      .then(() => {
+        if (activeGroupID) loadGridForGroup(activeGroupID);
+      })
+      .catch(() => {});
   };
 
-  const deleteRow = (id: string) => {
-    if (confirm("Are you sure you want to delete this item?")) {
-      setData((d) => d.filter(r => r.id !== id));
-    }
+  // Group pill click (list view)
+  const onGroupPillClick = (grp: { ItemGroupID: string; ItemGroupName: string } | null) => {
+    if (!grp) { setActiveGroupID(""); setGridData([]); return; }
+    setActiveGroupID(grp.ItemGroupID);
+    loadGridForGroup(grp.ItemGroupID);
   };
 
-  const f = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }));
+  // Derive group name for column logic from backend data
+  const activeGroupName = allGroups.find(g => g.ItemGroupID === activeGroupID)?.ItemGroupName ?? "";
+  const isInkGridGroup  = activeGroupName.toLowerCase().includes("ink");
+  const isFilmGridGroup = activeGroupName.toLowerCase().includes("film") || activeGroupName.toLowerCase().includes("reel");
 
-  const onCategoryChange = (cat: string) => {
-    const groups = Object.keys(CATEGORY_GROUP_SUBGROUP[cat] ?? {});
-    const firstGroup = groups[0] ?? "";
-    const firstSub = (CATEGORY_GROUP_SUBGROUP[cat]?.[firstGroup] ?? [])[0] ?? "";
-    setForm((p) => ({ ...p, category: cat, group: firstGroup, subGroup: firstSub }));
-  };
-
-  const onGroupChange = (grp: string) => {
-    const firstSub = (CATEGORY_GROUP_SUBGROUP[form.category]?.[grp] ?? [])[0] ?? "";
-    setForm((p) => ({ ...p, group: grp, subGroup: firstSub }));
-  };
-
-  const groupOptions = Object.keys(CATEGORY_GROUP_SUBGROUP[form.category] ?? {});
-  const subGroupOptions = CATEGORY_GROUP_SUBGROUP[form.category]?.[form.group] ?? [];
-
-  // Specs tab visibility rules
-  const isRM = form.category === "Raw Material (RM)";
-  const isFG = form.category === "Finished Goods (FG)";
-  const isFilmGroup = isRM && form.group === "Film";
-  const isInkGroup = isRM && form.group === "Ink";
-  const isFGWithDimensions = isFG && ["Printed Roll", "Laminated Roll", "Shrink Film", "Shrink Sleeve", "Wrap Around Label", "Pouch"].includes(form.group);
-  const showDimensions = isFilmGroup || isFGWithDimensions;
-  const showSubstrate = isFilmGroup;
-  const showShrinkage = isFilmGroup || (isFG && ["Shrink Film", "Shrink Sleeve"].includes(form.group));
-  const showFilmSection = showDimensions || showSubstrate || isFilmGroup;
-  const showPurchaseRate = !isFG;
-  const showInkFields = isInkGroup;
-
-  const columns: Column<Item>[] = [
-    { key: "code", header: "Item Code", sortable: true },
-    { key: "name", header: "Item Name", sortable: true },
-    { key: "category", header: "Category", sortable: true },
-    { key: "hsnCode", header: "HSN Code" },
-    { key: "stockUom", header: "UOM" },
+  // Live grid columns — uses real backend field names
+  const liveColumns: Column<any>[] = [
+    { key: "ItemCode", header: "Item Code", sortable: true },
+    { key: "ItemName", header: "Item Name", sortable: true },
+    ...(isInkGridGroup ? [
+      { key: "Colour", header: "Colour" },
+      { key: "PantoneNo", header: "Pantone No." },
+    ] : []),
+    ...(isFilmGridGroup ? [
+      { key: "WebWidth", header: "Width (mm)" },
+      { key: "Thickness", header: "Thickness (μ)" },
+    ] : []),
     {
-      key: "active", header: "Status", render: (r) => (
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${r.active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}>
-          {r.active ? "Active" : "Inactive"}
+      key: "ISItemActive",
+      header: "Status",
+      render: (r: any) => (
+        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+          String(r.ISItemActive).toLowerCase() === "true"
+            ? "bg-green-100 text-green-700"
+            : "bg-gray-100 text-gray-500"
+        }`}>
+          {String(r.ISItemActive).toLowerCase() === "true" ? "Active" : "Inactive"}
         </span>
-      )
+      ),
     },
   ];
 
+  const showGrid = !!activeGroupID;
+
+  // ── Form View ───────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
+
         {/* Header Ribbon */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
-            <h2 className="text-xl font-bold text-gray-800">Item Master</h2>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{companyName}</p>
+            <h2 className="text-xl font-bold text-gray-800">
+              {editing ? "Edit Item" : "Add Item"}
+              {formGroupName && <span className="text-gray-400 font-normal"> — {formGroupName}</span>}
+            </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <List size={16} /> List ({data.length})
+            <button
+              onClick={() => setView("list")}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <List size={16} /> Back to List
             </button>
-            <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-              <Plus size={16} /> New
-            </button>
-            <button onClick={save} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-              <Save size={16} /> Save
-            </button>
+            {formStep === "fill-form" && !formLoading && (
+              <button
+                onClick={saveItem}
+                disabled={formSaving}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+              >
+                {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {formSaving ? "Saving..." : "Save"}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Main Content Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          
-          {/* Badge & Tabs Header */}
-          <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-            {form.code && (
-              <span className="inline-block px-3 py-1 mb-4 text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-200 rounded-full">
-                {form.code}
-              </span>
+        {/* Error banner */}
+        {formError && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
+            {formError}
+          </div>
+        )}
+
+        {/* Step 1: Select Group */}
+        {formStep === "select-group" && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+            <SectionTitle title="Select Item Group" />
+            <p className="text-sm text-gray-500 mb-5">Choose the group this item belongs to</p>
+            {formLoading ? (
+              <div className="flex items-center gap-2 text-blue-600 text-sm">
+                <Loader2 size={16} className="animate-spin" /> Loading...
+              </div>
+            ) : allGroups.length === 0 ? (
+              <div className="text-sm text-gray-400">No groups found. Make sure you are logged in.</div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {allGroups.map(grp => (
+                  <button
+                    key={grp.ItemGroupID}
+                    onClick={() => {
+                      setFormGroupID(grp.ItemGroupID);
+                      setFormGroupName(grp.ItemGroupName);
+                      loadFormFields(grp.ItemGroupID, grp.ItemGroupName);
+                    }}
+                    className="px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all text-left"
+                  >
+                    {grp.ItemGroupName}
+                  </button>
+                ))}
+              </div>
             )}
-            <div className="flex gap-8">
-              <button
-                onClick={() => setActiveTab("basic")}
-                className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "basic" ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}
-              >
-                Basic Details
-              </button>
-              <button
-                onClick={() => setActiveTab("specs")}
-                className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === "specs" ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}
-              >
-                Specifications
-              </button>
+          </div>
+        )}
+
+        {/* Step 2: Fill Form */}
+        {formStep === "fill-form" && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+
+            {/* Group badge */}
+            <div className="px-6 pt-5 pb-4 border-b border-gray-200 bg-gray-50/30">
+              <span className="inline-block px-3 py-1 text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-200 rounded-full">
+                {formGroupName}
+              </span>
+            </div>
+
+            <div className="p-8">
+              {formLoading ? (
+                <div className="flex items-center justify-center py-14 gap-2 text-blue-600 text-sm">
+                  <Loader2 size={18} className="animate-spin" /> Loading fields...
+                </div>
+              ) : formFields.length === 0 ? (
+                <div className="text-center py-14 text-gray-400 text-sm">
+                  No fields configured for this group.
+                </div>
+              ) : (
+                <div className="space-y-8">
+
+                  {/* Dynamic fields grid */}
+                  <div>
+                    <SectionTitle title="Item Details" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      {formFields
+                        .filter(f => f.IsDisplay !== false && f.IsDisplay !== 0 && f.IsDisplay !== "0" && f.IsDisplay !== null)
+                        .map(field => (
+                          <DynamicField
+                            key={field.FieldName}
+                            field={field}
+                            value={formValues[field.FieldName] ?? ""}
+                            options={selectOpts[field.FieldName] ?? []}
+                            onChange={(v: any) => {
+                              const updates: Record<string, any> = { [field.FieldName]: v };
+                              // Auto-fill HSN Description when ProductHSNID is selected
+                              if (/ProductHSNID$/i.test(field.FieldName)) {
+                                const nameKey = field.FieldName.replace(/ID$/i, "Name");
+                                if (formFields.find((ff: any) => ff.FieldName === nameKey)) {
+                                  const hsnOpts = selectOpts[field.FieldName] ?? [];
+                                  const matched = hsnOpts.find((o: SelectOpt) => o.value === String(v));
+                                  updates[nameKey] = matched?.description ?? "";
+                                }
+                              }
+                              setFormValues(prev => ({ ...prev, ...updates }));
+                            }}
+                            submitAttempted={submitAttempted}
+                          />
+                        ))}
+                    </div>
+                  </div>
+
+                  {/* Active Item toggle */}
+                  <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
+                    <button
+                      onClick={() => setFormValues(v => ({
+                        ...v,
+                        ISItemActive: v.ISItemActive === "false" ? "true" : "false",
+                      }))}
+                      className={`w-12 h-6 rounded-full transition-colors relative ${formValues.ISItemActive !== "false" ? "bg-blue-500" : "bg-gray-300"}`}
+                    >
+                      <div className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${formValues.ISItemActive !== "false" ? "left-7" : "left-1"}`} />
+                    </button>
+                    <span className="text-sm font-medium text-gray-700">Active Item</span>
+                  </div>
+
+                  {/* Footer buttons */}
+                  <div className="flex items-center justify-between pt-6 border-t border-gray-200">
+                    <button
+                      onClick={() => { setFormStep("select-group"); setFormGroupID(""); setFormGroupName(""); }}
+                      className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      ← Change Group
+                    </button>
+                    <button
+                      onClick={saveItem}
+                      disabled={formSaving}
+                      className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                      {formSaving ? "Saving..." : editing ? "Update Item" : "Save Item"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="p-8">
-            {/* --- BASIC DETAILS TAB --- */}
-            {activeTab === "basic" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {/* Section 1 */}
-                <div>
-                  <SectionTitle title="Classification" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="Item Category" required>
-                      <SelectField value={form.category} onChange={(e: any) => onCategoryChange(e.target.value)} options={[
-                        { value: "Raw Material (RM)", label: "Raw Material (RM)" },
-                        { value: "Finished Goods (FG)", label: "Finished Goods (FG)" },
-                        { value: "Consumables", label: "Consumables" }
-                      ]} />
-                    </Field>
-                    <Field label="Item Group" required>
-                      <SelectField value={form.group} onChange={(e: any) => onGroupChange(e.target.value)} options={
-                        groupOptions.map(g => ({ value: g, label: g }))
-                      } />
-                    </Field>
-                    <Field label="Item Sub Group" required>
-                      <SelectField value={form.subGroup} onChange={(e: any) => f("subGroup", e.target.value)} options={
-                        subGroupOptions.map(s => ({ value: s, label: s }))
-                      } />
-                    </Field>
-                  </div>
-                </div>
-
-                {/* Section 2 */}
-                <div>
-                  <SectionTitle title="Item Identity" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="Item Code" required>
-                      <input type="text" value={form.code} onChange={e => f("code", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                    <div className="md:col-span-2">
-                      <Field label="Item Name" required>
-                        <input type="text" value={form.name} onChange={e => f("name", e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                      </Field>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 3 */}
-                <div>
-                  <SectionTitle title="Tax & UOM" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="HSN Code" required>
-                      <SelectField value={form.hsnCode} onChange={(e: any) => f("hsnCode", e.target.value)} options={
-                        hsnMasters.map(h => ({ value: h.hsnCode, label: h.hsnCode }))
-                      } />
-                    </Field>
-                    <Field label="GST Rate" required>
-                      <SelectField value={form.gstRate} onChange={(e: any) => f("gstRate", e.target.value)} options={[
-                        { value: "0%", label: "0%" }, { value: "5%", label: "5%" }, { value: "12%", label: "12%" }, { value: "18%", label: "18%" }, { value: "28%", label: "28%" }
-                      ]} />
-                    </Field>
-                    <Field label="Stock UOM" required>
-                      <SelectField value={form.stockUom} onChange={(e: any) => f("stockUom", e.target.value)} options={
-                        units.map(u => ({ value: u.name, label: u.name }))
-                      } />
-                    </Field>
-                  </div>
-                </div>
-
-                {/* Section 4 – Procurement */}
-                <div>
-                  <SectionTitle title="Procurement" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Field label="Supplier">
-                      <input type="text" value={form.supplier} onChange={e => f("supplier", e.target.value)} placeholder="Supplier name" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                    <Field label="Supplier Reference">
-                      <input type="text" value={form.supplierRef} onChange={e => f("supplierRef", e.target.value)} placeholder="Supplier part/ref code" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                    <Field label="Purchase Unit">
-                      <SelectField value={form.purchaseUnit} onChange={(e: any) => f("purchaseUnit", e.target.value)} options={
-                        units.map(u => ({ value: u.name, label: u.name }))
-                      } />
-                    </Field>
-                    <Field label="Estimation Unit">
-                      <SelectField value={form.estimationUnit} onChange={(e: any) => f("estimationUnit", e.target.value)} options={
-                        units.map(u => ({ value: u.name, label: u.name }))
-                      } />
-                    </Field>
-                    <Field label="Lead Time (Days)">
-                      <SuffixInput value={form.leadTime} onChange={(e: any) => f("leadTime", e.target.value)} placeholder="0" suffix="Days" type="number" />
-                    </Field>
-                    {!isFG && (
-                      <Field label="Shelf Life (Days)">
-                        <SuffixInput value={form.shelfLife} onChange={(e: any) => f("shelfLife", e.target.value)} placeholder="0" suffix="Days" type="number" />
-                      </Field>
-                    )}
-                  </div>
-                </div>
-
-                {/* Section 5 – Stock Management */}
-                <div>
-                  <SectionTitle title="Stock Management" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-5">
-                    <Field label="Stock Type">
-                      <SelectField value={form.stockType} onChange={(e: any) => f("stockType", e.target.value)} options={[
-                        { value: "Moving", label: "Moving" },
-                        { value: "Slow Moving", label: "Slow Moving" },
-                        { value: "Non-Moving", label: "Non-Moving" },
-                        { value: "Dead Stock", label: "Dead Stock" },
-                      ]} />
-                    </Field>
-                    <Field label="Re-Order Qty">
-                      <SuffixInput value={form.reOrderQty} onChange={(e: any) => f("reOrderQty", e.target.value)} placeholder="0" suffix={form.stockUom} type="number" />
-                    </Field>
-                    <Field label="Min Stock Qty">
-                      <SuffixInput value={form.minStockQty} onChange={(e: any) => f("minStockQty", e.target.value)} placeholder="0" suffix={form.stockUom} type="number" />
-                    </Field>
-                    <Field label="Stock Ref Code">
-                      <input type="text" value={form.stockRefCode} onChange={e => f("stockRefCode", e.target.value)} placeholder="Internal ref code" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                    <Field label="Ref Item Code">
-                      <input type="text" value={form.refItemCode} onChange={e => f("refItemCode", e.target.value)} placeholder="Cross-reference code" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                    <Field label="Tally Code">
-                      <input type="text" value={form.tallyCode} onChange={e => f("tallyCode", e.target.value)} placeholder="Tally item code" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                    </Field>
-                  </div>
-                  <div className="flex items-center gap-8">
-                    <Checkbox label="Standard Item" checked={form.isStandardItem} onChange={() => f("isStandardItem", !form.isStandardItem)} />
-                    <Checkbox label="Regular Item" checked={form.isRegularItem} onChange={() => f("isRegularItem", !form.isRegularItem)} />
-                  </div>
-                </div>
-
-                {/* Toggle */}
-                <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => f("active", !form.active)}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${form.active ? "bg-blue-500" : "bg-gray-300"}`}
-                  >
-                    <div className={`absolute top-1 max-w-4 h-4 rounded-full bg-white transition-all ${form.active ? "left-7 w-4" : "left-1 w-4"}`} />
-                  </button>
-                  <span className="text-sm font-medium text-gray-700">Active Item</span>
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                  <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    Clear
-                  </button>
-                  <button onClick={() => setActiveTab("specs")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">
-                    Specs →
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* --- SPECS TAB --- */}
-            {activeTab === "specs" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                {/* Section 1 – Film / Roll Dimensions (only for Film RM or FG rolls) */}
-                {showFilmSection && (
-                  <div>
-                    <SectionTitle title={isFG ? "Product Parameters" : "Film Parameters"} />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {showSubstrate && (
-                        <Field label="Substrate / Base Material">
-                          <SelectField value={form.substrate} onChange={(e: any) => f("substrate", e.target.value)} options={[
-                            { value: "BOPP", label: "BOPP" }, { value: "PET", label: "PET" }, { value: "PE", label: "PE" },
-                            { value: "CPP", label: "CPP" }, { value: "PVC", label: "PVC" }, { value: "OPS", label: "OPS" },
-                          ]} />
-                        </Field>
-                      )}
-                      {showDimensions && (
-                        <>
-                          <Field label="Web Width">
-                            <SuffixInput value={form.webWidth} onChange={(e: any) => f("webWidth", e.target.value)} placeholder="e.g. 330" suffix="mm" type="number" />
-                          </Field>
-                          <Field label="Thickness / Gauge">
-                            <SuffixInput value={form.thickness} onChange={(e: any) => f("thickness", e.target.value)} placeholder="e.g. 50" suffix="μ" type="number" />
-                          </Field>
-                        </>
-                      )}
-                      {isFilmGroup && (
-                        <Field label="Density">
-                          <SuffixInput value={form.density} onChange={(e: any) => f("density", e.target.value)} placeholder="e.g. 0.91" suffix="g/cc" type="number" />
-                        </Field>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Ink-specific fields */}
-                {showInkFields && (
-                  <div>
-                    <SectionTitle title="Ink Properties" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <Field label="Colour">
-                        <input type="text" value={form.colour} onChange={e => f("colour", e.target.value)} placeholder="e.g. Yellow, Cyan, Magenta" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                      </Field>
-                      <Field label="Pantone No.">
-                        <input type="text" value={form.pantoneNo} onChange={e => f("pantoneNo", e.target.value)} placeholder="e.g. Pantone 485 C" className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                      </Field>
-                    </div>
-                  </div>
-                )}
-
-                {/* Section 2 – Shrinkage (only for shrink products) */}
-                {showShrinkage && (
-                  <div>
-                    <SectionTitle title="Shrink Parameters" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <Field label="Shrinkage % (TD)">
-                        <SuffixInput value={form.shrinkage} onChange={(e: any) => f("shrinkage", e.target.value)} placeholder="0" suffix="%" type="number" />
-                      </Field>
-                    </div>
-                  </div>
-                )}
-
-                {/* Section 3 – Rates & Remarks */}
-                <div>
-                  <SectionTitle title="Rates & Remarks" />
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                    {showPurchaseRate && (
-                      <Field label="Purchase Rate (₹)">
-                        <PrefixInput value={form.purchaseRate} onChange={(e: any) => f("purchaseRate", e.target.value)} placeholder="0.00" prefix="₹" type="number" />
-                      </Field>
-                    )}
-                    <Field label={isFG ? "Selling Rate (₹)" : "Estimation Rate (₹)"}>
-                      <PrefixInput value={form.estimationRate} onChange={(e: any) => f("estimationRate", e.target.value)} placeholder="0.00" prefix="₹" type="number" />
-                    </Field>
-                  </div>
-                  <Field label="Remarks / Description">
-                    <textarea
-                      value={form.remarks}
-                      onChange={(e) => f("remarks", e.target.value)}
-                      placeholder="Any additional notes..."
-                      rows={3}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
-                    />
-                  </Field>
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                  <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    Clear
-                  </button>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setActiveTab("basic")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      ← Basic
-                    </button>
-                    <button onClick={save} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                      <Check size={16} /> Save Item
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </div>
     );
   }
 
-  // --- List View ---
-  const categories = ["All", "Raw Material (RM)", "Consumables", "Finished Goods (FG)"];
-  const groupsForFilter = filterCategory === "All"
-    ? ["All"]
-    : ["All", ...Object.keys(CATEGORY_GROUP_SUBGROUP[filterCategory] ?? {})];
-
-  const filteredData = data.filter(r => {
-    if (filterCategory !== "All" && r.category !== filterCategory) return false;
-    if (filterGroup !== "All" && r.group !== filterGroup) return false;
-    return true;
-  });
-
-  const onFilterCategoryChange = (cat: string) => {
-    setFilterCategory(cat);
-    setFilterGroup("All");
-  };
-
+  // ── List View ───────────────────────────────────────────────────────────────
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Item Master</h2>
-          <p className="text-sm text-gray-500">{filteredData.length} of {data.length} items</p>
+          <p className="text-sm text-gray-500">
+            {showGrid
+              ? gridLoading ? "Loading..." : `${filteredGridData.length} items — ${activeGroupName}`
+              : allGroups.length === 0 ? "Loading groups..." : "Select a group to load items"}
+          </p>
         </div>
         <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
           <Plus size={16} /> Add Item
         </button>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
-        {/* Category Tabs */}
+      {/* Filter Bar — group pills direct from backend */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Category</span>
-          {categories.map(cat => (
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Group</span>
+          <button
+            onClick={() => onGroupPillClick(null)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+              !activeGroupID
+                ? "bg-blue-50 text-blue-700 border-blue-300"
+                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+            }`}
+          >
+            All Groups
+          </button>
+          {allGroups.map(grp => (
             <button
-              key={cat}
-              onClick={() => onFilterCategoryChange(cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                filterCategory === cat
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              key={grp.ItemGroupID}
+              onClick={() => onGroupPillClick(grp)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                activeGroupID === grp.ItemGroupID
+                  ? "bg-blue-50 text-blue-700 border-blue-300"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
               }`}
             >
-              {cat === "All" ? "All Categories" : cat}
+              {grp.ItemGroupName}
             </button>
           ))}
         </div>
-
-        {/* Group Pills – only when a category is selected */}
-        {filterCategory !== "All" && (
-          <div className="flex items-center gap-2 flex-wrap border-t border-gray-100 pt-3">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Group</span>
-            {groupsForFilter.map(grp => (
-              <button
-                key={grp}
-                onClick={() => setFilterGroup(grp)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                  filterGroup === grp
-                    ? "bg-blue-50 text-blue-700 border-blue-300"
-                    : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-                }`}
-              >
-                {grp === "All" ? "All Groups" : grp}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
+      {/* Grid Panel */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <DataTable
-          data={filteredData} columns={columns}
-          searchKeys={["name", "code", "category", "hsnCode"]}
-          actions={(row) => (
-            <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.id)}>Delete</Button>
-            </div>
-          )}
-        />
+
+        {/* No group selected */}
+        {!showGrid && (
+          <div className="text-center py-14 text-gray-400 text-sm">
+            Select a group above to load live data
+          </div>
+        )}
+
+        {/* Loading spinner */}
+        {showGrid && gridLoading && (
+          <div className="flex items-center justify-center py-14 gap-2 text-blue-600 text-sm">
+            <Loader2 size={18} className="animate-spin" />
+            Loading {activeGroupName} items from server...
+          </div>
+        )}
+
+        {/* Date filter bar — shown when a group is selected */}
+        {showGrid && !gridLoading && (
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <span className="text-xs text-gray-400">to</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            {filteredGridData.length !== gridData.length && (
+              <span className="text-xs text-gray-400">{filteredGridData.length} of {gridData.length} shown</span>
+            )}
+          </div>
+        )}
+
+        {/* Live grid — real backend data */}
+        {showGrid && !gridLoading && (
+          <DataTable
+            data={filteredGridData}
+            columns={liveColumns}
+            searchKeys={["ItemCode", "ItemName"]}
+            actions={(row: any) => (
+              <div className="flex items-center gap-2 justify-end">
+                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.ItemID ?? row.id, row.ItemGroupID ?? activeGroupID)}>Delete</Button>
+              </div>
+            )}
+          />
+        )}
       </div>
     </div>
   );

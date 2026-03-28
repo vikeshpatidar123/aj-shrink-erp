@@ -1,887 +1,1149 @@
 "use client";
-import { useState } from "react";
-import {
-  Plus, Pencil, Trash2, Save, List, Check, X, LayoutGrid,
-  ChevronDown,
-} from "lucide-react";
-import { CategoryMaster as Category, CATEGORY_GROUP_SUBGROUP } from "@/data/dummyData";
-import { useCategories } from "@/context/CategoriesContext";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
-import { inputCls } from "@/lib/styles";
+import { authHeaders } from "@/lib/auth";
 
-// ─── Types ────────────────────────────────────────────────────
+const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE = `${BASE_URL}/api/categorymaster`;
 
-type DryWeightRow = {
-  id: string; particular: string; grmPerM2: number;
-  minValue: number; maxValue: number; isEditable: boolean;
-};
+// ── Unwrap triple-encoded JSON ─────────────────────────────────────────────────
+function unwrap(raw: any): any {
+  let r = raw;
+  while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
+  return r;
+}
 
-type ConsumableRow = {
-  id: string;
-  plyType: string;           // "Film" | "Printing" | "Lamination" | "Coating"
-  itemGroup: string;         // "Film" | "Ink" | "Solvent" | "Adhesive" | "Hardner"
-  itemSubGroup: string;
-  fieldName: string;
-  calcFieldName: string;
-  fieldDisplayName: string;
-  defaultValue: number; minValue: number; maxValue: number;
-  sharePercentageFormula: string;
-};
-
-type ContentCard = {
-  id: string; name: string; selected: boolean; defaultContent: boolean;
-};
-
-type CoaRow = {
-  id: string;
-  coaWise: "Category wise" | "Client and category wise";
-  test: string;
-  specification: string;
-  specFieldType: "Text Field" | "Data Field" | "Combo Field";
-  specFieldDataFrom: string;
-  specFieldValue: string;
-  specFieldUnit: string;
-  resultData: string;
-  defaultValue: string;
-  showIn: string;
-};
-
-type FullCategory = Category & {
-  orientation: string; division: string; ply: string;
-  contentCards: ContentCard[];
-  coaRows: CoaRow[];
-  dryWeightRows: DryWeightRow[];
-  consumableRows: ConsumableRow[];
-};
-
-// ─── Constants ────────────────────────────────────────────────
-
-const CONTENT_TEMPLATES: ContentCard[] = [
-  { id: "c1", name: "Roto - Label", selected: true, defaultContent: true },
-  { id: "c2", name: "Roto - Center Seal Pouch", selected: false, defaultContent: false },
-  { id: "c3", name: "Roto - Zipper Pouch", selected: false, defaultContent: false },
-  { id: "c4", name: "Roto - 3 Side Seal Pouch", selected: false, defaultContent: false },
-  { id: "c5", name: "Roto - 4 Side Seal Pouch", selected: false, defaultContent: false },
-  { id: "c6", name: "Roto - Stand Up Pouch", selected: false, defaultContent: false },
-  { id: "c7", name: "Roto - Back Seal Pouch", selected: false, defaultContent: false },
-  { id: "c8", name: "Roto - Laminated Roll", selected: false, defaultContent: false },
-  { id: "c9", name: "Roto - Shrink Film", selected: false, defaultContent: false },
-  { id: "c10", name: "Roto - Shrink Sleeve", selected: false, defaultContent: false },
-  { id: "c11", name: "Roto - Wrap Around Label", selected: false, defaultContent: false },
-  { id: "c12", name: "Roto - Flat Pouch", selected: false, defaultContent: false },
-];
-
-const TABS = [
-  "Category Field",
-  "Content Allocation",
-  "Coa Parameter Allocation",
-  "Dry Weight(GSM) Setting",
-  "Ply Configuration",
-];
-
-const ORIENTATIONS = ["2D", "3D"];
-const DIVISIONS = ["Gravure", "Digital"];
-const PLYS = ["2 Ply", "3 Ply", "5 Ply", "Mono Ply"];
-const PLY_TYPES = ["Film", "Printing", "Lamination", "Coating"];
-const PLY_DISPLAY: Record<string, string> = {
-  Film:       "Ply 1",
-  Printing:   "Ply 2",
-  Lamination: "Ply 3",
-  Coating:    "Ply 4",
-};
-const RM_GROUPS = Object.keys(CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"] ?? {});
-
-const uid = () => Math.random().toString(36).slice(2, 8);
-
-const blankCategory = (): Omit<FullCategory, "id"> => ({
-  name: "",
-  description: "",
-  status: "Active",
-  orientation: "2D",
-  division: "Gravure",
-  ply: "2 Ply",
-  contentCards: CONTENT_TEMPLATES.map(c => ({ ...c })),
-  coaRows: [],
-  dryWeightRows: [],
-  consumableRows: [],
-});
-
-// ─── Sub-components ────────────────────────────────────────────
-
+// ── Shared UI ──────────────────────────────────────────────────────────────────
 const SectionTitle = ({ title }: { title: string }) => (
-  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
-    {title}
-  </h3>
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
-
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-teal-800 uppercase tracking-wider">
-      {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+      {label}{required && <span className="text-red-500 ml-1">*</span>}
     </label>
     {children}
   </div>
 );
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
+const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-const selectCls = `${inputCls} appearance-none cursor-pointer pr-8`;
+// ── Types ──────────────────────────────────────────────────────────────────────
+type CategoryRow = {
+  id: string;
+  CategoryID: string;
+  CategoryName: string;
+  Orientation: string;
+  Layer: string;
+  Remark: string;
+  SegmentID: string;
+  SegmentName: string;
+};
 
-function SelectField({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
-  return (
-    <div className="relative">
-      <select className={selectCls} value={value} onChange={e => onChange(e.target.value)}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-      {value && (
-        <button className="absolute right-6 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500" onClick={() => onChange("")}>
-          <X size={12} />
-        </button>
-      )}
-    </div>
-  );
-}
+type ContentItem = {
+  ContentID: string;
+  ContentName: string;
+  ContentCaption: string;
+  ContentClosedHref: string;
+  ContentOpenHref: string;
+  IsSelected: boolean;
+  IsDefault: boolean;
+};
 
-// Card image placeholder for content types
-function ContentIcon({ name }: { name: string }) {
-  return (
-    <div className="w-16 h-14 bg-yellow-300 rounded border border-yellow-400 flex items-center justify-center text-[8px] text-yellow-800 font-bold text-center px-1 leading-tight shadow-sm">
-      {name.split(" ").slice(0, 2).join("\n")}
-    </div>
-  );
-}
+type ProcessAllocation = {
+  ProcessID: string;
+  ContentID: string;
+};
 
-// ─── Main Page ────────────────────────────────────────────────
+type ProcessItem = {
+  ProcessID: string;
+  ProcessName: string;
+  TypeofCharges: string;
+};
 
+type CoaRow = {
+  id: string;
+  TestParameterName: string;
+  Specification: string;
+  SpecificationFieldDataFromTable: string;
+  SpecificationFieldValue: string;
+  SpecificationFieldUnit: string;
+  ResultDataFieldType: string;
+  Defaults: string;
+  ShowIn: string;
+};
+
+type DryRow = {
+  id: string;
+  Particular: string;
+  GSM: number;
+  MinimumValue: number;
+  MaximumValue: number;
+  IsEditableField: boolean;
+};
+
+type SegmentItem = { SegmentID: string; SegmentName: string };
+
+type PlyConfigRow = {
+  id: string;
+  PlyNumber: number;
+  ItemGroupID: string;
+  ItemGroupName: string;
+  ItemSubGroupName: string;
+  FieldDisplayName: string;
+  DefaultGSM: number;
+  MinimumValue: number;
+  MaximumValue: number;
+  SharePercentageFormula: string;
+};
+
+type FormState = {
+  CategoryName: string;
+  Orientation: string;
+  Layer: string;
+  SegmentID: string;
+  Remark: string;
+  contents: ContentItem[];
+  processAllocations: ProcessAllocation[];
+  coaRows: CoaRow[];
+  dryRows: DryRow[];
+  plyRows: PlyConfigRow[];
+};
+
+const uid = () => Math.random().toString(36).slice(2, 8);
+
+const blank = (): FormState => ({
+  CategoryName: "", Orientation: "2D", Layer: "", SegmentID: "", Remark: "",
+  contents: [], processAllocations: [], coaRows: [], dryRows: [], plyRows: [],
+});
+
+// Layer string → max ply count
+const layerToPlyCount = (layer: string): number => {
+  if (!layer || layer.toLowerCase() === "mono") return 1;
+  const m = layer.match(/(\d+)/);
+  return m ? parseInt(m[1]) : 5;
+};
+
+const blankply = () => ({ PlyNumber: 1, ItemGroupID: "", ItemGroupName: "", ItemSubGroupName: "", FieldDisplayName: "", DefaultGSM: 0, MinimumValue: 0, MaximumValue: 0, SharePercentageFormula: "" });
+
+const ORIENTATIONS = [
+  { value: "2D", label: "2D" },
+  { value: "3D", label: "3D" },
+  { value: "BOOK", label: "BOOK" },
+];
+const LAYERS = ["Mono", "2 Layer", "3 Layer", "4 Layer", "5 Layer"].map(v => ({ value: v, label: v }));
+
+const blankcoa = () => ({
+  TestParameterName: "", Specification: "", SpecificationFieldDataFromTable: "",
+  SpecificationFieldValue: "", SpecificationFieldUnit: "",
+  ResultDataFieldType: "", Defaults: "", ShowIn: "",
+});
+const blankdry = () => ({ Particular: "", GSM: 0, MinimumValue: 0, MaximumValue: 0, IsEditableField: true });
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 export default function CategoryMasterPage() {
-  const { categories: ctxCategories, saveCategory: ctxSave, deleteCategory: ctxDelete } = useCategories();
-
   const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<FullCategory[]>(
-    ctxCategories.map(c => ({
-      ...c,
-      orientation: "2D", division: "Gravure", ply: "2 Ply",
-      contentCards: CONTENT_TEMPLATES.map(x => ({ ...x })),
-      coaRows: [], dryWeightRows: [],
-      consumableRows: (c.plyConsumables ?? []).map(pc => ({
-        id: pc.id, plyType: pc.plyType, itemGroup: pc.itemGroup,
-        itemSubGroup: pc.itemSubGroup, fieldName: "", calcFieldName: "",
-        fieldDisplayName: pc.fieldDisplayName, defaultValue: pc.defaultValue,
-        minValue: pc.minValue, maxValue: pc.maxValue,
-        sharePercentageFormula: pc.sharePercentageFormula,
-      })),
-    }))
-  );
-  const [editing, setEditing] = useState<FullCategory | null>(null);
-  const [form, setForm] = useState<Omit<FullCategory, "id">>(blankCategory());
-  const [activeTab, setActiveTab] = useState(0);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [segments, setSegments] = useState<SegmentItem[]>([]);
+  const [allProcesses, setAllProcesses] = useState<ProcessItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [formLoading, setFormLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [editing, setEditing] = useState<CategoryRow | null>(null);
+  const [form, setForm] = useState<FormState>(blank());
+  const [activeTab, setActiveTab] = useState<"detail" | "content" | "coa" | "dryweight" | "ply">("detail");
+  const [filterSegment, setFilterSegment] = useState("All");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [processModalContentId, setProcessModalContentId] = useState<string | null>(null);
 
-  // Drafts for grid rows
-  const [coaDraft, setCoaDraft] = useState<Omit<CoaRow, "id">>({
-    coaWise: "Category wise", test: "", specification: "",
-    specFieldType: "Text Field", specFieldDataFrom: "",
-    specFieldValue: "", specFieldUnit: "", resultData: "",
-    defaultValue: "", showIn: "",
-  });
+  // Drafts
+  const [coaDraft, setCoaDraft] = useState(blankcoa());
+  const [dryDraft, setDryDraft] = useState(blankdry());
+  const [plyDraft, setPlyDraft] = useState(blankply());
+  const [itemGroupsFull, setItemGroupsFull] = useState<{ItemGroupID: string; ItemGroupName: string}[]>([]);
+  const [itemSubGroups, setItemSubGroups] = useState<string[]>([]);
+  const [allSubGroupsFull, setAllSubGroupsFull] = useState<{ItemSubGroupName: string; UnderSubGroupID: string}[]>([]);
 
-  // DryWeight new row draft
-  const [dryDraft, setDryDraft] = useState<Omit<DryWeightRow, "id">>({ particular: "", grmPerM2: 1, minValue: 0, maxValue: 10, isEditable: true });
-  const [consDraft, setConsDraft] = useState<Omit<ConsumableRow, "id">>({ plyType: "", itemGroup: "", itemSubGroup: "", fieldName: "", calcFieldName: "", fieldDisplayName: "", defaultValue: 0, minValue: 0, maxValue: 10, sharePercentageFormula: "" });
+  const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  const f = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(p => ({ ...p, [k]: v }));
+  // ── Load list ──────────────────────────────────────────────────────────────────
+  const loadList = useCallback(() => {
+    setLoading(true);
+    fetch(`${BASE}/getcategory`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        setCategories(Array.isArray(raw) ? raw.map((r: any) => ({ ...r, id: String(r.CategoryID) })) : []);
+      })
+      .catch(() => setCategories([]))
+      .finally(() => setLoading(false));
+  }, []);
 
-  const openAdd = () => {
+  const loadSegments = useCallback(() => {
+    fetch(`${BASE}/getsegment`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        setSegments(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setSegments([]));
+  }, []);
+
+  const loadProcesses = useCallback(() => {
+    fetch(`${BASE}/processgrid`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        setAllProcesses(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setAllProcesses([]));
+  }, []);
+
+  const loadItemGroups = useCallback(() => {
+    fetch(`${BASE}/getitemgroupsforply`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        setItemGroupsFull(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setItemGroupsFull([]));
+  }, []);
+
+  const loadAllSubGroups = useCallback(() => {
+    fetch(`${BASE_URL}/api/itemmaster/group`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const raw = unwrap(text);
+        setAllSubGroupsFull(Array.isArray(raw) ? raw.map((s: any) => ({
+          ItemSubGroupName: String(s.ItemSubGroupName ?? ""),
+          UnderSubGroupID: String(s.UnderSubGroupID ?? ""),
+        })) : []);
+      })
+      .catch(() => setAllSubGroupsFull([]));
+  }, []);
+
+  useEffect(() => { loadList(); loadSegments(); loadProcesses(); loadItemGroups(); loadAllSubGroups(); }, [loadList, loadSegments, loadProcesses, loadItemGroups, loadAllSubGroups]);
+
+  // ── Load content + process allocations ────────────────────────────────────────
+  const fetchContents = useCallback(async (categoryID: string): Promise<{ contents: ContentItem[]; processAllocations: ProcessAllocation[] }> => {
+    try {
+      const res = await fetch(`${BASE}/getallcontents/${categoryID}`, { headers: authHeaders() });
+      const raw = unwrap(await res.text());
+      let contRows: any[] = [];
+      let procRows: any[] = [];
+      if (raw && typeof raw === "object" && Array.isArray(raw.Contents)) {
+        contRows = raw.Contents;
+        procRows = Array.isArray(raw.Process) ? raw.Process : [];
+      } else if (Array.isArray(raw)) {
+        contRows = raw;
+      }
+      const contents: ContentItem[] = contRows.map((c: any) => ({
+        ContentID: String(c.ContentID ?? ""),
+        ContentName: c.ContentName ?? "",
+        ContentCaption: c.ContentCaption ?? "",
+        ContentClosedHref: c.ContentClosedHref ?? "",
+        ContentOpenHref: c.ContentOpenHref ?? "",
+        IsSelected: Number(c.IsSelected) !== 0,
+        IsDefault: false,
+      }));
+      const processAllocations: ProcessAllocation[] = procRows
+        .filter((p: any) => p.ContentID && Number(p.ContentID) !== 0)
+        .map((p: any) => ({
+          ProcessID: String(p.ProcessID),
+          ContentID: String(p.ContentID),
+        }));
+      return { contents, processAllocations };
+    } catch { return { contents: [], processAllocations: [] }; }
+  }, []);
+
+  // ── Load COA rows for a category ──────────────────────────────────────────────
+  const fetchCoa = useCallback(async (categoryID: string): Promise<CoaRow[]> => {
+    try {
+      const res = await fetch(`${BASE}/categorywisegriddata/${categoryID}`, { headers: authHeaders() });
+      const raw = unwrap(await res.text());
+      const rows: any[] = Array.isArray(raw) ? raw : [];
+      return rows.map(r => ({
+        id: uid(),
+        TestParameterName: r.TestParameterName ?? "",
+        Specification: r.Specification ?? "",
+        SpecificationFieldDataFromTable: r.SpecificationFieldDataFromTable ?? "",
+        SpecificationFieldValue: r.SpecificationFieldValue ?? "",
+        SpecificationFieldUnit: r.SpecificationFieldUnit ?? "",
+        ResultDataFieldType: r.ResultDataFieldType ?? "",
+        Defaults: r.Defaults ?? "",
+        ShowIn: r.ShowIn ?? "",
+      }));
+    } catch { return []; }
+  }, []);
+
+  // ── Load ply configuration for a category ──────────────────────────────────────
+  const fetchPlyConfig = useCallback(async (categoryID: string): Promise<PlyConfigRow[]> => {
+    try {
+      const res = await fetch(`${BASE}/getplyconfiguration/${categoryID}`, { headers: authHeaders() });
+      const raw = unwrap(await res.text());
+      const rows: any[] = Array.isArray(raw) ? raw : [];
+      return rows.map(r => ({
+        id: uid(),
+        PlyNumber: Number(r.PlyNumber ?? 1),
+        ItemGroupID: r.ItemGroupID ? String(r.ItemGroupID) : "",
+        ItemGroupName: r.ItemGroupName ?? "",
+        ItemSubGroupName: r.ItemSubGroupName ?? "",
+        FieldDisplayName: r.FieldDisplayName ?? "",
+        DefaultGSM: Number(r.DefaultGSM ?? 0),
+        MinimumValue: Number(r.MinimumValue ?? 0),
+        MaximumValue: Number(r.MaximumValue ?? 0),
+        SharePercentageFormula: r.SharePercentageFormula ?? "",
+      }));
+    } catch { return []; }
+  }, []);
+
+  // ── Open add ───────────────────────────────────────────────────────────────────
+  const openAdd = async () => {
     setEditing(null);
-    setForm(blankCategory());
-    setActiveTab(0);
+    setError("");
+    setActiveTab("detail");
+    setFormLoading(true);
     setView("form");
+    const { contents } = await fetchContents("0");
+    setForm({ ...blank(), contents });
+    setFormLoading(false);
   };
 
-  const openEdit = (row: FullCategory) => {
+  // ── Open edit ──────────────────────────────────────────────────────────────────
+  const openEdit = async (row: CategoryRow) => {
     setEditing(row);
-    const { id, ...rest } = row;
-    setForm(rest);
-    setActiveTab(0);
+    setError("");
+    setActiveTab("detail");
+    setFormLoading(true);
     setView("form");
+    const [{ contents, processAllocations }, coaRows, plyRows] = await Promise.all([
+      fetchContents(row.CategoryID),
+      fetchCoa(row.CategoryID),
+      fetchPlyConfig(row.CategoryID),
+    ]);
+    setForm({
+      CategoryName: row.CategoryName ?? "",
+      Orientation: row.Orientation ?? "2D",
+      Layer: row.Layer ?? "",
+      SegmentID: String(row.SegmentID ?? ""),
+      Remark: row.Remark ?? "",
+      contents,
+      processAllocations,
+      coaRows,
+      dryRows: [],
+      plyRows,
+    });
+    setFormLoading(false);
   };
 
-  const save = () => {
-    if (!form.name) return;
-    // Map consumableRows → CategoryPlyConsumable[] for shared context
-    const plyConsumables = form.consumableRows.map(r => ({
-      id: r.id, plyType: r.plyType, itemGroup: r.itemGroup,
-      itemSubGroup: r.itemSubGroup, fieldDisplayName: r.fieldDisplayName,
-      defaultValue: r.defaultValue, minValue: r.minValue, maxValue: r.maxValue,
-      sharePercentageFormula: r.sharePercentageFormula,
-    }));
-    const contents = form.contentCards.filter(c => c.selected).map(c => c.name);
-    if (editing) {
-      const updated: FullCategory = { ...form, id: editing.id };
-      setData(d => d.map(r => r.id === editing.id ? updated : r));
-      ctxSave({ id: editing.id, name: form.name, description: form.description, status: form.status, contents, plyConsumables });
-    } else {
-      const id = `CAT${String(data.length + 1).padStart(3, "0")}`;
-      setData(d => [...d, { ...form, id }]);
-      ctxSave({ id, name: form.name, description: form.description, status: form.status, contents, plyConsumables });
+  // ── Toggle content selection ───────────────────────────────────────────────────
+  const toggleContent = (idx: number, field: "IsSelected" | "IsDefault") => {
+    const items = [...form.contents];
+    items[idx] = { ...items[idx], [field]: !items[idx][field] };
+    if (field === "IsSelected" && !items[idx].IsSelected) {
+      // Deselected — remove process allocations for this content
+      const contentID = items[idx].ContentID;
+      setForm(p => ({
+        ...p,
+        contents: items,
+        processAllocations: p.processAllocations.filter(a => a.ContentID !== contentID),
+      }));
+      return;
     }
-    setView("list");
+    f("contents", items);
   };
 
-  const deleteRow = (id: string) => {
-    if (confirm("Delete this category?")) {
-      setData(d => d.filter(r => r.id !== id));
-      ctxDelete(id);
+  // ── Toggle process allocation for a content ────────────────────────────────────
+  const toggleProcessAllocation = (processID: string, contentID: string) => {
+    setForm(p => {
+      const exists = p.processAllocations.some(a => a.ProcessID === processID && a.ContentID === contentID);
+      if (exists) {
+        return { ...p, processAllocations: p.processAllocations.filter(a => !(a.ProcessID === processID && a.ContentID === contentID)) };
+      }
+      return { ...p, processAllocations: [...p.processAllocations, { ProcessID: processID, ContentID: contentID }] };
+    });
+  };
+
+  // ── Save ───────────────────────────────────────────────────────────────────────
+  const saveCategory = async () => {
+    setSubmitAttempted(true);
+    if (!form.CategoryName.trim()) { setError("Category Name is required."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const selectedContents = form.contents.filter(c => c.IsSelected);
+
+      const masterRecord: Record<string, any> = {
+        CategoryName: form.CategoryName,
+        Orientation: form.Orientation || null,
+        Layer: form.Layer || null,
+        SegmentID: form.SegmentID ? Number(form.SegmentID) : null,
+        Remark: form.Remark || null,
+        MinimumAroundGap: 0, MaximumAroundGap: 0, DefaultAroundGap: 0,
+        MinimumAcrossGap: 0, MaximumAcrossGap: 0, DefaultAcrossGap: 0,
+        MinimumPlateBearer: 0, MaximumPlateBearer: 0, DefaultPlateBearer: 0,
+        MinimumSideStrip: 0, MaximumSideStrip: 0, DefaultSideStrip: 0,
+        DefaultPrintingMarginTop: 0, DefaultPrintingMarginBottom: 0,
+        DefaultPrintingMarginLeft: 0, DefaultPrintingMarginRight: 0,
+        DefaultStrippingMarginTop: 0, DefaultStrippingMarginBottom: 0,
+        DefaultStrippingMarginLeft: 0, DefaultStrippingMarginRight: 0,
+        DefaultJobTrimmingTop: 0, DefaultJobTrimmingBottom: 0,
+        DefaultJobTrimmingLeft: 0, DefaultJobTrimmingRight: 0,
+        ProcessIDString: "",
+        ContentsIDString: selectedContents.map(c => c.ContentID).join(","),
+        RotoGSMContributionSettingJSON: JSON.stringify(
+          form.dryRows.map(r => ({
+            Particular: r.Particular, GSM: r.GSM,
+            MinimumValue: r.MinimumValue, MaximumValue: r.MaximumValue,
+            IsEditableField: r.IsEditableField,
+          }))
+        ),
+        GravureWetGSMJSONConfig: "[]",
+      };
+
+      const contentAlloc = selectedContents.map(c => ({ ContentID: c.ContentID }));
+
+      const coaPayload = form.coaRows.map((r, i) => ({
+        TestParameterName: r.TestParameterName,
+        TransID: i + 1,
+        Specification: r.Specification,
+        SpecificationFieldDataFromTable: r.SpecificationFieldDataFromTable,
+        SpecificationFieldValue: r.SpecificationFieldValue,
+        SpecificationFieldUnit: r.SpecificationFieldUnit,
+        ResultDataFieldType: r.ResultDataFieldType,
+        Defaults: r.Defaults,
+        ShowIn: r.ShowIn,
+      }));
+
+      // Only send process allocations for selected contents
+      const selectedContentIDs = new Set(selectedContents.map(c => c.ContentID));
+      const processAllocPayload = form.processAllocations
+        .filter(a => selectedContentIDs.has(a.ContentID))
+        .map(a => ({ ProcessID: a.ProcessID, ContentID: a.ContentID }));
+
+      const plyConfigPayload = form.plyRows.map(r => ({
+        PlyNumber: r.PlyNumber,
+        ItemGroupID: r.ItemGroupID,
+        ItemGroupName: r.ItemGroupName,
+        ItemSubGroupName: r.ItemSubGroupName,
+        FieldDisplayName: r.FieldDisplayName,
+        DefaultGSM: r.DefaultGSM,
+        MinimumValue: r.MinimumValue,
+        MaximumValue: r.MaximumValue,
+        SharePercentageFormula: r.SharePercentageFormula,
+      }));
+
+      const payload: any = {
+        CostingDataGroupMaster: [masterRecord],
+        CategoryName: form.CategoryName,
+        CategoryWiseContentAllocation: contentAlloc,
+        CategoryWiseContentProcessAllocation: processAllocPayload,
+        COA: coaPayload,
+        COA1: [],
+        SelectedLedgerID: null,
+        ProcessAllocatedMaterialDetail: [],
+        CategoryWiseMaterialDetail: [],
+        PlyConfigurationRows: plyConfigPayload,
+      };
+
+      if (editing) {
+        payload.TxtCategoryID = editing.CategoryID;
+      }
+
+      const url = editing ? `${BASE}/updatcategorydata` : `${BASE}/savecategorydata`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result = unwrap(await res.text());
+      if (result === "Success") {
+        loadList();
+        setView("list");
+      } else if (result === "Exist") {
+        setError("A category with this name already exists.");
+      } else {
+        setError("Save failed: " + result);
+      }
+    } catch (e: any) {
+      setError("Error: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  // ── Delete ─────────────────────────────────────────────────────────────────────
+  const deleteCategory = async (CategoryID: string) => {
+    if (!confirm("Delete this category?")) return;
+    try {
+      const res = await fetch(`${BASE}/deletecategorymasterdata/${CategoryID}`, { headers: authHeaders() });
+      const raw = await res.text();
+      let result: string;
+      try { result = unwrap(raw); } catch { result = raw; }
+      if (result === "Success") loadList();
+      else alert("Delete failed: " + result);
+    } catch (e: any) {
+      alert("Error: " + e.message);
     }
   };
 
-  const toggleCard = (idx: number, field: "selected" | "defaultContent") => {
-    const cards = [...form.contentCards];
-    cards[idx] = { ...cards[idx], [field]: !cards[idx][field] };
-    f("contentCards", cards);
-  };
+  // ── List derived ───────────────────────────────────────────────────────────────
+  const uniqueSegments = useMemo(() =>
+    ["All", ...new Set(categories.map(c => c.SegmentName).filter(Boolean))],
+    [categories]);
 
-  const columns: Column<FullCategory>[] = [
-    { key: "id", header: "Code", sortable: true },
-    { key: "name", header: "Category Name", sortable: true },
-    { key: "division", header: "Division", render: r => <span className="px-2 py-0.5 rounded text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">{r.division || "—"}</span> },
-    { key: "ply", header: "Ply", render: r => <span className="text-xs text-gray-600">{r.ply || "—"}</span> },
-    {
-      key: "status", header: "Status", render: r => (
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${r.status === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{r.status}</span>
-      )
-    },
-  ];
+  const filtered = useMemo(() =>
+    filterSegment === "All" ? categories : categories.filter(c => c.SegmentName === filterSegment),
+    [categories, filterSegment]);
 
-  // ── FORM VIEW ────────────────────────────────────────────────
-  if (view === "form") {
+  // ── Process modal ──────────────────────────────────────────────────────────────
+  const activeContent = processModalContentId
+    ? form.contents.find(c => c.ContentID === processModalContentId)
+    : null;
+
+  const ProcessModal = () => {
+    if (!processModalContentId || !activeContent) return null;
+    const allocatedForContent = form.processAllocations.filter(a => a.ContentID === processModalContentId);
     return (
-      <div className="max-w-6xl mx-auto pb-10">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-          <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
-            <h2 className="text-xl font-bold text-gray-800">Category Master Creation/Updation</h2>
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col max-h-[80vh]">
+          <div className="flex items-center justify-between p-5 border-b border-gray-100">
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Process Allocation</p>
+              <h3 className="text-sm font-bold text-gray-800">
+                {activeContent.ContentCaption || activeContent.ContentName}
+              </h3>
+            </div>
+            <button onClick={() => setProcessModalContentId(null)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+              <X size={16} />
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <List size={15} /> List ({data.length})
-            </button>
-            <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors">
-              <Plus size={15} /> New
-            </button>
-            <button onClick={save} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition-colors shadow-sm">
-              <Save size={15} /> Save
-            </button>
-            <button onClick={() => { setForm(blankCategory()); }} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-colors">
-              Save As
-            </button>
-            <button onClick={() => editing && deleteRow(editing.id)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors">
-              <Trash2 size={15} /> Delete
-            </button>
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-gray-500 rounded-lg hover:bg-gray-600 transition-colors">
-              <X size={15} /> Close
+          <div className="flex-1 overflow-y-auto p-4 space-y-1">
+            {allProcesses.length === 0 ? (
+              <p className="text-center text-sm text-gray-400 py-8 italic">No processes available.</p>
+            ) : (
+              allProcesses.map(p => {
+                const checked = form.processAllocations.some(
+                  a => a.ProcessID === String(p.ProcessID) && a.ContentID === processModalContentId
+                );
+                return (
+                  <label key={p.ProcessID}
+                    className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 cursor-pointer group">
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${checked ? "bg-blue-600 border-blue-600" : "border-gray-300 group-hover:border-blue-400"}`}
+                      onClick={() => toggleProcessAllocation(String(p.ProcessID), processModalContentId)}>
+                      {checked && <Check size={10} className="text-white" strokeWidth={3} />}
+                    </div>
+                    <span className="text-sm text-gray-700 flex-1"
+                      onClick={() => toggleProcessAllocation(String(p.ProcessID), processModalContentId)}>
+                      {p.ProcessName}
+                    </span>
+                    {p.TypeofCharges && (
+                      <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{p.TypeofCharges}</span>
+                    )}
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <div className="p-4 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-xs text-blue-600 font-medium">
+              {allocatedForContent.length} process{allocatedForContent.length !== 1 ? "es" : ""} selected
+            </span>
+            <button onClick={() => setProcessModalContentId(null)}
+              className="px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+              Done
             </button>
           </div>
         </div>
+      </div>
+    );
+  };
 
-        {/* Tab Bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-200 bg-gray-50">
-            {TABS.map((tab, i) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(i)}
-                className={`px-4 py-3 text-xs font-semibold tracking-wide transition-all whitespace-nowrap
-                  ${activeTab === i
-                    ? "bg-teal-700 text-white border-b-2 border-teal-700"
-                    : "text-gray-600 hover:bg-gray-100 hover:text-teal-700"
-                  }`}
-              >
-                {tab}
+  // ── FORM VIEW ──────────────────────────────────────────────────────────────────
+  if (view === "form") {
+    const tabs = [
+      { key: "detail" as const, label: "Category Detail" },
+      { key: "content" as const, label: "Content Allocation" },
+      { key: "coa" as const, label: "COA Parameters" },
+      { key: "dryweight" as const, label: "Dry Weight (GSM)" },
+      { key: "ply" as const, label: "Ply Configuration" },
+    ];
+
+    return (
+      <>
+        <ProcessModal />
+        <div className="max-w-5xl mx-auto pb-10">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+            <div>
+              <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Category Master</p>
+              <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Category" : "New Category"}</h2>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                <List size={16} /> Back to List
               </button>
-            ))}
+              <button onClick={saveCategory} disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                Save Category
+              </button>
+            </div>
           </div>
 
-          <div className="p-6">
+          {error && (
+            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+          )}
 
-            {/* ─── TAB 0: Category Field ─── */}
-            {activeTab === 0 && (
-              <div className="space-y-4 animate-in fade-in duration-200">
-                {editing && (
-                  <span className="inline-block px-3 py-1 text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 rounded-full">
-                    Editing: {editing.name}
-                  </span>
-                )}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                  <div className="sm:col-span-2">
-                    <Field label="Category Name" required>
-                      <input
-                        type="text"
-                        value={form.name}
-                        onChange={e => f("name", e.target.value)}
-                        placeholder="e.g. Gravure - Solvent Base 2 Layer"
-                        className={inputCls}
-                      />
-                    </Field>
-                  </div>
-                  <div>
-                    <Field label="Orientation">
-                      <SelectField value={form.orientation} onChange={v => f("orientation", v)} options={ORIENTATIONS} />
-                    </Field>
-                  </div>
-                  <div>
-                    <Field label="Division">
-                      <SelectField value={form.division} onChange={v => f("division", v)} options={DIVISIONS} />
-                    </Field>
-                  </div>
-                  <div>
-                    <Field label="Ply">
-                      <SelectField value={form.ply} onChange={v => f("ply", v)} options={PLYS} />
-                    </Field>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
-                  <button
-                    onClick={() => f("status", form.status === "Active" ? "Inactive" : "Active")}
-                    className={`w-12 h-6 rounded-full transition-colors relative ${form.status === "Active" ? "bg-teal-500" : "bg-gray-300"}`}
-                  >
-                    <div className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${form.status === "Active" ? "left-7" : "left-1"}`} />
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            {/* Tab bar */}
+            <div className="px-6 pt-5 pb-0 border-b border-gray-200 bg-gray-50/30">
+              {editing && (
+                <span className="inline-block px-3 py-1 mb-3 text-xs font-semibold text-blue-600 bg-blue-100 border border-blue-200 rounded-full">
+                  ID: {editing.CategoryID}
+                </span>
+              )}
+              <div className="flex gap-8">
+                {tabs.map(t => (
+                  <button key={t.key} onClick={() => setActiveTab(t.key)}
+                    className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === t.key ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>
+                    {t.label}
                   </button>
-                  <span className="text-sm font-medium text-gray-700">Active Category</span>
-                </div>
+                ))}
               </div>
-            )}
+            </div>
 
-            {/* ─── TAB 1: Content Allocation ─── */}
-            {activeTab === 1 && (
-              <div className="animate-in fade-in duration-200">
-                <SectionTitle title="All Contents" />
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {form.contentCards.map((card, idx) => (
-                    <div key={card.id}
-                      className={`rounded-xl border-2 p-3 transition-all bg-white
-                        ${card.selected ? "border-teal-500 shadow-md" : "border-gray-200 hover:border-teal-300"}`}
-                    >
-                      <div className="flex items-start gap-3 mb-3">
-                        <ContentIcon name={card.name} />
-                        <p className="text-xs font-semibold text-blue-700 leading-tight mt-1">{card.name}</p>
+            <div className="p-8">
+              {formLoading ? (
+                <div className="flex items-center justify-center py-20 text-gray-400">
+                  <Loader2 size={24} className="animate-spin mr-3" /> Loading...
+                </div>
+              ) : (
+
+                <>
+                  {/* ── DETAIL TAB ── */}
+                  {activeTab === "detail" && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div>
+                        <SectionTitle title="Category Identity" />
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="md:col-span-2">
+                            <Field label="Category Name" required>
+                              <input type="text" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
+                                placeholder="e.g. Gravure - Solvent Base 2 Layer" className={ic(submitAttempted && !form.CategoryName.trim())} />
+                            </Field>
+                          </div>
+                          <Field label="Orientation">
+                            <select value={form.Orientation} onChange={e => f("Orientation", e.target.value)} className={inputCls}>
+                              <option value="">Select...</option>
+                              {ORIENTATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Layer">
+                            <select value={form.Layer} onChange={e => f("Layer", e.target.value)} className={inputCls}>
+                              <option value="">Select...</option>
+                              {LAYERS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Segment">
+                            <select value={form.SegmentID} onChange={e => f("SegmentID", e.target.value)} className={inputCls}>
+                              <option value="">Select Segment...</option>
+                              {segments.map(s => (
+                                <option key={s.SegmentID} value={String(s.SegmentID)}>{s.SegmentName}</option>
+                              ))}
+                            </select>
+                          </Field>
+                          <div className="md:col-span-3">
+                            <Field label="Remark">
+                              <textarea value={form.Remark} onChange={e => f("Remark", e.target.value)} rows={2}
+                                placeholder="Remarks..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
+                            </Field>
+                          </div>
+                        </div>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={card.selected}
-                            onChange={() => toggleCard(idx, "selected")}
-                            className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                          />
-                          <span className="text-xs text-gray-600">Select Content</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={card.defaultContent}
-                            onChange={() => toggleCard(idx, "defaultContent")}
-                            className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                          />
-                          <span className="text-xs text-gray-600">Default Content</span>
-                        </label>
-                        <button
-                          onClick={() => {
-                            const cards = [...form.contentCards];
-                            cards[idx] = { ...cards[idx], selected: true };
-                            f("contentCards", cards);
-                          }}
-                          className="w-full mt-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-semibold rounded transition-colors"
-                        >
-                          Allocate Processes
+                      <div className="flex justify-end pt-4 border-t border-gray-100">
+                        <button onClick={() => setActiveTab("content")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">
+                          Content Allocation →
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
+                  )}
 
-            {/* ─── TAB 2: Coa Parameter Allocation ─── */}
-            {activeTab === 2 && (
-              <div className="animate-in fade-in duration-200 space-y-4">
-
-                {/* Radio: Category wise / Client and category wise */}
-                <div className="flex items-center gap-6">
-                  {(["Category wise", "Client and category wise"] as const).map(opt => (
-                    <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                      <div
-                        onClick={() => setCoaDraft(p => ({ ...p, coaWise: opt }))}
-                        className={`w-4 h-4 rounded-full border-2 flex items-center justify-center cursor-pointer transition-colors
-                          ${coaDraft.coaWise === opt ? "border-teal-600" : "border-gray-400"}`}
-                      >
-                        {coaDraft.coaWise === opt && <div className="w-2 h-2 rounded-full bg-teal-600" />}
+                  {/* ── CONTENT ALLOCATION TAB ── */}
+                  {activeTab === "content" && (
+                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <div className="flex items-center justify-between">
+                        <SectionTitle title="Content Allocation" />
+                        {form.contents.length > 0 && (
+                          <span className="text-xs text-blue-600 font-medium mb-4">
+                            {form.contents.filter(c => c.IsSelected).length} of {form.contents.length} selected
+                          </span>
+                        )}
                       </div>
-                      <span className="text-sm font-medium text-gray-700">{opt}</span>
-                    </label>
-                  ))}
-                </div>
-
-                {/* Form row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Test</label>
-                    <input
-                      className={inputCls + " text-xs"}
-                      placeholder="Test"
-                      value={coaDraft.test}
-                      onChange={e => setCoaDraft(p => ({ ...p, test: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Specification</label>
-                    <div className="relative">
-                      <select
-                        className={selectCls + " text-xs"}
-                        value={coaDraft.specFieldType}
-                        onChange={e => setCoaDraft(p => ({ ...p, specFieldType: e.target.value as CoaRow["specFieldType"] }))}
-                      >
-                        <option value="">Select Specification</option>
-                        <option value="Text Field">Text Field</option>
-                        <option value="Data Field">Data Field</option>
-                        <option value="Combo Field">Combo Field</option>
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Specification Field Data From</label>
-                    <div className="relative">
-                      <select
-                        className={selectCls + " text-xs"}
-                        value={coaDraft.specFieldDataFrom}
-                        onChange={e => setCoaDraft(p => ({ ...p, specFieldDataFrom: e.target.value }))}
-                      >
-                        <option value="">Select Spec Field Data From</option>
-                        <option value="Recipe">Recipe</option>
-                        <option value="Item Master">Item Master</option>
-                        <option value="Manual">Manual</option>
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Specification Field Value</label>
-                    <div className="relative">
-                      <select
-                        className={selectCls + " text-xs"}
-                        value={coaDraft.specFieldValue}
-                        onChange={e => setCoaDraft(p => ({ ...p, specFieldValue: e.target.value }))}
-                      >
-                        <option value="">Select Specification Field Value</option>
-                        <option value="GSM">GSM</option>
-                        <option value="Thickness">Thickness</option>
-                        <option value="Width">Width</option>
-                        <option value="Length">Length</option>
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Specification Field Unit</label>
-                    <input
-                      className={inputCls + " text-xs"}
-                      placeholder="e.g. g/m², μm"
-                      value={coaDraft.specFieldUnit}
-                      onChange={e => setCoaDraft(p => ({ ...p, specFieldUnit: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Result Data</label>
-                    <div className="relative">
-                      <select
-                        className={selectCls + " text-xs"}
-                        value={coaDraft.resultData}
-                        onChange={e => setCoaDraft(p => ({ ...p, resultData: e.target.value }))}
-                      >
-                        <option value="">Select Module</option>
-                        <option value="Production">Production</option>
-                        <option value="QC">QC</option>
-                        <option value="Dispatch">Dispatch</option>
-                      </select>
-                      <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default</label>
-                    <input
-                      className={inputCls + " text-xs"}
-                      placeholder="Default value"
-                      value={coaDraft.defaultValue}
-                      onChange={e => setCoaDraft(p => ({ ...p, defaultValue: e.target.value }))}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <button
-                      onClick={() => {
-                        if (!coaDraft.test && !coaDraft.specFieldType) return;
-                        const newRow: CoaRow = { id: uid(), ...coaDraft };
-                        f("coaRows", [...form.coaRows, newRow]);
-                        setCoaDraft(p => ({ ...p, test: "", specification: "", specFieldDataFrom: "", specFieldValue: "", specFieldUnit: "", resultData: "", defaultValue: "", showIn: "" }));
-                      }}
-                      className="w-full px-4 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <Plus size={13} /> Add Row
-                    </button>
-                  </div>
-                </div>
-
-                {/* Grid Table */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto mt-2">
-                  <div className="min-w-[900px]">
-                    {/* Header */}
-                    <div className="grid bg-teal-800 text-white text-xs font-semibold"
-                      style={{ gridTemplateColumns: "1fr 1.2fr 1.2fr 1.2fr 1fr 1fr 1fr 0.8fr 60px" }}>
-                      {["Test", "Specification", "From Ta...", "Specification Field Value", "Specification Field Unit", "ResultData", "Default", "Show In", "Actions"].map(h => (
-                        <div key={h} className="px-3 py-3 truncate">{h}</div>
-                      ))}
-                    </div>
-                    {/* Rows */}
-                    <div className="divide-y divide-gray-100 bg-white min-h-[120px]">
-                      {form.coaRows.map(row => (
-                        <div key={row.id}
-                          className="grid hover:bg-gray-50 transition-colors text-xs"
-                          style={{ gridTemplateColumns: "1fr 1.2fr 1.2fr 1.2fr 1fr 1fr 1fr 0.8fr 60px" }}
-                        >
-                          <div className="px-3 py-3 text-gray-700 font-medium truncate">{row.test || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.specFieldType}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.specFieldDataFrom || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.specFieldValue || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.specFieldUnit || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.resultData || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.defaultValue || "—"}</div>
-                          <div className="px-3 py-3 text-gray-600 truncate">{row.showIn || "—"}</div>
-                          <div className="px-3 py-3 flex justify-center">
-                            <button
-                              onClick={() => f("coaRows", form.coaRows.filter(r => r.id !== row.id))}
-                              className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
+                      {form.contents.length === 0 ? (
+                        <div className="flex items-center justify-center py-14 text-sm text-gray-400 italic border-2 border-dashed border-gray-200 rounded-xl">
+                          No contents available. Add contents in Content Master first.
                         </div>
-                      ))}
-                      {form.coaRows.length === 0 && (
-                        <div className="text-center text-xs text-gray-400 py-10 font-medium">No data</div>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                          {form.contents.map((card, idx) => {
+                            const procCount = form.processAllocations.filter(a => a.ContentID === card.ContentID).length;
+                            return (
+                              <div key={card.ContentID}
+                                className={`rounded-xl border-2 transition-all bg-white flex flex-col ${card.IsSelected ? "border-blue-500 shadow-sm" : "border-gray-200 hover:border-blue-300"}`}>
+
+                                {/* Image area */}
+                                <div
+                                  className="relative flex items-center justify-center p-3 cursor-pointer bg-gray-50 rounded-t-xl min-h-[100px]"
+                                  onClick={() => toggleContent(idx, "IsSelected")}>
+                                  {card.ContentClosedHref ? (
+                                    <img
+                                      src={card.ContentClosedHref.startsWith("http") ? card.ContentClosedHref : `${BASE_URL}/${card.ContentClosedHref.replace(/^\//, "")}`}
+                                      alt={card.ContentCaption || card.ContentName}
+                                      className="w-20 h-20 object-contain"
+                                      onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                    />
+                                  ) : (
+                                    <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-[10px] text-center leading-tight px-1">
+                                      No Image
+                                    </div>
+                                  )}
+                                  {/* Selection badge */}
+                                  <div className={`absolute top-2 right-2 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${card.IsSelected ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"}`}>
+                                    {card.IsSelected && <Check size={10} className="text-white" strokeWidth={3} />}
+                                  </div>
+                                </div>
+
+                                {/* Name */}
+                                <div className="px-3 py-2 cursor-pointer" onClick={() => toggleContent(idx, "IsSelected")}>
+                                  <p className="text-xs font-semibold text-gray-800 leading-tight line-clamp-2">
+                                    {card.ContentCaption || card.ContentName}
+                                  </p>
+                                </div>
+
+                                {/* Controls when selected */}
+                                {card.IsSelected && (
+                                  <div className="px-3 pb-3 space-y-2">
+                                    <label className="flex items-center gap-1.5 cursor-pointer" onClick={e => e.stopPropagation()}>
+                                      <input type="checkbox" checked={card.IsDefault} onChange={() => toggleContent(idx, "IsDefault")}
+                                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 cursor-pointer" />
+                                      <span className="text-[10px] text-gray-500">Default Content</span>
+                                    </label>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setProcessModalContentId(card.ContentID); }}
+                                      className="w-full text-[10px] px-2 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 font-semibold transition-colors">
+                                      Allocate Processes {procCount > 0 ? `(${procCount})` : ""}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Detail</button>
+                        <button onClick={() => setActiveTab("coa")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">COA Parameters →</button>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
 
-              </div>
-            )}
+                  {/* ── COA PARAMETERS TAB ── */}
+                  {activeTab === "coa" && (
+                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <SectionTitle title="COA Parameter Allocation" />
 
-            {/* ─── TAB 3: Dry Weight (GSM) Setting ─── */}
-            {activeTab === 3 && (
-              <div className="animate-in fade-in duration-200 space-y-4">
-                <div className="flex items-center justify-between">
-                  <SectionTitle title="Division Layer Setting" />
-                  <button
-                    onClick={() => {
-                      const newRow: DryWeightRow = { id: uid(), ...dryDraft };
-                      f("dryWeightRows", [...form.dryWeightRows, newRow]);
-                      setDryDraft({ particular: "", grmPerM2: 1, minValue: 0, maxValue: 10, isEditable: true });
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 text-teal-700 bg-teal-50 border border-teal-300 rounded-lg text-sm hover:bg-teal-100 transition-colors mb-2"
-                  >
-                    <Plus size={14} /> Add Row
-                  </button>
-                </div>
-
-                {/* New row input */}
-                <div className="grid grid-cols-6 gap-2 bg-teal-50 border border-teal-200 rounded-lg p-3 text-xs">
-                  <input className={inputCls + " text-xs"} placeholder="Particular" value={dryDraft.particular} onChange={e => setDryDraft(p => ({ ...p, particular: e.target.value }))} />
-                  <input className={inputCls + " text-xs"} type="number" placeholder="Grm/m²" value={dryDraft.grmPerM2} onChange={e => setDryDraft(p => ({ ...p, grmPerM2: Number(e.target.value) }))} />
-                  <input className={inputCls + " text-xs"} type="number" placeholder="Min Value" value={dryDraft.minValue} onChange={e => setDryDraft(p => ({ ...p, minValue: Number(e.target.value) }))} />
-                  <input className={inputCls + " text-xs"} type="number" placeholder="Max Value" value={dryDraft.maxValue} onChange={e => setDryDraft(p => ({ ...p, maxValue: Number(e.target.value) }))} />
-                  <label className="flex items-center gap-2 px-2">
-                    <input type="checkbox" checked={dryDraft.isEditable} onChange={e => setDryDraft(p => ({ ...p, isEditable: e.target.checked }))} className="w-4 h-4 text-teal-600" />
-                    <span className="text-gray-600 text-xs">Editable</span>
-                  </label>
-                  <button
-                    onClick={() => {
-                      const newRow: DryWeightRow = { id: uid(), ...dryDraft };
-                      f("dryWeightRows", [...form.dryWeightRows, newRow]);
-                      setDryDraft({ particular: "", grmPerM2: 1, minValue: 0, maxValue: 10, isEditable: true });
-                    }}
-                    className="px-3 py-2 bg-teal-700 text-white text-xs rounded hover:bg-teal-800 transition-colors"
-                  >
-                    + Add
-                  </button>
-                </div>
-
-                {/* Table */}
-                <div className="border border-gray-200 rounded-lg overflow-hidden">
-                  <div className="grid grid-cols-6 bg-teal-800 text-white text-xs font-semibold">
-                    <div className="px-4 py-3">Particular</div>
-                    <div className="px-4 py-3 text-center">Grm/m²</div>
-                    <div className="px-4 py-3 text-center">Min. Value</div>
-                    <div className="px-4 py-3 text-center">Max. Value</div>
-                    <div className="px-4 py-3 text-center">Is Editable</div>
-                    <div className="px-4 py-3 text-center">Action</div>
-                  </div>
-                  <div className="divide-y divide-gray-100 bg-white min-h-[80px]">
-                    {form.dryWeightRows.map(row => (
-                      <div key={row.id} className="grid grid-cols-6 text-sm hover:bg-gray-50 transition-colors">
-                        <div className="px-4 py-3 font-medium text-gray-700">{row.particular}</div>
-                        <div className="px-4 py-3 text-center text-gray-600">{row.grmPerM2}</div>
-                        <div className="px-4 py-3 text-center text-gray-600">{row.minValue}</div>
-                        <div className="px-4 py-3 text-center text-gray-600">{row.maxValue}</div>
-                        <div className="px-4 py-3 flex justify-center">
-                          {row.isEditable
-                            ? <Check size={16} className="text-teal-600" />
-                            : <X size={16} className="text-gray-400" />}
-                        </div>
-                        <div className="px-4 py-3 flex justify-center">
-                          <button
-                            onClick={() => f("dryWeightRows", form.dryWeightRows.filter(r => r.id !== row.id))}
-                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 size={14} />
+                      {/* Add row */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {([
+                          ["Test Parameter *", "TestParameterName"],
+                          ["Specification", "Specification"],
+                          ["Data From Table", "SpecificationFieldDataFromTable"],
+                          ["Field Value", "SpecificationFieldValue"],
+                          ["Field Unit", "SpecificationFieldUnit"],
+                          ["Result Data Type", "ResultDataFieldType"],
+                          ["Default Value", "Defaults"],
+                          ["Show In", "ShowIn"],
+                        ] as const).map(([label, key]) => (
+                          <div key={key}>
+                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
+                            <input className={inputCls + " text-xs"} value={(coaDraft as any)[key]}
+                              onChange={e => setCoaDraft(p => ({ ...p, [key]: e.target.value }))} placeholder={label.replace(" *", "")} />
+                          </div>
+                        ))}
+                        <div className="flex items-end">
+                          <button onClick={() => {
+                            if (!coaDraft.TestParameterName.trim()) return;
+                            f("coaRows", [...form.coaRows, { id: uid(), ...coaDraft }]);
+                            setCoaDraft(blankcoa());
+                          }} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5">
+                            <Plus size={13} /> Add Row
                           </button>
                         </div>
                       </div>
-                    ))}
-                    {form.dryWeightRows.length === 0 && (
-                      <div className="text-center text-xs text-gray-400 py-8">No rows added. Use Add Row above.</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
 
-            {/* ─── TAB 4: Ply Configuration ─── */}
-            {activeTab === 4 && (
-              <div className="animate-in fade-in duration-200 space-y-4">
-                <SectionTitle title="Ply Configuration" />
-                <p className="text-xs text-gray-500">Define consumables required for each ply. These drive automatic ply setup and item selection in Cost Estimation.</p>
-
-                {/* ── Draft input row ── */}
-                <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 space-y-3">
-                  <p className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Add New Consumable Row</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Ply Type */}
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Ply Type *</label>
-                      <div className="relative">
-                        <select className={selectCls + " text-xs"} value={consDraft.plyType}
-                          onChange={e => setConsDraft(p => ({ ...p, plyType: e.target.value }))}>
-                          <option value="">-- Select Ply Type --</option>
-                          {PLY_TYPES.map(pt => <option key={pt} value={pt}>{PLY_DISPLAY[pt]}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    {/* Item Group */}
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Group *</label>
-                      <div className="relative">
-                        <select className={selectCls + " text-xs"} value={consDraft.itemGroup}
-                          onChange={e => setConsDraft(p => ({ ...p, itemGroup: e.target.value, itemSubGroup: "" }))}>
-                          <option value="">-- Select Item Group --</option>
-                          {RM_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    {/* Item Sub Group (cascaded) */}
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Sub Group *</label>
-                      <div className="relative">
-                        <select className={selectCls + " text-xs"} value={consDraft.itemSubGroup}
-                          onChange={e => setConsDraft(p => ({ ...p, itemSubGroup: e.target.value }))}
-                          disabled={!consDraft.itemGroup}>
-                          <option value="">-- Select Sub Group --</option>
-                          {(CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[consDraft.itemGroup] ?? []).map(sg => (
-                            <option key={sg} value={sg}>{sg}</option>
-                          ))}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Field Display Name</label>
-                      <input className={inputCls + " text-xs"} placeholder="e.g. Ink Wet Weight" value={consDraft.fieldDisplayName}
-                        onChange={e => setConsDraft(p => ({ ...p, fieldDisplayName: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default GSM</label>
-                      <input className={inputCls + " text-xs"} type="number" placeholder="0.00" value={consDraft.defaultValue}
-                        onChange={e => setConsDraft(p => ({ ...p, defaultValue: Number(e.target.value) }))} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min Value</label>
-                      <input className={inputCls + " text-xs"} type="number" placeholder="0" value={consDraft.minValue}
-                        onChange={e => setConsDraft(p => ({ ...p, minValue: Number(e.target.value) }))} />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Max Value</label>
-                      <input className={inputCls + " text-xs"} type="number" placeholder="10" value={consDraft.maxValue}
-                        onChange={e => setConsDraft(p => ({ ...p, maxValue: Number(e.target.value) }))} />
-                    </div>
-                  </div>
-                  <div className="flex items-end gap-3">
-                    <div className="flex-1">
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Share % Formula</label>
-                      <input className={inputCls + " text-xs"} placeholder="e.g. ink_gsm / total_gsm * 100" value={consDraft.sharePercentageFormula}
-                        onChange={e => setConsDraft(p => ({ ...p, sharePercentageFormula: e.target.value }))} />
-                    </div>
-                    <button
-                      onClick={() => {
-                        if (!consDraft.plyType || !consDraft.itemGroup || !consDraft.itemSubGroup) return;
-                        const newRow: ConsumableRow = { id: uid(), ...consDraft };
-                        f("consumableRows", [...form.consumableRows, newRow]);
-                        setConsDraft({ plyType: "", itemGroup: "", itemSubGroup: "", fieldName: "", calcFieldName: "", fieldDisplayName: "", defaultValue: 0, minValue: 0, maxValue: 10, sharePercentageFormula: "" });
-                      }}
-                      className="px-5 py-2 bg-teal-700 text-white text-xs rounded-lg hover:bg-teal-800 transition-colors flex items-center gap-1.5 whitespace-nowrap h-[38px]"
-                    >
-                      <Plus size={13} /> Add Row
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Rows grouped by Ply Type ── */}
-                {PLY_TYPES.map(pt => {
-                  const rows = form.consumableRows.filter(r => r.plyType === pt);
-                  if (rows.length === 0) return null;
-                  return (
-                    <div key={pt} className="border border-gray-200 rounded-lg overflow-hidden">
-                      <div className="bg-teal-700 px-4 py-2 text-white text-xs font-bold uppercase tracking-widest">
-                        {PLY_DISPLAY[pt]} — Consumables
-                      </div>
-                      <div className="overflow-x-auto">
-                        <div className="min-w-[820px]">
-                          <div className="grid bg-gray-100 text-gray-600 text-[10px] font-bold uppercase tracking-wider"
-                            style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 0.8fr 0.6fr 0.6fr 1.2fr 44px" }}>
-                            {["Item Group", "Item Sub Group", "Display Name", "Default", "Min", "Max", "Share % Formula", ""].map(h => (
-                              <div key={h} className="px-3 py-2">{h}</div>
+                      {/* Grid */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden overflow-x-auto">
+                        <div className="min-w-[860px]">
+                          <div className="grid bg-blue-700 text-white text-xs font-semibold"
+                            style={{ gridTemplateColumns: "1.4fr 1fr 1fr 1fr 0.7fr 1fr 0.7fr 0.7fr 48px" }}>
+                            {["Test Parameter", "Specification", "Data From", "Field Value", "Unit", "Result Type", "Default", "Show In", ""].map((h, i) => (
+                              <div key={i} className="px-3 py-3 truncate">{h}</div>
                             ))}
                           </div>
-                          <div className="divide-y divide-gray-100 bg-white">
-                            {rows.map(row => (
-                              <div key={row.id} className="grid hover:bg-teal-50/30 transition-colors text-xs"
-                                style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 0.8fr 0.6fr 0.6fr 1.2fr 44px" }}>
-                                <div className="px-3 py-2.5">
-                                  <span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded text-[10px] font-semibold">{row.itemGroup}</span>
-                                </div>
-                                <div className="px-3 py-2.5 text-gray-700 font-medium">{row.itemSubGroup}</div>
-                                <div className="px-3 py-2.5 text-gray-600">{row.fieldDisplayName || "—"}</div>
-                                <div className="px-3 py-2.5 text-center text-gray-600 font-mono">{row.defaultValue}</div>
-                                <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.minValue}</div>
-                                <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.maxValue}</div>
-                                <div className="px-3 py-2.5 text-gray-500 truncate">{row.sharePercentageFormula || "—"}</div>
-                                <div className="px-2 py-2.5 flex justify-center">
-                                  <button onClick={() => f("consumableRows", form.consumableRows.filter(r => r.id !== row.id))}
-                                    className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors">
+                          <div className="divide-y divide-gray-100 bg-white min-h-[100px]">
+                            {form.coaRows.map(row => (
+                              <div key={row.id} className="grid hover:bg-gray-50 text-xs"
+                                style={{ gridTemplateColumns: "1.4fr 1fr 1fr 1fr 0.7fr 1fr 0.7fr 0.7fr 48px" }}>
+                                <div className="px-3 py-3 font-medium text-gray-700 truncate">{row.TestParameterName || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Specification || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldDataFromTable || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldValue || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldUnit || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.ResultDataFieldType || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Defaults || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.ShowIn || "—"}</div>
+                                <div className="px-3 py-3 flex justify-center">
+                                  <button onClick={() => f("coaRows", form.coaRows.filter(r => r.id !== row.id))}
+                                    className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50">
                                     <Trash2 size={13} />
                                   </button>
                                 </div>
                               </div>
                             ))}
+                            {form.coaRows.length === 0 && (
+                              <div className="text-center text-xs text-gray-400 py-10">No COA parameters added yet.</div>
+                            )}
                           </div>
                         </div>
                       </div>
+
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <button onClick={() => setActiveTab("content")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Content</button>
+                        <button onClick={() => setActiveTab("dryweight")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Dry Weight →</button>
+                      </div>
                     </div>
-                  );
-                })}
+                  )}
 
-                {form.consumableRows.length === 0 && (
-                  <div className="text-center text-xs text-gray-400 py-10 border-2 border-dashed border-gray-200 rounded-lg">
-                    No consumable rows yet. Use the form above to define consumables for each ply type.
-                  </div>
-                )}
-              </div>
-            )}
+                  {/* ── DRY WEIGHT TAB ── */}
+                  {activeTab === "dryweight" && (
+                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                      <SectionTitle title="Dry GSM Layer Setting (RotoGSMContributionSetting)" />
 
+                      {/* Input */}
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-6 gap-2 text-xs">
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Particular</label>
+                          <input className={inputCls + " text-xs"} placeholder="e.g. Ink" value={dryDraft.Particular}
+                            onChange={e => setDryDraft(p => ({ ...p, Particular: e.target.value }))} />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">GSM</label>
+                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.GSM}
+                            onChange={e => setDryDraft(p => ({ ...p, GSM: Number(e.target.value) }))} />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min</label>
+                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.MinimumValue}
+                            onChange={e => setDryDraft(p => ({ ...p, MinimumValue: Number(e.target.value) }))} />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Max</label>
+                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.MaximumValue}
+                            onChange={e => setDryDraft(p => ({ ...p, MaximumValue: Number(e.target.value) }))} />
+                        </div>
+                        <div className="flex items-end pb-1">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" checked={dryDraft.IsEditableField}
+                              onChange={e => setDryDraft(p => ({ ...p, IsEditableField: e.target.checked }))}
+                              className="w-4 h-4 text-blue-600" />
+                            <span className="text-xs text-gray-600">Editable</span>
+                          </label>
+                        </div>
+                        <div className="flex items-end">
+                          <button onClick={() => {
+                            if (!dryDraft.Particular.trim()) return;
+                            f("dryRows", [...form.dryRows, { id: uid(), ...dryDraft }]);
+                            setDryDraft(blankdry());
+                          }} className="w-full px-3 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
+                            + Add
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Table */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        <div className="grid grid-cols-6 bg-blue-700 text-white text-xs font-semibold">
+                          {["Particular", "GSM", "Min", "Max", "Editable", "Action"].map(h => (
+                            <div key={h} className="px-4 py-3">{h}</div>
+                          ))}
+                        </div>
+                        <div className="divide-y divide-gray-100 bg-white min-h-[80px]">
+                          {form.dryRows.map(row => (
+                            <div key={row.id} className="grid grid-cols-6 text-sm hover:bg-gray-50">
+                              <div className="px-4 py-3 font-medium text-gray-700">{row.Particular}</div>
+                              <div className="px-4 py-3 text-gray-600">{row.GSM}</div>
+                              <div className="px-4 py-3 text-gray-600">{row.MinimumValue}</div>
+                              <div className="px-4 py-3 text-gray-600">{row.MaximumValue}</div>
+                              <div className="px-4 py-3">
+                                {row.IsEditableField ? <Check size={15} className="text-blue-600" /> : <span className="text-gray-400">—</span>}
+                              </div>
+                              <div className="px-4 py-3">
+                                <button onClick={() => f("dryRows", form.dryRows.filter(r => r.id !== row.id))}
+                                  className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          {form.dryRows.length === 0 && (
+                            <div className="text-center text-xs text-gray-400 py-8">No rows. Use form above to add.</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                        <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← COA</button>
+                        <button onClick={() => setActiveTab("ply")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Ply Configuration →</button>
+                      </div>
+                    </div>
+                  )}
+                  {/* ── PLY CONFIGURATION TAB ── */}
+                  {activeTab === "ply" && (() => {
+                    const maxPly = layerToPlyCount(form.Layer);
+                    const plyNumbers = Array.from({ length: maxPly }, (_, i) => i + 1);
+                    return (
+                      <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="flex items-center justify-between">
+                          <SectionTitle title="Ply Configuration" />
+                          <span className="text-xs text-gray-400">Max Plies: <strong className="text-blue-600">{maxPly}</strong> (based on Layer: {form.Layer || "not set"})</span>
+                        </div>
+
+                        {/* Draft input */}
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+                          <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Add Consumable Row</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* Ply Number */}
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Ply Number *</label>
+                              <select className={inputCls + " text-xs"} value={plyDraft.PlyNumber}
+                                onChange={e => setPlyDraft(p => ({ ...p, PlyNumber: Number(e.target.value) }))}>
+                                {plyNumbers.map(n => <option key={n} value={n}>Ply {n}</option>)}
+                              </select>
+                            </div>
+                            {/* Item Group */}
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Group *</label>
+                              <select
+                                className={inputCls + " text-xs"}
+                                value={plyDraft.ItemGroupID}
+                                onChange={e => {
+                                  const id = e.target.value;
+                                  const grp = itemGroupsFull.find(g => String(g.ItemGroupID) === id);
+                                  const name = grp?.ItemGroupName ?? "";
+                                  setPlyDraft(p => ({ ...p, ItemGroupID: id, ItemGroupName: name, ItemSubGroupName: "" }));
+                                  if (id) {
+                                    const filtered = allSubGroupsFull
+                                      .filter(s => s.UnderSubGroupID === id && s.ItemSubGroupName)
+                                      .map(s => s.ItemSubGroupName);
+                                    setItemSubGroups(filtered);
+                                  } else setItemSubGroups([]);
+                                }}
+                              >
+                                <option value="">— Select Group —</option>
+                                {itemGroupsFull.map(g => (
+                                  <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {/* Item Sub Group */}
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Sub Group *</label>
+                              <select
+                                className={inputCls + " text-xs"}
+                                value={plyDraft.ItemSubGroupName}
+                                onChange={e => setPlyDraft(p => ({ ...p, ItemSubGroupName: e.target.value }))}
+                                disabled={!plyDraft.ItemGroupID}
+                              >
+                                <option value="">— Select Sub Group —</option>
+                                {itemSubGroups.map(s => <option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Field Display Name</label>
+                              <input className={inputCls + " text-xs"} placeholder="e.g. Ink Wet Weight"
+                                value={plyDraft.FieldDisplayName}
+                                onChange={e => setPlyDraft(p => ({ ...p, FieldDisplayName: e.target.value }))} />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default GSM</label>
+                              <input className={inputCls + " text-xs"} type="number" placeholder="0.00"
+                                value={plyDraft.DefaultGSM}
+                                onChange={e => setPlyDraft(p => ({ ...p, DefaultGSM: Number(e.target.value) }))} />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min Value</label>
+                              <input className={inputCls + " text-xs"} type="number" placeholder="0"
+                                value={plyDraft.MinimumValue}
+                                onChange={e => setPlyDraft(p => ({ ...p, MinimumValue: Number(e.target.value) }))} />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Max Value</label>
+                              <input className={inputCls + " text-xs"} type="number" placeholder="10"
+                                value={plyDraft.MaximumValue}
+                                onChange={e => setPlyDraft(p => ({ ...p, MaximumValue: Number(e.target.value) }))} />
+                            </div>
+                          </div>
+                          <div className="flex items-end gap-3">
+                            <div className="flex-1">
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Share % Formula</label>
+                              <input className={inputCls + " text-xs"} placeholder="e.g. ink_gsm / total_gsm * 100"
+                                value={plyDraft.SharePercentageFormula}
+                                onChange={e => setPlyDraft(p => ({ ...p, SharePercentageFormula: e.target.value }))} />
+                            </div>
+                            <button
+                              onClick={() => {
+                                if (!plyDraft.ItemGroupName || !plyDraft.ItemSubGroupName) return;
+                                f("plyRows", [...form.plyRows, { id: uid(), ...plyDraft }]);
+                                setPlyDraft(blankply());
+                                setItemSubGroups([]);
+                              }}
+                              className="px-5 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 flex items-center gap-1.5 whitespace-nowrap h-[38px]">
+                              <Plus size={13} /> Add Row
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Rows grouped by ply */}
+                        {plyNumbers.map(plyNum => {
+                          const rows = form.plyRows.filter(r => r.PlyNumber === plyNum);
+                          if (rows.length === 0) return null;
+                          return (
+                            <div key={plyNum} className="border border-gray-200 rounded-lg overflow-hidden">
+                              <div className="bg-blue-700 px-4 py-2 text-white text-xs font-bold uppercase tracking-widest">
+                                Ply {plyNum} — Consumables
+                              </div>
+                              <div className="overflow-x-auto">
+                                <div className="min-w-[820px]">
+                                  <div className="grid bg-gray-100 text-gray-600 text-[10px] font-bold uppercase tracking-wider"
+                                    style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 0.8fr 0.6fr 0.6fr 1.2fr 44px" }}>
+                                    {["Item Group", "Item Sub Group", "Display Name", "Default GSM", "Min", "Max", "Share % Formula", ""].map(h => (
+                                      <div key={h} className="px-3 py-2">{h}</div>
+                                    ))}
+                                  </div>
+                                  <div className="divide-y divide-gray-100 bg-white">
+                                    {rows.map(row => (
+                                      <div key={row.id} className="grid hover:bg-blue-50/30 text-xs"
+                                        style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 0.8fr 0.6fr 0.6fr 1.2fr 44px" }}>
+                                        <div className="px-3 py-2.5">
+                                          <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-semibold">{row.ItemGroupName}</span>
+                                        </div>
+                                        <div className="px-3 py-2.5 text-gray-700 font-medium">{row.ItemSubGroupName}</div>
+                                        <div className="px-3 py-2.5 text-gray-600">{row.FieldDisplayName || "—"}</div>
+                                        <div className="px-3 py-2.5 text-center text-gray-600 font-mono">{row.DefaultGSM}</div>
+                                        <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MinimumValue}</div>
+                                        <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MaximumValue}</div>
+                                        <div className="px-3 py-2.5 text-gray-500 truncate">{row.SharePercentageFormula || "—"}</div>
+                                        <div className="px-2 py-2.5 flex justify-center">
+                                          <button onClick={() => f("plyRows", form.plyRows.filter(r => r.id !== row.id))}
+                                            className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50">
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {form.plyRows.length === 0 && (
+                          <div className="text-center text-xs text-gray-400 py-10 border-2 border-dashed border-gray-200 rounded-lg">
+                            No consumable rows yet. Use the form above to define consumables for each ply.
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                          <button onClick={() => setActiveTab("dryweight")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Dry Weight</button>
+                          <button onClick={saveCategory} disabled={saving}
+                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
+                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                            Save Category
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
-  // ── LIST VIEW ────────────────────────────────────────────────
+  // ── LIST VIEW ──────────────────────────────────────────────────────────────────
+  const columns: Column<CategoryRow>[] = [
+    { key: "CategoryID", header: "ID", sortable: true },
+    { key: "CategoryName", header: "Category Name", sortable: true },
+    {
+      key: "SegmentName", header: "Segment",
+      render: r => r.SegmentName
+        ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.SegmentName}</span>
+        : <span className="text-gray-400">—</span>,
+    },
+    { key: "Orientation", header: "Orientation", render: r => r.Orientation || <span className="text-gray-400">—</span> },
+    { key: "Layer", header: "Layer", render: r => r.Layer || <span className="text-gray-400">—</span> },
+    { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">—</span> },
+  ];
+
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Category Master</h2>
-          <p className="text-sm text-gray-500">{data.length} categories defined</p>
+          <p className="text-sm text-gray-500">
+            {loading ? "Loading..." : `${filtered.length} of ${categories.length} categories`}
+          </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-teal-700 rounded-lg hover:bg-teal-800 transition-colors shadow-sm">
+        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
           <Plus size={16} /> Add Category
         </button>
       </div>
 
-      {/* Mobile card view */}
-      <div className="sm:hidden space-y-3">
-        {data.map(row => (
-          <div key={row.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col gap-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-xs text-gray-400 font-medium">{row.id}</p>
-                <p className="text-sm font-bold text-gray-800 mt-0.5">{row.name}</p>
-              </div>
-              <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${row.status === "Active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                }`}>{row.status}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {row.division && (
-                <span className="px-2 py-0.5 text-xs rounded bg-teal-50 text-teal-700 border border-teal-200 font-medium">
-                  {row.division}
-                </span>
-              )}
-              {row.ply && (
-                <span className="px-2 py-0.5 text-xs rounded bg-blue-50 text-blue-700 border border-blue-200 font-medium">
-                  {row.ply}
-                </span>
-              )}
-              {row.orientation && (
-                <span className="px-2 py-0.5 text-xs rounded bg-purple-50 text-purple-700 border border-purple-200 font-medium">
-                  {row.orientation}
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2 pt-1 border-t border-gray-100">
-              <button
-                onClick={() => openEdit(row)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors"
-              >
-                <Pencil size={12} /> Edit
+      {/* Segment filter pills */}
+      {uniqueSegments.length > 1 && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Segment</span>
+            {uniqueSegments.map(s => (
+              <button key={s} onClick={() => setFilterSegment(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterSegment === s ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                {s === "All" ? "All Segments" : s}
               </button>
-              <button
-                onClick={() => deleteRow(row.id)}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
-            </div>
+            ))}
           </div>
-        ))}
-        {data.length === 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
-            No categories yet. Click 'Add Category' to create one.
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Desktop table view */}
-      <div className="hidden sm:block bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <DataTable
-          data={data}
+          data={filtered}
           columns={columns}
-          searchKeys={["name", "division", "ply"]}
+          searchKeys={["CategoryName", "SegmentName"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.id)}>Delete</Button>
+              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteCategory(row.CategoryID)}>Delete</Button>
             </div>
           )}
         />
