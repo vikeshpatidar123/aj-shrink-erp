@@ -719,7 +719,7 @@ export default function GravureEstimationPage() {
     { key: "noOfColors",    header: "Colors", render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
     { key: "machineName",   header: "Machine", render: r => <span className="text-xs text-gray-600">{r.machineName}</span> },
     { key: "quantity",      header: "Qty", render: r => <span>{r.quantity.toLocaleString()} {r.unit}</span> },
-    { key: "perMeterRate",  header: "₹/Meter", render: r => <span className="font-semibold">₹{r.perMeterRate}</span> },
+    { key: "perMeterRate",  header: "₹/Kg", render: r => <span className="font-semibold">₹{r.perMeterRate}</span> },
     { key: "totalAmount",   header: "Total (₹)", render: r => <span className="font-bold text-gray-800">₹{r.totalAmount.toLocaleString()}</span> },
     { key: "status",        header: "Status", render: r => statusBadge(r.status), sortable: true },
   ];
@@ -1585,7 +1585,7 @@ export default function GravureEstimationPage() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-gray-50 text-gray-500 uppercase">
                       <tr>
-                        {["#", "Quantity", "Unit", "Total Cost", "Rate/Meter", ""].map(h => (
+                        {["#", "Quantity", "Unit", "Total Cost", "Rate/Kg", ""].map(h => (
                           <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -1799,7 +1799,7 @@ export default function GravureEstimationPage() {
             </div>
             {/* Selling price for contribution / break-even */}
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-gray-100 pt-3">
-              <Input label="Selling Price (₹/m)" type="number" step={0.01} value={form.sellingPrice || ""}
+              <Input label="Selling Price (₹/Kg)" type="number" step={0.01} value={form.sellingPrice || ""}
                 onChange={e => f("sellingPrice", Number(e.target.value))}
                 placeholder="Optional — for break-even" />
             </div>
@@ -2003,7 +2003,7 @@ export default function GravureEstimationPage() {
 
                   {/* Rate / Unit */}
                   <tr className="hover:bg-gray-50">
-                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Rate / {form.unit}</td>
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Rate / Kg</td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
                       <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-gray-800 font-bold">
                         ₹{allCosts[qi]?.perMeterRate ?? "—"}
@@ -2201,7 +2201,7 @@ export default function GravureEstimationPage() {
                   { label: `Overhead (${viewRow.overheadPct}%)`, val: `₹${viewRow.overheadAmt.toLocaleString()}`, cls: "bg-yellow-50 border-yellow-200" },
                   { label: `Profit (${viewRow.profitPct}%)`, val: `₹${viewRow.profitAmt.toLocaleString()}`, cls: "bg-green-50 border-green-200" },
                   { label: "Total Amount",    val: `₹${viewRow.totalAmount.toLocaleString()}`,   cls: "bg-white border-2 border-purple-400" },
-                  { label: "Rate / Meter",    val: `₹${viewRow.perMeterRate}`,                   cls: "bg-gray-50 border-gray-200" },
+                  { label: "Rate / Kg",        val: `₹${viewRow.perMeterRate}`,                   cls: "bg-gray-50 border-gray-200" },
                   { label: "Break-even Qty",  val: viewRow.breakEvenQty > 0 ? `${viewRow.breakEvenQty.toLocaleString()} ${viewRow.unit}` : "—", cls: "bg-orange-50 border-orange-200" },
                 ].map(s => (
                   <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>

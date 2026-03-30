@@ -1,21 +1,38 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Lock, Eye, EyeOff } from "lucide-react";
+import { KeyRound, Building2, Eye, EyeOff, Loader2 } from "lucide-react";
+import { loginCompany } from "@/lib/auth";
 
 export default function CompanyLoginPage() {
   const router = useRouter();
-  const [company, setCompany] = useState("AJSHRINK");
-  const [password, setPassword] = useState("123");
+
+  // Step 1 — Company Login
+  // Backend: POST /api/Login/CompanyLogin
+  // Header: Authorization: Basic base64(ApiCompanyUserName:ApiCompanyPassword)
+  // Source: Indus_Company_Authentication_For_Web_Modules table
+  const [companyUsername, setCompanyUsername] = useState("");
+  const [companyPassword, setCompanyPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = () => {
-    if (company.trim().toUpperCase() === "AJSHRINK" && password === "123") {
-      router.push("/login/user");
-    } else {
-      setError("Invalid company name or password.");
+  const handleLogin = async () => {
+    setError("");
+    if (!companyUsername.trim()) { setError("Please enter Company Username."); return; }
+    if (!companyPassword.trim()) { setError("Please enter Company Password."); return; }
+
+    setLoading(true);
+    const result = await loginCompany(companyUsername, companyPassword);
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.error);
+      return;
     }
+
+    // basicAuth stored in localStorage — used in Step 2 and all API calls
+    router.push("/login/user");
   };
 
   return (
@@ -35,7 +52,7 @@ export default function CompanyLoginPage() {
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8">
           <div className="mb-6">
             <h2 className="text-lg font-bold text-gray-800">Company Login</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Step 1 of 2 — Enter your company credentials</p>
+            <p className="text-xs text-gray-400 mt-0.5">Step 1 of 2 — Enter your company API credentials</p>
           </div>
 
           {error && (
@@ -45,37 +62,44 @@ export default function CompanyLoginPage() {
           )}
 
           <div className="space-y-4">
-            {/* Company Name */}
+
+            {/* API Client ID — maps to ApiClientID in CompanyMaster */}
             <div>
+              {/* Company Username — ApiCompanyUserName from Indus_Company_Authentication_For_Web_Modules */}
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Company Name
+                Company Username <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
                 <input
                   type="text"
-                  value={company}
-                  onChange={(e) => { setCompany(e.target.value); setError(""); }}
+                  value={companyUsername}
+                  onChange={(e) => { setCompanyUsername(e.target.value); setError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  placeholder="e.g. AJSHRINK"
+                  placeholder="Enter company username"
+                  autoComplete="off"
+                  autoFocus
                 />
               </div>
+              <p className="text-xs text-gray-400 mt-1">Provided by your system administrator</p>
             </div>
 
-            {/* Password */}
+            {/* Company Password — ApiCompanyPassword from Indus_Company_Authentication_For_Web_Modules */}
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Company Password
+                Company Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
                 <input
                   type={showPw ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                  value={companyPassword}
+                  onChange={(e) => { setCompanyPassword(e.target.value); setError(""); }}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   className="w-full pl-9 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter company password"
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
@@ -86,21 +110,31 @@ export default function CompanyLoginPage() {
                 </button>
               </div>
             </div>
+
           </div>
 
+          {/* Submit */}
           <button
             onClick={handleLogin}
-            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm"
+            disabled={loading}
+            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm flex items-center justify-center gap-2"
           >
-            Continue →
+            {loading ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Verifying with server...
+              </>
+            ) : (
+              "Continue →"
+            )}
           </button>
 
-          <p className="text-center text-xs text-gray-400 mt-5 border-t border-gray-100 pt-4">
-            Demo credentials: &nbsp;
-            <span className="font-mono font-semibold text-gray-600">AJSHRINK</span>
-            &nbsp;/&nbsp;
-            <span className="font-mono font-semibold text-gray-600">123</span>
-          </p>
+          <div className="mt-5 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+            <p className="text-xs text-blue-700 font-medium mb-0.5">Where do I find these credentials?</p>
+            <p className="text-xs text-blue-500">
+              Contact your system administrator for the company username and password.
+            </p>
+          </div>
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-5">

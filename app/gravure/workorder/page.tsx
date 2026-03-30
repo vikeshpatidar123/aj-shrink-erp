@@ -718,7 +718,7 @@ export default function GravureWorkOrderPage() {
           {form.totalAmount > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
               <div className="bg-gray-50 border rounded-xl p-3"><p className="text-xs text-gray-400">Total Amount</p><p className="font-bold">₹{form.totalAmount.toLocaleString()}</p></div>
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3"><p className="text-xs text-gray-400">Rate / {form.unit || "Unit"}</p><p className="font-bold text-blue-700">₹{form.perMeterRate.toFixed(2)}</p></div>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3"><p className="text-xs text-gray-400">Rate / Kg</p><p className="font-bold text-blue-700">₹{form.perMeterRate.toFixed(2)}</p></div>
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-3"><p className="text-xs text-gray-400">Processes</p><p className="font-bold text-purple-700">{form.processes.length} steps</p></div>
             </div>
           )}
@@ -755,7 +755,7 @@ export default function GravureWorkOrderPage() {
               )}
               {form.perMeterRate > 0 && (
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                  <p className="text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Rate / {form.unit || "Unit"}</p>
+                  <p className="text-[10px] text-gray-400 uppercase font-semibold mb-0.5">Rate / Kg</p>
                   <p className="font-bold text-blue-800">₹{form.perMeterRate.toFixed(2)}</p>
                 </div>
               )}
@@ -1765,7 +1765,7 @@ export default function GravureWorkOrderPage() {
                     <div className="flex-shrink-0 text-right">
                       <p className="text-xs text-gray-400">Amount</p>
                       <p className="font-bold text-gray-800">₹{order.totalAmount.toLocaleString()}</p>
-                      {order.perMeterRate > 0 && <p className="text-xs text-green-600">₹{order.perMeterRate.toFixed(2)}/{order.unit || "unit"}</p>}
+                      {order.perMeterRate > 0 && <p className="text-xs text-green-600">₹{order.perMeterRate.toFixed(2)}/Kg</p>}
                     </div>
                   )}
 
@@ -1843,7 +1843,7 @@ export default function GravureWorkOrderPage() {
                 onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { f("machineId", m.id); f("machineName", m.name); } }}
                 options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
               />
-              <Input label={`Rate / ${form.unit || "Unit"} (₹)`} type="number" value={form.perMeterRate || ""} onChange={e => f("perMeterRate", Number(e.target.value))} />
+              <Input label="Rate / Kg (₹)" type="number" value={form.perMeterRate || ""} onChange={e => f("perMeterRate", Number(e.target.value))} />
               <Input label="Total Amount (₹)" type="number" value={form.totalAmount || ""} onChange={e => f("totalAmount", Number(e.target.value))} />
             </div>
           </div>

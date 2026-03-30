@@ -29,7 +29,14 @@
       "Bash(mkdir -p \"/d/AJ shrink new code/backend\")",
       "Bash(npm init:*)",
       "Bash(\"/d/AJ shrink:*)",
-      "Bash(gh repo:*)"
+      "Bash(gh repo:*)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(cmd /c \"taskkill /PID 6920 /F\")",
+      "Bash(cmd /c \"del /F /Q \"\"d:\\\\AJ shrink new code\\\\New updated code\\\\.next\\\\dev\\\\lock\"\"\")",
+      "Bash(cmd /c \"netstat -ano | findstr :3000\")",
+      "Bash(cmd /c \"wmic process where ProcessId=6920 get Name,CommandLine 2>&1\")",
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Remove-Item -Force -Recurse ''D:\\\\AJ shrink new code\\\\New updated code\\\\.next\\\\dev'' -ErrorAction SilentlyContinue; Write-Host ''Done''\")"
     ],
     "additionalDirectories": [
       "D:\\AJ shrink new code\\backend"

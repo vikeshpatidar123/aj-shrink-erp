@@ -1,22 +1,61 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Lock, Eye, EyeOff, ArrowLeft, Building2 } from "lucide-react";
+import { User, Lock, Eye, EyeOff, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
+import { loginUser, clearAuth } from "@/lib/auth";
 
 export default function UserLoginPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("ADMIN");
+
+  // Step 2 — User Login
+  // Backend: POST /api/Login/UserLogin
+  // Header: Authorization: Basic base64(ApiCompanyUserName:ApiCompanyPassword) ← from Step 1
+  // Body: { UserName, Password } ← from UserMaster table (password encrypted server-side)
+  // Returns: { UserID, UserName, CompanyID, FYear, DBType, ProductionUnits[] }
+
+  const [companyName, setCompanyName] = useState("");
+  const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [companyVerified, setCompanyVerified] = useState(false);
 
-  const handleLogin = () => {
-    if (username.trim().toUpperCase() === "ADMIN") {
-      router.push("/dashboard");
-    } else {
-      setError("Invalid username or password.");
+  useEffect(() => {
+    // If company login (Step 1) was not completed → redirect back
+    const basicAuth = localStorage.getItem("basicAuth");
+    if (!basicAuth) {
+      router.replace("/login");
+      return;
     }
+    setCompanyName(localStorage.getItem("companyName") || "Company");
+    setCompanyVerified(true);
+  }, [router]);
+
+  const handleLogin = async () => {
+    setError("");
+    if (!userName.trim()) { setError("Please enter your username."); return; }
+    if (!password.trim()) { setError("Please enter your password."); return; }
+
+    setLoading(true);
+    const result = await loginUser(userName, password);
+    setLoading(false);
+
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+
+    // Session saved (UserID, CompanyID, FYear, etc.) → go to dashboard
+    router.push("/dashboard");
   };
+
+  const handleBack = () => {
+    clearAuth();
+    router.push("/login");
+  };
+
+  if (!companyVerified) return null;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 flex items-center justify-center p-4">
@@ -34,11 +73,13 @@ export default function UserLoginPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-2xl border border-gray-100 p-8">
 
-          {/* Company badge */}
-          <div className="flex items-center gap-2 mb-6 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-            <Building2 size={14} className="text-blue-600" />
-            <span className="text-xs text-blue-700 font-semibold">AJSHRINK</span>
-            <span className="text-xs text-blue-500 ml-auto">Company verified ✓</span>
+          {/* Company verified badge */}
+          <div className="flex items-center gap-2 mb-6 px-3 py-2.5 bg-green-50 border border-green-200 rounded-lg">
+            <CheckCircle2 size={14} className="text-green-600" />
+            <div className="flex-1">
+              <p className="text-xs text-green-700 font-semibold">{companyName}</p>
+              <p className="text-xs text-green-500">Company verified ✓</p>
+            </div>
           </div>
 
           <div className="mb-5">
@@ -53,27 +94,30 @@ export default function UserLoginPage() {
           )}
 
           <div className="space-y-4">
-            {/* Username */}
+
+            {/* Username — UserMaster.UserName */}
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Username
+                Username <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => { setUsername(e.target.value); setError(""); }}
+                  value={userName}
+                  onChange={(e) => { setUserName(e.target.value); setError(""); }}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  placeholder="Enter username"
+                  placeholder="Enter your username"
+                  autoFocus
                 />
               </div>
             </div>
 
-            {/* Password */}
+            {/* Password — UserMaster.Password (encrypted server-side) */}
             <div>
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
-                Password
+                Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
@@ -84,37 +128,33 @@ export default function UserLoginPage() {
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   className="w-full pl-9 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter your password"
+                  autoComplete="current-password"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPw((p) => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
+                <button type="button" onClick={() => setShowPw(p => !p)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
+
           </div>
 
           <button
             onClick={handleLogin}
-            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm"
+            disabled={loading}
+            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm flex items-center justify-center gap-2"
           >
-            Login to Dashboard
+            {loading ? (
+              <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+            ) : (
+              "Login to Dashboard →"
+            )}
           </button>
 
-          <button
-            onClick={() => router.push("/login")}
-            className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
-          >
+          <button onClick={handleBack}
+            className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1">
             <ArrowLeft size={12} /> Back to Company Login
           </button>
-
-          <p className="text-center text-xs text-gray-400 mt-4 border-t border-gray-100 pt-4">
-            Demo: Username &nbsp;
-            <span className="font-mono font-semibold text-gray-600">ADMIN</span>
-            &nbsp; (any password)
-          </p>
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-5">
