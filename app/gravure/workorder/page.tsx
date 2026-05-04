@@ -238,6 +238,9 @@ export default function GravureWorkOrderPage() {
   const [dimValues, setDimValues] = useState<DimValues>({});
   const patchDim = (patch: DimValues) => setDimValues(p => ({ ...p, ...patch }));
 
+  // ── Pending order pre-fill (set on mount, applied when catalog loads) ──
+  const [pendingPWOOrder, setPendingPWOOrder] = useState<any>(null);
+
   // ── Load work orders from API on mount; also check sessionStorage pre-fill ──
   useEffect(() => {
     // Load dropdown prefix
@@ -252,12 +255,14 @@ export default function GravureWorkOrderPage() {
       })
       .catch(() => { /* keep initWOs on API error */ });
 
-    // Pre-fill from Order Booking "Create PWO" button
+    // Pre-fill from Order Booking "Create PWO" button — save for catalog-aware effect
     try {
       const raw = sessionStorage.getItem("createPWOFromOrder");
       if (raw) {
         sessionStorage.removeItem("createPWOFromOrder");
         const src = JSON.parse(raw);
+        setPendingPWOOrder(src);
+        // Basic fill immediately so modal opens with customer info
         setForm(f => ({
           ...f,
           sourceOrderType: "Catalog",
@@ -272,6 +277,81 @@ export default function GravureWorkOrderPage() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  // ── When catalog loads, apply full pre-fill from pending order ──
+  useEffect(() => {
+    if (!pendingPWOOrder || catalog.length === 0) return;
+    const src  = pendingPWOOrder;
+    const lines: any[] = Array.isArray(src.lines) ? src.lines : [];
+    const line = lines[0]; // use first line for WO pre-fill
+    if (!line) { setPendingPWOOrder(null); return; }
+
+    // Find the catalog item by catalogId
+    const catItem = line.catalogId
+      ? catalog.find(c => String(c.id) === String(line.catalogId))
+      : undefined;
+
+    setForm(f => ({
+      ...f,
+      sourceOrderType:  "Catalog",
+      orderId:          String(src.orderId      ?? ""),
+      orderNo:          String(src.orderNo      ?? ""),
+      customerId:       String(src.customerId   ?? ""),
+      customerName:     String(src.customerName ?? ""),
+      salesType:        String(src.salesType    ?? ""),
+      // From order line
+      jobName:          String(line.productName  ?? catItem?.productName ?? ""),
+      categoryId:       String(line.categoryId   ?? catItem?.categoryId  ?? ""),
+      categoryName:     String(line.categoryName  ?? catItem?.categoryName ?? ""),
+      substrate:        String(line.substrate     ?? catItem?.substrate    ?? ""),
+      jobWidth:         Number(line.jobWidth      ?? catItem?.jobWidth     ?? 0),
+      jobHeight:        Number(line.jobHeight     ?? catItem?.jobHeight    ?? 0),
+      noOfColors:       Number(line.noOfColors    ?? catItem?.noOfColors   ?? 0),
+      frontColors:      Number(line.frontColors   ?? catItem?.frontColors  ?? 0),
+      backColors:       Number(line.backColors    ?? catItem?.backColors   ?? 0),
+      printType:        (line.printType           ?? catItem?.printType    ?? "Surface Print") as any,
+      quantity:         Number(line.orderQty      ?? 0),
+      unit:             String(line.unit          ?? catItem?.standardUnit ?? "Meter"),
+      productMasterID:  Number(line.catalogId     ?? catItem?.id          ?? 0),
+      productMasterCode:String(line.catalogNo     ?? catItem?.catalogNo   ?? ""),
+      // From catalog item (full details)
+      ...(catItem ? {
+        structure:       (catItem as any).structure  || "",
+        content:         catItem.content             || "",
+        trimmingSize:    catItem.trimmingSize     || 0,
+        machineId:       catItem.machineId        || "",
+        machineName:     catItem.machineName      || "",
+        cylinderCostPerColor: catItem.cylinderCostPerColor || 0,
+        overheadPct:     catItem.overheadPct      || 0,
+        profitPct:       catItem.profitPct        || 0,
+        perMeterRate:    catItem.perMeterRate     || 0,
+        secondaryLayers: catItem.secondaryLayers  || [],
+        processes:       catItem.processes        || [],
+        selectedPlanId:  (catItem as any).selectedPlanId || (catItem as any).selectedPlanID || "",
+      } as any : {}),
+    }));
+
+    // Restore dimValues from catalog item
+    if (catItem) {
+      setDimValues({
+        width:            catItem.jobWidth         || undefined,
+        height:           catItem.jobHeight        || undefined,
+        widthShrinkage:   (catItem as any).widthShrinkage  || undefined,
+        topSeal:          (catItem as any).topSeal          || undefined,
+        bottomSeal:       (catItem as any).bottomSeal       || undefined,
+        sideSeal:         (catItem as any).sideSeal         || undefined,
+        gusset:           (catItem as any).gusset           || undefined,
+        sideGusset:       (catItem as any).sideGusset       || undefined,
+        centerSealWidth:  (catItem as any).centerSealWidth  || undefined,
+        seamingArea:      (catItem as any).seamingArea      || undefined,
+        transparentArea:  (catItem as any).transparentArea  || undefined,
+        layflatWidth:     catItem.jobWidth         || undefined,
+        cutHeight:        catItem.jobHeight        || undefined,
+      });
+    }
+
+    setPendingPWOOrder(null); // clear after applying
+  }, [catalog, pendingPWOOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Helper: map API row → GravureWorkOrder shape
   function mapApiToWO(r: any): GravureWorkOrder {
