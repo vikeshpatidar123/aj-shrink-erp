@@ -1,14 +1,17 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator, BookMarked,
   X, Save, FileText, Truck, Search, ChevronDown, ChevronUp,
-  Check, Layers, Printer, List,
+  Check, Layers, Printer, List, Paperclip, PauseCircle, AlertTriangle,
+  ClipboardList,
 } from "lucide-react";
 import {
-  customers, gravureOrders as initData, GravureOrder, GravureOrderLine,
+  GravureOrder, GravureOrderLine,
   gravureEstimations, employees, ledgers,
 } from "@/data/dummyData";
+import { apiGet, apiPost } from "@/lib/api";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
@@ -65,14 +68,17 @@ const RATE_TYPES  = ["UnitCost", "PerMeter", "PerKg", "PerNos"];
 const JOB_TYPES   = ["New", "Repeat", "Revision"];
 const REFERENCES  = ["Art Work Approved", "Sample Approved", "Existing Job", "New Development"];
 const PRIORITIES  = ["High", "Normal", "Low"];
-const DIVISIONS   = ["Gravure", "Flexo", "Offset", "Digital"];
+const DIVISIONS   = ["Gravure"];
 
 const STATUS_COLORS: Record<string, string> = {
   Confirmed:       "bg-blue-50 text-blue-700 border-blue-200",
   "In Production": "bg-amber-50 text-amber-700 border-amber-200",
   Ready:           "bg-purple-50 text-purple-700 border-purple-200",
   Dispatched:      "bg-green-50 text-green-700 border-green-200",
+  Hold:            "bg-orange-50 text-orange-700 border-orange-300",
 };
+
+type AttachmentMeta = { id: string; name: string; size: number; fileType: string };
 
 // ─── Compute derived amounts for a line ──────────────────────
 function computeLine(l: OBLine): OBLine {
@@ -130,6 +136,7 @@ type FormState = Omit<GravureOrder, "id" | "orderNo"> & {
   obLines: OBLine[];
   deliverySchedule: DeliveryRow[];
   orderPrefix: string;
+  attachments: AttachmentMeta[];
 };
 
 const blankForm = (): FormState => ({
@@ -144,6 +151,7 @@ const blankForm = (): FormState => ({
   totalAmount: 0, advancePaid: 0,
   remarks: "", status: "Confirmed",
   orderPrefix: "",
+  attachments: [],
   // legacy
   sourceType: "Direct", enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
   jobName: "", substrate: "", structure: "", categoryId: "", categoryName: "", content: "",
@@ -184,18 +192,182 @@ function CS({ value, onChange, options, cls = "" }: {
 // ═══════════════════════════════════════════════════════════════
 export default function GravureOrdersPage() {
   const { catalog } = useProductCatalog();
+  const router = useRouter();
 
-  const [data, setData] = useState<GravureOrder[]>(initData);
+  const [data, setData] = useState<GravureOrder[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
   const [formOpen,   setFormOpen]  = useState(false);
   const [editing,    setEditing]   = useState<GravureOrder | null>(null);
   const [form,       setForm]      = useState<FormState>(blankForm());
   const [deleteId,   setDelId]     = useState<string | null>(null);
   const [viewRow,    setViewRow]   = useState<GravureOrder | null>(null);
   const [showList,   setShowList]  = useState(false);
+  const [apiCustomers, setApiCustomers] = useState<{id: string; name: string}[]>([]);
+  const [apiSalesLedgers, setApiSalesLedgers] = useState<string[]>([]);
+  const [apiSalesPersons, setApiSalesPersons] = useState<string[]>([]);
+  const [apiConsignees, setApiConsignees] = useState<{id: string; name: string}[]>([]);
+  const [apiTransporters, setApiTransporters] = useState<{id: string; name: string}[]>([]);
+  const [apiHsnList, setApiHsnList] = useState<{id: string; hsnCode: string; description: string}[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const mapApiLines = (raw: any): GravureOrderLine[] => {
+    // linesJSON is a raw JSON string from the backend (FOR JSON PATH result)
+    let arr: any[] = [];
+    if (Array.isArray(raw)) arr = raw;
+    else if (typeof raw === "string" && raw) {
+      try { arr = JSON.parse(raw); } catch { arr = []; }
+    }
+    return arr.map((l: any, i: number) => ({
+      id:                 String(l.id                  ?? l.OrderBookingDetailsID ?? i),
+      lineNo:             Number(l.lineNo              ?? i + 1),
+      sourceType:         (l.sourceType                ?? "Direct")          as GravureOrderLine["sourceType"],
+      estimationId:       String(l.estimationId        ?? ""),
+      estimationNo:       String(l.estimationNo        ?? ""),
+      catalogId:          String(l.catalogId           ?? ""),
+      catalogNo:          String(l.catalogNo           ?? ""),
+      productCode:        String(l.productCode         ?? ""),
+      productName:        String(l.productName         ?? ""),
+      categoryId:         String(l.categoryId          ?? ""),
+      categoryName:       String(l.categoryName        ?? ""),
+      substrate:          String(l.substrate           ?? ""),
+      jobWidth:           Number(l.jobWidth            ?? 0),
+      jobHeight:          Number(l.jobHeight           ?? 0),
+      noOfColors:         Number(l.noOfColors          ?? 0),
+      printType:          (l.printType                 ?? "Surface Print")   as GravureOrderLine["printType"],
+      cylinderStatus:     (l.cylinderStatus            ?? "New")             as GravureOrderLine["cylinderStatus"],
+      cylinderCount:      Number(l.cylinderCount       ?? 0),
+      filmType:           String(l.filmType            ?? ""),
+      laminationRequired: false,
+      orderQty:           Number(l.orderQty            ?? 0),
+      unit:               String(l.unit               ?? "Kg"),
+      rate:               Number(l.rate               ?? 0),
+      currency:           "INR",
+      amount:             Number(l.amount             ?? 0),
+      deliveryDate:       String(l.deliveryDate       ?? l.expectedDeliveryDate ?? ""),
+      remarks:            String(l.remarks            ?? ""),
+    }));
+  };
+
+  const loadOrders = () => {
+    setLoadingList(true);
+    apiGet<any>("api/gravureOrderBookingShrink/getorders").then(res => {
+      const rows: GravureOrder[] = (Array.isArray(res) ? res : []).map((r: any) => {
+        const orderLines = mapApiLines(r.linesJSON ?? r.lines ?? []);
+        const firstLine  = orderLines[0];
+        return {
+          id:             String(r.OrderBookingID  ?? ""),
+          orderNo:        String(r.SalesOrderNo    ?? ""),
+          date:           String(r.OrderBookingDate ?? ""),
+          customerId:     String(r.LedgerID        ?? ""),
+          customerName:   String(r.CustomerName    ?? ""),
+          salesPerson:    String(r.SalesPerson     ?? ""),
+          salesType:      String(r.SalesType       ?? "Local"),
+          salesLedger:    String(r.SalesLedger     ?? ""),
+          poNo:           String(r.PONo            ?? ""),
+          poDate:         String(r.PODate          ?? ""),
+          directDispatch: Number(r.DirectDispatch  ?? 0) === 1,
+          totalAmount:    Number(r.TotalAmount     ?? 0),
+          advancePaid:    Number(r.AdvancePaid     ?? 0),
+          remarks:        String(r.Remark          ?? ""),
+          status:         (r.Status               ?? "Confirmed") as GravureOrder["status"],
+          orderLines,
+          // legacy fields
+          sourceType:     "Direct" as const,
+          enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
+          jobName:    firstLine?.productName   ?? "",
+          substrate:  firstLine?.substrate     ?? "",
+          structure:  "", categoryId: "", categoryName: "", content: "",
+          jobWidth:   firstLine?.jobWidth      ?? 0,
+          jobHeight:  firstLine?.jobHeight     ?? 0,
+          width: 0,
+          noOfColors: firstLine?.noOfColors    ?? 0,
+          printType:  "Surface Print" as const,
+          quantity:   firstLine?.orderQty      ?? 0,
+          unit:       firstLine?.unit          ?? "Kg",
+          deliveryDate: firstLine?.deliveryDate ?? "",
+          cylinderSet: "", perMeterRate: firstLine?.rate ?? 0,
+          machineId: "", machineName: "", secondaryLayers: [], processes: [],
+          overheadPct: 0, profitPct: 0, attachments: [],
+        };
+      });
+      setData(rows);
+    }).catch(() => {}).finally(() => setLoadingList(false));
+  };
+
+  useEffect(() => {
+    loadOrders();
+    apiGet<any>("api/gravureOrderBookingShrink/getdropdowns").then(res => {
+      if (res?.customers) {
+        const apiList: {id: string; name: string}[] = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }));
+        // Merge: keep any pre-injected customer that's not already in the API list
+        setApiCustomers(prev => {
+          const ids = new Set(apiList.map(c => c.id));
+          const extras = prev.filter(c => !ids.has(c.id));
+          return [...extras, ...apiList];
+        });
+      }
+      if (res?.salesLedgers)  setApiSalesLedgers(res.salesLedgers.map((l: any) => String(l.name ?? l)));
+      if (res?.salesPersons)  setApiSalesPersons(res.salesPersons.map((p: any) => String(p.name ?? p)));
+      if (res?.consignees)    setApiConsignees(res.consignees.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") })));
+      if (res?.transporters)  setApiTransporters(res.transporters.map((t: any) => ({ id: String(t.id ?? ""), name: String(t.name ?? "") })));
+      if (res?.hsnList)       setApiHsnList(res.hsnList.map((h: any) => ({ id: String(h.id ?? ""), hsnCode: String(h.hsnCode ?? ""), description: String(h.description ?? "") })));
+    }).catch(() => {});
+
+    const raw = localStorage.getItem("ajsw_order_from_catalog");
+    if (raw) {
+      try {
+        const cat = JSON.parse(raw);
+        localStorage.removeItem("ajsw_order_from_catalog");
+        // Inject the pre-filled customer immediately so dropdown shows it
+        // (API may not have loaded yet)
+        if (cat.customerId && cat.customerName) {
+          setApiCustomers(prev =>
+            prev.some(c => c.id === String(cat.customerId))
+              ? prev
+              : [{ id: String(cat.customerId), name: cat.customerName }, ...prev]
+          );
+        }
+        const prefillLine = computeLine({
+          ...blankLine(),
+          lineNo: 1,
+          sourceType: "Catalog",
+          catalogId:    cat.catalogId    || "",
+          catalogNo:    cat.catalogNo    || "",
+          productCode:  cat.catalogNo    || "",
+          productName:  cat.productName  || "",
+          categoryId:   cat.categoryId   || "",
+          categoryName: cat.categoryName || "",
+          substrate:    cat.substrate    || "",
+          jobWidth:     cat.jobWidth     || 0,
+          jobHeight:    cat.jobHeight    || 0,
+          noOfColors:   cat.noOfColors   || 6,
+          orderQty:     cat.standardQty  || 0,
+          unit:         cat.standardUnit || "Kg",
+          minQuotedQty: cat.standardQty  || 0,
+          approvedCost: cat.perMeterRate || 0,
+          rate:         cat.perMeterRate || 0,
+          cylinderStatus: "Existing",
+          division: "Gravure", jobType: "Repeat",
+        });
+        setForm(p => ({
+          ...blankForm(),
+          customerId:   cat.customerId   || "",
+          customerName: cat.customerName || "",
+          date: p.date,
+          obLines: [prefillLine],
+        }));
+        setFormOpen(true);
+      } catch {}
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [printOrder, setPrintOrder] = useState<GravureOrder | null>(null);
   const [listSearch, setListSearch] = useState("");
   const [enquirySearch, setEnquirySearch] = useState("");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+
+  // Hold modal state
+  const [holdTarget, setHoldTarget] = useState<GravureOrder | null>(null);
+  const [holdReasonInput, setHoldReasonInput] = useState("");
 
   // Delivery schedule input state
   const [dlvInput, setDlvInput] = useState<DeliveryRow>(blankDelivery());
@@ -336,22 +508,72 @@ export default function GravureOrdersPage() {
 
   const openEdit = (row: GravureOrder) => {
     setEditing(row);
-    // Convert orderLines to OBLines
-    const obLines: OBLine[] = (row.orderLines || []).map(l => computeLine({
-      ...blankLine(), ...l,
-      hsnGroup: "", minQuotedQty: l.orderQty,
-      approvedCost: l.rate, rateType: "UnitCost",
+    const obLines: OBLine[] = (row.orderLines || []).map((l, i) => computeLine({
+      ...blankLine(),
+      id:                  l.id || String(i),
+      lineNo:              l.lineNo || i + 1,
+      sourceType:          l.sourceType    || "Direct",
+      estimationId:        l.estimationId  || "",
+      estimationNo:        l.estimationNo  || "",
+      catalogId:           l.catalogId     || "",
+      catalogNo:           l.catalogNo     || "",
+      productCode:         l.productCode   || l.catalogNo || "",
+      productName:         l.productName   || "",
+      categoryId:          l.categoryId    || "",
+      categoryName:        l.categoryName  || "",
+      substrate:           l.substrate     || "",
+      jobWidth:            l.jobWidth      || 0,
+      jobHeight:           l.jobHeight     || 0,
+      noOfColors:          l.noOfColors    || 0,
+      printType:           l.printType     || "Surface Print",
+      cylinderStatus:      l.cylinderStatus|| "Existing",
+      cylinderCount:       l.cylinderCount || 0,
+      orderQty:            l.orderQty      || 0,
+      unit:                l.unit          || "Kg",
+      rate:                l.rate          || 0,
+      currency:            "INR",
+      amount:              l.amount        || 0,
+      approvedCost:        l.rate          || 0,
+      rateType:            "UnitCost",
       discPct: 0, gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 18,
-      overheadPctLine: 0, division: "Gravure",
-      jobType: "New", jobReference: "Art Work Approved",
-      jobPriority: "Normal", prePressRemark: "", productRemark: "",
-      expectedDeliveryDate: l.deliveryDate, finalDeliveryDate: "",
+      overheadPctLine: 0,
+      division: "Gravure",
+      jobType:             "Repeat",
+      jobReference:        "Art Work Approved",
+      jobPriority:         "Normal",
+      prePressRemark:      "",
+      productRemark:       "",
+      expectedDeliveryDate:l.deliveryDate  || "",
+      finalDeliveryDate:   "",
+      deliveryDate:        l.deliveryDate  || "",
+      remarks:             l.remarks       || "",
     }));
     setForm({
-      ...blankForm(), ...row,
-      obLines: obLines.length ? obLines : [blankLine()],
+      ...blankForm(),
+      date:          row.date          || new Date().toISOString().slice(0, 10),
+      customerId:    row.customerId    || "",
+      customerName:  row.customerName  || "",
+      salesPerson:   row.salesPerson   || "",
+      salesType:     row.salesType     || "Local",
+      salesLedger:   row.salesLedger   || "",
+      poNo:          row.poNo          || "",
+      poDate:        row.poDate        || "",
+      directDispatch:row.directDispatch|| false,
+      totalAmount:   row.totalAmount   || 0,
+      advancePaid:   row.advancePaid   || 0,
+      remarks:       row.remarks       || "",
+      status:        row.status        || "Confirmed",
+      orderPrefix:   (row.orderNo || "").split(/\d/)[0] || "GRV",
+      obLines:       obLines.length ? obLines : [blankLine()],
       deliverySchedule: [],
-      orderPrefix: "",
+      attachments:   row.attachments   || [],
+      // legacy
+      orderLines: row.orderLines || [],
+      sourceType: "Direct", enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
+      jobName: "", substrate: "", structure: "", categoryId: "", categoryName: "", content: "",
+      jobWidth: 0, jobHeight: 0, width: 0, noOfColors: 6, printType: "Surface Print",
+      quantity: 0, unit: "Kg", deliveryDate: "", cylinderSet: "", perMeterRate: 0,
+      machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
     });
     setFormOpen(true);
   };
@@ -359,55 +581,96 @@ export default function GravureOrdersPage() {
   const closeForm = () => { setFormOpen(false); setEditing(null); };
 
   // ── Save ────────────────────────────────────────────────────
-  const save = () => {
+  const save = async () => {
     if (!form.customerId) { alert("Please select a customer."); return; }
     if (form.obLines.every(l => !l.productName)) { alert("Add at least one product line."); return; }
 
-    const orderLines: GravureOrderLine[] = form.obLines.map(l => ({
-      id: l.id, lineNo: l.lineNo,
-      sourceType: l.sourceType,
-      estimationId: l.estimationId, estimationNo: l.estimationNo,
-      catalogId: l.catalogId, catalogNo: l.catalogNo,
-      productCode: l.productCode, productName: l.productName,
-      categoryId: l.categoryId, categoryName: l.categoryName,
-      substrate: l.substrate,
-      jobWidth: l.jobWidth, jobHeight: l.jobHeight,
-      noOfColors: l.noOfColors, printType: l.printType,
-      cylinderStatus: l.cylinderStatus, cylinderCount: l.cylinderCount,
-      filmType: l.filmType, laminationRequired: l.laminationRequired,
-      orderQty: l.orderQty, unit: l.unit,
-      rate: l.rate, currency: l.currency, amount: l.amount,
-      deliveryDate: l.expectedDeliveryDate || l.deliveryDate,
-      remarks: l.remarks,
+    const lines = form.obLines.map((l, i) => ({
+      lineNo:       i + 1,
+      sourceType:   l.sourceType,
+      catalogId:    l.catalogId    || "",
+      catalogNo:    l.catalogNo    || "",
+      estimationId: l.estimationId || "",
+      estimationNo: l.estimationNo || "",
+      productCode:  l.productCode  || l.catalogNo || "",
+      productName:  l.productName  || "",
+      categoryId:   l.categoryId   || "",
+      categoryName: l.categoryName || "",
+      substrate:    l.substrate    || "",
+      jobWidth:     l.jobWidth,
+      jobHeight:    l.jobHeight,
+      noOfColors:   l.noOfColors,
+      printType:    l.printType    || "Surface Print",
+      cylinderStatus: l.cylinderStatus || "New",
+      cylinderCount:  l.cylinderCount  || 0,
+      orderQty:     l.orderQty,
+      unit:         l.unit         || "Kg",
+      rate:         l.rate,
+      amount:       l.amount,
+      discPct:      l.discPct      || 0,
+      discAmt:      l.discAmt      || 0,
+      gstPct:       l.gstPct       || 0,
+      cgstPct:      l.cgstPct      || 0,
+      sgstPct:      l.sgstPct      || 0,
+      igstPct:      l.igstPct      || 0,
+      cgstAmt:      l.cgstAmt      || 0,
+      sgstAmt:      l.sgstAmt      || 0,
+      igstAmt:      l.igstAmt      || 0,
+      deliveryDate: l.expectedDeliveryDate || l.deliveryDate || "",
+      jobType:      l.jobType      || "New",
+      jobPriority:  l.jobPriority  || "Normal",
+      division:     l.division     || "Gravure",
+      remarks:      l.remarks      || "",
     }));
 
-    const firstLine = orderLines[0];
-    const payload: Omit<GravureOrder, "id" | "orderNo"> = {
-      ...form, orderLines, totalAmount,
-      sourceType: firstLine?.sourceType || "Direct",
-      jobName: firstLine?.productName || "",
-      substrate: firstLine?.substrate || "",
-      structure: firstLine?.substrate || "",
-      categoryId: firstLine?.categoryId || "",
-      categoryName: firstLine?.categoryName || "",
-      content: "", jobWidth: firstLine?.jobWidth || 0,
-      jobHeight: firstLine?.jobHeight || 0,
-      noOfColors: firstLine?.noOfColors || 6,
-      printType: firstLine?.printType || "Surface Print",
-      quantity: firstLine?.orderQty || 0,
-      unit: firstLine?.unit || "Kg",
-      deliveryDate: firstLine?.deliveryDate || "",
-      perMeterRate: firstLine?.rate || 0,
+    const delivery = form.deliverySchedule.map((d, i) => ({
+      lineNo:       i + 1,
+      deliveryDate: d.deliveryDate,
+      scheduleQty:  d.scheduleQty,
+      jobName:      d.jobName      || "",
+      pmCode:       d.pmCode       || "",
+      consignee:    d.consignee    || "",
+      transporter:  d.transporter  || "",
+    }));
+
+    const apiPayload = {
+      FlagEdit:        !!editing,
+      OrderBookingID:  editing ? (editing.id || 0) : 0,
+      Prefix:          form.orderPrefix || "GRV",
+      Header: {
+        LedgerID:         form.customerId,
+        OrderBookingDate: form.date,
+        SalesType:        form.salesType || "Local",
+        PONo:             form.poNo      || "",
+        PODate:           form.poDate    || "",
+        SalesLedger:      form.salesLedger || "",
+        SalesPerson:      form.salesPerson  || "",
+        TotalAmount:      totalAmount,
+        AdvancePaid:      form.advancePaid  || 0,
+        DirectDispatch:   form.directDispatch ? 1 : 0,
+        Remarks:          form.remarks       || "",
+        Status:           form.status        || "Confirmed",
+      },
+      Lines:           lines,
+      DeliverySchedule:delivery,
+      OneTimeCharges:  [],
+      BatchDetails:    [],
     };
 
-    if (editing) {
-      setData(d => d.map(r => r.id === editing.id ? { ...payload, id: editing.id, orderNo: editing.orderNo } : r));
-    } else {
-      const orderNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.Order, data.map(d => d.orderNo));
-      const id = `GO${String(data.length + 1).padStart(3, "0")}`;
-      setData(d => [...d, { ...payload, id, orderNo }]);
+    setSaving(true);
+    try {
+      const res = await apiPost<any>("api/gravureOrderBookingShrink/saveorder", apiPayload);
+      if (res?.success === false || res?.Success === false) {
+        alert(res?.message || res?.Message || "Save failed.");
+        return;
+      }
+      closeForm();
+      loadOrders(); // refresh list from API
+    } catch (e: any) {
+      alert(e?.message || "Save failed.");
+    } finally {
+      setSaving(false);
     }
-    closeForm();
   };
 
   const orderNo = editing
@@ -498,6 +761,13 @@ export default function GravureOrdersPage() {
                 <input type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
               </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
+                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  {SALES_TYPES.map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Row 2 */}
@@ -506,21 +776,14 @@ export default function GravureOrdersPage() {
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Client Name *</label>
                 <select value={form.customerId}
                   onChange={e => {
-                    const c = customers.find(x => x.id === e.target.value);
+                    const c = apiCustomers.find(x => x.id === e.target.value);
                     setForm(p => ({ ...blankForm(), customerId: e.target.value, customerName: c?.name || "", date: p.date, orderPrefix: p.orderPrefix }));
                     setAddedIds(new Set());
                     setEnquirySearch("");
                   }}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
                   <option value="">-- Select Customer --</option>
-                  {customers.filter(c => c.status === "Active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
-                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  {SALES_TYPES.map(s => <option key={s}>{s}</option>)}
+                  {apiCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             </div>
@@ -536,7 +799,7 @@ export default function GravureOrdersPage() {
               </label>
               <select value={form.status} onChange={e => f("status", e.target.value as FormState["status"])}
                 className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                {["Confirmed", "In Production", "Ready", "Dispatched"].map(s => <option key={s}>{s}</option>)}
+                {["Confirmed", "In Production", "Ready", "Dispatched", "Hold"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -701,7 +964,13 @@ export default function GravureOrdersPage() {
                         {/* Category */}
                         <td className="px-1 py-0.5"><CI value={l.categoryName} onChange={v => updateLine(idx, { ...l, categoryName: v })} placeholder="Category" /></td>
                         {/* HSN */}
-                        <td className="px-1 py-0.5"><CI value={l.hsnGroup} onChange={v => updateLine(idx, { ...l, hsnGroup: v })} placeholder="HSN" /></td>
+                        <td className="px-1 py-0.5">
+                          <select value={l.hsnGroup} onChange={e => updateLine(idx, { ...l, hsnGroup: e.target.value })}
+                            className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px] focus:border-purple-400 outline-none">
+                            <option value="">-- HSN --</option>
+                            {apiHsnList.map(h => <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>)}
+                          </select>
+                        </td>
                         {/* Min Qty */}
                         <td className="px-1 py-0.5"><CI value={l.minQuotedQty || ""} onChange={v => updateLine(idx, { ...l, minQuotedQty: Number(v) })} type="number" min={0} cls="text-right" /></td>
                         {/* Order Qty */}
@@ -882,9 +1151,7 @@ export default function GravureOrdersPage() {
                 <select value={dlvInput.consignee} onChange={e => setDlvInput(p => ({ ...p, consignee: e.target.value }))}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
                   <option value="">-- Select Consignee --</option>
-                  {ledgers.filter(l => l.ledgerType === "Consignee" && l.status === "Active").map(l => (
-                    <option key={l.id} value={l.name}>{l.name}</option>
-                  ))}
+                  {apiConsignees.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                 </select>
               </div>
               <div>
@@ -892,9 +1159,7 @@ export default function GravureOrdersPage() {
                 <select value={dlvInput.transporter} onChange={e => setDlvInput(p => ({ ...p, transporter: e.target.value }))}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
                   <option value="">-- Select Transporter --</option>
-                  {ledgers.filter(l => l.ledgerType === "Transporter" && l.status === "Active").map(l => (
-                    <option key={l.id} value={l.name}>{l.name}</option>
-                  ))}
+                  {apiTransporters.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                 </select>
               </div>
               <div className="flex items-end">
@@ -940,7 +1205,79 @@ export default function GravureOrdersPage() {
             </table>
           </div>
 
-          {/* ── SECTION 4: Summary + Remarks ── */}
+          {/* ── SECTION 4: Attachments ── */}
+          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-gray-700 text-white">
+              <div className="flex items-center gap-2">
+                <Paperclip size={14} className="text-gray-300" />
+                <span className="text-xs font-bold uppercase tracking-wide">Attachments</span>
+                {form.attachments.length > 0 && (
+                  <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">{form.attachments.length} file{form.attachments.length !== 1 ? "s" : ""}</span>
+                )}
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 border-dashed rounded-lg text-sm text-gray-600 font-medium transition-colors">
+                  <Paperclip size={14} className="text-gray-500" />
+                  Attach Sample / File
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ai,.cdr,.eps,.psd"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      const newMeta: AttachmentMeta[] = files.map(file => ({
+                        id: Math.random().toString(36).slice(2),
+                        name: file.name,
+                        size: file.size,
+                        fileType: file.type || "application/octet-stream",
+                      }));
+                      f("attachments", [...form.attachments, ...newMeta]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <span className="text-xs text-gray-400">Images, PDF, AI, CDR, PSD, Office files supported</span>
+              </div>
+
+              {form.attachments.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {form.attachments.map(att => {
+                    const isImage = att.fileType.startsWith("image/");
+                    const isPdf = att.fileType === "application/pdf";
+                    const sizeKB = (att.size / 1024).toFixed(1);
+                    return (
+                      <div key={att.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                        <div className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${
+                          isImage ? "bg-blue-100 text-blue-700" : isPdf ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
+                        }`}>
+                          {isImage ? "IMG" : isPdf ? "PDF" : "FILE"}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-gray-800 truncate">{att.name}</p>
+                          <p className="text-[10px] text-gray-400">{sizeKB} KB</p>
+                        </div>
+                        <button
+                          onClick={() => f("attachments", form.attachments.filter(a => a.id !== att.id))}
+                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {form.attachments.length === 0 && (
+                <p className="mt-2 text-xs text-gray-400">No attachments yet. Attach order samples, art files, or reference documents.</p>
+              )}
+            </div>
+          </div>
+
+          {/* ── SECTION 5: Summary + Remarks ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
               <label className="text-[10px] font-bold text-gray-500 uppercase">Remark</label>
@@ -984,9 +1321,9 @@ export default function GravureOrdersPage() {
 
           {/* ── Action buttons ── */}
           <div className="flex items-center gap-3 pb-6">
-            <button onClick={save}
-              className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors">
-              <Save size={14} />{editing ? "Update" : "Save"}
+            <button onClick={save} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors">
+              <Save size={14} />{saving ? "Saving…" : editing ? "Update" : "Save"}
             </button>
             {editing && (
               <button onClick={() => { setDelId(editing.id); closeForm(); }}
@@ -1030,20 +1367,18 @@ export default function GravureOrdersPage() {
         <Button icon={<Plus size={16} />} onClick={openAdd}>New Order</Button>
       </div>
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {(["Confirmed", "In Production", "Ready", "Dispatched"] as const).map(s => (
-          <div key={s} className={`rounded-xl border p-4 ${STATUS_COLORS[s]}`}>
-            <p className="text-xs font-semibold">{s}</p>
-            <p className="text-2xl font-bold mt-1">{data.filter(o => o.status === s).length}</p>
-            <p className="text-xs mt-1 opacity-70">₹{data.filter(o => o.status === s).reduce((a, o) => a + o.totalAmount, 0).toLocaleString()}</p>
-          </div>
-        ))}
-      </div>
-
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <DataTable
+        {loadingList && (
+          <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+            </svg>
+            Loading orders…
+          </div>
+        )}
+        {!loadingList && <DataTable
           data={data}
           columns={columns}
           searchKeys={["orderNo", "customerName", "poNo", "salesPerson"]}
@@ -1052,10 +1387,41 @@ export default function GravureOrdersPage() {
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
               <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintOrder(row)}>Print</Button>
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+              {row.status !== "Hold" ? (
+                <button
+                  onClick={() => { setHoldTarget(row); setHoldReasonInput(""); }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+                >
+                  <PauseCircle size={12} />Hold
+                </button>
+              ) : (
+                <button
+                  onClick={() => setData(d => d.map(r => r.id === row.id ? { ...r, status: "Confirmed", holdReason: undefined } : r))}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                >
+                  <Check size={12} />Unhold
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  sessionStorage.setItem("createPWOFromOrder", JSON.stringify({
+                    orderId:      row.id,
+                    orderNo:      row.orderNo,
+                    customerId:   row.customerId,
+                    customerName: row.customerName,
+                    salesType:    row.salesType ?? "",
+                    lines:        row.orderLines ?? [],
+                  }));
+                  router.push("/gravure/workorder");
+                }}
+                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
+              >
+                <ClipboardList size={12} />Create PWO
+              </button>
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDelId(row.id)}>Delete</Button>
             </div>
           )}
-        />
+        />}
       </div>
 
       {/* View Modal */}
@@ -1069,7 +1435,21 @@ export default function GravureOrdersPage() {
                   <Truck size={11} />Direct Dispatch
                 </span>
               )}
+              {viewRow.attachments && viewRow.attachments.length > 0 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-full text-xs font-semibold">
+                  <Paperclip size={11} />{viewRow.attachments.length} attachment{viewRow.attachments.length !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
+            {viewRow.status === "Hold" && viewRow.holdReason && (
+              <div className="flex items-start gap-2 p-3 bg-orange-50 border border-orange-200 rounded-xl text-sm">
+                <AlertTriangle size={14} className="text-orange-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-orange-800">Hold Reason: </span>
+                  <span className="text-orange-700">{viewRow.holdReason}</span>
+                </div>
+              </div>
+            )}
 
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Order Header</p>
@@ -1184,6 +1564,7 @@ export default function GravureOrdersPage() {
                           <span className="font-black text-sm text-teal-800 font-mono">{o.orderNo}</span>
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${STATUS_COLORS[o.status]}`}>{o.status}</span>
                           {o.directDispatch && <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full">Direct Dispatch</span>}
+                          {o.attachments && o.attachments.length > 0 && <span className="text-[10px] font-semibold px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-full flex items-center gap-1"><Paperclip size={9} />{o.attachments.length}</span>}
                         </div>
                         <div className="text-sm font-semibold text-gray-800 truncate">{o.customerName}</div>
                         <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 flex-wrap">
@@ -1200,6 +1581,12 @@ export default function GravureOrdersPage() {
                           ))}
                           {(o.orderLines || []).length > 3 && <span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full">+{o.orderLines.length - 3} more</span>}
                         </div>
+                        {o.status === "Hold" && o.holdReason && (
+                          <div className="mt-1.5 flex items-center gap-1.5 text-[10px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-2.5 py-1">
+                            <AlertTriangle size={9} className="flex-shrink-0" />
+                            <span><strong>Hold:</strong> {o.holdReason}</span>
+                          </div>
+                        )}
                       </div>
                       {/* Actions */}
                       <div className="flex flex-col gap-1.5 flex-shrink-0">
@@ -1211,6 +1598,17 @@ export default function GravureOrdersPage() {
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold rounded-lg transition">
                           <Pencil size={11} /> Edit
                         </button>
+                        {o.status !== "Hold" ? (
+                          <button onClick={() => { setHoldTarget(o); setHoldReasonInput(""); setShowList(false); }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-300 text-[11px] font-bold rounded-lg transition">
+                            <PauseCircle size={11} /> Hold
+                          </button>
+                        ) : (
+                          <button onClick={() => setData(d => d.map(r => r.id === o.id ? { ...r, status: "Confirmed", holdReason: undefined } : r))}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-300 text-[11px] font-bold rounded-lg transition">
+                            <Check size={11} /> Unhold
+                          </button>
+                        )}
                         <button onClick={() => { setDelId(o.id); }}
                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-[11px] font-bold rounded-lg transition">
                           <Trash2 size={11} /> Delete
@@ -1418,13 +1816,61 @@ export default function GravureOrdersPage() {
         );
       })()}
 
+      {/* ── HOLD REASON MODAL ── */}
+      {holdTarget && (
+        <Modal open={!!holdTarget} onClose={() => setHoldTarget(null)} title="Put Order on Hold" size="sm">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl">
+              <AlertTriangle size={16} className="text-orange-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-orange-800">{holdTarget.orderNo} — {holdTarget.customerName}</p>
+                <p className="text-xs text-orange-600 mt-0.5">This order will be marked as <strong>Hold</strong> and paused from production.</p>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Reason for Hold *</label>
+              <textarea
+                value={holdReasonInput}
+                onChange={e => setHoldReasonInput(e.target.value)}
+                rows={3}
+                placeholder="e.g. Awaiting customer approval, Payment pending, Design revision required…"
+                className="mt-1.5 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="secondary" onClick={() => setHoldTarget(null)}>Cancel</Button>
+              <button
+                disabled={!holdReasonInput.trim()}
+                onClick={() => {
+                  if (!holdReasonInput.trim()) return;
+                  setData(d => d.map(r => r.id === holdTarget!.id
+                    ? { ...r, status: "Hold" as const, holdReason: holdReasonInput.trim() }
+                    : r
+                  ));
+                  setHoldTarget(null);
+                  setHoldReasonInput("");
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-colors"
+              >
+                <PauseCircle size={14} />Confirm Hold
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Delete Confirm */}
       {deleteId && (
         <Modal open={!!deleteId} onClose={() => setDelId(null)} title="Delete Order" size="sm">
           <p className="text-sm text-gray-600 mb-5">This order will be permanently deleted.</p>
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setDelId(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => { setData(d => d.filter(r => r.id !== deleteId)); setDelId(null); }}>Delete</Button>
+            <Button variant="danger" onClick={() => {
+              apiPost("api/gravureOrderBookingShrink/deleteorder", { OrderBookingID: deleteId })
+                .catch(() => {})
+                .finally(() => { setDelId(null); loadOrders(); });
+            }}>Delete</Button>
           </div>
         </Modal>
       )}
