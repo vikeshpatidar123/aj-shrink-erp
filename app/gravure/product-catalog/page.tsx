@@ -284,7 +284,6 @@ export default function ProductCatalogPage() {
   // Needed because DB names may differ from the internal keys used by the dimension diagram
   const normalizeContentType = (content: string): string => {
     const c = (content || "").toLowerCase();
-    if (c.includes("lldpe") || c.includes("ldpe"))                        return "Laminate Roll";
     if (c.includes("wrap around"))                                        return "Wrap Around Labels";
     if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
     if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";

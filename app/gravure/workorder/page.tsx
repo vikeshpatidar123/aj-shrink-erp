@@ -366,10 +366,10 @@ export default function GravureWorkOrderPage() {
   }
 
   // ── Derive structureType from content string ──────────────
-  const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" => {
+  const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" | "MultiPackShrink" => {
     if (!content) return "Label";
     const c = content.toLowerCase();
-    if (c.includes("lldpe") || c.includes("ldpe")) return "Label";
+    if (c.includes("lldpe") || c.includes("ldpe")) return "MultiPackShrink";
     if (c.includes("sleeve")) return "Sleeve";
     if (c.includes("pouch") || c.includes("standup") || c.includes("zipper") || c.includes("3d") || c.includes("flat bottom") || c.includes("gusset") || c.includes("center seal") || c.includes("side seal")) return "Pouch";
     return "Label";
@@ -378,7 +378,6 @@ export default function GravureWorkOrderPage() {
   // ── Maps DB ContentName → CONTENT_TYPE_CONFIG key ─────────
   const normalizeContentType = (content: string): string => {
     const c = (content || "").toLowerCase();
-    if (c.includes("lldpe") || c.includes("ldpe"))                                              return "Laminate Roll";
     if (c.includes("wrap around"))                                                              return "Wrap Around Labels";
     if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
     if (c.includes("sleeve") && c.includes("stretch"))                                          return "Sleeve — Stretch";
@@ -1537,6 +1536,194 @@ export default function GravureWorkOrderPage() {
             </div>
           )}
 
+
+          {/* ── LDPE / LLDPE Multi-Pack Shrink Film Layout ── */}
+          {getStructureType(form.content) === "MultiPackShrink" && (() => {
+            const mpFilmW   = form.jobWidth || 0;
+            const mpRepeat  = (form as any).repeatLength  || 0;
+            const mpPackW   = (form as any).packWidth     || 0;
+            const mpPackH   = (form as any).packHeight    || 0;
+            const mpHMargin = (form as any).hMargin       || 0;
+            const mpVMargin = (form as any).vMargin       || 0;
+            const unitW     = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
+            const unitH     = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
+            const mpAcross  = unitW > 0 && mpFilmW > 0  ? Math.floor(mpFilmW  / unitW) : 0;
+            const mpVert    = unitH > 0 && mpRepeat > 0 ? Math.floor(mpRepeat / unitH) : 0;
+            const mpTotal   = mpAcross * mpVert;
+            const mpPrinted = (form as any).printedLength  || 0;
+            const mpEyeMark = (form as any).eyeMarkLength  ?? 3;
+            const mpGap     = (form as any).gapLength      || 0;
+            const repeatSum = mpPrinted + mpEyeMark + mpGap;
+            const repeatOK  = mpRepeat > 0 && mpPrinted > 0 && Math.abs(repeatSum - mpRepeat) < 0.1;
+            return (
+              <div className="border border-emerald-200 rounded-2xl overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 flex items-center gap-2">
+                  <Layers size={14} className="text-white" />
+                  <p className="text-xs font-bold text-white uppercase tracking-widest">Multi-Pack Shrink Film Layout</p>
+                  <span className="ml-auto px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase">LDPE / LLDPE</span>
+                </div>
+                <div className="p-4 space-y-4">
+
+                  {/* Film Dimensions */}
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Film Dimensions</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Width (mm) *</label>
+                        <input type="number" min={0} step={1} placeholder="e.g. 463"
+                          value={form.jobWidth || ""}
+                          onChange={e => f("jobWidth", Number(e.target.value))}
+                          className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2 bg-emerald-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Full flat film width</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Repeat Length (mm) *</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 477"
+                          value={(form as any).repeatLength || ""}
+                          onChange={e => f("repeatLength" as any, Number(e.target.value))}
+                          className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2 bg-emerald-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Eye mark to eye mark</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Repeat Shrinkage (mm)</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 0"
+                          value={(form as any).repeatShrinkage || ""}
+                          onChange={e => f("repeatShrinkage" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-amber-200 rounded-xl px-3 py-2 bg-amber-50 focus:bg-white outline-none focus:ring-2 focus:ring-amber-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">
+                          {(() => { const rs = (form as any).repeatShrinkage || 0; return rs > 0 ? `Cyl repeat = ${mpRepeat} + ${rs} = ${mpRepeat + rs} mm` : "Extra mm for shrinkage"; })()}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Colors</label>
+                        <div className="flex gap-1.5">
+                          <div className="flex-1">
+                            <label className="text-[9px] text-gray-400 block mb-0.5">Front</label>
+                            <input type="number" min={0} max={12} placeholder="0"
+                              value={form.frontColors || ""}
+                              onChange={e => f("frontColors", Number(e.target.value))}
+                              className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-[9px] text-gray-400 block mb-0.5">Back</label>
+                            <input type="number" min={0} max={12} placeholder="0"
+                              value={form.backColors || ""}
+                              onChange={e => f("backColors", Number(e.target.value))}
+                              className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Total Colors</label>
+                        <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{form.noOfColors} Colors</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pack Size & Margins */}
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Individual Pack Size &amp; Margin — UPS Auto-Calculated</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Pack Width (mm) *</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 97"
+                          value={(form as any).packWidth || ""}
+                          onChange={e => f("packWidth" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Width of 1 pack</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Pack Height (mm) *</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 70"
+                          value={(form as any).packHeight || ""}
+                          onChange={e => f("packHeight" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Height of 1 pack</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">H-Margin / Side Gap (mm) *</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 66.5"
+                          value={(form as any).hMargin || ""}
+                          onChange={e => f("hMargin" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Each side (across)</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">V-Margin / Top-Bot Gap (mm) *</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 94.9"
+                          value={(form as any).vMargin || ""}
+                          onChange={e => f("vMargin" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                        <p className="text-[9px] text-gray-400 mt-0.5">Each side (vertical)</p>
+                      </div>
+                    </div>
+                    {mpPackW > 0 && mpPackH > 0 && mpHMargin > 0 && mpVMargin > 0 && mpFilmW > 0 && mpRepeat > 0 ? (
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="flex flex-col items-center justify-center gap-1 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Across UPS</span>
+                          <span className="text-2xl font-black text-emerald-700">{mpAcross}</span>
+                          <span className="text-[9px] text-emerald-500">{mpFilmW} ÷ {unitW.toFixed(1)} = {mpAcross}</span>
+                        </div>
+                        <div className="flex flex-col items-center justify-center gap-1 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Vertical UPS</span>
+                          <span className="text-2xl font-black text-emerald-700">{mpVert}</span>
+                          <span className="text-[9px] text-emerald-500">{mpRepeat} ÷ {unitH.toFixed(1)} = {mpVert}</span>
+                        </div>
+                        <div className={`flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-xl border-2 ${mpTotal > 0 ? "bg-emerald-600 border-emerald-700" : "bg-gray-100 border-gray-200"}`}>
+                          <span className={`text-[9px] font-bold uppercase tracking-wider ${mpTotal > 0 ? "text-emerald-100" : "text-gray-400"}`}>Total UPS / Repeat</span>
+                          <span className={`text-3xl font-black ${mpTotal > 0 ? "text-white" : "text-gray-300"}`}>{mpTotal || "—"}</span>
+                          {mpTotal > 0 && <span className="text-[9px] text-emerald-200">{mpAcross} Across × {mpVert} Vertical</span>}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                        Enter Film Width, Repeat Length, Pack Width, Pack Height, H-Margin and V-Margin to auto-calculate UPS.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Repeat Breakdown */}
+                  <div>
+                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Repeat Breakdown (Optional — for validation)</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Printed Length (mm)</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 474"
+                          value={(form as any).printedLength || ""}
+                          onChange={e => f("printedLength" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Eye Mark Length (mm)</label>
+                        <input type="number" min={0} step={0.1} placeholder="default 3"
+                          value={mpEyeMark || ""}
+                          onChange={e => f("eyeMarkLength" as any, parseFloat(e.target.value) || 3)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Gap Length (mm)</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 0"
+                          value={(form as any).gapLength || ""}
+                          onChange={e => f("gapLength" as any, parseFloat(e.target.value) || 0)}
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                      </div>
+                    </div>
+                    {mpRepeat > 0 && mpPrinted > 0 && (
+                      <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${repeatOK ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"}`}>
+                        {repeatOK ? <Check size={13} /> : <X size={13} />}
+                        <span>
+                          {repeatOK
+                            ? `Repeat OK: ${mpPrinted} + ${mpEyeMark} + ${mpGap} = ${repeatSum} mm = Repeat ${mpRepeat} mm`
+                            : `Mismatch: ${mpPrinted} + ${mpEyeMark} + ${mpGap} = ${repeatSum.toFixed(1)} mm ≠ Repeat ${mpRepeat} mm`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="flex justify-end">
             <Button onClick={() => setModalTab("planning")}>Next: Planning <ChevronRight size={14} className="ml-1" /></Button>
