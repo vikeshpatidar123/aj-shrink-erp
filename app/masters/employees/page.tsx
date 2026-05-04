@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -7,7 +7,7 @@ import { authHeaders } from "@/lib/auth";
 
 const BASE_URL = "https://api.indusanalytics.co.in";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function unwrap(raw: any): any {
   let result = raw;
   while (typeof result === "string") {
@@ -16,7 +16,7 @@ function unwrap(raw: any): any {
   return result;
 }
 
-// ── Shared UI ─────────────────────────────────────────────────────────────────
+// â"€â"€ Shared UI â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
     {title}
@@ -32,10 +32,10 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
   </div>
 );
 
-// ── SelectOpt type (mirrors ItemMaster pattern) ───────────────────────────────
+// â"€â"€ SelectOpt type (mirrors ItemMaster pattern) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 type SelectOpt = { value: string; label: string };
 
-// ── Dynamic field renderer ────────────────────────────────────────────────────
+// â"€â"€ Dynamic field renderer â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function DynamicField({ field, value, options, onChange, submitAttempted }: {
   field: any; value: any; options: SelectOpt[]; onChange: (v: any) => void; submitAttempted?: boolean;
 }) {
@@ -104,15 +104,15 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
   );
 }
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
+// â"€â"€ Date helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const todayStr = new Date().toISOString().split("T")[0];
 const thirtyDaysAgoStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 export default function LedgerMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
 
-  // ── Form state ──────────────────────────────────────────────────────────────
+  // â"€â"€ Form state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const [editing, setEditing] = useState<any | null>(null);
   const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
   const [formGroupID, setFormGroupID] = useState("");
@@ -125,19 +125,20 @@ export default function LedgerMasterPage() {
   const [formError, setFormError] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
-  // ── Grid state ──────────────────────────────────────────────────────────────
+  // â"€â"€ Grid state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const [allGroups, setAllGroups] = useState<{ LedgerGroupID: string; LedgerGroupName: string; LedgerGroupNameDisplay: string }[]>([]);
+  const [taxHsnList, setTaxHsnList] = useState<{ id: string; code: string; name: string; gst: string }[]>([]);
   const [gridData, setGridData] = useState<any[]>([]);
   const [gridLoading, setGridLoading] = useState(false);
   const [activeGroupID, setActiveGroupID] = useState("");
 
-  // ── Date filter ─────────────────────────────────────────────────────────────
+  // â"€â"€ Date filter â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const [fromDate, setFromDate] = useState(thirtyDaysAgoStr);
   const [toDate, setToDate] = useState(todayStr);
 
-  // ── Load group list on mount ─────────────────────────────────────────────────
+  // â"€â"€ Load group list on mount â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
-    fetch(`${BASE_URL}/api/ledgermaster/masterlist`, { headers: authHeaders() })
+    fetch(`${BASE_URL}/api/ledgermasterShrink/masterlist`, { headers: authHeaders() })
       .then(r => r.text())
       .then(text => {
         try {
@@ -150,12 +151,12 @@ export default function LedgerMasterPage() {
       .catch(() => setAllGroups([]));
   }, []);
 
-  // ── Load grid data when group changes ────────────────────────────────────────
+  // â"€â"€ Load grid data when group changes â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const loadGrid = useCallback((groupID: string) => {
     if (!groupID) return;
     setGridLoading(true);
     setGridData([]);
-    fetch(`${BASE_URL}/api/ledgermaster/grid/${groupID}`, { headers: authHeaders() })
+    fetch(`${BASE_URL}/api/ledgermasterShrink/grid/${groupID}`, { headers: authHeaders() })
       .then(r => r.text())
       .then(text => {
         try {
@@ -169,7 +170,7 @@ export default function LedgerMasterPage() {
 
   useEffect(() => { if (activeGroupID) loadGrid(activeGroupID); }, [activeGroupID, loadGrid]);
 
-  // ── Date-filtered grid data ──────────────────────────────────────────────────
+  // â"€â"€ Date-filtered grid data â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const filteredGridData = useMemo(() => {
     const dateField = Object.keys(gridData[0] ?? {}).find(k =>
       k.toLowerCase().includes("date") || k.toLowerCase().includes("createdon")
@@ -184,12 +185,12 @@ export default function LedgerMasterPage() {
     });
   }, [gridData, fromDate, toDate]);
 
-  // ── Load form fields for selected group ──────────────────────────────────────
+  // â"€â"€ Load form fields for selected group â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const loadFormFields = useCallback(async (groupID: string, groupName: string, prefill?: Record<string, any>) => {
     setFormLoading(true);
     setFormError("");
     try {
-      const res = await fetch(`${BASE_URL}/api/ledgermaster/getmasterfields/${groupID}`, { headers: authHeaders() });
+      const res = await fetch(`${BASE_URL}/api/ledgermasterShrink/getmasterfields/${groupID}`, { headers: authHeaders() });
       const raw = await res.text();
       const fields = unwrap(raw);
 
@@ -201,7 +202,7 @@ export default function LedgerMasterPage() {
 
       setFormFields(fields);
 
-      // Initialize values — "false"/"null" bad defaults → "" for non-checkbox fields
+      // Initialize values — "false"/"null" bad defaults â†' "" for non-checkbox fields
       const defaults: Record<string, any> = { ISLedgerActive: "true" };
       fields.forEach((f: any) => {
         let dv = prefill?.[f.FieldName] ?? f.FieldDefaultValue ?? "";
@@ -228,7 +229,7 @@ export default function LedgerMasterPage() {
         if (!f.LedgerGroupFieldID || !f.SelectBoxQueryDB || f.SelectBoxQueryDB === "null") continue;
 
         try {
-          const sbRes = await fetch(`${BASE_URL}/api/ledgermaster/selectboxload`, {
+          const sbRes = await fetch(`${BASE_URL}/api/ledgermasterShrink/selectboxload`, {
             method: "POST", headers: authHeaders(),
             body: JSON.stringify([{ FieldID: f.LedgerGroupFieldID, FieldName: f.FieldName }]),
           });
@@ -256,6 +257,27 @@ export default function LedgerMasterPage() {
       }
 
       setSelectOpts(opts);
+
+      // If this group has ProductHSNName field, load Tax/Service HSNs
+      const needsTaxHsn = fields.some((fld: any) => fld.FieldName === "ProductHSNName" || fld.FieldName === "ProductHSNID");
+      if (needsTaxHsn) {
+        fetch(`${BASE_URL}/api/producthsnmasterShrink/showlist`, { headers: authHeaders() })
+          .then(r => r.text())
+          .then(text => {
+            const raw = unwrap(text);
+            const arr = Array.isArray(raw) ? raw : [];
+            setTaxHsnList(arr
+              .filter((h: any) => h.ProductCategory === "Tax / Service")
+              .map((h: any) => ({
+                id: String(h.ProductHSNID),
+                code: h.HSNCode ?? "",
+                name: h.DisplayName || h.ProductHSNName || h.HSNCode || "",
+                gst: String(h.GSTTaxPercentage ?? "0"),
+              })));
+          })
+          .catch(() => {});
+      }
+
       setFormStep("fill-form");
     } catch {
       setFormError("Network error loading form fields.");
@@ -263,7 +285,7 @@ export default function LedgerMasterPage() {
     setFormLoading(false);
   }, []);
 
-  // ── Save ledger ───────────────────────────────────────────────────────────────
+  // â"€â"€ Save ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const saveLedger = async () => {
     setSubmitAttempted(true);
     const missing = formFields.find(f => f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
@@ -276,7 +298,7 @@ export default function LedgerMasterPage() {
       const { LedgerGroupID: _lgid, ...formValuesWithoutGroupID } = formValues;
       const masterRecord: Record<string, any> = { ...formValuesWithoutGroupID };
 
-      // Sanitize — same pattern as ItemMaster to avoid varchar→bigint/real errors
+      // Sanitize — same pattern as ItemMaster to avoid varcharâ†'bigint/real errors
       formFields.forEach((f: any) => {
         const v = masterRecord[f.FieldName];
         if (f.FieldType === "checkbox") {
@@ -306,7 +328,7 @@ export default function LedgerMasterPage() {
       }
 
       const endpoint = isEdit ? "update" : "save";
-      const res = await fetch(`${BASE_URL}/api/ledgermaster/${endpoint}`, {
+      const res = await fetch(`${BASE_URL}/api/ledgermasterShrink/${endpoint}`, {
         method: "POST", headers: authHeaders(), body: JSON.stringify(payload),
       });
 
@@ -323,17 +345,17 @@ export default function LedgerMasterPage() {
     setFormSaving(false);
   };
 
-  // ── Delete ledger ─────────────────────────────────────────────────────────────
+  // â"€â"€ Delete ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const deleteLedger = async (row: any) => {
     const ledgerID = row.LedgerID ?? row.id;
     if (!confirm("Delete this ledger?")) return;
-    await fetch(`${BASE_URL}/api/ledgermaster/deleteledger?ledgerID=${ledgerID}&ledgergroupID=${activeGroupID}`, {
+    await fetch(`${BASE_URL}/api/ledgermasterShrink/deleteledger?ledgerID=${ledgerID}&ledgergroupID=${activeGroupID}`, {
       method: "POST", headers: authHeaders(),
     });
     loadGrid(activeGroupID);
   };
 
-  // ── Open edit form ────────────────────────────────────────────────────────────
+  // â"€â"€ Open edit form â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const openEdit = (row: any) => {
     setEditing(row);
     setFormGroupID(activeGroupID);
@@ -344,7 +366,7 @@ export default function LedgerMasterPage() {
     loadFormFields(activeGroupID, grp?.LedgerGroupNameDisplay || "", row);
   };
 
-  // ── Grid columns — dynamic from backend data ──────────────────────────────────
+  // â"€â"€ Grid columns — dynamic from backend data â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const liveColumns = useMemo((): Column<any>[] => {
     if (filteredGridData.length === 0) return [];
     const skip = new Set(["CompanyID", "FYear", "UserID", "CreatedBy", "ModifiedBy",
@@ -355,7 +377,7 @@ export default function LedgerMasterPage() {
       .map(k => ({ key: k, header: k.replace(/([A-Z])/g, " $1").trim(), sortable: true }));
   }, [filteredGridData]);
 
-  // ── FORM VIEW ─────────────────────────────────────────────────────────────────
+  // â"€â"€ FORM VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
@@ -422,7 +444,7 @@ export default function LedgerMasterPage() {
               </span>
               <button onClick={() => setFormStep("select-group")}
                 className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-                ← Change Group
+                â† Change Group
               </button>
             </div>
 
@@ -436,7 +458,8 @@ export default function LedgerMasterPage() {
                   <SectionTitle title="Ledger Details" />
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {formFields
-                      .filter(f => f.IsDisplay !== false && f.IsDisplay !== 0 && f.IsDisplay !== "0" && f.IsDisplay !== null)
+                      .filter(f => f.IsDisplay !== false && f.IsDisplay !== 0 && f.IsDisplay !== "0" && f.IsDisplay !== null
+                        && f.FieldName !== "ProductHSNID" && f.FieldName !== "ProductHSNName")
                       .map(field => (
                         <DynamicField key={field.FieldName} field={field}
                           value={formValues[field.FieldName] ?? ""}
@@ -444,6 +467,41 @@ export default function LedgerMasterPage() {
                           onChange={(v: any) => setFormValues(prev => ({ ...prev, [field.FieldName]: v }))}
                           submitAttempted={submitAttempted} />
                       ))}
+
+                    {/* Custom HSN/SAC picker — replaces old ProductHSNName selectbox */}
+                    {formFields.some(f => f.FieldName === "ProductHSNName" || f.FieldName === "ProductHSNID") && (
+                      <Field label="HSN / SAC Code">
+                        {taxHsnList.length === 0 ? (
+                          <div className="w-full px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-xs text-amber-700">
+                            No &quot;Tax / Service&quot; HSN codes found. Add them in HSN Master first.
+                          </div>
+                        ) : (
+                          <select
+                            value={String(formValues.ProductHSNName ?? "")}
+                            onChange={e => {
+                              const selected = taxHsnList.find(h => h.id === e.target.value);
+                              setFormValues(prev => ({
+                                ...prev,
+                                ProductHSNName: e.target.value ? Number(e.target.value) : null,
+                                ...(selected ? { TaxPercentage: selected.gst } : {}),
+                              }));
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                          >
+                            <option value="">-- Select HSN / SAC --</option>
+                            {taxHsnList.map(h => (
+                              <option key={h.id} value={h.id}>{h.code}{h.name ? ` — ${h.name}` : ""}</option>
+                            ))}
+                          </select>
+                        )}
+                        {formValues.ProductHSNName && (() => {
+                          const sel = taxHsnList.find(h => h.id === String(formValues.ProductHSNName));
+                          return sel ? (
+                            <p className="text-xs text-blue-600 mt-1 font-medium">GST {sel.gst}% auto-filled in Tax Percentage</p>
+                          ) : null;
+                        })()}
+                      </Field>
+                    )}
                   </div>
 
                   {/* Active Ledger toggle */}
@@ -461,7 +519,7 @@ export default function LedgerMasterPage() {
                   <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
                     <button onClick={() => setFormStep("select-group")}
                       className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      ← Change Group
+                      â† Change Group
                     </button>
                     <button onClick={saveLedger} disabled={formSaving}
                       className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
@@ -478,7 +536,7 @@ export default function LedgerMasterPage() {
     );
   }
 
-  // ── LIST VIEW ─────────────────────────────────────────────────────────────────
+  // â"€â"€ LIST VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   return (
     <div className="max-w-6xl mx-auto space-y-5">
       {/* Header */}
