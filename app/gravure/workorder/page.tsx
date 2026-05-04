@@ -19,6 +19,7 @@ import { GravureProductCatalog } from "@/data/dummyData";
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
+import { apiGet, apiPost } from "@/lib/api";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge }       from "@/components/ui/Badge";
 import Button    from "@/components/ui/Button";
@@ -195,6 +196,8 @@ export default function GravureWorkOrderPage() {
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
   const [workOrders, setWOs]     = useState<GravureWorkOrder[]>(initWOs);
+  const [loadingList, setLoadingList] = useState(false);
+  const [apiPrefix,   setApiPrefix]   = useState("GRV");
   const [orders]                  = useState<GravureOrder[]>(initOrders);
   const [pageTab, setPageTab]    = useState<"pending" | "workorders">("pending");
   const [modalOpen, setModal]    = useState(false);
@@ -234,6 +237,133 @@ export default function GravureWorkOrderPage() {
   // ── Dimension diagram state ───────────────────────────────
   const [dimValues, setDimValues] = useState<DimValues>({});
   const patchDim = (patch: DimValues) => setDimValues(p => ({ ...p, ...patch }));
+
+  // ── Load work orders from API on mount; also check sessionStorage pre-fill ──
+  useEffect(() => {
+    // Load dropdown prefix
+    apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
+      .then(dd => { if (dd?.prefix) setApiPrefix(dd.prefix); })
+      .catch(() => {});
+
+    // Load work order list — replace dummy data only when API responds with real rows
+    apiGet<any[]>("api/gravureWorkOrderShrink/getworkorders")
+      .then(rows => {
+        if (Array.isArray(rows)) setWOs(rows.map(mapApiToWO));
+      })
+      .catch(() => { /* keep initWOs on API error */ });
+
+    // Pre-fill from Order Booking "Create PWO" button
+    try {
+      const raw = sessionStorage.getItem("createPWOFromOrder");
+      if (raw) {
+        sessionStorage.removeItem("createPWOFromOrder");
+        const src = JSON.parse(raw);
+        setForm(f => ({
+          ...f,
+          sourceOrderType: "Catalog",
+          orderId:      String(src.orderId  ?? ""),
+          orderNo:      String(src.orderNo  ?? ""),
+          customerId:   String(src.customerId ?? ""),
+          customerName: String(src.customerName ?? ""),
+          salesType:    String(src.salesType ?? ""),
+        }));
+        setModal(true);
+        setModalTab("basic");
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Helper: map API row → GravureWorkOrder shape
+  function mapApiToWO(r: any): GravureWorkOrder {
+    const layers: SecondaryLayer[] = Array.isArray(r.savedLayersJSON)
+      ? r.savedLayersJSON.map((l: any) => ({
+          layerNo:         Number(l.layerNo ?? 0),
+          plyType:         String(l.plyType ?? ""),
+          itemId:          String(l.itemId  ?? ""),
+          itemName:        String(l.itemName ?? ""),
+          itemSubGroup:    String(l.itemSubGroup ?? ""),
+          gsm:             Number(l.gsm       ?? 0),
+          thickness:       Number(l.thickness ?? 0),
+          density:         Number(l.density   ?? 0),
+          rate:            Number(l.rate      ?? 0),
+          consumableItems: Array.isArray(l.consumableItems)
+            ? l.consumableItems
+            : (() => { try { return JSON.parse(l.consumableItems || "[]"); } catch { return []; } })(),
+        }))
+      : [];
+
+    const processes: GravureEstimationProcess[] = Array.isArray(r.savedProcessesJSON)
+      ? r.savedProcessesJSON.map((p: any) => ({
+          id:          String(p.processId  ?? ""),
+          name:        String(p.name       ?? ""),
+          processType: String(p.processType ?? ""),
+          qty:         0, chargeUnit: "", rate: Number(p.rate ?? 0), amount: Number(p.amount ?? 0),
+        }))
+      : [];
+
+    return {
+      id:             String(r.JobBookingID ?? r.jobBookingId ?? ""),
+      workOrderNo:    String(r.JobBookingNo  ?? r.workOrderNo ?? ""),
+      date:           String(r.date          ?? ""),
+      orderId:        String(r.orderId       ?? ""),
+      orderNo:        String(r.orderNo       ?? ""),
+      sourceOrderType:(r.sourceOrderType     ?? "Direct") as any,
+      customerId:     String(r.customerId    ?? ""),
+      customerName:   String(r.customerName  ?? ""),
+      jobName:        String(r.jobName       ?? ""),
+      substrate:      String(r.substrate     ?? ""),
+      structure:      String(r.structure     ?? ""),
+      categoryId:     String(r.categoryId   ?? ""),
+      categoryName:   String(r.categoryName  ?? ""),
+      content:        String(r.content       ?? ""),
+      jobWidth:       Number(r.jobWidth      ?? 0),
+      jobHeight:      Number(r.jobHeight     ?? 0),
+      actualWidth:    Number(r.actualWidth   ?? 0),
+      actualHeight:   Number(r.actualHeight  ?? 0),
+      width:          Number(r.actualWidth   ?? 0),
+      noOfColors:     Number(r.noOfColors    ?? 0),
+      printType:      (r.printType           ?? "Surface Print") as any,
+      structureType:  r.structureType        || undefined,
+      trimmingSize:   Number(r.trimmingSize  ?? 0),
+      widthShrinkage: Number(r.widthShrinkage ?? 0),
+      gusset:         Number(r.gusset        ?? 0),
+      topSeal:        Number(r.topSeal       ?? 0),
+      bottomSeal:     Number(r.bottomSeal    ?? 0),
+      sideSeal:       Number(r.sideSeal      ?? 0),
+      centerSealWidth:Number(r.centerSealWidth ?? 0),
+      sideGusset:     Number(r.sideGusset    ?? 0),
+      seamingArea:    Number(r.seamingArea   ?? 0),
+      transparentArea:Number(r.transparentArea ?? 0),
+      finalRollOD:    r.finalRollOD ? Number(r.finalRollOD) : undefined,
+      rollUnit:       (r.rollUnit            ?? "Meter") as any,
+      unwindDirection:Number(r.unwindDirection ?? 0),
+      frontColors:    Number(r.frontColors   ?? 0),
+      backColors:     Number(r.backColors    ?? 0),
+      salesPerson:    String(r.salesPerson   ?? ""),
+      salesType:      String(r.salesType     ?? ""),
+      machineId:      String(r.machineId     ?? ""),
+      machineName:    String(r.machineName   ?? ""),
+      cylinderCostPerColor: Number(r.cylinderCostPerColor ?? 3500),
+      overheadPct:    Number(r.overheadPct   ?? 12),
+      profitPct:      Number(r.profitPct     ?? 15),
+      perMeterRate:   Number(r.perMeterRate  ?? 0),
+      totalAmount:    Number(r.totalAmount   ?? 0),
+      processes,
+      secondaryLayers: layers,
+      selectedPlanId: String(r.selectedPlanId ?? ""),
+      ups:            Number(r.ups            ?? 0),
+      operatorId:     String(r.operatorId     ?? ""),
+      operatorName:   String(r.operatorName   ?? ""),
+      cylinderSet:    String(r.cylinderSet    ?? ""),
+      inks:           [],
+      quantity:       Number(r.quantity       ?? 0),
+      unit:           (r.unit                 ?? "Meter") as any,
+      wastagePct:     Number(r.wastagePct     ?? 1),
+      plannedDate:    String(r.plannedDate    ?? ""),
+      specialInstructions: String(r.specialInstructions ?? ""),
+      status:         (r.status               ?? "Open") as any,
+    };
+  }
 
   // ── Derive structureType from content string ──────────────
   const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" => {
@@ -599,6 +729,8 @@ export default function GravureWorkOrderPage() {
       frontColors:  catSaveWO.frontColors,
       backColors:   catSaveWO.backColors,
       status: "Active",
+      isActive: true,
+      isActiveReason: "",
       remarks: catSaveWO.specialInstructions || "",
     };
     saveCatalogItem(item);
@@ -972,15 +1104,55 @@ export default function GravureWorkOrderPage() {
       ? { ...formWithCost, status: "Open" as const }
       : formWithCost;
 
-    if (editing) {
-      setWOs(d => d.map(r => r.id === editing.id ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo } : r));
-    } else {
-      const workOrderNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.WorkOrder, workOrders.map(d => d.workOrderNo));
-      const id = `GVWO${String(workOrders.length + 1).padStart(3, "0")}`;
-      setWOs(d => [...d, { ...saveForm, id, workOrderNo }]);
-    }
-    setModal(false);
-    setReplan(false);
+    // ── API save ──────────────────────────────────────────────
+    const payload = {
+      FlagEdit:        editing ? "true" : "false",
+      JobBookingID:    editing ? Number(editing.id) : 0,
+      Prefix:          apiPrefix,
+      ...saveForm,
+      // Align field names to what backend expects
+      customerId:      saveForm.customerId,
+      ledgerId:        saveForm.customerId,
+      machineId:       Number(saveForm.machineId)    || 0,
+      operatorId:      Number(saveForm.operatorId)   || 0,
+      categoryId:      Number(saveForm.categoryId)   || 0,
+      orderId:         Number(saveForm.orderId)      || 0,
+      quantity:        saveForm.quantity,
+      colorShades,
+    };
+
+    apiPost<any>("api/gravureWorkOrderShrink/saveworkorder", payload)
+      .then(res => {
+        if (res?.success) {
+          const newId  = String(res.jobBookingId ?? res.id ?? "");
+          const newNo  = String(res.workOrderNo  ?? res.no  ?? "");
+          if (editing) {
+            setWOs(d => d.map(r => r.id === editing.id
+              ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo }
+              : r));
+          } else {
+            setWOs(d => [...d, { ...saveForm, id: newId, workOrderNo: newNo }]);
+          }
+          setModal(false);
+          setReplan(false);
+        } else {
+          alert("Save failed. Please try again.");
+        }
+      })
+      .catch(() => {
+        // Fallback to local state so UI is not broken if API is down
+        if (editing) {
+          setWOs(d => d.map(r => r.id === editing.id
+            ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo }
+            : r));
+        } else {
+          const workOrderNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.WorkOrder, workOrders.map(d => d.workOrderNo));
+          const id = `GVWO${String(workOrders.length + 1).padStart(3, "0")}`;
+          setWOs(d => [...d, { ...saveForm, id, workOrderNo }]);
+        }
+        setModal(false);
+        setReplan(false);
+      });
   };
 
   const stats = {
@@ -3447,7 +3619,15 @@ export default function GravureWorkOrderPage() {
           <p className="text-sm text-gray-600 mb-5">This work order will be permanently deleted.</p>
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
-            <Button variant="danger" onClick={() => { setWOs(d => d.filter(r => r.id !== deleteId)); setDeleteId(null); }}>Delete</Button>
+            <Button variant="danger" onClick={() => {
+              const id = deleteId!;
+              apiPost("api/gravureWorkOrderShrink/deleteworkorder", { JobBookingID: Number(id) })
+                .catch(() => {})
+                .finally(() => {
+                  setWOs(d => d.filter(r => r.id !== id));
+                  setDeleteId(null);
+                });
+            }}>Delete</Button>
           </div>
         </Modal>
       )}
