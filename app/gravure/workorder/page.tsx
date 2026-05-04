@@ -369,9 +369,22 @@ export default function GravureWorkOrderPage() {
   const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" => {
     if (!content) return "Label";
     const c = content.toLowerCase();
+    if (c.includes("lldpe") || c.includes("ldpe")) return "Label";
     if (c.includes("sleeve")) return "Sleeve";
     if (c.includes("pouch") || c.includes("standup") || c.includes("zipper") || c.includes("3d") || c.includes("flat bottom") || c.includes("gusset") || c.includes("center seal") || c.includes("side seal")) return "Pouch";
     return "Label";
+  };
+
+  // ── Maps DB ContentName → CONTENT_TYPE_CONFIG key ─────────
+  const normalizeContentType = (content: string): string => {
+    const c = (content || "").toLowerCase();
+    if (c.includes("wrap around"))                                                              return "Wrap Around Labels";
+    if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
+    if (c.includes("sleeve") && c.includes("stretch"))                                          return "Sleeve — Stretch";
+    if (c.includes("shrink label"))                                                             return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack"))                                               return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould"))                                       return "In-Mould Labels";
+    return content;
   };
 
   // ── View Plan (WO list) ────────────────────────────────────
@@ -1339,7 +1352,7 @@ export default function GravureWorkOrderPage() {
           </div>
 
           {/* ── Dimension Setup + Live Diagram (when content type is known) ── */}
-          {form.content && CONTENT_TYPE_CONFIG[form.content] && (
+          {form.content && CONTENT_TYPE_CONFIG[normalizeContentType(form.content)] && (
             <div className="border border-indigo-200 rounded-2xl overflow-hidden">
               <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
                 <Calculator size={14} className="text-white" />
@@ -1406,7 +1419,7 @@ export default function GravureWorkOrderPage() {
                 <div className="space-y-3">
                   <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-1">Packaging Dimensions</p>
                   <DimensionInputPanel
-                    contentType={form.content}
+                    contentType={normalizeContentType(form.content)}
                     dims={dimValues}
                     onChange={patch => {
                       patchDim(patch);
@@ -1518,7 +1531,7 @@ export default function GravureWorkOrderPage() {
                   </div>
                 </div>
                 {/* Right: live diagram */}
-                <DimensionDiagram contentType={form.content} dims={dimValues} />
+                <DimensionDiagram contentType={normalizeContentType(form.content)} dims={dimValues} />
               </div>
             </div>
           )}
