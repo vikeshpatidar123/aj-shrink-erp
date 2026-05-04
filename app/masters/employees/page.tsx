@@ -1,11 +1,11 @@
 ﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = "http://localhost:57214";
 
 // â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function unwrap(raw: any): any {
@@ -42,6 +42,39 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
   const inputCls = "w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
   const inner = () => {
+    if (field.FieldType === "tagbox") {
+      const selected: string[] = (value && typeof value === "string" && value !== "null" && value !== "false")
+        ? value.split(",").map((s: string) => s.trim()).filter(Boolean)
+        : [];
+      const available = options.filter(o => !selected.includes(o.value));
+      const addTag = (val: string) => { if (val) onChange([...selected, val].join(",")); };
+      const removeTag = (val: string) => { onChange(selected.filter(s => s !== val).join(",")); };
+      return (
+        <div className="flex flex-col gap-2">
+          {selected.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {selected.map(s => (
+                <span key={s} className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                  {s}
+                  <button type="button" onClick={() => removeTag(s)} className="hover:text-blue-900 transition-colors">
+                    <X size={11} strokeWidth={3} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {available.length > 0 ? (
+            <select defaultValue="" onChange={e => { addTag(e.target.value); e.currentTarget.value = ""; }}
+              disabled={!!field.IsLocked} className={inputCls}>
+              <option value="">+ Add grade...</option>
+              {available.map((o, i) => <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>)}
+            </select>
+          ) : (
+            <p className="text-xs text-gray-400 italic px-1">All grades selected.</p>
+          )}
+        </div>
+      );
+    }
     if (field.FieldType === "selectbox") {
       return (
         <select value={value ?? ""} onChange={e => onChange(e.target.value)} disabled={!!field.IsLocked} className={inputCls}>
@@ -212,7 +245,7 @@ export default function LedgerMasterPage() {
       setFormValues(defaults);
 
       // Load selectbox options
-      const sbFields = fields.filter((f: any) => f.FieldType === "selectbox");
+      const sbFields = fields.filter((f: any) => f.FieldType === "selectbox" || f.FieldType === "tagbox");
       const opts: Record<string, SelectOpt[]> = {};
 
       for (const f of sbFields) {
@@ -238,13 +271,12 @@ export default function LedgerMasterPage() {
 
           if (sbData && typeof sbData === "object") {
             const tableKey = "tbl_" + f.FieldName;
-            const rows: any[] = sbData[tableKey] ?? [];
-            // Backend appends 1 metadata row at end — strip it when more than 1 row
-            const dataRows = rows.length > 1 ? rows.slice(0, -1) : rows;
-            if (dataRows.length > 0) {
-              const cols = Object.keys(dataRows[0]);
+            const allRows: any[] = sbData[tableKey] ?? [];
+            if (allRows.length > 0) {
+              const cols = Object.keys(allRows[0]);
               const is2col = cols.length >= 2;
-              // 2-col: col[0]=ID (DB value), col[1]=display; 1-col: value===label
+              // Backend appends 1 metadata row only for 2-column queries; 1-col queries get no extra row
+              const dataRows = is2col && allRows.length > 1 ? allRows.slice(0, -1) : allRows;
               opts[f.FieldName] = dataRows
                 .map((r: any) => ({
                   value: String(r[cols[0]] ?? ""),
