@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
 
-const BASE_URL = "http://localhost:57214";
+const BASE_URL = "https://api.indusanalytics.co.in";
 
 // â"€â"€ Unwrap triple-encoded JSON â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function unwrap(raw: any): any {
