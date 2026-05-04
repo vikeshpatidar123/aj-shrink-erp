@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   BookMarked, Eye, Trash2, Clock, CheckCircle2,
   ShoppingCart, CheckCircle, AlertCircle, Lock, ArrowRight,
@@ -7,16 +8,18 @@ import {
   ChevronRight, Eye as EyeIcon, Factory, Send, Package, Palette, Wrench, Archive, Copy, Search, Printer,
 } from "lucide-react";
 import {
-  gravureOrders, gravureWorkOrders as initWOs,
   GravureProductCatalog, GravureOrder, GravureWorkOrder,
-  machines, processMasters, items, ledgers, GravureEstimationProcess,
-  SecondaryLayer, PlyConsumableItem,
+  GravureEstimationProcess, SecondaryLayer, PlyConsumableItem,
   CATEGORY_GROUP_SUBGROUP,
   tools as allTools, toolInventory,
-  customers,
 } from "@/data/dummyData";
+// Sleeve/Cylinder tool inventory stays as local data (not in DB masters)
+// All other masters (customers, machines, processes, items, vendors) come from API via useMasters()
 import { useCategories } from "@/context/CategoriesContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
+import { useMasters } from "@/context/MastersContext";
+import { useToast } from "@/components/ui/Toast";
+import { apiGet, apiPost } from "@/lib/api";
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -25,22 +28,9 @@ import Button   from "@/components/ui/Button";
 import Modal    from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 
-// ─── Masters ──────────────────────────────────────────────────
-const ROTO_PROCESSES    = processMasters.filter(p => p.module === "Rotogravure");
-const PRINT_MACHINES    = machines.filter(m => m.department === "Printing");
+// ─── Sleeve tools stay as local dummy data (no DB master) ─────
 const AVAILABLE_TOOL_IDS = new Set(toolInventory.filter(ti => ti.status === "Available").map(ti => ti.toolId));
-const SLEEVE_TOOLS      = allTools.filter(t => t.toolType === "Sleeve"   && AVAILABLE_TOOL_IDS.has(t.id)).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
-const CYLINDER_TOOLS    = allTools.filter(t => t.toolType === "Cylinder" && AVAILABLE_TOOL_IDS.has(t.id)).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
-const FILM_ITEMS        = items.filter(i => i.group === "Film" && i.active);
-const INK_ITEMS         = items.filter(i => i.group === "Ink" && i.active);
-const VENDOR_LEDGERS    = ledgers.filter(l => (l.ledgerType === "Supplier" || l.ledgerType === "Vendor") && l.status === "Active");
-const CYLINDER_TOOLS_ALL  = allTools.filter(t => t.toolType === "Cylinder");
-const FILM_SUBGROUPS = Array.from(
-  new Map(FILM_ITEMS.filter(i => i.subGroup).map(i => [i.subGroup, { subGroup: i.subGroup, density: parseFloat(i.density) || 0, thicknesses: new Set<number>() }])).entries()
-).map(([subGroup, data]) => {
-  FILM_ITEMS.filter(i => i.subGroup === subGroup).forEach(i => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
-  return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
-});
+const SLEEVE_TOOLS       = allTools.filter(t => t.toolType === "Sleeve" && AVAILABLE_TOOL_IDS.has(t.id)).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
 
 // ─── Section Header ───────────────────────────────────────────
 const SH = ({ label }: { label: string }) => (
@@ -56,11 +46,128 @@ const Pill = ({ label, value, cls = "bg-gray-50 text-gray-700 border-gray-200" }
 
 // ─── Main Page ────────────────────────────────────────────────
 export default function ProductCatalogPage() {
+  const router = useRouter();
   const { categories } = useCategories();
-  const { catalog, saveCatalogItem, deleteCatalogItem } = useProductCatalog();
-  const [workOrders] = useState<GravureWorkOrder[]>(initWOs);
+  const { catalog, loading: catalogLoading, error: catalogError, refresh: refreshCatalog, saveCatalogItem, deleteCatalogItem, updateCatalogStatus } = useProductCatalog();
+  const { machines: apiMachines, processes: apiProcesses, customers: apiCustomers,
+          filmItems: apiFilmItems, inkItems: apiInkItems, vendorLedgers: apiVendors,
+          cylinderMaster: apiCylinders } = useMasters();
+  const { showToast } = useToast();
 
-  const [catalogTab, setCatalogTab] = useState<"pending" | "processed">("pending");
+  // ── Cylinder tools from API (ToolMaster) ─────────────────────
+  const CYLINDER_TOOLS = useMemo(() =>
+    apiCylinders
+      .map(c => ({
+        id:           String(c.CylinderID),
+        code:         c.CylinderCode,
+        name:         c.CylinderName,
+        printWidth:   String(c.PrintWidth),
+        repeatLength: String(c.Circumference),
+        repeatUPS:    c.RepeatUPS,
+        cylinderType: c.CylinderType,
+        status:       c.CylinderStatus,
+        toolType:     "Cylinder" as const,
+      }))
+      .sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth)),
+  [apiCylinders]);
+
+  const CYLINDER_TOOLS_ALL = CYLINDER_TOOLS;
+
+  // ── Map API data → consistent shape for all downstream JSX ──────────────
+  // IDs cast to string so select comparisons (e.target.value === id) work correctly.
+  // No dummy fallbacks — empty array shows "no data" instead of misleading fake records.
+
+  // dedupe<T> — removes duplicate IDs that can appear from SQL JOINs
+  const dedupe = <T extends { id: string }>(arr: T[]): T[] => {
+    const seen = new Set<string>();
+    return arr.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+  };
+
+  const customers = useMemo(() =>
+    dedupe(apiCustomers.map(c => ({ id: String(c.LedgerID), name: c.CustomerName } as any))),
+  [apiCustomers]);
+
+  const PRINT_MACHINES = useMemo(() =>
+    dedupe(apiMachines.map(m => ({
+      id: String(m.MachineID), name: m.MachineName, department: "Printing",
+      maxWebWidth:     m.MaxRollWidth,
+      minWebWidth:     m.MinRollWidth,
+      repeatLengthMin: m.MinCircumference,
+      repeatLengthMax: m.MaxCircumference,
+      ...m,
+    } as any))),
+  [apiMachines]);
+
+  const ROTO_PROCESSES = useMemo(() =>
+    dedupe(apiProcesses.map(p => ({
+      id: String(p.ProcessID), name: p.ProcessName, displayName: p.DisplayProcessName,
+      module: "Rotogravure",
+      chargeUnit:        p.TypeofCharges,
+      rate:              p.Rate,
+      makeSetupCharges:  Number(p.SetupCharges) > 0,
+      setupChargeAmount: String(p.SetupCharges ?? 0),
+      ...p,
+    } as any))),
+  [apiProcesses]);
+
+  const FILM_ITEMS = useMemo(() =>
+    dedupe(apiFilmItems.map(i => ({
+      id:          String(i.ItemID),
+      name:        i.ItemDisplayName || i.ItemName,
+      fullName:    i.ItemName,
+      group:       "Film",
+      subGroup:    i.ItemSubGroupName,
+      density:     String(i.Density),
+      thickness:   String(i.Thickness),
+      estimationRate: "0",
+      active:      true,
+      ...i,
+    } as any))),
+  [apiFilmItems]);
+
+  // Normalize DB group names to canonical mixed-case so UI comparisons
+  // like ci.itemGroup === "Ink" always work regardless of DB casing (INK, ink, Ink).
+  const normalizeInkGroup = (g: string): string => {
+    const u = g.toUpperCase();
+    if (u.includes("INK"))      return "Ink";
+    if (u.includes("SOLVENT"))  return "Solvent";
+    if (u.includes("ADHESIVE")) return "Adhesive";
+    if (u.includes("HARDNER") || u.includes("HARDENER")) return "Hardner";
+    return g;
+  };
+
+  const INK_ITEMS = useMemo(() =>
+    dedupe(apiInkItems.map(i => ({
+      id:       String(i.ItemID),
+      name:     i.ItemName + (i.InkColour ? "/" + i.InkColour : ""),
+      group:    normalizeInkGroup(i.ItemGroupName),
+      subGroup: i.ItemSubGroupName,
+      active:   true, ...i,
+    } as any))),
+  [apiInkItems]);
+
+  const VENDOR_LEDGERS = useMemo(() =>
+    dedupe(apiVendors.map(l => ({
+      id: String(l.LedgerID), name: l.LedgerName,
+      ledgerType: "Vendor", status: "Active", ...l,
+    } as any))),
+  [apiVendors]);
+
+  const FILM_SUBGROUPS = useMemo(() =>
+    Array.from(
+      new Map(FILM_ITEMS.filter((i: any) => i.subGroup).map((i: any) => [i.subGroup, { subGroup: i.subGroup, density: parseFloat(i.density) || 0, thicknesses: new Set<number>() }])).entries()
+    ).map(([subGroup, data]) => {
+      FILM_ITEMS.filter((i: any) => i.subGroup === subGroup).forEach((i: any) => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
+      return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
+    }),
+  [FILM_ITEMS]);
+
+  // Merged items list (film + ink from API)
+  const items = useMemo(() => [...FILM_ITEMS, ...INK_ITEMS], [FILM_ITEMS, INK_ITEMS]);
+
+  const [workOrders] = useState<GravureWorkOrder[]>([]);
+
+  const [catalogTab, setCatalogTab] = useState<"pending" | "processed">("processed");
   const [viewPlanRow, setViewPlanRow] = useState<GravureProductCatalog | null>(null);
   const [deleteId,    setDeleteId]   = useState<string | null>(null);
 
@@ -83,9 +190,10 @@ export default function ProductCatalogPage() {
   const [isNewCatalog,  setIsNewCatalog]  = useState(false);
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
-  type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; };
+  type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
   type MaterialAlloc   = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
-  type CylinderAlloc   = { colorNo: number; colorName: string; cylinderNo: string; circumference: string; printWidth: string; repeatUPS: number; cylinderType: "New" | "Existing" | "Rechromed" | "Repeat"; status: "Pending" | "Available" | "In Use" | "Under Chrome" | "Ordered"; remarks: string; createdInMaster?: boolean; repeatUse?: boolean; };
+  type CylinderAlloc   = { colorNo: number; colorName: string; cylinderNo: string; circumference: string; printWidth: string; repeatUPS: number; cylinderType: "New" | "Existing" | "Rechromed" | "Repeat"; status: "Pending" | "Available" | "In Use" | "Under Chrome" | "Ordered"; remarks: string; createdInMaster?: boolean; repeatUse?: boolean; cylinderMasterID?: string; };
+;
   const [catalogFilmReqs,   setCatalogFilmReqs]   = useState<FilmRequisition[]>([]);
   const [catalogColorShades,setCatalogColorShades] = useState<ColorShade[]>([]);
   const [catalogMatAllocs,  setCatalogMatAllocs]   = useState<MaterialAlloc[]>([]);
@@ -140,7 +248,7 @@ export default function ProductCatalogPage() {
     });
   };
 
-  type CatalogAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string };
+  type CatalogAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string; fileObj?: File };
   const [replanAttachments, setReplanAttachments] = useState<CatalogAttachment[]>([]);
   const [editingAttachLabel, setEditingAttachLabel] = useState<string | null>(null); // att.id being edited
 
@@ -150,6 +258,7 @@ export default function ProductCatalogPage() {
       id: Math.random().toString(36).slice(2),
       name: f.name, size: f.size, mimeType: f.type,
       url: URL.createObjectURL(f),
+      fileObj: f,
       label: replanAttachments.length === 0 && i === 0 ? "Master File" : undefined,
     }));
     setReplanAttachments(p => [...p, ...newItems]);
@@ -162,15 +271,27 @@ export default function ProductCatalogPage() {
   // Sleeve: cylinder circ = layflat × 2, repeatUPS = 1
   // Pouch: standard planning, film width = pouch width as entered
   // Label/Roll Form/Laminate Roll: standard label planning
-  const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" => {
+  const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" | "MultiPackShrink" => {
     const c = content.toLowerCase();
+    // Detect LLDPE / LDPE shrink film (multi-pack) — DB name "LLDPE Shrink Film"
+    if (c.includes("lldpe") || c.includes("ldpe")) return "MultiPackShrink";
     if (c.includes("sleeve")) return "Sleeve";
-    if (
-      c.includes("pouch") ||
-      c.includes("standup") ||
-      c === "zipper pouch"
-    ) return "Pouch";
+    if (c.includes("pouch") || c.includes("standup") || c === "zipper pouch") return "Pouch";
     return "Label";
+  };
+
+  // Maps DB ContentMaster.ContentName → CONTENT_TYPE_CONFIG key
+  // Needed because DB names may differ from the internal keys used by the dimension diagram
+  const normalizeContentType = (content: string): string => {
+    const c = (content || "").toLowerCase();
+    if (c.includes("lldpe") || c.includes("ldpe"))                        return "Laminate Roll";
+    if (c.includes("wrap around"))                                        return "Wrap Around Labels";
+    if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
+    if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";
+    if (c.includes("shrink label"))                                        return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack"))                         return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould"))                 return "In-Mould Labels";
+    return content;
   };
 
   const rf = <K extends keyof GravureProductCatalog>(k: K, v: GravureProductCatalog[K]) => {
@@ -188,6 +309,11 @@ export default function ProductCatalogPage() {
     });
   };
 
+  // Global sType — safe to use anywhere in JSX (replanForm may be null outside modal)
+  const sTypeGlobal = replanForm
+    ? ((replanForm as any).structureType || getStructureType(replanForm.content))
+    : "Label";
+
   // ── Ply helpers ───────────────────────────────────────────
   const onPlyTypeChange = (index: number, plyType: string) => {
     if (!replanForm) return;
@@ -200,7 +326,7 @@ export default function ProductCatalogPage() {
     if (!replanForm) return;
     const layers = [...replanForm.secondaryLayers];
     const layer = { ...layers[layerIdx] };
-    const ci = [...layer.consumableItems];
+    const ci = [...(layer.consumableItems || [])];
     ci[ciIdx] = { ...ci[ciIdx], ...patch };
     layer.consumableItems = ci;
     layers[layerIdx] = layer;
@@ -211,7 +337,7 @@ export default function ProductCatalogPage() {
     if (!replanForm) return;
     const layers = [...replanForm.secondaryLayers];
     const layer = { ...layers[layerIdx] };
-    layer.consumableItems = [...layer.consumableItems, {
+    layer.consumableItems = [...(layer.consumableItems || []), {
       consumableId: Math.random().toString(),
       fieldDisplayName: "", itemGroup: "", itemSubGroup: "",
       itemId: "", itemName: "", gsm: 0, rate: 0,
@@ -224,7 +350,7 @@ export default function ProductCatalogPage() {
     if (!replanForm) return;
     const layers = [...replanForm.secondaryLayers];
     const layer = { ...layers[layerIdx] };
-    layer.consumableItems = layer.consumableItems.filter((_, i) => i !== ciIdx);
+    layer.consumableItems = (layer.consumableItems || []).filter((_, i) => i !== ciIdx);
     layers[layerIdx] = layer;
     rf("secondaryLayers", layers);
   };
@@ -233,12 +359,13 @@ export default function ProductCatalogPage() {
     if (!replanForm) return;
     const layers = [...replanForm.secondaryLayers];
     const layer = { ...layers[layerIdx] };
-    const source = layer.consumableItems[ciIdx];
+    const source = (layer.consumableItems || [])[ciIdx];
     const clone: PlyConsumableItem = { ...source, consumableId: Math.random().toString(), isClone: true };
+    const cItems = layer.consumableItems || [];
     layer.consumableItems = [
-      ...layer.consumableItems.slice(0, ciIdx + 1),
+      ...cItems.slice(0, ciIdx + 1),
       clone,
-      ...layer.consumableItems.slice(ciIdx + 1),
+      ...cItems.slice(ciIdx + 1),
     ];
     layers[layerIdx] = layer;
     rf("secondaryLayers", layers);
@@ -292,14 +419,15 @@ export default function ProductCatalogPage() {
 
     replanForm.secondaryLayers.forEach(l => {
       const reqMtr = qty; const reqSQM = areaM2;
-      if (l.itemSubGroup && l.gsm > 0) {
-        const fi   = FILM_ITEMS.find(x => x.subGroup === l.itemSubGroup);
-        const rate = l.filmRate !== undefined ? l.filmRate : (parseFloat(fi?.estimationRate || "0") || 0);
+      if ((l.itemId || l.itemSubGroup) && l.gsm > 0) {
+        const fi   = l.itemId ? FILM_ITEMS.find((x: any) => x.id === l.itemId) : FILM_ITEMS.find((x: any) => x.subGroup === l.itemSubGroup);
+        const rate = l.filmRate !== undefined ? l.filmRate : (parseFloat((fi as any)?.estimationRate || "0") || 0);
         const reqWt = (l.gsm / 1000) * reqSQM;
         const wasteMtr = reqMtr * WASTE; const wasteSQM = reqSQM * WASTE; const wasteWt = reqWt * WASTE;
         const totalWt = reqWt + wasteWt;
         filmCost += totalWt * rate;
-        materialRows.push({ plyNo: l.layerNo, plyType: l.plyType || "Film", itemName: l.itemSubGroup, group: "Film", gsm: l.gsm, reqMtr, reqSQM, reqWt, wasteMtr, wasteSQM, wasteWt, totalMtr: reqMtr + wasteMtr, totalSQM: reqSQM + wasteSQM, totalWt, rate, amount: totalWt * rate });
+        const displayName = l.itemName || (fi as any)?.name || l.itemSubGroup || "Film";
+        materialRows.push({ plyNo: l.layerNo, plyType: l.plyType || "Film", itemName: displayName, group: "Film", gsm: l.gsm, reqMtr, reqSQM, reqWt, wasteMtr, wasteSQM, wasteWt, totalMtr: reqMtr + wasteMtr, totalSQM: reqSQM + wasteSQM, totalWt, rate, amount: totalWt * rate });
       }
       (l.consumableItems || []).forEach(ci => {
         if (!ci.gsm && ci.gsm !== 0) return;
@@ -602,8 +730,69 @@ export default function ProductCatalogPage() {
       return plans;
     })() : [];
 
-    // For Sleeve: only use loopS. For Label/Pouch: use loopA + loopB.
-    const rawPlans = sType === "Sleeve" ? loopS : [...loopA, ...loopB];
+    // ── LOOP MPS: LDPE Printed Shrink Film (Multi-Pack) ──
+    // Repeat = fixed from artwork. Cylinder circ must be exact multiple of effectiveRepeat (= repeatLength + shrinkage).
+    // repeatUPS = cylCirc / effectiveRepeat. totalUPS = (acrossUPS × verticalUPS) × repeatUPS.
+    const loopMPS = sType === "MultiPackShrink" ? (() => {
+      const mpRepeatLength  = (replanForm as any).repeatLength   || 0;
+      const mpRepeatShrink  = (replanForm as any).repeatShrinkage || 0;
+      const mpEffRepeat     = mpRepeatLength + mpRepeatShrink;   // what is actually printed on cylinder per track
+      // Derive UPS from pack dimensions (same formula as UI)
+      const mpPackW   = (replanForm as any).packWidth  || 0;
+      const mpPackH   = (replanForm as any).packHeight || 0;
+      const mpHMargin = (replanForm as any).hMargin    || 0;
+      const mpVMargin = (replanForm as any).vMargin    || 0;
+      const unitW     = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
+      const unitH     = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
+      const mpAcrossUPS  = unitW > 0 ? Math.floor(jobW / unitW)          : ((replanForm as any).acrossUPS  || 1);
+      const mpVerticalUPS= unitH > 0 ? Math.floor(mpEffRepeat / unitH)   : ((replanForm as any).verticalUPS || 1);
+      const mpTotalUPS   = mpAcrossUPS * mpVerticalUPS;
+      if (mpEffRepeat <= 0 || jobW <= 0) return [];
+      const filmWidth = jobW;
+      if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return [];
+      const plans: any[] = [];
+      const maxRepeatCount = Math.floor(machineMaxCirc / mpEffRepeat);
+      for (let mult = 1; mult <= maxRepeatCount; mult++) {
+        const circ = mult * mpEffRepeat;
+        if (circ < machineMinCirc) continue;
+        if (circ > machineMaxCirc) break;
+        const repeatUPS = mult;
+        const totalUPS  = mpTotalUPS * repeatUPS;
+        const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
+          const cylCirc = parseFloat(t.repeatLength || "0") || 0;
+          return Math.abs(cylCirc - circ) < 1;
+        }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false }));
+        const specialCyl = {
+          id: `MPS-SPL-${mult}`, code: "SPL",
+          name: `Special Order (${circ}mm = ${mpEffRepeat}×${mult})`,
+          printWidth: String(Math.ceil(filmWidth + 100)),
+          repeatLength: String(circ), isSpecial: true,
+        };
+        const cylList = realCyls.length > 0 ? realCyls : [specialCyl];
+        for (const cyl of cylList) {
+          const reqRMT  = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
+          const totalRMT = Math.ceil(reqRMT * 1.01);
+          plans.push({
+            planId: `MPS-${machine.id}-R${mult}-${cyl.id}`,
+            machineName: machine.name,
+            filmSize: filmWidth, acUps: mpAcrossUPS, printingWidth: filmWidth,
+            sleeveCode: "—", sleeveName: "No Sleeve (LDPE Flat Film)", sleeveWidthVal: filmWidth,
+            cylinderCode: cyl.code, cylinderName: cyl.name,
+            cylinderWidthVal: parseFloat(cyl.printWidth) || 0,
+            sideWaste: 0, deadMargin: 0, totalWaste: 0,
+            cylCirc: circ, repeatUPS, totalUPS,
+            mpAcrossUPS, mpVerticalUPS, mpTotalUPS,
+            mpRepeatShrink, mpEffRepeat,
+            reqRMT, totalRMT, wastage: 0,
+            isSpecial: cyl.isSpecial, isSpecialSleeve: false, isBest: false,
+          });
+        }
+      }
+      return plans;
+    })() : [];
+
+    // Route plans: MultiPackShrink → loopMPS; Sleeve → loopS; Label/Pouch → loopA + loopB.
+    const rawPlans = sType === "MultiPackShrink" ? loopMPS : sType === "Sleeve" ? loopS : [...loopA, ...loopB];
 
     if (rawPlans.length === 0) return rawPlans;
     const sorted = [...rawPlans].sort((a, b) =>
@@ -613,7 +802,7 @@ export default function ProductCatalogPage() {
       b.acUps       !== a.acUps       ? b.acUps        - a.acUps       : 0
     );
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
-  }, [replanForm?.machineId, replanForm?.actualWidth, replanForm?.jobWidth, replanForm?.jobHeight, replanForm?.trimmingSize, replanForm?.widthShrinkage, replanForm?.standardQty, (replanForm as any)?.structureType, (replanForm as any)?.content, (replanForm as any)?.gusset, (replanForm as any)?.sealSize, (replanForm as any)?.seamingArea, (replanForm as any)?.transparentArea, (replanForm as any)?.topSeal, (replanForm as any)?.bottomSeal, (replanForm as any)?.sideSeal, (replanForm as any)?.centerSealWidth, (replanForm as any)?.sideGusset]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [replanForm?.machineId, replanForm?.actualWidth, replanForm?.jobWidth, replanForm?.jobHeight, replanForm?.trimmingSize, replanForm?.widthShrinkage, replanForm?.standardQty, (replanForm as any)?.structureType, (replanForm as any)?.content, (replanForm as any)?.gusset, (replanForm as any)?.sealSize, (replanForm as any)?.seamingArea, (replanForm as any)?.transparentArea, (replanForm as any)?.topSeal, (replanForm as any)?.bottomSeal, (replanForm as any)?.sideSeal, (replanForm as any)?.centerSealWidth, (replanForm as any)?.sideGusset, (replanForm as any)?.repeatLength, (replanForm as any)?.acrossUPS, (replanForm as any)?.verticalUPS, (replanForm as any)?.packWidth, (replanForm as any)?.packHeight, (replanForm as any)?.hMargin, (replanForm as any)?.vMargin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replanVisiblePlans = useMemo(() => {
     let rows = replanAllPlans;
@@ -638,9 +827,66 @@ export default function ProductCatalogPage() {
     setReplanPlanSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
   const replanSelectedPlan = useMemo(() =>
-    replanAllPlans.find(p => p.planId === replanSelPlanId) || null,
-    [replanAllPlans, replanSelPlanId]
+    replanAllPlans.find(p => p.planId === replanSelPlanId) || (replanForm as any)?.savedPlan || null,
+    [replanAllPlans, replanSelPlanId, replanForm]
   );
+
+  // ── Reconcile saved planId with current plan list ─────────────
+  // When opening an existing record, the stored planId may not exactly match any generated
+  // planId (e.g. if cylinder list changed). Fall back to matching by key plan properties.
+  useEffect(() => {
+    if (!replanSelPlanId || replanAllPlans.length === 0) return;
+    if (replanAllPlans.some(p => p.planId === replanSelPlanId)) return; // direct match — no action needed
+    const sp = replanSelectedPlan as any; // uses (replanForm as any)?.savedPlan fallback
+    if (!sp?.filmSize) return;
+    const match = replanAllPlans.find(p =>
+      (p as any).filmSize === sp.filmSize &&
+      (p as any).acUps === sp.acUps &&
+      (p as any).sleeveCode === sp.sleeveCode &&
+      (p as any).cylinderCode === sp.cylinderCode
+    );
+    if (match) setReplanSelPlanId(match.planId);
+  }, [replanSelPlanId, replanAllPlans]); // replanSelectedPlan intentionally omitted to avoid loop
+
+  // ── Auto-scroll to selected plan row when plan table opens ────
+  useEffect(() => {
+    if (!replanShowPlan) return;
+    const timer = setTimeout(() => {
+      const el = document.querySelector("[data-selected-plan='true']");
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [replanShowPlan]);
+
+  // ── Re-hydrate layers when filmItems loads after the edit form is already open ──
+  // openReplan runs the hydration once, but filmItems may not be loaded yet at that point.
+  // This effect catches that case: when items first becomes non-empty, fix any layers
+  // that still have itemId but missing density/thickness.
+  useEffect(() => {
+    if (!replanForm || items.length === 0) return;
+    const hasUnhydrated = replanForm.secondaryLayers.some(
+      (l: any) => l.itemId && (!l.thickness || !l.density)
+    );
+    if (!hasUnhydrated) return;
+    setReplanForm(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        secondaryLayers: prev.secondaryLayers.map((l: any) => {
+          if (l.itemId && (!l.thickness || !l.density)) {
+            const fi = items.find((x: any) => x.id === l.itemId);
+            if (fi) return {
+              ...l,
+              density:     parseFloat((fi as any).density)   || 0,
+              thickness:   parseFloat((fi as any).thickness) || 0,
+              itemSubGroup:(fi as any).subGroup || l.itemSubGroup,
+            };
+          }
+          return l;
+        }),
+      };
+    });
+  }, [items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-build plys from category (same as Estimation) ──────
   const [pendingReplanCategoryId, setPendingReplanCategoryId] = useState<string | null>(null);
@@ -665,63 +911,83 @@ export default function ProductCatalogPage() {
   const initCatalogPrepData = (rf: GravureProductCatalog) => {
     const n = rf.noOfColors || 0;
 
-    // Standard LAB lookup by colour name
-    const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
-      "Red":     { l: "41.0",  a: "54.2",  b: "38.1"  },
-      "Yellow":  { l: "89.3",  a: "-6.1",  b: "80.4"  },
-      "Blue":    { l: "25.1",  a: "23.4",  b: "-52.8" },
-      "Black":   { l: "16.0",  a: "0.1",   b: "0.0"   },
-      "White":   { l: "95.2",  a: "-1.0",  b: "2.3"   },
-      "Green":   { l: "46.3",  a: "-50.2", b: "30.1"  },
-      "Cyan":    { l: "60.1",  a: "-38.2", b: "-31.4" },
-      "Magenta": { l: "48.2",  a: "72.1",  b: "-10.3" },
-      "Orange":  { l: "65.4",  a: "43.1",  b: "65.2"  },
-      "Violet":  { l: "30.2",  a: "40.1",  b: "-42.3" },
-    };
-
-    // Collect all ink consumable items from all plies (in order, deduplicated by itemId)
-    const seen = new Set<string>();
-    const plyInks: { itemId: string; itemName: string; colour: string; pantoneNo: string }[] = [];
-    (rf.secondaryLayers || []).forEach(l => {
-      l.consumableItems.filter(ci => ci.itemGroup === "Ink").forEach(ci => {
-        if (!seen.has(ci.itemId)) {
-          seen.add(ci.itemId);
-          const master = items.find(it => it.id === ci.itemId);
-          plyInks.push({
-            itemId:    ci.itemId,
-            itemName:  ci.itemName || master?.name || "",
-            colour:    master?.colour || "",
-            pantoneNo: master?.pantoneNo || "",
-          });
-        }
+    // Color shades: load saved if available, else derive from ply inks
+    if (rf.savedColorShades && Array.isArray(rf.savedColorShades) && (rf.savedColorShades as any[]).length > 0) {
+      setCatalogColorShades((rf.savedColorShades as any[]).map(cs => {
+        const rawId = String(cs.inkItemId ?? cs.itemId ?? "");
+        // If we have an ID, use it. Otherwise try to match by itemName.
+        const matchedId = rawId
+          ? rawId
+          : (INK_ITEMS.find((x: any) =>
+              x.name === cs.itemName ||
+              x.ItemName === cs.itemName ||
+              x.name === cs.colorName ||
+              x.colour === cs.colorName
+            )?.id ?? "");
+        return {
+          ...cs,
+          inkType:   cs.colorType ?? cs.inkType ?? "Spot",
+          inkItemId: matchedId,
+        };
+      }));
+    } else {
+      const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
+        "Red":     { l: "41.0",  a: "54.2",  b: "38.1"  },
+        "Yellow":  { l: "89.3",  a: "-6.1",  b: "80.4"  },
+        "Blue":    { l: "25.1",  a: "23.4",  b: "-52.8" },
+        "Black":   { l: "16.0",  a: "0.1",   b: "0.0"   },
+        "White":   { l: "95.2",  a: "-1.0",  b: "2.3"   },
+        "Green":   { l: "46.3",  a: "-50.2", b: "30.1"  },
+        "Cyan":    { l: "60.1",  a: "-38.2", b: "-31.4" },
+        "Magenta": { l: "48.2",  a: "72.1",  b: "-10.3" },
+        "Orange":  { l: "65.4",  a: "43.1",  b: "65.2"  },
+        "Violet":  { l: "30.2",  a: "40.1",  b: "-42.3" },
+      };
+      const seen = new Set<string>();
+      const plyInks: { itemId: string; itemName: string; colour: string; pantoneNo: string }[] = [];
+      (rf.secondaryLayers || []).forEach(l => {
+        (l.consumableItems || []).filter(ci => ci.itemGroup === "Ink").forEach(ci => {
+          if (!seen.has(ci.itemId)) {
+            seen.add(ci.itemId);
+            const master = items.find(it => it.id === ci.itemId);
+            plyInks.push({
+              itemId:    ci.itemId,
+              itemName:  ci.itemName || master?.name || "",
+              colour:    master?.colour || "",
+              pantoneNo: master?.pantoneNo || "",
+            });
+          }
+        });
       });
-    });
+      setCatalogColorShades(Array.from({ length: n }, (_, i) => {
+        const ink    = plyInks[i];
+        const lab    = ink ? (COLOR_LAB[ink.colour] ?? { l: "0", a: "0", b: "0" }) : { l: "0", a: "0", b: "0" };
+        const PROCESS_COLOURS = new Set(["Cyan","Magenta","Yellow","Black"]);
+        const autoType: "Spot" | "Process" | "Special" = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
+        return {
+          colorNo:      i + 1,
+          colorName:    ink ? (ink.colour || ink.itemName || `Color ${i + 1}`) : `Color ${i + 1}`,
+          inkType:      ink ? autoType : "Spot" as const,
+          pantoneRef:   ink?.pantoneNo ?? "",
+          labL: lab.l,  labA: lab.a,  labB: lab.b,
+          actualL: "", actualA: "", actualB: "",
+          deltaE: "1.0",
+          shadeCardRef: "",
+          status: "Pending" as const,
+          remarks: "",
+          ...(ink ? { inkItemId: String(ink.itemId) } : {}),
+        } as any;
+      }));
+    }
 
-    setCatalogColorShades(Array.from({ length: n }, (_, i) => {
-      const ink    = plyInks[i];
-      const lab    = ink ? (COLOR_LAB[ink.colour] ?? { l: "", a: "", b: "" }) : { l: "", a: "", b: "" };
-      const PROCESS_COLOURS = new Set(["Cyan","Magenta","Yellow","Black"]);
-      const autoType: "Spot" | "Process" | "Special" = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
-      return {
-        colorNo:      i + 1,
-        colorName:    ink ? (ink.colour || ink.itemName || `Color ${i + 1}`) : `Color ${i + 1}`,
-        inkType:      ink ? autoType : "Spot" as const,
-        pantoneRef:   ink?.pantoneNo ?? "",
-        labL: lab.l,  labA: lab.a,  labB: lab.b,
-        actualL: "", actualA: "", actualB: "",
-        deltaE: "1.0",
-        shadeCardRef: "",
-        status: "Pending" as const,
-        remarks: "",
-        ...(ink ? { inkItemId: ink.itemId } : {}),
-      } as any;
-    }));
+    // Material allocs — always recompute from current ply data
     const reqSQM = (rf.standardQty || 0) * ((rf.jobWidth || 0) / 1000);
     const allocs: MaterialAlloc[] = [];
     rf.secondaryLayers.forEach((l, i) => {
-      if (l.itemSubGroup) {
+      if (l.itemId || l.itemSubGroup) {
         const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
-        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: l.itemSubGroup, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+        const filmDisplay = l.itemName || l.itemSubGroup || "Film";
+        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: filmDisplay, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
       }
       (l.consumableItems || []).forEach((ci, j) => {
         const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
@@ -729,117 +995,286 @@ export default function ProductCatalogPage() {
       });
     });
     setCatalogMatAllocs(allocs);
-    const planCirc      = replanSelectedPlan ? String(replanSelectedPlan.cylCirc)  : "";
-    const planRepeatUPS = replanSelectedPlan ? (replanSelectedPlan.repeatUPS as number) : 1;
-    const planCylCode   = replanSelectedPlan ? ((replanSelectedPlan as any).cylinderCode ?? "") : "";
-    const planCylWidth  = replanSelectedPlan ? String((replanSelectedPlan as any).cylinderWidthVal ?? "") : "";
-    const isSpecialPlan = replanSelectedPlan ? !!(replanSelectedPlan as any).isSpecial : false;
-    setCatalogCylAllocs(Array.from({ length: n }, (_, i) => ({
-      colorNo: i + 1,
-      colorName: `Color ${i + 1}`,
-      cylinderNo: isSpecialPlan ? `SPL-C${String(i + 1).padStart(2, "0")}` : planCylCode ? `${planCylCode}-C${String(i + 1).padStart(2, "0")}` : "",
-      circumference: planCirc,
-      printWidth: planCylWidth,
-      repeatUPS: planRepeatUPS,
-      cylinderType: (isSpecialPlan ? "New" : "Existing") as CylinderAlloc["cylinderType"],
-      status: "Pending" as const,
-      remarks: "",
-      createdInMaster: false,
-    })));
+
+    // Cylinder allocs: load saved if available, else derive from plan
+    if (rf.savedCylAllocs && Array.isArray(rf.savedCylAllocs) && (rf.savedCylAllocs as any[]).length > 0) {
+      setCatalogCylAllocs(rf.savedCylAllocs as any[]);
+    } else {
+      const planCirc      = replanSelectedPlan ? String(replanSelectedPlan.cylCirc)  : "";
+      const planRepeatUPS = replanSelectedPlan ? (replanSelectedPlan.repeatUPS as number) : 1;
+      const planCylCode   = replanSelectedPlan ? ((replanSelectedPlan as any).cylinderCode ?? "") : "";
+      const planCylWidth  = replanSelectedPlan ? String((replanSelectedPlan as any).cylinderWidthVal ?? "") : "";
+      const isSpecialPlan = replanSelectedPlan ? !!(replanSelectedPlan as any).isSpecial : false;
+      setCatalogCylAllocs(Array.from({ length: n }, (_, i) => ({
+        colorNo: i + 1,
+        colorName: `Color ${i + 1}`,
+        cylinderNo: isSpecialPlan ? `SPL-C${String(i + 1).padStart(2, "0")}` : planCylCode ? `${planCylCode}-C${String(i + 1).padStart(2, "0")}` : "",
+        circumference: planCirc,
+        printWidth: planCylWidth,
+        repeatUPS: planRepeatUPS,
+        cylinderType: (isSpecialPlan ? "New" : "Existing") as CylinderAlloc["cylinderType"],
+        status: "Pending" as const,
+        remarks: "",
+        createdInMaster: false,
+      })));
+    }
   };
 
   const openReplan = (row: GravureProductCatalog) => {
     setIsNewCatalog(false);
-    setReplanForm({ ...row });
+    const hydratedLayers = (row.secondaryLayers || []).map(l => {
+      if (l.itemId && (!l.thickness || !l.density)) {
+        const fi = items.find((x: any) => x.id === l.itemId);
+        if (fi) {
+          return {
+            ...l,
+            density: parseFloat((fi as any).density) || 0,
+            thickness: parseFloat((fi as any).thickness) || 0,
+            itemSubGroup: (fi as any).subGroup || l.itemSubGroup
+          };
+        }
+      }
+      return l;
+    });
+    const uniqueLayers = hydratedLayers.filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx);
+    setReplanForm({ ...row, secondaryLayers: uniqueLayers });
     setReplanTab("info");
-    setCatalogFilmReqs([]); setCatalogColorShades([]); setCatalogMatAllocs([]); setCatalogCylAllocs([]); setCatalogPrepTab("shade");
-    setReplanSelPlanId(""); setReplanShowPlan(false); setReplanIsPlanApplied(false); setReplanPlanSearch(""); setReplanPlanSort({ key: "", dir: "asc" }); setReplanAttachments([]);
+    setCatalogFilmReqs([]); 
+    setCatalogColorShades((row.savedColorShades || []).map((cs: any) => {
+      const rawId = String(cs.inkItemId ?? cs.itemId ?? "");
+      const matchedId = rawId
+        ? rawId
+        : (INK_ITEMS.find((x: any) =>
+            x.name === cs.itemName ||
+            x.ItemName === cs.itemName ||
+            x.name === cs.colorName ||
+            x.colour === cs.colorName
+          )?.id ?? "");
+      return {
+        ...cs,
+        inkType:   cs.colorType ?? cs.inkType ?? "Spot",
+        inkItemId: matchedId,
+      };
+    }));
+    setCatalogMatAllocs([]); 
+    setCatalogCylAllocs(row.savedCylAllocs || []); 
+    setCatalogPrepTab("shade");
+    setReplanSelPlanId(row.savedPlanId || "");
+    setReplanShowPlan(false);
+    setReplanIsPlanApplied(!!row.savedPlanId);
+    setReplanPlanSearch("");
+    setReplanPlanSort({ key: "", dir: "asc" });
+    const _base = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+    setReplanAttachments((row.attachments ?? []).map((a) => ({
+      id: String(a.id),
+      name: a.name,
+      size: a.size,
+      mimeType: a.mimeType,
+      url: a.url ? (a.url.startsWith("http") ? a.url : `${_base}${a.url}`) : "",
+      label: a.label || undefined,
+    })));
+    setDimValues({
+      width: row.jobWidth || undefined,
+      layflatWidth: row.jobWidth || undefined,
+      height: row.jobHeight || undefined,
+      cutHeight: row.jobHeight || undefined,
+      widthShrinkage: row.widthShrinkage || undefined,
+      trimming: row.trimmingSize || undefined,
+      gusset: row.gussetSize || undefined,
+      sealWidth: row.sealSize || undefined,
+      seamingArea: row.seamingArea || undefined,
+      transparentArea: row.transparentArea || undefined,
+      topSeal: row.topSeal || undefined,
+      bottomSeal: row.bottomSeal || undefined,
+      sideSeal: row.sideSeal || undefined,
+      centerSealWidth: row.centerSealWidth || undefined,
+      sideGusset: row.sideGusset || undefined,
+    });
     setReplanOpen(true);
   };
 
-  // ── Open Cylinder Master — passes data via localStorage then navigates ──
+  // ── Listen for cylinders created in new tab via localStorage storage event ──
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key !== "ajsw_cylinders_created_api" || !e.newValue) return;
+      try {
+        const created: { colorNo: number; CylinderID: string; CylinderCode: string }[] = JSON.parse(e.newValue);
+        setCatalogCylAllocs(prev => prev.map(c => {
+          const match = created.find(x => x.colorNo === c.colorNo);
+          if (!match) return c;
+          return { ...c, createdInMaster: true, cylinderMasterID: match.CylinderID, cylinderNo: match.CylinderCode };
+        }));
+      } catch { /* ignore */ }
+      localStorage.removeItem("ajsw_cylinders_created_api");
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, []);
+
+  // ── Navigate to Create Cylinders page (full multi-color UI) ──
   const openCylinderMaster = () => {
     if (!replanForm) return;
-    const _cn = replanForm.catalogNo || replanForm.id || "";
-    const _m  = _cn.match(/(\d+)$/);
-    const _pCode = _m ? `P${_m[1].padStart(4, "0")}` : _cn;
-    const _sp = replanSelectedPlan as any;
-    const prefillData = {
-      productCode:    _pCode,
-      productName:    replanForm.productName,
-      customerName:   replanForm.customerName,
-      noOfColors:     replanForm.noOfColors,
-      circumference:  _sp ? String(_sp.cylCirc ?? "") : String(replanForm.jobHeight || ""),
-      printWidth:     _sp ? String(_sp.cylinderWidthVal ?? "") : String(replanForm.jobWidth || ""),
-      repeatUPS:      _sp ? (_sp.repeatUPS as number) : 1,
-      // full plan details
-      totalUPS:       _sp ? (_sp.totalUPS as number) : undefined,
-      filmSize:       _sp ? String(_sp.filmSize ?? "") : undefined,
-      totalWaste:     _sp ? String(_sp.totalWaste ?? "") : undefined,
-      sleeveCode:     _sp ? String(_sp.sleeveCode ?? "") : undefined,
-      sleeveWidth:    _sp ? String(_sp.sleeveWidthVal ?? "") : undefined,
-      acUps:          _sp ? (_sp.acUps as number) : undefined,
-      printingWidth:  _sp ? String(_sp.printingWidth ?? _sp.cylinderWidthVal ?? "") : undefined,
-      isSpecial:      _sp ? !!_sp.isSpecial : undefined,
-      categoryName:   replanForm.categoryName || "",
-      jobWidth:       String(replanForm.jobWidth || ""),
-      jobHeight:      String(replanForm.jobHeight || ""),
-      colors:        catalogCylAllocs
-                       .filter(c => !c.repeatUse)
-                       .map((c, i) => {
-                         const origIdx = catalogCylAllocs.indexOf(c);
-                         return catalogColorShades[origIdx]?.colorName || c.colorName || `Color ${origIdx + 1}`;
-                       }),
-    };
-    if (prefillData.colors.length === 0) {
+    const nonRepeat = catalogCylAllocs.filter(c => !c.repeatUse);
+    if (nonRepeat.length === 0) {
       alert("All colors are marked as Repeat Use — nothing to create in master.");
       return;
     }
-    prefillData.noOfColors = prefillData.colors.length;
-    localStorage.setItem("ajsw_cylinder_prefill", JSON.stringify(prefillData));
+    const sp    = replanSelectedPlan as any;
+    const circ  = sp ? String(sp.cylCirc ?? catalogCylAllocs[0]?.circumference ?? "") : String(catalogCylAllocs[0]?.circumference || replanForm.jobHeight || "");
+    const pw    = sp ? String(sp.cylinderWidthVal ?? catalogCylAllocs[0]?.printWidth ?? "") : String(catalogCylAllocs[0]?.printWidth || replanForm.jobWidth || "");
+    const rUPS  = sp ? (sp.repeatUPS as number) : (catalogCylAllocs[0]?.repeatUPS ?? 1);
+    // Only pass productMasterId if it's a real saved ID (GUID or numeric).
+    // Draft IDs like "GPC001-DRAFT" must not reach the backend — ToolMaster.ProductMasterID is bigint.
+    const savedId = replanForm.id || "";
+    const isSavedId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedId) || /^\d+$/.test(savedId);
+    const prefill = {
+      productMasterId: isSavedId ? savedId : "",
+      productCode:     replanForm.catalogNo || replanForm.id || "",
+      productName:     replanForm.productName || "",
+      customerName:    replanForm.customerName || "",
+      categoryName:    replanForm.categoryName || "",
+      noOfColors:      nonRepeat.length,
+      jobWidth:        String(replanForm.jobWidth || ""),
+      jobHeight:       String(replanForm.jobHeight || ""),
+      circumference:   circ,
+      printWidth:      pw,
+      repeatUPS:       rUPS,
+      colors:          nonRepeat.map(c => c.colorName),
+      colorNos:        nonRepeat.map(c => c.colorNo),
+      totalUPS:        sp?.totalUPS,
+      filmSize:        sp?.filmSize ? String(sp.filmSize) : undefined,
+      totalWaste:      sp?.totalWaste ? String(sp.totalWaste) : undefined,
+      sleeveCode:      sp?.sleeveCode,
+      sleeveWidth:     sp?.sleeveWidth ? String(sp.sleeveWidth) : undefined,
+      acUps:           sp?.acrossUPS,
+      isSpecial:       !!(sp as any)?.isSpecial,
+    };
+    localStorage.setItem("ajsw_cylinder_prefill", JSON.stringify(prefill));
     window.open("/masters/tools/create-cylinders", "_blank");
   };
 
-  // ── Refresh cylinder codes/status from what was saved in Cylinder Master ──
-  const refreshFromCylinderMaster = () => {
+  // ── Refresh cylinder allocation data from DB (requires catalog to be saved) ──
+  const isDbGuid = (id: string) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ||
+    /^\d+$/.test(id);
+
+  const refreshFromCylinderMaster = async () => {
     if (!replanForm) return;
-    const _rcn = replanForm.catalogNo || replanForm.id || "";
-    const _rm  = _rcn.match(/(\d+)$/);
-    const productCode = _rm ? `P${_rm[1].padStart(4, "0")}` : _rcn;
+    const pmID   = replanForm.id || "";
+    const pmCode = replanForm.catalogNo || "";
+
+    // Need at least a numeric/GUID ID or a catalog code to query by
+    if (!isDbGuid(pmID) && !pmCode) {
+      alert("No product identifier available — fill in catalog code first.");
+      return;
+    }
+
+    const queryId = isDbGuid(pmID) ? pmID : "0";
     try {
-      const created: any[] = JSON.parse(localStorage.getItem("ajsw_cylinders_created") || "[]");
-      const matching = created.filter(c => c.productCode === productCode);
-      if (matching.length === 0) return;
-      setCatalogCylAllocs(p => p.map((alloc) => {
-        const match = matching.find((m: any) => m.colorNo === alloc.colorNo);
-        if (!match) return alloc;
+      const rows = await apiGet<any[]>(
+        `api/productcataloggravureShrink/refreshcylinderfrommaster/${encodeURIComponent(queryId)}?code=${encodeURIComponent(pmCode)}`
+      );
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      setCatalogCylAllocs(p => p.map((alloc, i) => {
+        const row = rows[i] ?? rows.find((r: any) => r.ColorName === alloc.colorName);
+        if (!row) return alloc;
         return {
           ...alloc,
-          cylinderNo:    match.cylinderCode || alloc.cylinderNo,
-          status:        (match.status === "Available" ? "Available"
-                          : match.status === "Ordered" ? "Ordered"
-                          : alloc.status) as typeof alloc.status,
-          createdInMaster: true,
+          cylinderNo:       row.CylinderCode || row.MasterCylinderCode || alloc.cylinderNo,
+          circumference:    row.Circumference ? String(row.Circumference) : alloc.circumference,
+          printWidth:       row.CylinderWidth ? String(row.CylinderWidth) : alloc.printWidth,
+          repeatUPS:        row.RepeatUPS     ?? alloc.repeatUPS,
+          status:           (row.CylinderStatus || alloc.status) as typeof alloc.status,
+          cylinderMasterID: row.CylinderMasterID || alloc.cylinderMasterID || "",
+          createdInMaster:  !!(row.CylinderMasterID),
         };
       }));
-    } catch { /* ignore */ }
+    } catch (e: any) {
+      console.warn("refreshFromCylinderMaster failed:", e?.message ?? e);
+    }
   };
 
-  const saveReplan = () => {
+  const saveReplan = async () => {
     if (!replanForm) return;
+
+    // Existing server attachments (no fileObj) — preserve these IDs on update
+    const existingAttachmentIDs = replanAttachments.filter(a => !a.fileObj).map(a => a.id);
+
+    // Convert new uploaded attachments to base64
+    const attachmentsBase64 = await Promise.all(
+      replanAttachments.filter(a => a.fileObj).map(async a => {
+        return new Promise<{ name: string; label: string; mimeType: string; base64: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve({
+            name: a.name,
+            label: a.label || "Attachment",
+            mimeType: a.mimeType,
+            base64: (reader.result as string).split(',')[1] // remove data:image/png;base64, prefix
+          });
+          reader.onerror = reject;
+          reader.readAsDataURL(a.fileObj!);
+        });
+      })
+    );
+
     const n = catalog.length + 1;
     const updated: GravureProductCatalog = {
       ...replanForm,
       perMeterRate: replanCost?.perMeter ?? replanForm.perMeterRate,
       ...(isNewCatalog && {
-        id:        `GPC${String(n).padStart(3, "0")}`,
-        catalogNo: `GRV-CAT-${String(n).padStart(3, "0")}`,
+        id: `GPC${String(n).padStart(3, "0")}`,
       }),
-      ...(replanSelPlanId && { savedPlanId: replanSelPlanId }),
+      ...(replanSelPlanId && { savedPlanId: replanSelPlanId, savedPlan: replanSelectedPlan }),
       ...(catalogColorShades.length > 0 && { savedColorShades: catalogColorShades }),
       ...(catalogCylAllocs.length > 0 && { savedCylAllocs: catalogCylAllocs }),
+      ...(attachmentsBase64.length > 0 && { attachmentsBase64 }),
+      existingAttachmentIDs,
     };
-    saveCatalogItem(updated);
+    const productMasterID = await saveCatalogItem(updated);
+
+    if (!productMasterID) {
+      // saveCatalogItem already showed an error toast — nothing more to do
+      return;
+    }
+
+    // Save cylinder allocations to DB if we have a real ID and any allocs
+    if (catalogCylAllocs.length > 0) {
+      const cn    = updated.catalogNo || "";
+      const mCode = cn.match(/(\d+)$/);
+      const pCode = mCode ? `P${mCode[1].padStart(4, "0")}` : cn;
+      const sp    = replanSelectedPlan as any;
+      try {
+        await apiPost("api/productcataloggravureShrink/savecylinderallocation", {
+          ProductMasterID: productMasterID,
+          Allocations: catalogCylAllocs.map((ca, i) => ({
+            isRepeat:          ca.repeatUse ?? false,
+            productCode:       pCode,
+            colorName:         catalogColorShades[i]?.colorName || ca.colorName,
+            cylinderCode:      ca.cylinderNo,
+            cylinderWidth:     parseFloat(ca.printWidth) || 0,
+            circumference:     parseFloat(ca.circumference) || 0,
+            repeatUPS:         ca.repeatUPS,
+            cylinderType:      ca.cylinderType,
+            cylinderStatus:    ca.status,
+            remarks:           ca.remarks,
+            cylinderMasterID:  ca.cylinderMasterID || "",
+            planCylinderCode:  sp?.cylinderCode   || "",
+            planCircumference: sp?.cylCirc         || 0,
+            planRepeatUPS:     sp?.repeatUPS       || 0,
+            planPrintWidth:    sp?.cylinderWidthVal || 0,
+          })),
+        });
+      } catch (e: any) {
+        showToast("warning", "Cylinder Allocation Warning", e?.message ?? "Cylinder allocation could not be saved.");
+      }
+    }
+
+    showToast(
+      "success",
+      isNewCatalog ? "Catalog Created" : "Catalog Updated",
+      `${updated.catalogNo} — ${updated.productName || "record"} saved successfully.`
+    );
+
     setReplanOpen(false);
     setReplanForm(null);
     if (isNewCatalog) { setIsNewCatalog(false); setCatalogTab("processed"); }
@@ -853,20 +1288,42 @@ export default function ProductCatalogPage() {
   }, [catalog]);
 
   const pendingOrders = useMemo(() =>
-    gravureOrders.filter(o => !catalogedOrderIds.has(o.id)),
+    ([] as GravureOrder[]).filter(o => !catalogedOrderIds.has(o.id)),
     [catalogedOrderIds]
   );
 
   const processedCatalog = useMemo(() => catalog, [catalog]);
 
+  // Predict the next DB catalog code (GRV000003, etc.) so new-catalog badge is accurate.
+  // Backend uses MAX(MaxProductMasterCode)+1 from ProductMaster, same logic here.
+  const nextCatalogNo = useMemo(() => {
+    const maxNum = catalog.reduce((max, c) => {
+      const m = (c.catalogNo || "").match(/^GRV(\d+)$/);
+      return m ? Math.max(max, parseInt(m[1], 10)) : max;
+    }, 0);
+    return `GRV${String(maxNum + 1).padStart(6, "0")}`;
+  }, [catalog]);
+
+  // Fetch the true next catalog code from backend (avoids mismatch when old records
+  // exist in ProductMaster but are missing from the catalog list due to broken saves).
+  const fetchNextCatalogNo = async (): Promise<string> => {
+    try {
+      const rows = await apiGet<any[]>("api/productcataloggravureShrink/getnextcatalogcode");
+      const code = Array.isArray(rows) ? (rows[0]?.NextCatalogNo ?? rows[0]?.nextCatalogNo) : null;
+      if (code && typeof code === "string") return code;
+    } catch { /* fall through */ }
+    return nextCatalogNo; // client-side fallback
+  };
+
   // ── Open Create — opens full 3-tab modal directly ─────────
-  const openCreate = (order: GravureOrder) => {
+  const openCreate = async (order: GravureOrder) => {
     const wo   = workOrders.find(w => w.orderId === order.id) || null;
     const line = order.orderLines?.[0];
     const n    = catalog.length + 1;
+    const catalogNo = await fetchNextCatalogNo();
     const draft: GravureProductCatalog = {
       id:          `GPC${String(n).padStart(3, "0")}-DRAFT`,
-      catalogNo:   `GRV-CAT-${String(n).padStart(3, "0")}`,
+      catalogNo,
       createdDate: new Date().toISOString().slice(0, 10),
       productName:  wo?.jobName || line?.productName || order.jobName || "",
       customerId:   order.customerId,
@@ -898,6 +1355,8 @@ export default function ProductCatalogPage() {
       frontColors:  wo?.frontColors,
       backColors:   wo?.backColors,
       status: "Active",
+      isActive: true,
+      isActiveReason: "",
       remarks: wo?.specialInstructions || "",
     };
     setIsNewCatalog(true);
@@ -909,11 +1368,12 @@ export default function ProductCatalogPage() {
   };
 
   // ── Open Direct Create — blank catalog without an order ──
-  const openDirectCreate = () => {
+  const openDirectCreate = async () => {
     const n = catalog.length + 1;
+    const catalogNo = await fetchNextCatalogNo();
     const draft: GravureProductCatalog = {
       id:          `GPC${String(n).padStart(3, "0")}-DRAFT`,
-      catalogNo:   `GRV-CAT-${String(n).padStart(3, "0")}`,
+      catalogNo,
       createdDate: new Date().toISOString().slice(0, 10),
       productName:  "",
       customerId:   "", customerName: "",
@@ -934,6 +1394,8 @@ export default function ProductCatalogPage() {
       sourceOrderId: "", sourceOrderNo: "",
       sourceWorkOrderId: "", sourceWorkOrderNo: "",
       status: "Active",
+      isActive: true,
+      isActiveReason: "",
       remarks: "",
     };
     setIsNewCatalog(true);
@@ -984,27 +1446,61 @@ export default function ProductCatalogPage() {
       frontColors:  wo?.frontColors,
       backColors:   wo?.backColors,
       status: "Active",
+      isActive: true,
+      isActiveReason: "",
       remarks: editRemark,
     };
     saveCatalogItem(item);
-    setCreateOpen(false);
     setCatalogTab("processed");
+  };
+
+  // ── Status Reason Modal ──
+  const [statusModalOpen, setStatusModalOpen] = useState(false);
+  const [selectedStatusRow, setSelectedStatusRow] = useState<GravureProductCatalog | null>(null);
+  const [statusReason, setStatusReason] = useState("");
+  const [statusUpdating, setStatusUpdating] = useState(false);
+
+  const openStatusToggle = (row: GravureProductCatalog) => {
+    setSelectedStatusRow(row);
+    setStatusReason(row.isActiveReason || "");
+    setStatusModalOpen(true);
+  };
+
+  const handleStatusUpdate = async () => {
+    if (!selectedStatusRow) return;
+    setStatusUpdating(true);
+    await updateCatalogStatus(selectedStatusRow.id, !selectedStatusRow.isActive, statusReason);
+    setStatusUpdating(false);
+    setStatusModalOpen(false);
+  };
+
+  // ── Stats badge for ply structure ──
+  const PLY_BADGE_CLS: Record<string, string> = {
+    Film:       "bg-sky-100 text-sky-700 border-sky-200",
+    Printing:   "bg-indigo-100 text-indigo-700 border-indigo-200",
+    Lamination: "bg-orange-100 text-orange-700 border-orange-200",
+    Coating:    "bg-green-100 text-green-700 border-green-200",
   };
 
   // ── Processed table columns ───────────────────────────────
   const processedCols: Column<GravureProductCatalog>[] = [
-    { key: "catalogNo",    header: "Catalog No",   sortable: true },
-    { key: "productName",  header: "Product Name", sortable: true },
-    { key: "customerName", header: "Customer",     sortable: true },
-    { key: "sourceOrderNo", header: "Order Ref",
-      render: r => <span className="text-xs font-mono text-gray-500">{r.sourceOrderNo || "—"}</span> },
-    { key: "sourceWorkOrderNo", header: "WO Ref",
-      render: r => r.sourceWorkOrderNo
-        ? <span className="px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">{r.sourceWorkOrderNo}</span>
-        : <span className="text-xs text-gray-400">—</span> },
-    { key: "noOfColors", header: "Colors",
+    { key: "catalogNo",    header: "CATALOG NUMBER", sortable: true },
+    { key: "createdDate",  header: "DATE", sortable: true, render: r => <span className="text-xs text-gray-600 whitespace-nowrap">{r.createdDate || "—"}</span> },
+    { key: "productName",  header: "PRODUCT NAME",   sortable: true },
+    { key: "customerName", header: "CUSTOMER",       sortable: true },
+    { key: "machineName",  header: "MACHINE", render: r => <span className="text-xs text-gray-600 font-medium">{r.machineName || "—"}</span> },
+    { key: "noOfColors", header: "COLORS",
       render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
-    { key: "status", header: "Status", render: r => statusBadge(r.status), sortable: true },
+    { key: "status", header: "STATUS", sortable: true, render: r => (
+      <button onClick={() => openStatusToggle(r)} className="hover:scale-105 transition-transform active:scale-95 group relative">
+        {statusBadge(r.status)}
+        {r.isActiveReason && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] px-2 py-1 bg-gray-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+            {r.isActiveReason}
+          </div>
+        )}
+      </button>
+    )},
   ];
 
   const stats = { pending: pendingOrders.length, processed: processedCatalog.length };
@@ -1125,11 +1621,23 @@ export default function ProductCatalogPage() {
       {/* ══ PROCESSED TAB ═════════════════════════════════════════ */}
       {catalogTab === "processed" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          {processedCatalog.length === 0 ? (
+          {catalogLoading ? (
+            <div className="flex items-center justify-center py-16 text-gray-400 gap-3">
+              <RefreshCw size={20} className="animate-spin text-purple-500" />
+              <p className="text-sm font-medium text-gray-500">Loading catalog...</p>
+            </div>
+          ) : catalogError ? (
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+              <AlertCircle size={36} className="text-red-400" />
+              <p className="font-semibold text-red-600">Failed to load catalog</p>
+              <p className="text-sm text-gray-500 max-w-md text-center">{catalogError}</p>
+              <Button icon={<RefreshCw size={14} />} onClick={refreshCatalog} className="mt-2">Retry</Button>
+            </div>
+          ) : processedCatalog.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-gray-400">
               <BookMarked size={40} className="text-gray-300 mb-3" />
               <p className="font-semibold text-gray-600">No catalog entries yet</p>
-              <p className="text-sm mt-1">Go to Pending and click Create Catalog on any order.</p>
+              <p className="text-sm mt-1">Click "Create Direct Catalog" to add your first entry.</p>
             </div>
           ) : (
             <DataTable
@@ -1139,7 +1647,7 @@ export default function ProductCatalogPage() {
               actions={row => (
                 <div className="flex items-center gap-1.5 justify-end flex-wrap">
                   <Button variant="ghost" size="sm" icon={<Eye size={13} />}
-                    onClick={() => setViewPlanRow(row)}>View</Button>
+                    onClick={() => setViewPlanRow({ ...row, secondaryLayers: (row.secondaryLayers || []).filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx) })}>View</Button>
                   <Button variant="ghost" size="sm" icon={<Printer size={13} />}
                     onClick={() => setPrintRow(row)}
                     className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
@@ -1151,8 +1659,28 @@ export default function ProductCatalogPage() {
                     Replan
                   </Button>
                   <Button variant="ghost" size="sm" icon={<ArrowRight size={13} />}
-                    onClick={() => window.location.href = "/gravure/orders"}
-                    className="text-green-700 hover:text-green-800 hover:bg-green-50">
+                    onClick={() => {
+                      localStorage.setItem("ajsw_order_from_catalog", JSON.stringify({
+                        catalogId:    row.id,
+                        catalogNo:    row.catalogNo,
+                        customerId:   row.customerId,
+                        customerName: row.customerName,
+                        productName:  row.productName,
+                        categoryId:   row.categoryId,
+                        categoryName: row.categoryName,
+                        substrate:    (row as any).substrate || "",
+                        jobWidth:     row.jobWidth,
+                        jobHeight:    row.jobHeight,
+                        noOfColors:   row.noOfColors,
+                        standardQty:  row.standardQty,
+                        standardUnit: row.standardUnit,
+                        perMeterRate: row.perMeterRate,
+                      }));
+                      window.location.href = "/gravure/orders";
+                    }}
+                    disabled={!row.isActive}
+                    title={!row.isActive ? `Inactive: ${row.isActiveReason}` : ""}
+                    className={!row.isActive ? "text-gray-400 cursor-not-allowed" : "text-green-700 hover:text-green-800 hover:bg-green-50"}>
                     Use in Order
                   </Button>
                   <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
@@ -1249,14 +1777,13 @@ export default function ProductCatalogPage() {
           title={isNewCatalog ? (replanForm.sourceOrderNo ? `Create Catalog — ${replanForm.sourceOrderNo}` : "Create Direct Catalog") : `Replan — ${replanForm.catalogNo}`} size="xl">
 
           {/* Header info */}
-          <div className={`border rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs ${isNewCatalog ? "bg-teal-50 border-teal-200" : "bg-purple-50 border-purple-200"}`}>
+          <div className={`border rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs ${isNewCatalog ? "bg-teal-50 border-teal-200" : "bg-purple-50 border-purple-200 shadow-sm"}`}>
             <div>
-              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>Product</p>
+              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>PRODUCT NAME</p>
               <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.productName || "—"}</p>
               {(() => {
                 const _hcn = replanForm.catalogNo || "";
-                const _hm  = _hcn.match(/(\d+)$/);
-                const _hpc = _hm ? `P${_hm[1].padStart(4, "0")}` : "";
+                const _hpc = _hcn.startsWith("GRV") ? _hcn : (_hcn.match(/(\d+)$/) ? `P${_hcn.match(/(\d+)$/)![1].padStart(4, "0")}` : "");
                 return _hpc ? (
                   <span className="inline-block mt-0.5 px-2 py-0.5 bg-teal-600 text-white text-[10px] font-mono font-bold rounded-full tracking-wide">
                     {_hpc}
@@ -1264,14 +1791,41 @@ export default function ProductCatalogPage() {
                 ) : null;
               })()}
             </div>
-            <div><p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>Customer</p>
-              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.customerName}</p></div>
-            <div><p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>{isNewCatalog ? (replanForm.sourceOrderNo ? "From Order" : "Direct Entry") : "Catalog No"}</p>
-              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{isNewCatalog ? (replanForm.sourceOrderNo || "—") : replanForm.catalogNo}</p></div>
-            {isNewCatalog && replanForm.sourceWorkOrderNo && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-50 border border-green-200 rounded-lg self-center">
-                <CheckCircle size={12} className="text-green-600" />
-                <span className="text-green-700 font-semibold text-[11px]">WO: {replanForm.sourceWorkOrderNo}</span>
+            <div>
+              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>CUSTOMER</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.customerName}</p>
+            </div>
+            <div>
+              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>CATALOG NUMBER</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.catalogNo || "—"}</p>
+            </div>
+            <div>
+              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>DATE</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.createdDate || "—"}</p>
+            </div>
+            <div>
+              <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>MACHINE</p>
+              <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.machineName || "—"}</p>
+            </div>
+            
+            {/* Dynamic Ply Information in Header */}
+            {replanForm.secondaryLayers?.length > 0 && (
+              <div className="flex-1 min-w-[220px]">
+                <p className={`text-[10px] uppercase font-semibold mb-1 ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>PLY STRUCTURE</p>
+                <div className="flex flex-wrap gap-1">
+                  {replanForm.secondaryLayers.map((l, i) => (
+                    <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-100 rounded-lg shadow-sm">
+                      <span className="text-[9px] font-black text-purple-600">P{l.layerNo}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                        l.plyType === "Printing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                        l.plyType === "Lamination" ? "bg-teal-50 text-teal-700 border-teal-200" :
+                        l.plyType === "Coating" ? "bg-amber-50 text-amber-700 border-amber-200" : 
+                        "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>{l.plyType || "Film"}</span>
+                      {l.itemSubGroup && <span className="text-[9px] text-gray-600 font-medium">{l.itemSubGroup}</span>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -1346,7 +1900,7 @@ export default function ProductCatalogPage() {
                           value={replanForm.categoryId || ""}
                           onChange={e => {
                             if (!e.target.value) { setReplanForm(p => p ? { ...p, categoryId: "", categoryName: "", content: "" } : p); return; }
-                            const hasPlys = replanForm.secondaryLayers.some(l => l.plyType || l.consumableItems.length > 0);
+                            const hasPlys = replanForm.secondaryLayers.some(l => l.plyType || (l.consumableItems || []).length > 0);
                             if (hasPlys) { setPendingReplanCategoryId(e.target.value); }
                             else { applyReplanCategory(e.target.value); }
                           }}>
@@ -1632,7 +2186,7 @@ export default function ProductCatalogPage() {
                 </div>
 
                 {/* ── Dimension Input + Live Diagram — appears only after Content Type is selected ── */}
-                {replanForm.content && CONTENT_TYPE_CONFIG[replanForm.content] && (
+                {replanForm.content && CONTENT_TYPE_CONFIG[normalizeContentType(replanForm.content)] && (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
                     <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
                       <Calculator size={14} className="text-white" />
@@ -1658,6 +2212,42 @@ export default function ProductCatalogPage() {
                                 <div className="px-3 py-1.5 bg-white border border-orange-200 rounded-lg text-orange-600">
                                   Repeat = {replanForm.jobHeight} mm
                                 </div>
+                              </div>
+                            </div>
+                          )}
+                          {sType === "MultiPackShrink" && (
+                            <div className="flex flex-wrap items-center gap-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px]">
+                              <div className="flex items-center gap-1.5 text-emerald-700 font-bold uppercase tracking-wide">
+                                <Layers size={12} /> Multi-Pack Shrink Film
+                              </div>
+                              <div className="px-3 py-1.5 bg-white border border-emerald-200 rounded-lg font-bold text-emerald-700">
+                                Film = {replanForm.jobWidth} mm
+                              </div>
+                              <div className="px-3 py-1.5 bg-white border border-emerald-200 rounded-lg text-emerald-600">
+                                Repeat = {(replanForm as any).repeatLength || "—"} mm
+                              </div>
+                              {(() => {
+                                const pw = (replanForm as any).packWidth  || 0;
+                                const ph = (replanForm as any).packHeight || 0;
+                                const hm = (replanForm as any).hMargin    || 0;
+                                const vm = (replanForm as any).vMargin    || 0;
+                                const rl = (replanForm as any).repeatLength || 0;
+                                const fw = replanForm.jobWidth || 0;
+                                const uW = pw > 0 && hm > 0 ? pw + 2 * hm : 0;
+                                const uH = ph > 0 && vm > 0 ? ph + 2 * vm : 0;
+                                const ac = uW > 0 ? Math.floor(fw / uW) : 0;
+                                const vt = uH > 0 ? Math.floor(rl / uH) : 0;
+                                const tot = ac * vt;
+                                return tot > 0 ? (
+                                  <div className="flex flex-col px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-bold text-[10px] leading-tight">
+                                    <span>UPS per Repeat (Auto)</span>
+                                    <span className="text-xs font-black">{ac} × {vt} = {tot} UPS</span>
+                                  </div>
+                                ) : null;
+                              })()}
+                              <div className="flex flex-col px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-700 font-bold ml-auto text-[10px] leading-tight">
+                                <span>Cylinder Circ</span>
+                                <span>= Repeat × N (N=1,2,3…)</span>
                               </div>
                             </div>
                           )}
@@ -1707,13 +2297,9 @@ export default function ProductCatalogPage() {
                         <div>
                           <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-2">Packaging Dimensions</p>
                           <DimensionInputPanel
-                            contentType={replanForm.content}
+                            contentType={normalizeContentType(replanForm.content)}
                             dims={dimValues}
-                            colClasses={
-                              replanForm.content === "Sleeve — Shrink" || replanForm.content === "Sleeve — Stretch"
-                                ? "grid-cols-2"
-                                : undefined
-                            }
+                            colClasses={sTypeGlobal === "Sleeve" ? "grid-cols-2" : undefined}
                             onChange={patch => {
                               patchDim(patch);
                               if ("width"        in patch && patch.width        !== undefined) { rf("jobWidth",  patch.width); rf("actualWidth", patch.width); }
@@ -1996,10 +2582,215 @@ export default function ProductCatalogPage() {
                           )}
                         </div>
                       </div>
-                      <DimensionDiagram contentType={replanForm.content} dims={dimValues} />
+                      <DimensionDiagram contentType={normalizeContentType(replanForm.content)} dims={dimValues} />
                     </div>
                   </div>
                 )}
+
+                {/* ── LDPE Multi-Pack Shrink Film — fields (only when this content type is selected) ── */}
+                {sTypeGlobal === "MultiPackShrink" && (() => {
+                  const mpRepeat   = (replanForm as any).repeatLength || 0;
+                  const mpFilmW    = replanForm.jobWidth || 0;
+                  const mpPackW    = (replanForm as any).packWidth    || 0;
+                  const mpPackH    = (replanForm as any).packHeight   || 0;
+                  const mpHMargin  = (replanForm as any).hMargin      || 0;
+                  const mpVMargin  = (replanForm as any).vMargin      || 0;
+                  // Auto-calculate UPS from dimensions
+                  const unitW      = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
+                  const unitH      = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
+                  const mpAcross   = unitW > 0 ? Math.floor(mpFilmW / unitW) : 0;
+                  const mpVertical = unitH > 0 ? Math.floor(mpRepeat / unitH) : 0;
+                  const mpTotal    = mpAcross * mpVertical;
+                  // Sync computed UPS back to form so planning loop can read them
+                  if (mpAcross > 0 && (replanForm as any).acrossUPS !== mpAcross)
+                    rf("acrossUPS" as any, mpAcross);
+                  if (mpVertical > 0 && (replanForm as any).verticalUPS !== mpVertical)
+                    rf("verticalUPS" as any, mpVertical);
+                  // Repeat breakdown
+                  const mpPrinted  = (replanForm as any).printedLength || 0;
+                  const mpEyeMark  = (replanForm as any).eyeMarkLength ?? 3;
+                  const mpGap      = (replanForm as any).gapLength     || 0;
+                  const repeatSum  = mpPrinted + mpEyeMark + mpGap;
+                  const repeatValid = mpRepeat > 0 && mpPrinted > 0 && Math.abs(repeatSum - mpRepeat) < 0.1;
+                  return (
+                    <div className="border border-emerald-200 rounded-2xl overflow-hidden">
+                      <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 flex items-center gap-2">
+                        <Layers size={14} className="text-white" />
+                        <p className="text-xs font-bold text-white uppercase tracking-widest">Multi-Pack Shrink Film Layout</p>
+                      </div>
+                      <div className="p-4 space-y-4">
+
+                        {/* Row 1: Film Width + Repeat Length + Repeat Shrinkage + Colors */}
+                        <div>
+                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Film Dimensions</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Width (mm) *</label>
+                              <input type="number" min={0} step={1} placeholder="e.g. 463"
+                                value={replanForm.jobWidth || ""}
+                                onChange={e => rf("jobWidth", Number(e.target.value))}
+                                className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2 bg-emerald-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Full flat film width</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Repeat Length (mm) *</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 477"
+                                value={(replanForm as any).repeatLength || ""}
+                                onChange={e => rf("repeatLength" as any, Number(e.target.value))}
+                                className="w-full text-sm border border-emerald-200 rounded-xl px-3 py-2 bg-emerald-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Eye mark to eye mark</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Repeat Shrinkage (mm)</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 0"
+                                value={(replanForm as any).repeatShrinkage || ""}
+                                onChange={e => rf("repeatShrinkage" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-amber-200 rounded-xl px-3 py-2 bg-amber-50 focus:bg-white outline-none focus:ring-2 focus:ring-amber-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">
+                                {(() => {
+                                  const rl = (replanForm as any).repeatLength || 0;
+                                  const rs = (replanForm as any).repeatShrinkage || 0;
+                                  return rs > 0
+                                    ? `Cyl repeat = ${rl} + ${rs} = ${rl + rs} mm`
+                                    : "Extra mm for shrinkage allowance";
+                                })()}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Colors</label>
+                              <div className="flex gap-1.5">
+                                <div className="flex-1">
+                                  <label className="text-[9px] text-gray-400 block mb-0.5">Front</label>
+                                  <input type="number" min={0} max={12} placeholder="0"
+                                    value={replanForm.frontColors || ""}
+                                    onChange={e => rf("frontColors", Number(e.target.value))}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                                </div>
+                                <div className="flex-1">
+                                  <label className="text-[9px] text-gray-400 block mb-0.5">Back</label>
+                                  <input type="number" min={0} max={12} placeholder="0"
+                                    value={replanForm.backColors || ""}
+                                    onChange={e => rf("backColors", Number(e.target.value))}
+                                    className="w-full text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Total Colors</label>
+                              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{replanForm.noOfColors} Colors</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Row 2: Individual Pack Size + Margins → auto UPS */}
+                        <div>
+                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Individual Pack Size &amp; Margin — UPS Auto-Calculated</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Pack Width (mm) *</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 97"
+                                value={(replanForm as any).packWidth || ""}
+                                onChange={e => rf("packWidth" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Width of 1 pack</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Pack Height (mm) *</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 70"
+                                value={(replanForm as any).packHeight || ""}
+                                onChange={e => rf("packHeight" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Height of 1 pack</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">H-Margin / Side Gap (mm) *</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 66.5"
+                                value={(replanForm as any).hMargin || ""}
+                                onChange={e => rf("hMargin" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Each side of pack (across)</p>
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">V-Margin / Top-Bot Gap (mm) *</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 94.9"
+                                value={(replanForm as any).vMargin || ""}
+                                onChange={e => rf("vMargin" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                              <p className="text-[9px] text-gray-400 mt-0.5">Each side of pack (vertical)</p>
+                            </div>
+                          </div>
+
+                          {/* Auto-calculated UPS result card */}
+                          {mpPackW > 0 && mpPackH > 0 && mpHMargin > 0 && mpVMargin > 0 && mpFilmW > 0 && mpRepeat > 0 ? (
+                            <div className="mt-3 grid grid-cols-3 gap-2">
+                              <div className="flex flex-col items-center justify-center gap-1 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Across UPS</span>
+                                <span className="text-2xl font-black text-emerald-700">{mpAcross}</span>
+                                <span className="text-[9px] text-emerald-500">
+                                  {mpFilmW} ÷ {unitW.toFixed(1)} = {mpAcross}
+                                </span>
+                              </div>
+                              <div className="flex flex-col items-center justify-center gap-1 px-3 py-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Vertical UPS</span>
+                                <span className="text-2xl font-black text-emerald-700">{mpVertical}</span>
+                                <span className="text-[9px] text-emerald-500">
+                                  {mpRepeat} ÷ {unitH.toFixed(1)} = {mpVertical}
+                                </span>
+                              </div>
+                              <div className={`flex flex-col items-center justify-center gap-1 px-3 py-2.5 rounded-xl border-2 ${mpTotal > 0 ? "bg-emerald-600 border-emerald-700" : "bg-gray-100 border-gray-200"}`}>
+                                <span className={`text-[9px] font-bold uppercase tracking-wider ${mpTotal > 0 ? "text-emerald-100" : "text-gray-400"}`}>Total UPS / Repeat</span>
+                                <span className={`text-3xl font-black ${mpTotal > 0 ? "text-white" : "text-gray-300"}`}>{mpTotal || "—"}</span>
+                                {mpTotal > 0 && <span className="text-[9px] text-emerald-200">{mpAcross} Across × {mpVertical} Vertical</span>}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700">
+                              Enter Film Width, Repeat Length, Pack Width, Pack Height, H-Margin and V-Margin to auto-calculate UPS.
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Row 3: Repeat Breakdown + Validation */}
+                        <div>
+                          <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">Repeat Breakdown (Optional — for validation)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Printed Length (mm)</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 474"
+                                value={(replanForm as any).printedLength || ""}
+                                onChange={e => rf("printedLength" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Eye Mark Length (mm)</label>
+                              <input type="number" min={0} step={0.1} placeholder="default 3"
+                                value={mpEyeMark || ""}
+                                onChange={e => rf("eyeMarkLength" as any, parseFloat(e.target.value) || 3)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Gap Length (mm)</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 0"
+                                value={(replanForm as any).gapLength || ""}
+                                onChange={e => rf("gapLength" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:bg-white outline-none focus:ring-2 focus:ring-emerald-400 font-mono" />
+                            </div>
+                          </div>
+                          {mpRepeat > 0 && mpPrinted > 0 && (
+                            <div className={`mt-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${repeatValid ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-700"}`}>
+                              {repeatValid ? <Check size={13} /> : <X size={13} />}
+                              <span>
+                                {repeatValid
+                                  ? `Repeat OK: ${mpPrinted} + ${mpEyeMark} + ${mpGap} = ${repeatSum} mm = Repeat ${mpRepeat} mm`
+                                  : `Mismatch: ${mpPrinted} + ${mpEyeMark} + ${mpGap} = ${repeatSum.toFixed(1)} mm ≠ Repeat ${mpRepeat} mm`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <Textarea label="Remarks" value={replanForm.remarks}
                   onChange={e => rf("remarks", e.target.value)} placeholder="Special notes…" />
@@ -2018,7 +2809,7 @@ export default function ProductCatalogPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <Select label="Printing Machine" value={replanForm.machineId}
                       onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { rf("machineId", m.id); rf("machineName", m.name); } }}
-                      options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]} />
+                      options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: (m as any).Colors ? `${m.name} [${(m as any).Colors}C]` : m.name }))]} />
                   </div>
                   {(() => {
                     const selMachine = replanForm.machineId ? PRINT_MACHINES.find(m => m.id === replanForm.machineId) : null;
@@ -2027,8 +2818,8 @@ export default function ProductCatalogPage() {
                     const maxW    = parseFloat((selMachine as any).maxWebWidth) || 0;
                     const minCirc = parseFloat((selMachine as any).repeatLengthMin) || 0;
                     const maxCirc = parseFloat((selMachine as any).repeatLengthMax) || 0;
-                    const colors  = (selMachine as any).noOfColors || "";
-                    const speed   = (selMachine as any).speedMax   || "";
+                    const colors  = (selMachine as any).Colors ?? (selMachine as any).noOfColors ?? "";
+                    const speed   = (selMachine as any).Speed  ?? (selMachine as any).speedMax   ?? "";
                     return (
                       <div className="flex flex-wrap items-center gap-2 mt-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50">
                         <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Machine Specs:</span>
@@ -2139,7 +2930,7 @@ export default function ProductCatalogPage() {
                       {replanForm.secondaryLayers.map((l, index) => {
                         const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
                         return (
-                          <div key={l.id} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
+                          <div key={l.id || `layer-${index}`} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
                             <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
                               <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
                                 {l.layerNo === 1 ? "1st" : l.layerNo === 2 ? "2nd" : l.layerNo === 3 ? "3rd" : `${l.layerNo}th`} Ply
@@ -2163,38 +2954,37 @@ export default function ProductCatalogPage() {
                               {l.plyType && (
                                 <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                                   <div>
-                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
                                     <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                      value={l.itemSubGroup}
+                                      value={l.itemId || ""}
                                       onChange={e => {
-                                        const subGroup = e.target.value;
-                                        const sg = FILM_SUBGROUPS.find(s => s.subGroup === subGroup);
-                                        const density = sg ? sg.density : 0;
+                                        const fi = FILM_ITEMS.find((x: any) => x.id === e.target.value);
+                                        if (!fi) return;
+                                        const thickness = parseFloat((fi as any).thickness) || 0;
+                                        const density   = parseFloat((fi as any).density)   || 0;
+                                        const gsm       = parseFloat((thickness * density).toFixed(3));
                                         const layers = [...replanForm.secondaryLayers];
-                                        const masterRate = parseFloat(FILM_ITEMS.find(fi => fi.subGroup === subGroup)?.estimationRate || "0");
-                                        layers[index] = { ...l, itemSubGroup: subGroup, density, thickness: 0, gsm: 0, filmRate: masterRate };
+                                        layers[index] = {
+                                          ...l,
+                                          itemId:      (fi as any).id,
+                                          itemName:    (fi as any).name,
+                                          itemSubGroup:(fi as any).subGroup,
+                                          density,
+                                          thickness,
+                                          gsm,
+                                          filmRate:    parseFloat((fi as any).estimationRate || "0"),
+                                        };
                                         rf("secondaryLayers", layers);
                                       }}>
-                                      <option value="">Select Film Type</option>
-                                      {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
+                                      <option value="">-- Select Film Item --</option>
+                                      {FILM_ITEMS.map((fi: any) => (
+                                        <option key={fi.id} value={fi.id}>{fi.name}</option>
+                                      ))}
                                     </select>
                                   </div>
                                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                     <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                      <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                        value={l.thickness}
-                                        onChange={e => {
-                                          const thickness = Number(e.target.value);
-                                          const layers = [...replanForm.secondaryLayers];
-                                          layers[index] = { ...l, thickness, gsm: parseFloat((thickness * l.density).toFixed(3)) };
-                                          rf("secondaryLayers", layers);
-                                        }}>
-                                        <option value={0}>Select</option>
-                                        {thicknesses.map(t => <option key={t} value={t}>{t}</option>)}
-                                      </select>
-                                    </div>
+                                    <Input label="Thickness (μ)" type="number" value={l.thickness || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                                     <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
                                   </div>
                                 </div>
@@ -2202,7 +2992,7 @@ export default function ProductCatalogPage() {
                               {l.plyType && (
                                 <div className="space-y-2">
                                   <div className="flex items-center justify-between">
-                                    <span className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Consumable Items ({l.consumableItems.length})</span>
+                                    <span className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Consumable Items ({(l.consumableItems || []).length})</span>
                                     <button
                                       onClick={() => addPlyConsumable(index)}
                                       className="flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition">
@@ -2214,14 +3004,23 @@ export default function ProductCatalogPage() {
                                     // Pre-compute per-group serial numbers (all items, including clones)
                                     const groupSerials: number[] = [];
                                     const groupCounter: Record<string, number> = {};
-                                    l.consumableItems.forEach(ci => {
+                                    (l.consumableItems || []).forEach(ci => {
                                       const g = ci.itemGroup || "Consumable";
                                       groupCounter[g] = (groupCounter[g] || 0) + 1;
                                       groupSerials.push(groupCounter[g]);
                                     });
-                                    return l.consumableItems.map((ci, ciIdx) => {
-                                    const CONSUMABLE_GROUPS = ["Ink", "Solvent", "Adhesive", "Hardner"];
-                                    const subGroups = ci.itemGroup ? (CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? []) : [];
+                                    return (l.consumableItems || []).map((ci, ciIdx) => {
+                                    // Build groups/subgroups from actual API data so names always match DB values
+                                    const CONSUMABLE_GROUPS = Array.from(new Set(
+                                      items.filter((it: any) => it.group !== "Film" && it.active).map((it: any) => it.group as string)
+                                    )).sort();
+                                    const subGroups = ci.itemGroup
+                                      ? Array.from(new Set(
+                                          items
+                                            .filter((it: any) => it.group === ci.itemGroup && it.active && it.subGroup)
+                                            .map((it: any) => it.subGroup as string)
+                                        )).sort()
+                                      : [];
                                     const filteredItems = items.filter(it =>
                                       it.group === ci.itemGroup && it.active &&
                                       (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup)
@@ -2229,7 +3028,7 @@ export default function ProductCatalogPage() {
                                     const ciLabel = ci.itemGroup || "Consumable";
                                     const ciSerial = groupSerials[ciIdx] ?? 1;
                                     return (
-                                      <div key={ci.consumableId} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
+                                      <div key={ci.consumableId ? `${ci.consumableId}-${ciIdx}` : `cons-${ciIdx}`} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
                                         <div className="flex items-center justify-between mb-2">
                                           <span className="text-[10px] font-bold text-teal-700 uppercase">
                                             {`${ciLabel} ${ciSerial}`}
@@ -2249,7 +3048,7 @@ export default function ProductCatalogPage() {
                                         </div>
                                         {(() => {
                                           // find adhesive in same ply for hardener calc
-                                          const adhesiveCI = l.consumableItems.find(x => x.itemGroup === "Adhesive");
+                                          const adhesiveCI = (l.consumableItems || []).find(x => x.itemGroup === "Adhesive");
                                           const adhesiveGSM = adhesiveCI?.gsm ?? 0;
                                           const adhesiveOH  = adhesiveCI?.ohPct ?? 0;
                                           const hardenerGSM = ci.itemGroup === "Hardner" && (ci.ncoPct ?? 0) > 0
@@ -2308,10 +3107,10 @@ export default function ProductCatalogPage() {
                                             {ci.itemGroup === "Ink" && (<>
                                               <div>
                                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Dry Ink GSM</label>
-                                                <input type="number" step={0.1} min={0}
+                                                <input type="number" step="any" min={0}
                                                   className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
                                                   value={ci.gsm || ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
+                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: parseFloat(e.target.value) || 0 })} />
                                               </div>
                                               <div>
                                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
@@ -2397,20 +3196,20 @@ export default function ProductCatalogPage() {
                                   });
                                   })()}
 
-                                  {l.consumableItems.length === 0 && (
+                                  {(l.consumableItems || []).length === 0 && (
                                     <p className="text-[10px] text-gray-400 italic text-center py-2">Click "+ Add Consumable" to add ink, solvent, adhesive, etc.</p>
                                   )}
                                 </div>
                               )}
 
                               {/* ── Ply Summary Strip ── */}
-                              {l.consumableItems.length > 0 && (() => {
+                              {(l.consumableItems || []).length > 0 && (() => {
                                 const groupCount: Record<string, number> = {};
-                                l.consumableItems.forEach(ci => {
+                                (l.consumableItems || []).forEach(ci => {
                                   const g = ci.itemGroup || "Other";
                                   groupCount[g] = (groupCount[g] || 0) + 1;
                                 });
-                                const inks = l.consumableItems.filter(ci => ci.itemGroup === "Ink");
+                                const inks = (l.consumableItems || []).filter(ci => ci.itemGroup === "Ink");
                                 const totalDryGSM = inks.reduce((sum, ci) => sum + (parseFloat(String(ci.gsm)) || 0), 0);
                                 const avgSolid = inks.length > 0
                                   ? inks.reduce((sum, ci) => {
@@ -2487,7 +3286,7 @@ export default function ProductCatalogPage() {
                             <RefreshCw size={11} /> Change Plan
                           </button>
                         )}
-                        {(replanForm.jobHeight || 0) > 0 && (
+                        {((replanForm.jobHeight || 0) > 0 || (replanForm as any).repeatLength > 0) && (
                           <button onClick={() => setCylGuideOpen(true)}
                             className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
                             <Calculator size={12} /> Cyl. Circ Guide
@@ -2624,6 +3423,7 @@ export default function ProductCatalogPage() {
                                 const p = plan as any;
                                 return (
                                   <tr key={plan.planId} onClick={() => setReplanSelPlanId(plan.planId)}
+                                    data-selected-plan={isSelected ? "true" : undefined}
                                     className={`cursor-pointer transition-colors ${p.isDoctorBlade ? "bg-teal-50 hover:bg-teal-100 ring-1 ring-inset ring-teal-300" : p.isSpecialSleeve ? "bg-rose-50 hover:bg-rose-100" : p.isSpecial ? "bg-amber-50 hover:bg-amber-100" : p.isBest ? "ring-2 ring-inset ring-green-400 bg-green-50" : isSelected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
                                     <td className="p-2 border border-gray-100 text-center">
                                       <div className={`w-4 h-4 rounded-full border-2 mx-auto flex items-center justify-center ${isSelected ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"}`}>
@@ -2640,6 +3440,7 @@ export default function ProductCatalogPage() {
                                     </td>
                                     <td className="p-2 border border-gray-100 font-medium text-gray-700">
                                       {plan.machineName}
+                                      {isSelected && <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-bold rounded-full shadow-sm animate-pulse">SELECTED</span>}
                                       {p.isBest && <span className="ml-1.5 px-1.5 py-0.5 bg-green-500 text-white text-[9px] font-bold rounded-full">BEST</span>}
                                       {p.isDoctorBlade && <span className="ml-1.5 px-1.5 py-0.5 bg-teal-600 text-white text-[9px] font-bold rounded-full">🔧 DB: {p.doctorBladeWidth}mm</span>}
                                       {p.isSpecial && !p.isSpecialSleeve && !p.isDoctorBlade && <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">SPECIAL CYL</span>}
@@ -2684,8 +3485,18 @@ export default function ProductCatalogPage() {
                                       })()}
                                     </td>
                                     <td className="p-2 border border-gray-100 text-center font-bold text-emerald-700">{p.cylCirc}</td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold text-teal-700">{p.repeatUPS}</td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold">{plan.totalUPS}</td>
+                                    <td className="p-2 border border-gray-100 text-center font-bold text-teal-700">
+                                      {p.repeatUPS}
+                                      {p.mpTotalUPS > 0 && (
+                                        <div className="text-[8px] text-teal-500 font-normal leading-none mt-0.5">×{p.mpTotalUPS} layout</div>
+                                      )}
+                                    </td>
+                                    <td className="p-2 border border-gray-100 text-center font-bold">
+                                      {plan.totalUPS}
+                                      {p.mpAcrossUPS > 0 && p.mpVerticalUPS > 0 && (
+                                        <div className="text-[8px] text-gray-400 font-normal leading-none mt-0.5">{p.mpAcrossUPS}AC×{p.mpVerticalUPS}VT×{p.repeatUPS}R</div>
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -2702,7 +3513,17 @@ export default function ProductCatalogPage() {
 
                                 let reason = "";
                                 let tip = "";
-                                if (sT === "Sleeve") {
+                                if (sT === "MultiPackShrink") {
+                                  const mpRL = (replanForm as any).repeatLength || 0;
+                                  const maxN = mpRL > 0 ? Math.floor(maxC / mpRL) : 0;
+                                  if (mpRL <= 0) reason = "Enter Repeat Length in the Info tab to generate plans.";
+                                  else if (jW <= 0) reason = "Enter Job Width (film width) in the Info tab.";
+                                  else if (jW < minF || jW > maxF) reason = `Film width (${jW}mm) is ${jW < minF ? `below machine min ${minF}mm` : `above machine max ${maxF}mm`}.`;
+                                  else if (mpRL * maxN < minC) reason = `Repeat = ${mpRL}mm. Even ${maxN}× = ${mpRL*maxN}mm is below machine min ${minC}mm.`;
+                                  else reason = "No cylinders found. Special order cylinders should appear — check machine limits.";
+                                  if (mpRL > 0 && maxN >= 1)
+                                    tip = `Cylinder circ must be exact multiple of Repeat ${mpRL}mm. Valid: ${Array.from({length: Math.min(3, maxN)}, (_,i) => `${(i+1)*mpRL}mm`).join(", ")}${maxN > 3 ? "…" : ""}.`;
+                                } else if (sT === "Sleeve") {
                                   const dc = jW * 2 + sh;
                                   const maxN = dc > 0 ? Math.floor(maxC / dc) : 0;
                                   const minN = dc > 0 ? Math.ceil(minC / dc) : 0;
@@ -2776,7 +3597,7 @@ export default function ProductCatalogPage() {
                                   const filmDryG  = l.gsm > 0 ? parseFloat((l.gsm * pieceArea).toFixed(4)) : 0;
 
                                   // total liquid ink weight per piece (g) in this ply — for solvent ratio
-                                  const totalLiqInkG = l.consumableItems
+                                  const totalLiqInkG = (l.consumableItems || [])
                                     .filter(ci => ci.itemGroup === "Ink")
                                     .reduce((s, ci) => {
                                       const solid  = ci.solidPct ?? 40;
@@ -2784,7 +3605,7 @@ export default function ProductCatalogPage() {
                                       return s + (solid > 0 ? dryG / (solid / 100) : 0);
                                     }, 0);
 
-                                  const adhItem = l.consumableItems.find(ci => ci.itemGroup === "Adhesive");
+                                  const adhItem = (l.consumableItems || []).find(ci => ci.itemGroup === "Adhesive");
 
                                   const plyBadgeCls = l.plyType === "Printing"
                                     ? "bg-indigo-50 text-indigo-700 border-indigo-200"
@@ -2803,9 +3624,9 @@ export default function ProductCatalogPage() {
 
                                   // ── Film row ──
                                   const filmRow = (
-                                    <tr key={`film-${l.id}`} className="hover:bg-indigo-50/30">
+                                    <tr key={`film-${l.id ?? idx}`} className="hover:bg-indigo-50/30">
                                       <td className="p-2 border border-gray-200 text-center font-black text-indigo-900 bg-indigo-50/50 align-middle"
-                                        rowSpan={1 + l.consumableItems.length}>
+                                        rowSpan={1 + (l.consumableItems || []).length}>
                                         {idx + 1}
                                       </td>
                                       <td className="p-2 border border-gray-100 text-center">
@@ -2822,7 +3643,7 @@ export default function ProductCatalogPage() {
                                   );
 
                                   // ── Consumable sub-rows ──
-                                  const ciRows = l.consumableItems.map((ci, ciIdx) => {
+                                  const ciRows = (l.consumableItems || []).map((ci, ciIdx) => {
                                     let gsmRatio = "—", infoCell = "—";
                                     let dryG = 0, liqG: number | null = null;
 
@@ -2855,7 +3676,7 @@ export default function ProductCatalogPage() {
                                     }
 
                                     return (
-                                      <tr key={`ci-${l.id}-${ciIdx}`} className="bg-slate-50/60 hover:bg-slate-100/60">
+                                      <tr key={`ci-${l.id ?? idx}-${ciIdx}`} className="bg-slate-50/60 hover:bg-slate-100/60">
                                         <td className="p-2 border border-gray-100 text-center">
                                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${groupBadgeCls[ci.itemGroup] || "bg-gray-100 text-gray-600 border-gray-300"}`}>{ci.itemGroup}</span>
                                         </td>
@@ -2881,7 +3702,7 @@ export default function ProductCatalogPage() {
                                   <td colSpan={8} className="p-2 text-right text-rose-700 uppercase text-[10px] font-bold tracking-wider">Total Ink GSM (all plies)</td>
                                   <td className="p-2 text-center bg-rose-100 text-rose-800 text-xs font-black">
                                     {replanForm.secondaryLayers.reduce((sum, l) =>
-                                      sum + l.consumableItems.filter(ci2 => ci2.itemGroup === "Ink").reduce((s, ci2) => s + (ci2.gsm || 0), 0)
+                                      sum + (l.consumableItems || []).filter(ci2 => ci2.itemGroup === "Ink").reduce((s, ci2) => s + (ci2.gsm || 0), 0)
                                     , 0).toFixed(2)} GSM
                                   </td>
                                 </tr>
@@ -2889,12 +3710,12 @@ export default function ProductCatalogPage() {
                                 {(() => {
                                   const adhMap: Record<string, { gsm: number; ohPct: number }> = {};
                                   replanForm.secondaryLayers.forEach(l => {
-                                    const adh = l.consumableItems.find(ci2 => ci2.itemGroup === "Adhesive");
+                                    const adh = (l.consumableItems || []).find(ci2 => ci2.itemGroup === "Adhesive");
                                     if (adh) adhMap[l.id] = { gsm: adh.gsm || 0, ohPct: adh.ohPct ?? 0 };
                                   });
                                   const totalLiqInkByLayer: Record<string, number> = {};
                                   replanForm.secondaryLayers.forEach(l => {
-                                    totalLiqInkByLayer[l.id] = l.consumableItems
+                                    totalLiqInkByLayer[l.id] = (l.consumableItems || [])
                                       .filter(ci2 => ci2.itemGroup === "Ink")
                                       .reduce((s, ci2) => {
                                         const solid = ci2.solidPct ?? 40;
@@ -2903,7 +3724,7 @@ export default function ProductCatalogPage() {
                                       }, 0);
                                   });
                                   const totalConsumablesGSM = replanForm.secondaryLayers.reduce((sum, l) =>
-                                    sum + l.consumableItems.reduce((s, ci2) => {
+                                    sum + (l.consumableItems || []).reduce((s, ci2) => {
                                       if (ci2.itemGroup === "Ink")      return s + (ci2.gsm || 0) * ((ci2.coveragePct ?? 100) / 100);
                                       if (ci2.itemGroup === "Solvent")  return s + totalLiqInkByLayer[l.id] * (ci2.gsm || 0) / 100;
                                       if (ci2.itemGroup === "Adhesive") return s + (ci2.gsm || 0);
@@ -3037,7 +3858,7 @@ export default function ProductCatalogPage() {
                               <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
                               <td className="px-2 py-1.5 min-w-[160px]">
                                 <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={(cs as any).inkItemId ?? ""}
+                                  value={String((cs as any).inkItemId ?? "")}
                                   onChange={e => {
                                     const ink = INK_ITEMS.find(x => x.id === e.target.value);
                                     const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
@@ -3058,6 +3879,7 @@ export default function ProductCatalogPage() {
                                     setCatalogColorShades(p => p.map((c, ci) => ci === i ? {
                                       ...c,
                                       inkItemId:  ink?.id ?? "",
+                                      itemName:   ink?.name ?? c.itemName ?? "",
                                       colorName:  ink?.colour || ink?.name || c.colorName,
                                       pantoneRef: ink?.pantoneNo || c.pantoneRef,
                                       inkType:    ink ? autoType : c.inkType,
@@ -3561,7 +4383,7 @@ export default function ProductCatalogPage() {
                     </thead>
                     <tbody>
                       {r.secondaryLayers.map((l, li) => {
-                        const consumablesSummary = l.consumableItems
+                        const consumablesSummary = (l.consumableItems || [])
                           .filter((ci: any) => ci.itemName || ci.itemSubGroup)
                           .map((ci: any) => `${ci.itemName || ci.itemSubGroup} (${ci.gsm ?? 0} ${ci.itemGroup === "Ink" ? "GSM" : ci.itemGroup === "Solvent" ? "%" : "GSM"})`)
                           .join(" · ");
@@ -3750,6 +4572,7 @@ export default function ProductCatalogPage() {
         const plan      = upsPreviewPlan as any;
         const sTypePrev = (replanForm as any).structureType || "Label";
         const isSleeve  = sTypePrev === "Sleeve";
+        const isMPS     = sTypePrev === "MultiPackShrink";
         const jobW      = isSleeve ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
         const shrink    = replanForm.widthShrinkage || 0;
         const slvTransp = isSleeve ? ((replanForm as any).transparentArea || 0) : 0;
@@ -3768,11 +4591,25 @@ export default function ProductCatalogPage() {
         const sideSealPrev  = (replanForm as any).sideSeal    || 0;
         const ctrSealPrev   = (replanForm as any).centerSealWidth || 0;
         const sideGussetPrev= (replanForm as any).sideGusset  || 0;
-        // effRepeat = one row height in diagram
-        // Sleeve → cutting length per repeat = cylCirc / repeatUPS (from selected plan)
-        // Pouches → per-type formula (same as planning engine)
+        // MultiPackShrink specific
+        const mpRepeatLen    = isMPS ? ((replanForm as any).repeatLength   || plan.cylCirc / plan.repeatUPS) : 0;
+        const mpRepeatShrink = isMPS ? (plan.mpRepeatShrink || (replanForm as any).repeatShrinkage || 0) : 0;
+        const mpEffRepeat    = isMPS ? (plan.mpEffRepeat || mpRepeatLen + mpRepeatShrink) : 0;
+        const mpAcrossUPS    = isMPS ? (plan.mpAcrossUPS  || acUps) : 0;
+        const mpVertUPS    = isMPS ? (plan.mpVerticalUPS || 1) : 0;
+        const mpPackW      = isMPS ? ((replanForm as any).packWidth  || 0) : 0;
+        const mpPackH      = isMPS ? ((replanForm as any).packHeight || 0) : 0;
+        const mpHMargin    = isMPS ? ((replanForm as any).hMargin      || 0) : 0;
+        const mpVMargin    = isMPS ? ((replanForm as any).vMargin      || 0) : 0;
+        const mpEyeMark    = isMPS ? ((replanForm as any).eyeMarkLength ?? 3) : 0;
+        // effRepeat = height of one repeat block in diagram
+        // MultiPackShrink → repeatLength (= cylCirc / repeatUPS from plan)
+        // Sleeve → cutting length per repeat = cylCirc / repeatUPS
+        // Pouches → per-type formula
         let effRepeat: number;
-        if (isSleeve) {
+        if (isMPS) {
+          effRepeat = mpEffRepeat; // effective repeat on cylinder = repeatLength + shrinkage
+        } else if (isSleeve) {
           effRepeat = (plan.cylCirc as number) / (plan.repeatUPS as number);
         } else if (contentPrev === "Pouch — 3 Side Seal" || contentPrev === "Pouch — Center Seal" || contentPrev === "Both Side Gusset Pouch") {
           effRepeat = (replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink;
@@ -3783,7 +4620,10 @@ export default function ProductCatalogPage() {
         }
         // Lane width shown in diagram
         let diagLaneW: number;
-        if (isSleeve) {
+        if (isMPS) {
+          // Each pack slot width = filmW / acrossUPS
+          diagLaneW = acUps > 0 ? filmW / acUps : filmW;
+        } else if (isSleeve) {
           diagLaneW = jobW * 2 + slvTransp + slvSeam;
         } else if (contentPrev === "Pouch — 3 Side Seal" || contentPrev === "Standup Pouch" || contentPrev === "Zipper Pouch") {
           diagLaneW = jobW + 2 * sideSealPrev;
@@ -3814,22 +4654,29 @@ export default function ProductCatalogPage() {
                   const baseStats = [
                     { l: "Film Width",   v: `${filmW} mm`,         cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
                     { l: "AC UPS",       v: String(acUps),          cls: "bg-purple-50 text-purple-700 border-purple-200" },
-                    { l: "Layflat",      v: `${jobW} mm`,           cls: "bg-blue-50 text-blue-700 border-blue-200" },
                   ];
                   const cutLen   = replanForm.jobHeight || 0;
                   const cutWithShrink = cutLen + shrink;
-                  const sleeveStats = isSleeve ? [
+                  const typeStats = isMPS ? [
+                    { l: "Pack Size",        v: mpPackW > 0 && mpPackH > 0 ? `${mpPackW}×${mpPackH} mm` : "—",                                                                                     cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    { l: "Repeat Length",    v: mpRepeatShrink > 0 ? `${mpRepeatLen}+${mpRepeatShrink} = ${mpEffRepeat} mm` : `${mpRepeatLen} mm`,                                                  cls: "bg-teal-100 text-teal-800 border-teal-300" },
+                    { l: "Layout UPS",       v: `${mpAcrossUPS}AC × ${mpVertUPS}VT = ${mpAcrossUPS * mpVertUPS}`,                                                                                   cls: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+                    { l: "Repeat UPS",       v: `${plan.repeatUPS}×`,                                                                                                                               cls: "bg-teal-50 text-teal-700 border-teal-200" },
+                    { l: "Cyl. Circ",        v: `${mpEffRepeat}×${plan.repeatUPS} = ${plan.cylCirc} mm`,                                                                                            cls: "bg-green-50 text-green-800 border-green-300" },
+                  ] : isSleeve ? [
+                    { l: "Layflat",       v: `${jobW} mm`,           cls: "bg-blue-50 text-blue-700 border-blue-200" },
                     { l: "Design Circ",   v: (() => { const p=[`${jobW}×2`]; if(slvTransp>0)p.push(`+${slvTransp}`); if(slvSeam>0)p.push(`+${slvSeam}`); return `${p.join("")} = ${dc} mm`; })(), cls: "bg-blue-100 text-blue-800 border-blue-300" },
                     { l: "Cut Length",    v: shrink > 0 ? `${cutLen}+${shrink} = ${cutWithShrink} mm` : `${cutLen} mm`, cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
-                    { l: "Repeat Count",  v: `${plan.repeatUPS}×`,                                    cls: "bg-teal-50 text-teal-700 border-teal-200" },
+                    { l: "Repeat Count",  v: `${plan.repeatUPS}×`,  cls: "bg-teal-50 text-teal-700 border-teal-200" },
                     { l: "Cyl. Circ",     v: `${cutWithShrink}×${plan.repeatUPS} = ${plan.cylCirc} mm`, cls: "bg-emerald-50 text-emerald-800 border-emerald-300" },
                   ] : [
+                    { l: "Layflat",       v: `${jobW} mm`,           cls: "bg-blue-50 text-blue-700 border-blue-200" },
                     { l: "Repeat Shrink", v: shrink > 0 ? `+${shrink} mm` : "—",           cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
                     { l: "Trimming",      v: trim > 0 ? `${trim}+${trim} mm` : "—",         cls: "bg-orange-50 text-orange-700 border-orange-200" },
                     { l: "Repeat UPS",    v: String(plan.repeatUPS),                         cls: "bg-teal-50 text-teal-700 border-teal-200" },
                     { l: "Cyl. Circ",     v: `${plan.cylCirc} mm`,                          cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
                   ];
-                  return [...baseStats, ...sleeveStats,
+                  return [...baseStats, ...typeStats,
                     { l: "Total Pieces", v: String(plan.totalUPS),  cls: "bg-green-50 text-green-700 border-green-200" },
                     { l: "Cylinder",     v: plan.cylinderCode,      cls: "bg-violet-50 text-violet-700 border-violet-200" },
                   ];
@@ -3845,12 +4692,12 @@ export default function ProductCatalogPage() {
               {(() => {
                 const repeatUPS = plan.repeatUPS as number;
                 const cylCirc   = plan.cylCirc   as number;
-                const jobH      = sTypePrev === "Sleeve" ? (replanForm.jobWidth * 2) : (replanForm.jobHeight || 0);
+                const jobH      = isMPS ? mpRepeatLen : sTypePrev === "Sleeve" ? (replanForm.jobWidth * 2) : (replanForm.jobHeight || 0);
 
                 // SVG canvas
                 const SVG_W = 730;   // extra 70px right for height arrow
                 const SVG_H = 430;   // extra top space for double arrows in sleeve
-                const RULER_LEFT  = isSleeve ? 50 : 36;  // sleeve needs more top space for 2 arrow rows
+                const RULER_LEFT  = isSleeve ? 50 : isMPS ? 44 : 36;  // MPS needs extra top space for hMargin|packW|hMargin annotation row
                 const RULER_BTM   = 22;
                 const drawW = 660 - RULER_LEFT;
                 const drawH = 360 - RULER_BTM;
@@ -3883,9 +4730,10 @@ export default function ProductCatalogPage() {
                 return (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">
-                      Full Layout — {acUps} AC UPS × {repeatUPS} Repeat = {plan.totalUPS} Total Pieces &nbsp;|&nbsp;
-                      Film {filmW}mm × Cyl. Circ {cylCirc}mm
-                      {isSleeve && ` (Cut Length ${effRepeat}mm × ${repeatUPS} = ${cylCirc}mm)`}
+                      {isMPS
+                        ? `Full Layout — ${mpAcrossUPS} Across × ${mpVertUPS} Vertical × ${repeatUPS} Repeat UPS = ${plan.totalUPS} Total Pieces  |  Film ${filmW}mm × Cyl. Circ ${cylCirc}mm (${mpEffRepeat}mm × ${repeatUPS}${mpRepeatShrink > 0 ? `, Shrink +${mpRepeatShrink}mm` : ""})`
+                        : `Full Layout — ${acUps} AC UPS × ${repeatUPS} Repeat = ${plan.totalUPS} Total Pieces  |  Film ${filmW}mm × Cyl. Circ ${cylCirc}mm${isSleeve ? ` (Cut Length ${effRepeat}mm × ${repeatUPS} = ${cylCirc}mm)` : ""}`
+                      }
                     </p>
 
                     <svg width={SVG_W} height={SVG_H} className="w-full" viewBox={`0 0 ${SVG_W} ${SVG_H}`}>
@@ -4042,6 +4890,143 @@ export default function ProductCatalogPage() {
                               </g>
                             );
                             cx += lanePx; // 1 AC UPS = layflat×2 + transparent + seam on film
+                          } else if (isMPS) {
+                            // ── MULTI-PACK SHRINK CELL ──
+                            // Each lane = one pack column (across direction)
+                            // Each repeat row (ry) contains mpVertUPS pack rows stacked vertically
+                            const unitHPx = mpVertUPS > 0 ? repPx / mpVertUPS : repPx;
+                            const packWPx = mpPackW > 0 && mpHMargin > 0 ? sx(mpPackW) : lanePx * 0.42;
+                            const packHPx = mpPackH > 0 && mpVMargin > 0 ? sy(mpPackH) : unitHPx * 0.27;
+                            const mHPx    = (lanePx - packWPx) / 2;
+                            const mVPx    = (unitHPx - packHPx) / 2;
+                            const C_PACK  = ["#d1fae5", "#a7f3d0"];
+                            const grpCells: React.ReactNode[] = [];
+                            for (let vi = 0; vi < mpVertUPS; vi++) {
+                              const cellY = ry + vi * unitHPx;
+                              // background slot
+                              grpCells.push(
+                                <rect key={`bg-${ri}-${li}-${vi}`} x={cx} y={cellY} width={lanePx} height={unitHPx}
+                                  fill={C_PACK[li % 2]} stroke="#059669" strokeWidth={0.5} />
+                              );
+                              // pack rectangle inside
+                              const pkX = cx + mHPx;
+                              const pkY = cellY + mVPx;
+                              grpCells.push(
+                                <rect key={`pk-${ri}-${li}-${vi}`} x={pkX} y={pkY} width={packWPx} height={packHPx}
+                                  fill="#ffffff" stroke="#065f46" strokeWidth={0.8} rx={1} />
+                              );
+                              // label inside pack
+                              if (packWPx > 20 && packHPx > 12) {
+                                grpCells.push(
+                                  <text key={`lbl-${ri}-${li}-${vi}`}
+                                    x={pkX + packWPx / 2} y={pkY + packHPx / 2 + 2.5}
+                                    textAnchor="middle" fontSize={Math.min(7, packHPx / 3)} fill="#065f46" fontWeight="700">
+                                    {mpPackW > 0 ? `${mpPackW}×${mpPackH}` : `Pack`}
+                                  </text>
+                                );
+                              }
+                              // vertical separator dashed line (between pack rows within repeat)
+                              if (vi > 0) {
+                                grpCells.push(
+                                  <line key={`vd-${ri}-${li}-${vi}`} x1={cx} y1={cellY} x2={cx + lanePx} y2={cellY}
+                                    stroke="#10b981" strokeWidth={0.5} strokeDasharray="3 2" />
+                                );
+                              }
+                            }
+                            // ── Horizontal dimension annotations (first repeat row, every column) ──
+                            // Shows: hMargin | packWidth | hMargin segments above each column
+                            if (ri === 0 && lanePx > 20) {
+                              const ay = ry - 11; // arrow line y
+                              type HSeg = { x1: number; x2: number; label: string; color: string };
+                              const hSegs: HSeg[] = mpHMargin > 0
+                                ? [
+                                    { x1: cx,                    x2: cx + mHPx,           label: `${mpHMargin}mm`, color: "#047857" },
+                                    { x1: cx + mHPx,             x2: cx + mHPx + packWPx, label: `${mpPackW}mm`,   color: "#065f46" },
+                                    { x1: cx + mHPx + packWPx,  x2: cx + lanePx,          label: `${mpHMargin}mm`, color: "#047857" },
+                                  ]
+                                : [{ x1: cx, x2: cx + lanePx, label: `${Math.round(diagLaneW)}mm`, color: "#065f46" }];
+
+                              hSegs.forEach((seg, si) => {
+                                const midX = (seg.x1 + seg.x2) / 2;
+                                const sw = seg.x2 - seg.x1;
+                                grpCells.push(
+                                  <g key={`ha-${ri}-${li}-${si}`}>
+                                    {/* extension tick lines going up from diagram edge */}
+                                    <line x1={seg.x1} y1={ry - 2} x2={seg.x1} y2={ay - 5}
+                                      stroke={seg.color} strokeWidth="0.6" strokeDasharray="2 2" />
+                                    <line x1={seg.x2} y1={ry - 2} x2={seg.x2} y2={ay - 5}
+                                      stroke={seg.color} strokeWidth="0.6" strokeDasharray="2 2" />
+                                    {/* dimension arrow */}
+                                    {sw > 5 && (
+                                      <line x1={seg.x1 + 0.5} y1={ay} x2={seg.x2 - 0.5} y2={ay}
+                                        stroke={seg.color} strokeWidth="1"
+                                        markerStart="url(#dim-start)" markerEnd="url(#dim-end)" />
+                                    )}
+                                    {/* label */}
+                                    {sw > 14 && (
+                                      <>
+                                        <rect x={midX - 14} y={ay - 9} width={28} height={8}
+                                          fill="rgba(255,255,255,0.96)" rx={1.5} />
+                                        <text x={midX} y={ay - 2}
+                                          textAnchor="middle" fontSize={5.5} fill={seg.color} fontWeight="700">
+                                          {seg.label}
+                                        </text>
+                                      </>
+                                    )}
+                                  </g>
+                                );
+                              });
+                            }
+
+                            // ── Vertical dimension annotations (first repeat, right of last column) ──
+                            // Shows: vMargin | packHeight | vMargin for each vertical unit
+                            if (ri === 0 && li === diagramAcUps - 1 && repPx > 20 && mpVMargin > 0 && mpPackH > 0) {
+                              const axV = cx + lanePx + 5; // just right of last column
+                              type VSeg = { y1: number; y2: number; label: string; color: string };
+                              for (let vi = 0; vi < mpVertUPS; vi++) {
+                                const unitTopY = ry + vi * unitHPx;
+                                const pkTopY   = unitTopY + mVPx;
+                                const pkBotY   = pkTopY + packHPx;
+                                const unitBotY = unitTopY + unitHPx;
+                                const vSegs: VSeg[] = [
+                                  { y1: unitTopY, y2: pkTopY,    label: `${mpVMargin}mm`, color: "#047857" },
+                                  { y1: pkTopY,   y2: pkBotY,   label: `${mpPackH}mm`,   color: "#065f46" },
+                                  { y1: pkBotY,   y2: unitBotY, label: `${mpVMargin}mm`, color: "#047857" },
+                                ];
+                                vSegs.forEach((seg, si) => {
+                                  const midY = (seg.y1 + seg.y2) / 2;
+                                  const sh = seg.y2 - seg.y1;
+                                  grpCells.push(
+                                    <g key={`va-${ri}-${li}-${vi}-${si}`}>
+                                      {/* extension tick lines going right from diagram edge */}
+                                      <line x1={cx + lanePx - 2} y1={seg.y1} x2={axV + 5} y2={seg.y1}
+                                        stroke={seg.color} strokeWidth="0.6" strokeDasharray="2 2" />
+                                      <line x1={cx + lanePx - 2} y1={seg.y2} x2={axV + 5} y2={seg.y2}
+                                        stroke={seg.color} strokeWidth="0.6" strokeDasharray="2 2" />
+                                      {/* dimension arrow */}
+                                      {sh > 5 && (
+                                        <line x1={axV} y1={seg.y1 + 0.5} x2={axV} y2={seg.y2 - 0.5}
+                                          stroke={seg.color} strokeWidth="1"
+                                          markerStart="url(#dim-start)" markerEnd="url(#dim-end)" />
+                                      )}
+                                      {/* label */}
+                                      {sh > 12 && (
+                                        <>
+                                          <rect x={axV + 2} y={midY - 4.5} width={27} height={8}
+                                            fill="rgba(255,255,255,0.96)" rx={1.5} />
+                                          <text x={axV + 15.5} y={midY + 2.5}
+                                            textAnchor="middle" fontSize={5.5} fill={seg.color} fontWeight="700">
+                                            {seg.label}
+                                          </text>
+                                        </>
+                                      )}
+                                    </g>
+                                  );
+                                });
+                              }
+                            }
+
+                            cells.push(<g key={`l-${ri}-${li}`}>{grpCells}</g>);
                           } else {
                             // ── LABEL / POUCH CELL ──
                             const bg = C_LANE[li % 2];
@@ -4076,6 +5061,51 @@ export default function ProductCatalogPage() {
                           cx += trimPx;
                         }
 
+                        // ── Eye Mark (MPS only) ──
+                        // Real eye mark = small solid black patch at LEFT film edge.
+                        // Appears at EVERY repeat boundary:
+                        //   ri=0 → top of diagram (start of repeat 1)
+                        //   ri=1 → middle (start of repeat 2 = end of repeat 1)
+                        //   after last ri → bottom of diagram (end of last repeat)
+                        // renderEM(yTop) draws one eye mark centred on the boundary line at yTop.
+                        const renderEM = (yTop: number, key: string) => {
+                          const emH    = Math.max(sy(mpEyeMark), 4); // px height (min 4px visible)
+                          const emW    = Math.max(sx(14), 18);        // ~14mm wide solid patch
+                          const emX    = 0;                            // left film edge
+                          const emY    = yTop - emH / 2;              // centred on boundary
+                          const labelX = emX + emW + 4;
+                          return (
+                            <g key={key}>
+                              {/* solid black eye mark patch */}
+                              <rect x={emX} y={emY} width={emW} height={emH}
+                                fill="#111827" rx={1} />
+                              {/* subtle centre highlight (scanner registration detail) */}
+                              <rect x={emX + emW * 0.3} y={emY + emH * 0.2}
+                                width={emW * 0.4} height={emH * 0.6}
+                                fill="white" opacity={0.18} />
+                              {/* vertical dimension arrow showing eye mark height */}
+                              <line x1={emX + emW + 2} y1={emY} x2={emX + emW + 2} y2={emY + emH}
+                                stroke="#111827" strokeWidth="0.9"
+                                markerStart="url(#dim-start)" markerEnd="url(#dim-end)" />
+                              {/* label pill */}
+                              <rect x={labelX} y={emY + emH / 2 - 5} width={36} height={9}
+                                fill="rgba(255,255,255,0.96)" rx={2} />
+                              <text x={labelX + 18} y={emY + emH / 2 + 2.5}
+                                textAnchor="middle" fontSize={5.5} fill="#111827" fontWeight="800">
+                                EM {mpEyeMark}mm
+                              </text>
+                            </g>
+                          );
+                        };
+                        // Eye mark at the TOP boundary of this repeat (ri=0 → very top, ri=1 → middle, etc.)
+                        const eyeMarkStrip = (isMPS && mpEyeMark > 0)
+                          ? renderEM(ry, `em-top-${ri}`)
+                          : null;
+                        // Extra eye mark at the very BOTTOM boundary — only after the last repeat
+                        const eyeMarkBottom = (isMPS && mpEyeMark > 0 && ri === repeatUPS - 1)
+                          ? renderEM(ry + repPx, `em-bot-${ri}`)
+                          : null;
+
                         // repeat boundary dashed line
                         const dashLine = ri < repeatUPS - 1
                           ? <line key={`dh-${ri}`} x1={0} y1={ry + repPx} x2={cx} y2={ry + repPx} stroke={C_DASH} strokeWidth={1} strokeDasharray="4 3" />
@@ -4091,12 +5121,12 @@ export default function ProductCatalogPage() {
                             <text x={15} y={ry + repPx / 2} textAnchor="middle"
                               fontSize={7} fill={isSleeve ? "#1d4ed8" : "#111827"} fontWeight="700"
                               transform={`rotate(-90, 15, ${ry + repPx / 2})`}>
-                              {isSleeve ? `Cut ${effRepeat}mm` : `${effRepeat}mm`}
+                              {isMPS ? `Repeat ${effRepeat}mm` : isSleeve ? `Cut ${effRepeat}mm` : `${effRepeat}mm`}
                             </text>
                           </g>
                         ) : null;
 
-                        return [rulerLabel, ...cells, dashLine];
+                        return [rulerLabel, ...cells, eyeMarkStrip, eyeMarkBottom, dashLine];
                       })}
 
                       {/* bottom ruler last tick — intentionally blank (arrows carry the labels) */}
@@ -4184,7 +5214,9 @@ export default function ProductCatalogPage() {
                           { color: "white",   border: "#ef4444", label: `Cut line — vertical, at sleeve outer edges` },
                           { color: "white",   border: "#7c3aed", label: `Fold line — vertical centre between FRONT & BACK (tube seam, width dir)` },
                         ] : [
-                          { color: "#dbeafe", border: "#6366f1", label: `Job cell — ${diagLaneW}mm wide × ${effRepeat}mm repeat length` },
+                          isMPS
+                            ? { color: "#d1fae5", border: "#059669", label: `Pack slot — ${Math.round(diagLaneW)}mm wide × ${effRepeat}mm repeat  (${mpAcrossUPS} Across × ${mpVertUPS} Vertical = ${mpAcrossUPS * mpVertUPS} packs per repeat)` }
+                            : { color: "#dbeafe", border: "#6366f1", label: `Job cell — ${diagLaneW}mm wide × ${effRepeat}mm repeat length` },
                           ...(trim > 0 ? [{ color: C_TRIM, border: "#f97316", label: `Trim both sides (${trim}mm each)` }] : []),
                         ]),
                         ...(shrink > 0 ? [{ color: "#fae8ff", border: "#a21caf", label: isSleeve
@@ -4400,7 +5432,7 @@ export default function ProductCatalogPage() {
 
           <div className="max-h-[65vh] overflow-y-auto pr-1">
             {viewPlanRow.secondaryLayers?.length > 0 || viewPlanRow.processes?.length > 0 ? (
-              <PlanViewer plan={{
+              <PlanViewer hideRunningMeterCalc plan={{
                 title: "Product Catalog", refNo: viewPlanRow.catalogNo,
                 jobWidth:    viewPlanRow.jobWidth,
                 jobHeight:   viewPlanRow.jobHeight,
@@ -4440,7 +5472,26 @@ export default function ProductCatalogPage() {
               Replan
             </Button>
             <Button icon={<ArrowRight size={14} />} variant="secondary"
-              onClick={() => window.location.href = "/gravure/orders"}>
+              onClick={() => {
+                if (!viewPlanRow) return;
+                localStorage.setItem("ajsw_order_from_catalog", JSON.stringify({
+                  catalogId:    viewPlanRow.id,
+                  catalogNo:    viewPlanRow.catalogNo,
+                  customerId:   viewPlanRow.customerId,
+                  customerName: viewPlanRow.customerName,
+                  productName:  viewPlanRow.productName,
+                  categoryId:   viewPlanRow.categoryId,
+                  categoryName: viewPlanRow.categoryName,
+                  substrate:    (viewPlanRow as any).substrate || "",
+                  jobWidth:     viewPlanRow.jobWidth,
+                  jobHeight:    viewPlanRow.jobHeight,
+                  noOfColors:   viewPlanRow.noOfColors,
+                  standardQty:  viewPlanRow.standardQty,
+                  standardUnit: viewPlanRow.standardUnit,
+                  perMeterRate: viewPlanRow.perMeterRate,
+                }));
+                window.location.href = "/gravure/orders";
+              }}>
               Use in Order
             </Button>
             <Button variant="secondary" onClick={() => setViewPlanRow(null)}>Close</Button>
@@ -4473,6 +5524,45 @@ export default function ProductCatalogPage() {
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => { deleteCatalogItem(deleteId); setDeleteId(null); }}>Delete</Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ══ STATUS UPDATE MODAL ══════════════════════════════════ */}
+      {statusModalOpen && selectedStatusRow && (
+        <Modal open={statusModalOpen} onClose={() => setStatusModalOpen(false)} 
+          title={`${selectedStatusRow.isActive ? "Deactivate" : "Activate"} Product`} size="sm">
+          <div className="space-y-4">
+            <div className={`p-3 rounded-xl border flex gap-3 items-start ${selectedStatusRow.isActive ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
+              <AlertCircle size={18} className={selectedStatusRow.isActive ? "text-red-500" : "text-green-500"} />
+              <div>
+                <p className={`text-sm font-bold ${selectedStatusRow.isActive ? "text-red-800" : "text-green-800"}`}>
+                  {selectedStatusRow.isActive ? "Confirm Deactivation" : "Confirm Activation"}
+                </p>
+                <p className="text-xs text-gray-600 mt-1">
+                  You are about to {selectedStatusRow.isActive ? "deactivate" : "activate"} <strong>{selectedStatusRow.productName}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <Textarea 
+              label="Reason / Remarks" 
+              placeholder="Enter reason for this status change..." 
+              value={statusReason} 
+              onChange={e => setStatusReason(e.target.value)}
+              className="text-sm"
+            />
+
+            <div className="flex justify-end gap-3 mt-4">
+              <Button variant="secondary" onClick={() => setStatusModalOpen(false)}>Cancel</Button>
+              <Button 
+                variant={selectedStatusRow.isActive ? "danger" : "primary"} 
+                onClick={handleStatusUpdate}
+                loading={statusUpdating}
+              >
+                {selectedStatusRow.isActive ? "Deactivate Now" : "Activate Now"}
+              </Button>
+            </div>
           </div>
         </Modal>
       )}
