@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Eye, Pencil, Trash2, Printer, CheckCircle2, ClipboardList,
   Clock, RefreshCw, Edit3, Calculator, BookMarked, ChevronRight,
@@ -218,6 +218,9 @@ export default function GravureWorkOrderPage() {
   const [planFilterSearch, setPlanFilterSearch] = useState<Record<string, string>>({});
   const [planFilterDraft,  setPlanFilterDraft]  = useState<Record<string, Set<string>>>({});
 
+  // DB machines fetched from API (replaces dummyData PRINT_MACHINES for dropdowns)
+  const [dbMachines, setDbMachines] = useState<{ id: string; name: string }[]>([]);
+
   // ── Production Preparation Types ────────────────────────────
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; labLMeas: string; labAMeas: string; labBMeas: string; deltaE: string; deltaETol: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; };
@@ -246,6 +249,14 @@ export default function GravureWorkOrderPage() {
     // Load dropdown prefix
     apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
       .then(dd => { if (dd?.prefix) setApiPrefix(dd.prefix); })
+      .catch(() => {});
+
+    // Load real DB machines (MachineMaster) for the printing machine dropdown
+    apiGet<any[]>("api/productcataloggravureShrink/getmachinelist")
+      .then(rows => {
+        if (Array.isArray(rows) && rows.length > 0)
+          setDbMachines(rows.map(m => ({ id: String(m.MachineID ?? ""), name: String(m.MachineName ?? "") })));
+      })
       .catch(() => {});
 
     // Load work order list — replace dummy data only when API responds with real rows
@@ -319,14 +330,36 @@ export default function GravureWorkOrderPage() {
         structure:       (catItem as any).structure  || "",
         content:         catItem.content             || "",
         trimmingSize:    catItem.trimmingSize     || 0,
-        machineId:       catItem.machineId        || "",
-        machineName:     catItem.machineName      || "",
+        machineId:   catItem.machineId   || "",
+        machineName: catItem.machineName  || "",
         cylinderCostPerColor: catItem.cylinderCostPerColor || 0,
         overheadPct:     catItem.overheadPct      || 0,
         profitPct:       catItem.profitPct        || 0,
         perMeterRate:    catItem.perMeterRate     || 0,
-        secondaryLayers: catItem.secondaryLayers  || [],
-        processes:       catItem.processes        || [],
+        secondaryLayers: (() => {
+          const raw = catItem.secondaryLayers || [];
+          const seen = new Set<number>();
+          return raw.filter(l => { if (seen.has(l.layerNo)) return false; seen.add(l.layerNo); return true; })
+            .map(l => {
+              const sg = l.itemSubGroup ? FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup) : null;
+              return { ...l, density: (l.density && l.density > 0) ? l.density : (sg?.density ?? 0), gsm: l.gsm || 0 };
+            });
+        })(),
+        processes: (catItem.processes || []).map((p: any) => {
+          const pid = String(p.processId ?? p.id ?? "").trim();
+          const pname = String(p.processName ?? p.name ?? "").trim();
+          const pm  = ROTO_PROCESSES.find(x => x.id === pid)
+                   || ROTO_PROCESSES.find(x => x.name === pname);
+          return {
+            processId:   pm?.id        ?? pid,
+            processName: (pm?.name ?? pname) || pid,
+            chargeUnit:  pm?.chargeUnit ?? String(p.chargeUnit ?? ""),
+            rate:        Number(p.rate ?? 0),
+            qty:         Number(p.qty  ?? 0),
+            setupCharge: pm?.makeSetupCharges ? parseFloat(pm.setupChargeAmount || "0") || 0 : Number(p.setupCharge ?? 0),
+            amount:      Number(p.amount ?? 0),
+          };
+        }),
         selectedPlanId:  (catItem as any).selectedPlanId || (catItem as any).selectedPlanID || "",
       } as any : {}),
     }));
@@ -373,12 +406,21 @@ export default function GravureWorkOrderPage() {
       : [];
 
     const processes: GravureEstimationProcess[] = Array.isArray(r.savedProcessesJSON)
-      ? r.savedProcessesJSON.map((p: any) => ({
-          id:          String(p.processId  ?? ""),
-          name:        String(p.name       ?? ""),
-          processType: String(p.processType ?? ""),
-          qty:         0, chargeUnit: "", rate: Number(p.rate ?? 0), amount: Number(p.amount ?? 0),
-        }))
+      ? r.savedProcessesJSON.map((p: any) => {
+          const pid   = String(p.processId ?? p.id ?? "").trim();
+          const pname = String(p.processName ?? p.name ?? "").trim();
+          const pm    = ROTO_PROCESSES.find(x => x.id === pid)
+                     || ROTO_PROCESSES.find(x => x.name === pname);
+          return {
+            processId:   pm?.id        ?? pid,
+            processName: (pm?.name ?? pname) || pid,
+            chargeUnit:  pm?.chargeUnit ?? String(p.chargeUnit ?? ""),
+            rate:        Number(p.rate ?? 0),
+            qty:         Number(p.qty  ?? 0),
+            setupCharge: pm?.makeSetupCharges ? parseFloat(pm.setupChargeAmount || "0") || 0 : Number(p.setupCharge ?? 0),
+            amount:      Number(p.amount ?? 0),
+          };
+        })
       : [];
 
     return {
@@ -421,8 +463,8 @@ export default function GravureWorkOrderPage() {
       backColors:     Number(r.backColors    ?? 0),
       salesPerson:    String(r.salesPerson   ?? ""),
       salesType:      String(r.salesType     ?? ""),
-      machineId:      String(r.machineId     ?? ""),
-      machineName:    String(r.machineName   ?? ""),
+      machineId:   String(r.machineId   ?? ""),
+      machineName: String(r.machineName ?? ""),
       cylinderCostPerColor: Number(r.cylinderCostPerColor ?? 3500),
       overheadPct:    Number(r.overheadPct   ?? 12),
       profitPct:      Number(r.profitPct     ?? 15),
@@ -1826,8 +1868,21 @@ export default function GravureWorkOrderPage() {
             <SH label="Machine" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Select label="Printing Machine *" value={form.machineId}
-                onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { f("machineId", m.id); f("machineName", m.name); } }}
-                options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
+                onChange={e => {
+                  const dbM = dbMachines.find(x => x.id === e.target.value);
+                  const dummyM = PRINT_MACHINES.find(x => x.id === e.target.value);
+                  const name = dbM?.name || dummyM?.name || e.target.value;
+                  f("machineId", e.target.value); f("machineName", name);
+                }}
+                options={[
+                  { value: "", label: "-- Select Machine --" },
+                  ...(form.machineId && !dbMachines.find(m => m.id === form.machineId)
+                    ? [{ value: form.machineId, label: form.machineName || form.machineId }]
+                    : []),
+                  ...(dbMachines.length > 0
+                    ? dbMachines.map(m => ({ value: m.id, label: m.name }))
+                    : PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` })))
+                ]}
               />
             </div>
           </div>
@@ -1924,7 +1979,7 @@ export default function GravureWorkOrderPage() {
                 {form.secondaryLayers.map((l, index) => {
                   const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
                   return (
-                    <div key={l.id} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
+                    <div key={l.id ?? l.layerNo ?? index} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
                       <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
                         <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
                           {l.layerNo === 1 ? "1st" : l.layerNo === 2 ? "2nd" : l.layerNo === 3 ? "3rd" : `${l.layerNo}th`} Ply
@@ -1959,6 +2014,9 @@ export default function GravureWorkOrderPage() {
                                   f("secondaryLayers", layers);
                                 }}>
                                 <option value="">Select Film Type</option>
+                                {l.itemSubGroup && !FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup) && (
+                                  <option value={l.itemSubGroup}>{l.itemSubGroup} {l.itemName ? `(${l.itemName})` : "(from catalog)"}</option>
+                                )}
                                 {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
                               </select>
                             </div>
@@ -2015,7 +2073,7 @@ export default function GravureWorkOrderPage() {
                                   ? parseFloat(((( adhesiveCI?.gsm ?? 0) * (adhesiveCI?.ohPct ?? 0)) / ci.ncoPct!).toFixed(3)) : null;
                                 const colCount = ci.itemGroup === "Ink" ? 6 : ci.itemGroup === "Adhesive" ? 5 : ci.itemGroup === "Hardner" ? 5 : 4;
                                 return (
-                                  <div key={ci.consumableId} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
+                                  <div key={ci.consumableId ?? ci.itemId ?? ciIdx} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
                                     <div className="flex items-center justify-between mb-2">
                                       <span className="text-[10px] font-bold text-teal-700 uppercase">{ciLabel} {ciSerial}</span>
                                       <div className="flex items-center gap-1">
@@ -2588,7 +2646,7 @@ export default function GravureWorkOrderPage() {
                   l.plyType === "Lamination" ? { hdr: "bg-orange-50 border-orange-100", badge: "bg-orange-100 text-orange-700 border-orange-200" } :
                                                { hdr: "bg-green-50 border-green-100",   badge: "bg-green-100 text-green-700 border-green-200"   };
                 return (
-                  <div key={l.id} className="bg-white border-2 border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                  <div key={l.id ?? l.layerNo ?? idx} className="bg-white border-2 border-gray-100 rounded-2xl shadow-sm overflow-hidden">
                     {/* Ply header */}
                     <div className={`flex items-center justify-between px-4 py-2.5 border-b ${plyColor.hdr}`}>
                       <div className="flex items-center gap-2">
@@ -3432,8 +3490,21 @@ export default function GravureWorkOrderPage() {
             <SH label="Machine" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Select label="Printing Machine" value={form.machineId}
-                onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { f("machineId", m.id); f("machineName", m.name); } }}
-                options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` }))]}
+                onChange={e => {
+                  const dbM = dbMachines.find(x => x.id === e.target.value);
+                  const dummyM = PRINT_MACHINES.find(x => x.id === e.target.value);
+                  const name = dbM?.name || dummyM?.name || e.target.value;
+                  f("machineId", e.target.value); f("machineName", name);
+                }}
+                options={[
+                  { value: "", label: "-- Select Machine --" },
+                  ...(form.machineId && !dbMachines.find(m => m.id === form.machineId)
+                    ? [{ value: form.machineId, label: form.machineName || form.machineId }]
+                    : []),
+                  ...(dbMachines.length > 0
+                    ? dbMachines.map(m => ({ value: m.id, label: m.name }))
+                    : PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` })))
+                ]}
               />
             </div>
           </div>
@@ -3722,10 +3793,10 @@ export default function GravureWorkOrderPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filmLayers.map(l => {
+                          {filmLayers.map((l, li) => {
                             const reqWt = l.gsm > 0 ? ((l.gsm / 1000) * reqSQM * (1 + waste)) : 0;
                             return (
-                              <tr key={l.id}>
+                              <tr key={l.id ?? l.layerNo ?? li}>
                                 <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700", textAlign: "center" }}>{l.layerNo}</td>
                                 <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{l.plyType}</td>
                                 <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{l.itemSubGroup}</td>
@@ -4063,7 +4134,7 @@ export default function GravureWorkOrderPage() {
                         <text x={15} y={ry + repPx / 2} textAnchor="middle" fontSize={8} fill="#111827" fontWeight="700" transform={`rotate(-90, 15, ${ry + repPx / 2})`}>{effRepeat} mm</text>
                       </g>
                     ) : null;
-                    return [rulerLabel, ...cells, dashLine];
+                    return <React.Fragment key={`rep-${ri}`}>{rulerLabel}{cells}{dashLine}</React.Fragment>;
                   })}
                   {/* Bottom ruler */}
                   {(() => {

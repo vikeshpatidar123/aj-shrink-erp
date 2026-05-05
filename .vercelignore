@@ -1,0 +1,12 @@
+node_modules
+.next
+.claude
+*.zip
+*.pptx
+*.py
+ts_errors.json
+ts_errors.txt
+generate_docs.py
+generate_module_docs.py
+AJ_Shrink_ERP_Documentation.docx
+AJ_Shrink_Module_Documentation.docx

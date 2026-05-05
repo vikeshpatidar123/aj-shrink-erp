@@ -71,6 +71,7 @@ export const categories: CategoryMaster[] = [
       "Both Side Gusset Pouch",
       "3D Pouch / Flat Bottom",
       "Laminate Roll",
+      "LDPE Printed Shrink Film (Multi-Pack)",
     ],
     plyConsumables: [
       { id: "PC001", plyType: "Printing",   itemGroup: "Ink",      itemSubGroup: "Solvent Based Ink",   fieldDisplayName: "Ink Wet Weight",      defaultValue: 3.5, minValue: 1,   maxValue: 8,   sharePercentageFormula: "" },
@@ -566,6 +567,12 @@ export type Machine = {
   // Costing
   chargeType: string; wasteType: string; wasteCalcOn: string;
   perHourCostingParam: string; refMachineCode: string;
+  // Loan & Labour (machine-wise)
+  loanAmount?: string;           // ₹ total loan on this machine
+  loanInterestRatePct?: string;  // % p.a. interest
+  monthlyLabourSalary?: string;  // ₹/month — all operators on this machine
+  workingDaysPerMonth?: string;  // days/month
+  shiftHours?: string;           // hrs/shift
 };
 
 export type Employee = {
@@ -1400,16 +1407,16 @@ export const machines: Machine[] = [
   { id: "M001", code: "CYL-01", name: "Cylinder Engraver 1", department: "Pre-Press", status: "Running", ...bm, displayName: "CYL-ENG-1", machineType: "Electromechanical Engraver", maxCylinderWidth: "1600", maxCircumference: "1200", costPerHour: "450", electricConsumption: "15", operator: "Mahesh Gupta" },
   { id: "M002", code: "CYL-02", name: "Chrome Plating Bath", department: "Pre-Press", status: "Running", ...bm, displayName: "Chrome Bath", machineType: "Chrome Plating", maxCylinderWidth: "1600", costPerHour: "120", operator: "Ramesh Patel" },
   // Printing
-  { id: "M004", code: "ROTO-01", name: "Roto Press 1 – 8 Color", department: "Printing", status: "Running", ...bm, displayName: "ROTO-1", machineType: "Rotogravure Press", noOfColors: "8", maxWebWidth: "1200", minWebWidth: "300", speedMax: "150", repeatLengthMin: "300", repeatLengthMax: "1200", gripper: "10", printingMargin: "15", makeReadyWastage: "50", makeReadyCharges: "1500", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1200", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "800", roundImpWith: "100", electricConsumption: "80", costPerHour: "1200", operator: "Amit Tiwari" },
-  { id: "M005", code: "ROTO-02", name: "Roto Press 2 – 9 Color", department: "Printing", status: "Running", ...bm, displayName: "ROTO-2", machineType: "Rotogravure Press", noOfColors: "9", maxWebWidth: "1450", minWebWidth: "200", speedMax: "160", repeatLengthMin: "300", repeatLengthMax: "1400", gripper: "10", printingMargin: "15", makeReadyWastage: "55", makeReadyCharges: "1800", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1300", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "900", roundImpWith: "100", electricConsumption: "90", costPerHour: "1350", operator: "Deepak Verma" },
-  { id: "M006", code: "ROTO-03", name: "Roto Press 3 – 10 Color", department: "Printing", status: "Maintenance", ...bm, displayName: "ROTO-3", machineType: "Rotogravure Press", noOfColors: "10", maxWebWidth: "3500", minWebWidth: "200", speedMax: "180", repeatLengthMin: "300", repeatLengthMax: "1500", gripper: "10", printingMargin: "15", makeReadyWastage: "60", makeReadyCharges: "2000", makeReadyTime: "22", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1400", jobChangeOverTime: "35", minPrintingImpr: "500", basicPrintingCharged: "1000", roundImpWith: "100", electricConsumption: "95", costPerHour: "1400", operator: "Santosh Rao" },
-  { id: "M018", code: "ROTO-05", name: "Roto Press 5 – 8 Color (Demo)", department: "Printing", status: "Running", ...bm, displayName: "ROTO-5", machineType: "Rotogravure Press", noOfColors: "8", maxWebWidth: "1200", minWebWidth: "500", speedMax: "150", repeatLengthMin: "200", repeatLengthMax: "1000", gripper: "10", printingMargin: "15", makeReadyWastage: "50", makeReadyCharges: "1500", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1200", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "800", roundImpWith: "100", electricConsumption: "80", costPerHour: "1200", operator: "Demo Operator" },
-  { id: "M003", code: "ROTO-04", name: "Roto Press 4 – 6 Color", department: "Printing", status: "Idle", ...bm, displayName: "ROTO-4", machineType: "Rotogravure Press", noOfColors: "6", maxWebWidth: "1100", minWebWidth: "150", speedMax: "120", repeatLengthMin: "250", repeatLengthMax: "1000", gripper: "10", printingMargin: "12", makeReadyWastage: "40", makeReadyCharges: "1200", makeReadyTime: "18", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1000", jobChangeOverTime: "25", minPrintingImpr: "500", basicPrintingCharged: "700", roundImpWith: "100", electricConsumption: "65", costPerHour: "1000", operator: "Vikram Singh" },
+  { id: "M004", code: "ROTO-01", name: "Roto Press 1 – 8 Color", department: "Printing", status: "Running", ...bm, displayName: "ROTO-1", machineType: "Rotogravure Press", noOfColors: "8", maxWebWidth: "1200", minWebWidth: "300", speedMax: "150", repeatLengthMin: "300", repeatLengthMax: "1200", gripper: "10", printingMargin: "15", makeReadyWastage: "50", makeReadyCharges: "1500", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1200", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "800", roundImpWith: "100", electricConsumption: "80", costPerHour: "1200", operator: "Amit Tiwari", loanAmount: "10000000", loanInterestRatePct: "12", monthlyLabourSalary: "150000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M005", code: "ROTO-02", name: "Roto Press 2 – 9 Color", department: "Printing", status: "Running", ...bm, displayName: "ROTO-2", machineType: "Rotogravure Press", noOfColors: "9", maxWebWidth: "1450", minWebWidth: "200", speedMax: "160", repeatLengthMin: "300", repeatLengthMax: "1400", gripper: "10", printingMargin: "15", makeReadyWastage: "55", makeReadyCharges: "1800", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1300", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "900", roundImpWith: "100", electricConsumption: "90", costPerHour: "1350", operator: "Deepak Verma", loanAmount: "12000000", loanInterestRatePct: "12", monthlyLabourSalary: "160000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M006", code: "ROTO-03", name: "Roto Press 3 – 10 Color", department: "Printing", status: "Maintenance", ...bm, displayName: "ROTO-3", machineType: "Rotogravure Press", noOfColors: "10", maxWebWidth: "3500", minWebWidth: "200", speedMax: "180", repeatLengthMin: "300", repeatLengthMax: "1500", gripper: "10", printingMargin: "15", makeReadyWastage: "60", makeReadyCharges: "2000", makeReadyTime: "22", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1400", jobChangeOverTime: "35", minPrintingImpr: "500", basicPrintingCharged: "1000", roundImpWith: "100", electricConsumption: "95", costPerHour: "1400", operator: "Santosh Rao", loanAmount: "15000000", loanInterestRatePct: "12", monthlyLabourSalary: "180000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M018", code: "ROTO-05", name: "Roto Press 5 – 8 Color (Demo)", department: "Printing", status: "Running", ...bm, displayName: "ROTO-5", machineType: "Rotogravure Press", noOfColors: "8", maxWebWidth: "1200", minWebWidth: "500", speedMax: "150", repeatLengthMin: "200", repeatLengthMax: "1000", gripper: "10", printingMargin: "15", makeReadyWastage: "50", makeReadyCharges: "1500", makeReadyTime: "20", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1200", jobChangeOverTime: "30", minPrintingImpr: "500", basicPrintingCharged: "800", roundImpWith: "100", electricConsumption: "80", costPerHour: "1200", operator: "Demo Operator", loanAmount: "10000000", loanInterestRatePct: "12", monthlyLabourSalary: "150000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M003", code: "ROTO-04", name: "Roto Press 4 – 6 Color", department: "Printing", status: "Idle", ...bm, displayName: "ROTO-4", machineType: "Rotogravure Press", noOfColors: "6", maxWebWidth: "1100", minWebWidth: "150", speedMax: "120", repeatLengthMin: "250", repeatLengthMax: "1000", gripper: "10", printingMargin: "12", makeReadyWastage: "40", makeReadyCharges: "1200", makeReadyTime: "18", makeReadyTimeMode: "Per Color", makeReadyChargesPerHr: "1000", jobChangeOverTime: "25", minPrintingImpr: "500", basicPrintingCharged: "700", roundImpWith: "100", electricConsumption: "65", costPerHour: "1000", operator: "Vikram Singh", loanAmount: "8000000", loanInterestRatePct: "12", monthlyLabourSalary: "120000", workingDaysPerMonth: "25", shiftHours: "8" },
   // Lamination
-  { id: "M007", code: "LAM-01", name: "Dry Bond Laminator 1", department: "Lamination", status: "Running", ...bm, displayName: "LAM-1", machineType: "Dry Bond", maxWebWidth: "1300", minWebWidth: "150", speedMax: "200", noOfUnwinds: "2", adhesiveCoverage: "2.5–4.5", electricConsumption: "55", costPerHour: "650", operator: "Suresh Bhatia" },
-  { id: "M008", code: "LAM-02", name: "Dry Bond Laminator 2", department: "Lamination", status: "Running", ...bm, displayName: "LAM-2", machineType: "Dry Bond", maxWebWidth: "1450", minWebWidth: "150", speedMax: "220", noOfUnwinds: "2", adhesiveCoverage: "2.5–4.5", electricConsumption: "60", costPerHour: "700", operator: "Anil Kumar" },
-  { id: "M009", code: "LAM-03", name: "Solventless Laminator", department: "Lamination", status: "Running", ...bm, displayName: "SL-LAM", machineType: "Solventless", maxWebWidth: "1350", minWebWidth: "150", speedMax: "250", noOfUnwinds: "2", adhesiveCoverage: "1.5–3.0", electricConsumption: "40", costPerHour: "600", operator: "Manoj Sharma" },
-  { id: "M010", code: "LAM-04", name: "Extrusion Laminator", department: "Lamination", status: "Idle", ...bm, displayName: "EXT-LAM", machineType: "Extrusion Lamination", maxWebWidth: "1200", minWebWidth: "150", speedMax: "120", noOfUnwinds: "3", electricConsumption: "90", costPerHour: "850", operator: "Ravi Yadav" },
+  { id: "M007", code: "LAM-01", name: "Dry Bond Laminator 1", department: "Lamination", status: "Running", ...bm, displayName: "LAM-1", machineType: "Dry Bond", maxWebWidth: "1300", minWebWidth: "150", speedMax: "200", noOfUnwinds: "2", adhesiveCoverage: "2.5–4.5", electricConsumption: "55", costPerHour: "650", operator: "Suresh Bhatia", loanAmount: "5000000", loanInterestRatePct: "12", monthlyLabourSalary: "80000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M008", code: "LAM-02", name: "Dry Bond Laminator 2", department: "Lamination", status: "Running", ...bm, displayName: "LAM-2", machineType: "Dry Bond", maxWebWidth: "1450", minWebWidth: "150", speedMax: "220", noOfUnwinds: "2", adhesiveCoverage: "2.5–4.5", electricConsumption: "60", costPerHour: "700", operator: "Anil Kumar", loanAmount: "5000000", loanInterestRatePct: "12", monthlyLabourSalary: "80000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M009", code: "LAM-03", name: "Solventless Laminator", department: "Lamination", status: "Running", ...bm, displayName: "SL-LAM", machineType: "Solventless", maxWebWidth: "1350", minWebWidth: "150", speedMax: "250", noOfUnwinds: "2", adhesiveCoverage: "1.5–3.0", electricConsumption: "40", costPerHour: "600", operator: "Manoj Sharma", loanAmount: "4000000", loanInterestRatePct: "12", monthlyLabourSalary: "70000", workingDaysPerMonth: "25", shiftHours: "8" },
+  { id: "M010", code: "LAM-04", name: "Extrusion Laminator", department: "Lamination", status: "Idle", ...bm, displayName: "EXT-LAM", machineType: "Extrusion Lamination", maxWebWidth: "1200", minWebWidth: "150", speedMax: "120", noOfUnwinds: "3", electricConsumption: "90", costPerHour: "850", operator: "Ravi Yadav", loanAmount: "6000000", loanInterestRatePct: "12", monthlyLabourSalary: "90000", workingDaysPerMonth: "25", shiftHours: "8" },
   // Slitting
   { id: "M011", code: "SLT-01", name: "Duplex Slitter 1", department: "Slitting", status: "Running", ...bm, displayName: "SLT-1", machineType: "Duplex Slitter", maxWebWidth: "1400", minWebWidth: "30", speedMax: "400", noOfSlitters: "16", electricConsumption: "18", costPerHour: "300", operator: "Naresh Verma" },
   { id: "M012", code: "SLT-02", name: "Duplex Slitter 2", department: "Slitting", status: "Running", ...bm, displayName: "SLT-2", machineType: "Duplex Slitter", maxWebWidth: "1600", minWebWidth: "30", speedMax: "450", noOfSlitters: "18", electricConsumption: "20", costPerHour: "320", operator: "Prakash Singh" },
@@ -2319,7 +2326,10 @@ export type SecondaryLayer = {
   density: number;
   thickness: number;
   gsm: number;
+  filmGSM?: number;
   filmRate?: number;
+  itemId?: string;               // selected film item ID
+  itemName?: string;             // selected film item name
   consumableItems: PlyConsumableItem[];  // consumables selected for this ply
 };
 
@@ -2357,6 +2367,12 @@ export type GravureEstimationProcess = {
   processId: string; processName: string;
   chargeUnit: string; rate: number;
   qty: number; setupCharge: number; amount: number;
+  // Machine allocation (for loan & labour cost calculation)
+  machineId?: string;
+  machineName?: string;
+  runHours?: number;     // hours this process runs for this job
+  interestCost?: number; // computed: machine loan interest for runHours
+  labourCost?: number;   // computed: machine labour cost for runHours
 };
 
 export type GravureEstimation = {
@@ -2388,10 +2404,30 @@ export type GravureEstimation = {
   processes: GravureEstimationProcess[];
   overheadPct: number; profitPct: number;
   labourCost?: number; transportationCost?: number; interestCost?: number;
+  // Packing cost breakup (from reference costing model)
+  packingBoxRate?: number;          // ₹/box
+  packingCoilsPerBox?: number;      // coils per box
+  packingCoilWt?: number;           // kg per coil
+  packingPlugsPerBox?: number;      // core plugs per box
+  packingPlugRate?: number;         // ₹ per plug
+  packingTapeRate?: number;         // ₹ per roll (130m/roll)
+  packingTapeMetres?: number;       // metres used per box
+  packingStretchFilmGm?: number;    // gm of stretch film per box
+  packingStretchFilmRate?: number;  // ₹/kg stretch film
+  machineShiftHours?: number;       // 8 / 12 / 24 hrs per day
+  machineBaseCostPerHour?: number;  // base cost at 8-hr shift from machine master
+  loanAmount?: number;              // total company loan ₹
+  loanInterestRatePct?: number;     // annual interest %
+  monthlyLabourSalary?: number;     // total monthly operator salary ₹
+  workingDaysPerMonth?: number;     // working days per month
+  jobRunHours?: number;             // estimated machine hours for this job
+  cylinderCostOverride?: number;    // per-qty override for cylinder cost
+  setupCostOverride?: number;       // per-qty override for setup cost
+  packingCostOverride?: number;     // per-qty override for packing cost
   materialCost: number; processCost: number; cylinderCost: number;
-  setupCost: number;
+  setupCost: number; packingCost?: number;
   overheadAmt: number; profitAmt: number;
-  totalAmount: number; perMeterRate: number; marginPct: number;
+  totalAmount: number; perMeterRate: number; perMeterRateWithoutProfit?: number; marginPct: number;
   contribution: number; breakEvenQty: number;
   secondaryLayers: SecondaryLayer[];
   dryWeightRows: DryWeightRow[];
@@ -2438,7 +2474,9 @@ export type GravureOrder = {
   // Summary
   totalAmount: number; advancePaid: number;
   remarks: string;
-  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
+  status: "Confirmed" | "In Production" | "Ready" | "Dispatched" | "Hold";
+  holdReason?: string;
+  attachments?: { id: string; name: string; size: number; fileType: string }[];
   // Legacy single-product fields (kept for workorder compatibility)
   sourceType: "Estimation" | "Catalog" | "Direct";
   enquiryId: string; estimationId: string;
@@ -2495,11 +2533,13 @@ export type GravureProductCatalog = {
   sourceEstimationId: string; sourceEstimationNo: string;
   sourceOrderId: string; sourceOrderNo: string;   // order → catalog link
   sourceWorkOrderId: string; sourceWorkOrderNo: string; // WO → catalog link
+  isActive: boolean;
+  isActiveReason: string;
   trimmingSize?: number;
   widthShrinkage?: number;
   frontColors?: number; backColors?: number;
   // ── Printing Structure Type (auto-derived from category + content) ──
-  structureType?: "Label" | "Sleeve" | "Pouch";
+  structureType?: "Label" | "Sleeve" | "Pouch" | "MultiPackShrink";
   gusset?: number;
   sealSize?: number;
   hasZipper?: boolean;
@@ -2509,6 +2549,27 @@ export type GravureProductCatalog = {
   sideSeal?: number;
   centerSealWidth?: number;
   sideGusset?: number;
+  // ── LDPE Multi-Pack Shrink Film fields ──
+  repeatLength?: number;       // eye-mark to eye-mark (mm) — artwork repeat
+  repeatShrinkage?: number;    // extra mm added to repeat for shrinkage allowance (printed larger)
+  packWidth?: number;       // individual pack width (mm)
+  packHeight?: number;      // individual pack height (mm)
+  hMargin?: number;         // horizontal margin/gap per side (mm) — same on all sides across
+  vMargin?: number;         // vertical margin/gap per side (mm) — same on all sides down
+  // Derived (computed from above — stored for plan display)
+  acrossUPS?: number;
+  verticalUPS?: number;
+  printedLength?: number;
+  eyeMarkLength?: number;
+  gapLength?: number;
+  // ── Sleeve-specific dims (not in Pouch/Label groups above) ──
+  gussetSize?: number;       // sleeve overlap gusset (mm) — different from pouch gusset
+  seamingArea?: number;      // sleeve seaming area (mm) added to film width
+  transparentArea?: number;  // sleeve transparent window area (mm)
+  // ── Roll / unwind settings ──
+  unwindDirection?: number;  // 1-8 unwind direction
+  finalRollOD?: number;      // finished roll outer diameter (mm)
+  rollQtyUnit?: string;      // "Meter" | "Kg" etc.
   // ── Product Details (merged master) ──
   packSize?: string;
   brandName?: string;
@@ -2522,8 +2583,12 @@ export type GravureProductCatalog = {
   remarks: string;
   // ── Saved prep data (color shades, cylinders, plan) ──
   savedPlanId?: string;
+  savedPlan?: any;
   savedColorShades?: any[];
   savedCylAllocs?: any[];
+  attachments?: { id: string; name: string; label: string; url: string; mimeType: string; size: number }[];
+  attachmentsBase64?: { name: string; label: string; mimeType: string; base64: string }[];
+  existingAttachmentIDs?: string[];
 };
 
 export type GravureWorkOrder = {
@@ -2735,66 +2800,100 @@ export const gravureEstimations: GravureEstimation[] = [
     status: "Approved", remarks: "Price valid for 30 days",
   },
   {
+    // ── Realistic Kg-based estimation: PET/Nylon/Met-CPP 3-ply premium pouch ──
+    // 10,000 Kg → ~₹618/kg  |  100,000 Kg → ~₹613/kg
     id: "GEST002", estimationNo: "GRV-EST-2024-002", date: "2024-03-07",
     enquiryId: "GE002", enquiryNo: "GRV-ENQ-2024-002",
     customerId: "C002", customerName: "Britannia Industries Ltd",
-    jobName: "Britannia NutriChoice 200g",
+    jobName: "Britannia NutriChoice 200g — 3-Ply Premium Pouch",
     categoryId: "CAT002", categoryName: "Pouch", content: "3-Side Seal",
-    substrateItemId: "ITM002", substrateName: "LLDPE C4 GRADE FILM",
+    substrateItemId: "ITM001", substrateName: "PET FILM 12 MICRON",
     jobWidth: 420, jobHeight: 400, ups: 2,
     actualWidth: 420, actualHeight: 400,
+    frontColors: 4, backColors: 2,
     width: 420, noOfColors: 6, printType: "Reverse Print",
-    quantity: 150000, quantities: [150000], unit: "Meter",
+    // 10,000 Kg Q1 | 100,000 Kg Q2
+    quantity: 10000, quantities: [10000, 100000], unit: "Kg",
     machineId: "M003", machineName: "Roto Press 4 – 6 Color",
-    cylinderCostPerColor: 0,
+    cylinderCostPerColor: 3500,
+    machineCostPerHour: 1350, machineShiftHours: 8, machineBaseCostPerHour: 1350,
     salesPerson: "Sanjay Gupta", salesType: "Local", concernPerson: "Priya Britannia",
+    // Material list for 10,000 Kg finished product
+    // Structure: PET 12µ (16.56 gsm) / Printing 6C / Nylon 15µ (17.1 gsm) / Lam / Met-CPP 30µ (27 gsm)
+    // Total film GSM ≈ 84 gsm → area = 10000×1000/84 = 119,047 m²
     materials: [
-      { itemId: "ITM002", itemCode: "RM-FIL-1022", itemName: "LLDPE C4 GRADE FILM",       group: "Film", unit: "Kg", rate:  98, qty: 900, amount:  88200 },
-      { itemId: "ITM007", itemCode: "RM-INK-001",  itemName: "YELLOW INK SOLVENT BASED",  group: "Ink",  unit: "Kg", rate: 460, qty:  30, amount:  13800 },
-      { itemId: "ITM008", itemCode: "RM-INK-002",  itemName: "CYAN INK SOLVENT BASED",    group: "Ink",  unit: "Kg", rate: 490, qty:  28, amount:  13720 },
-      { itemId: "ITM010", itemCode: "RM-INK-004",  itemName: "BLACK INK SOLVENT BASED",   group: "Ink",  unit: "Kg", rate: 430, qty:  22, amount:   9460 },
-      { itemId: "ITM011", itemCode: "RM-CHM-001",  itemName: "PU ADHESIVE DRY BOND",      group: "Solvent", unit: "Kg", rate: 330, qty: 60, amount: 19800 },
+      { itemId: "ITM001", itemCode: "RM-FIL-PET12", itemName: "PET FILM 12 MICRON",        group: "Film",    unit: "Kg", rate: 320, qty: 1971, amount:  630720 },
+      { itemId: "ITM003", itemCode: "RM-FIL-NYL15", itemName: "NYLON BOPA 15 MICRON",      group: "Film",    unit: "Kg", rate: 450, qty: 2036, amount:  916200 },
+      { itemId: "ITM006", itemCode: "RM-FIL-MCP30", itemName: "MET CPP 30 MICRON",         group: "Film",    unit: "Kg", rate: 280, qty: 3214, amount:  899920 },
+      { itemId: "ITM007", itemCode: "RM-INK-001",   itemName: "YELLOW INK SOLVENT BASED",  group: "Ink",     unit: "Kg", rate: 460, qty:  295, amount:  135700 },
+      { itemId: "ITM008", itemCode: "RM-INK-002",   itemName: "CYAN INK SOLVENT BASED",    group: "Ink",     unit: "Kg", rate: 490, qty:  275, amount:  134750 },
+      { itemId: "ITM009", itemCode: "RM-INK-003",   itemName: "MAGENTA INK SOLVENT BASED", group: "Ink",     unit: "Kg", rate: 500, qty:  270, amount:  135000 },
+      { itemId: "ITM010", itemCode: "RM-INK-004",   itemName: "BLACK INK SOLVENT BASED",   group: "Ink",     unit: "Kg", rate: 430, qty:  310, amount:  133300 },
+      { itemId: "ITM014E",itemCode: "RM-INK-WHT",   itemName: "WHITE INK PU BASED",        group: "Ink",     unit: "Kg", rate: 555, qty:  595, amount:  330225 },
+      { itemId: "ITM014", itemCode: "RM-INK-RED",   itemName: "RED INK PU BASED",          group: "Ink",     unit: "Kg", rate: 535, qty:  130, amount:   69550 },
+      { itemId: "ITM015", itemCode: "RM-SOL-EA",    itemName: "ETHYL ACETATE (EA) GRADE",  group: "Solvent", unit: "Kg", rate:  65, qty:  298, amount:   19370 },
+      { itemId: "ITM019", itemCode: "RM-ADH-PUA",   itemName: "PU ADHESIVE 2K (PART A)",   group: "Adhesive",unit: "Kg", rate: 330, qty:  417, amount:  137610 },
+      { itemId: "ITM022", itemCode: "RM-ADH-PUB",   itemName: "PU HARDENER (PART B)",      group: "Hardner", unit: "Kg", rate: 395, qty:   83, amount:   32785 },
     ],
     processes: [
-      { processId: "PR003", processName: "6-Color Roto Printing", chargeUnit: "m²", rate: 2.00, qty: 63000,  setupCharge: 1200, amount: 127200 },
-      { processId: "PR007", processName: "Dry Bond Lamination",   chargeUnit: "m²", rate: 1.80, qty: 63000,  setupCharge: 0,    amount: 113400 },
-      { processId: "PR013", processName: "Slitting & Rewinding",  chargeUnit: "m",  rate: 0.60, qty: 150000, setupCharge: 0,    amount:  90000 },
+      { processId: "PR003", processName: "6-Color Roto Printing", chargeUnit: "m²", rate: 3.20, qty: 119047, setupCharge: 1500, amount: 381950 },
+      { processId: "PR007", processName: "Dry Bond Lamination",   chargeUnit: "m²", rate: 2.20, qty: 119047, setupCharge: 1000, amount: 262903 },
+      { processId: "PR007", processName: "Dry Bond Lamination 2", chargeUnit: "m²", rate: 2.00, qty: 119047, setupCharge:  800, amount: 238894 },
+      { processId: "PR013", processName: "Slitting & Rewinding",  chargeUnit: "m",  rate: 0.65, qty: 283445, setupCharge:    0, amount: 184239 },
     ],
     overheadPct: 12, profitPct: 15,
-    materialCost: 144980, processCost: 330600, cylinderCost: 0,
-    overheadAmt: 57069, profitAmt: 71336,
-    totalAmount: 603985, perMeterRate: 4.03, marginPct: 13.2,
+    labourCost: 18000, transportationCost: 15000, interestCost: 10000,
+    // Pre-computed summary (10,000 Kg Q1)
+    // sub = 3655355 + 1067986 + 21000 + 450 + 18000 + 15000 + 10000 = 4,787,791
+    // OH(12%) = 574,535  profitBase = 5,362,326  profit(15%) = 804,349  total = 6,166,675
+    materialCost: 3655130, processCost: 1067986, cylinderCost: 21000,
+    setupCost: 450,
+    overheadAmt: 574535, profitAmt: 804349,
+    totalAmount: 6166675, perMeterRate: 616.67, marginPct: 15.0,
+    contribution: 0, breakEvenQty: 0,
     secondaryLayers: [
       {
         id: "SL004", layerNo: 1, plyType: "Film", itemSubGroup: "PET FILM", density: 1.38, thickness: 12, gsm: 16.56,
+        filmRate: 320,
         consumableItems: [],
       },
       {
         id: "SL005", layerNo: 2, plyType: "Printing", itemSubGroup: "PET FILM", density: 1.38, thickness: 0, gsm: 0,
         consumableItems: [
-          // 6 colors: CMYK + White + Red
           { consumableId: "CI012", fieldDisplayName: "Yellow Ink",  itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM007", itemName: "YELLOW INK SOLVENT BASED",  gsm: 3.2, rate: 460, solidPct: 35, coveragePct: 70 },
           { consumableId: "CI013", fieldDisplayName: "Cyan Ink",    itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM008", itemName: "CYAN INK SOLVENT BASED",    gsm: 3.2, rate: 490, solidPct: 35, coveragePct: 65 },
           { consumableId: "CI014", fieldDisplayName: "Magenta Ink", itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM009", itemName: "MAGENTA INK SOLVENT BASED", gsm: 3.2, rate: 500, solidPct: 35, coveragePct: 65 },
           { consumableId: "CI015", fieldDisplayName: "Black Ink",   itemGroup: "Ink", itemSubGroup: "Solvent Based Ink", itemId: "ITM010", itemName: "BLACK INK SOLVENT BASED",   gsm: 3.5, rate: 430, solidPct: 35, coveragePct: 80 },
           { consumableId: "CI016", fieldDisplayName: "White Ink",   itemGroup: "Ink", itemSubGroup: "PU Ink",            itemId: "ITM014E",itemName: "WHITE INK PU BASED",         gsm: 5.0, rate: 555, solidPct: 45, coveragePct: 100 },
           { consumableId: "CI017", fieldDisplayName: "Red Ink",     itemGroup: "Ink", itemSubGroup: "PU Ink",            itemId: "ITM014", itemName: "RED INK PU BASED",           gsm: 3.2, rate: 535, solidPct: 40, coveragePct: 55 },
-          // Solvent
-          { consumableId: "CI018", fieldDisplayName: "Ethyl Acetate (Solvent)", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM015", itemName: "ETHYL ACETATE (EA) GRADE", gsm: 2.2, rate: 65 },
+          { consumableId: "CI018", fieldDisplayName: "Ethyl Acetate", itemGroup: "Solvent", itemSubGroup: "Ethyl Acetate (EA)", itemId: "ITM015", itemName: "ETHYL ACETATE (EA) GRADE", gsm: 2.5, rate: 65 },
         ],
       },
       {
-        id: "SL006", layerNo: 3, plyType: "Lamination", itemSubGroup: "LLDPE C4 GRADE", density: 0.92, thickness: 40, gsm: 36.8,
+        id: "SL006a", layerNo: 3, plyType: "Film", itemSubGroup: "NYLON BOPA FILM", density: 1.14, thickness: 15, gsm: 17.1,
+        filmRate: 450,
         consumableItems: [
           { consumableId: "CI019", fieldDisplayName: "PU Adhesive (Part A)", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM019", itemName: "PU ADHESIVE 2K (PART A)", gsm: 3.5, rate: 330, ohPct: 50 },
-          { consumableId: "CI020", fieldDisplayName: "PU Hardener (Part B)", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",  itemId: "ITM022", itemName: "PU HARDENER (PART B)",    gsm: 0.7, rate: 395, ncoPct: 12 },
+          { consumableId: "CI019b",fieldDisplayName: "PU Hardener (Part B)", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",  itemId: "ITM022", itemName: "PU HARDENER (PART B)",    gsm: 0.7, rate: 395, ncoPct: 12 },
+        ],
+      },
+      {
+        id: "SL006b", layerNo: 4, plyType: "Lamination", itemSubGroup: "MET CPP FILM", density: 0.90, thickness: 30, gsm: 27,
+        filmRate: 280,
+        consumableItems: [
+          { consumableId: "CI020", fieldDisplayName: "PU Adhesive (Part A)", itemGroup: "Adhesive", itemSubGroup: "PU Adhesive", itemId: "ITM019", itemName: "PU ADHESIVE 2K (PART A)", gsm: 3.5, rate: 330, ohPct: 50 },
+          { consumableId: "CI020b",fieldDisplayName: "PU Hardener (Part B)", itemGroup: "Hardner",  itemSubGroup: "PU Hardener",  itemId: "ITM022", itemName: "PU HARDENER (PART B)",    gsm: 0.7, rate: 395, ncoPct: 12 },
         ],
       },
     ],
     dryWeightRows: [], dryWeightTotal: 0,
-    repeatLength: 400, wastagePct: 1, setupTime: 20, machineCostPerHour: 1350,
-    minimumOrderValue: 40000, sellingPrice: 1.6, setupCost: 450, contribution: 0, breakEvenQty: 0,
-    status: "Sent", remarks: "Cylinder cost absorbed (existing set)",
+    repeatLength: 400, wastagePct: 1, setupTime: 20,
+    minimumOrderValue: 500000, sellingPrice: 620,
+    status: "Sent", remarks: "Premium 3-ply: PET/Nylon/Met-CPP. Price valid 30 days.",
+    packingBoxRate: 90, packingCoilsPerBox: 5, packingCoilWt: 20,
+    packingPlugsPerBox: 10, packingPlugRate: 2,
+    packingTapeRate: 40, packingTapeMetres: 10,
+    packingStretchFilmGm: 200, packingStretchFilmRate: 90,
   },
   {
     id: "GEST003", estimationNo: "GRV-EST-2024-003", date: "2024-03-14",

@@ -1,16 +1,17 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   ChevronRight, ChevronLeft, Plus, X, Save, FileText, Settings,
   Trash2, Edit, Search, Eye, Filter, Download, MoreHorizontal, Check,
   Calculator, Pencil, ArrowRight
 } from "lucide-react";
 import {
-  gravureEstimations as initData, customers, items, machines, processMasters,
+  items, machines, processMasters,
   GravureEstimation, GravureEstimationMaterial, GravureEstimationProcess,
   SecondaryLayer, DryWeightRow, PlyConsumableItem,
   CATEGORY_GROUP_SUBGROUP,
 } from "@/data/dummyData";
+import { apiGet, apiPost } from "@/lib/api";
 import { useCategories }     from "@/context/CategoriesContext";
 import { useEnquiries }      from "@/context/EnquiryContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
@@ -233,16 +234,83 @@ const FILM_SUBGROUPS = Array.from(
 });
 
 
+const API = "api/gravureestimationShrink";
+
+type ApiCustomer = { id: string; name: string };
+type ApiEstRow = Record<string, unknown>;
+
+function mapApiRowToEstimation(r: ApiEstRow): GravureEstimation {
+  return {
+    id: String(r.GrvEstimationID ?? ""),
+    estimationNo: String(r.GrvEstimationCode ?? ""),
+    date: String(r.GrvEstimationDate ?? "").slice(0, 10),
+    customerId: String(r.CustomerID ?? ""),
+    customerName: String(r.CustomerName ?? ""),
+    categoryId: String(r.CategoryID ?? ""),
+    categoryName: String(r.CategoryName ?? ""),
+    enquiryId: String(r.EnquiryID ?? ""),
+    enquiryNo: String(r.EnquiryNo ?? ""),
+    jobName: String(r.JobName ?? ""),
+    content: String(r.Content ?? ""),
+    jobWidth: Number(r.JobWidth ?? 0), jobHeight: Number(r.JobHeight ?? 0),
+    ups: 0, actualWidth: Number(r.ActualWidth ?? 0), actualHeight: Number(r.ActualHeight ?? 0),
+    substrateItemId: String(r.SubstrateItemId ?? ""), substrateName: String(r.SubstrateName ?? ""),
+    width: Number(r.Width ?? 0),
+    noOfColors: Number(r.NoOfColors ?? 0),
+    printType: (String(r.PrintType ?? "Surface Print")) as GravureEstimation["printType"],
+    quantity: Number(r.Quantity ?? 0), quantities: [], unit: String(r.Unit ?? "Meter"),
+    machineId: String(r.MachineID ?? ""), machineName: String(r.MachineName ?? ""),
+    cylinderCostPerColor: Number(r.CylinderCostPerColor ?? 3500),
+    repeatLength: Number(r.RepeatLength ?? 0),
+    wastagePct: Number(r.WastagePct ?? 1),
+    setupTime: Number(r.SetupTime ?? 0),
+    machineCostPerHour: Number(r.MachineCostPerHour ?? 1350),
+    minimumOrderValue: Number(r.MinimumOrderValue ?? 0),
+    sellingPrice: Number(r.SellingPrice ?? 0),
+    materials: [], processes: [], secondaryLayers: [], dryWeightRows: [], dryWeightTotal: 0,
+    overheadPct: Number(r.OverheadPct ?? 12), profitPct: Number(r.ProfitPct ?? 15),
+    materialCost: Number(r.MaterialCost ?? 0), processCost: Number(r.ProcessCost ?? 0),
+    cylinderCost: Number(r.CylinderCost ?? 0), setupCost: Number(r.SetupCost ?? 0),
+    overheadAmt: Number(r.OverheadAmt ?? 0), profitAmt: Number(r.ProfitAmt ?? 0),
+    totalAmount: Number(r.TotalAmount ?? 0), perMeterRate: Number(r.PerMeterRate ?? 0),
+    marginPct: Number(r.MarginPct ?? 0), contribution: Number(r.Contribution ?? 0),
+    breakEvenQty: Number(r.BreakEvenQty ?? 0),
+    status: (String(r.Status ?? "Draft")) as GravureEstimation["status"],
+    remarks: String(r.Remarks ?? ""),
+    salesPerson: String(r.SalesPerson ?? ""), salesType: String(r.SalesType ?? "Local"),
+    concernPerson: String(r.ConcernPerson ?? ""),
+  };
+}
+
 export default function GravureEstimationPage() {
   const { categories } = useCategories();   // ← live from Category Master
   const { enquiries: allEnquiries } = useEnquiries();  // ← live from Enquiry page
   const gravureEnqList = allEnquiries.filter(e => e.businessUnit === "Gravure");
-  const [data, setData]       = useState<GravureEstimation[]>(initData);
+  const [data, setData]       = useState<GravureEstimation[]>([]);
   const [modalOpen, setModal] = useState(false);
   const [viewRow, setViewRow] = useState<GravureEstimation | null>(null);
   const [editing, setEditing] = useState<GravureEstimation | null>(null);
   const [form, setForm]       = useState<typeof blank>({ ...blank });
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [apiCustomers, setApiCustomers] = useState<ApiCustomer[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Load estimation list + customer master from API on mount
+  useEffect(() => {
+    apiGet<ApiEstRow[]>(`${API}/getestimationlist`)
+      .then(rows => { if (Array.isArray(rows)) setData(rows.map(mapApiRowToEstimation)); })
+      .catch(() => {});
+    apiGet<{ LedgerID: string; LedgerName: string }[]>(`${API}/getcustomerlist`)
+      .then(rows => { if (Array.isArray(rows)) setApiCustomers(rows.map(r => ({ id: String(r.LedgerID), name: r.LedgerName }))); })
+      .catch(() => {});
+  }, []);
+
+  const refreshList = () => {
+    apiGet<ApiEstRow[]>(`${API}/getestimationlist`)
+      .then(rows => { if (Array.isArray(rows)) setData(rows.map(mapApiRowToEstimation)); })
+      .catch(() => {});
+  };
 
   const [showPlan, setShowPlan] = useState(false);
   const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
@@ -307,12 +375,69 @@ export default function GravureEstimationPage() {
     setPreviewCode(generateCode(UNIT_CODE.Gravure, MODULE_CODE.Estimation, data.map(d => d.estimationNo)));
     setModal(true);
   };
-  const openEdit = (row: GravureEstimation) => {
+  const openEdit = async (row: GravureEstimation) => {
     setEditing(row);
-    const { id, estimationNo, ...rest } = row;
-    setForm(rest);
     setActiveTab(1); setExtraQtys([]); setActiveQtyIdx(0);
+    setSaveError("");
     setModal(true);
+
+    // Start with data already in the list row
+    const { id, estimationNo, ...rest } = row;
+    setForm({ ...blank, ...rest });
+
+    // Load layers + processes from API
+    try {
+      type LayerRow = { GrvEstimationLayerID: string; LayerNo: number; PlyType: string; ItemSubGroup: string; Density: number; Thickness: number; GSM: number };
+      type ConsRow  = { GrvEstimationLayerConsumableID: string; FieldDisplayName: string; ItemGroup: string; ItemSubGroup: string; ItemId: string; ItemName: string; GSM: number; CoveragePct: number; Rate: number };
+      type ProcRow  = { ProcessID: string; ProcessName: string; ChargeUnit: string; Rate: number; Qty: number; SetupCharge: number; Amount: number };
+
+      const [layerRows, procRows] = await Promise.all([
+        apiGet<LayerRow[]>(`${API}/getlayersbyestimation/${row.id}`),
+        apiGet<ProcRow[]>(`${API}/getprocessesbyestimation/${row.id}`),
+      ]);
+
+      const builtLayers: SecondaryLayer[] = await Promise.all(
+        (Array.isArray(layerRows) ? layerRows : []).map(async lr => {
+          let consumableItems: PlyConsumableItem[] = [];
+          try {
+            const crs = await apiGet<ConsRow[]>(`${API}/getconsumablesbylayer/${lr.GrvEstimationLayerID}`);
+            consumableItems = (Array.isArray(crs) ? crs : []).map(c => ({
+              consumableId: String(c.GrvEstimationLayerConsumableID ?? Math.random()),
+              fieldDisplayName: c.FieldDisplayName ?? "",
+              itemGroup: c.ItemGroup ?? "",
+              itemSubGroup: c.ItemSubGroup ?? "",
+              itemId: String(c.ItemId ?? ""),
+              itemName: c.ItemName ?? "",
+              gsm: Number(c.GSM ?? 0),
+              coveragePct: Number(c.CoveragePct ?? 100),
+              rate: Number(c.Rate ?? 0),
+            }));
+          } catch {}
+          return {
+            id: String(lr.GrvEstimationLayerID),
+            layerNo: Number(lr.LayerNo ?? 0),
+            plyType: lr.PlyType ?? "",
+            itemSubGroup: lr.ItemSubGroup ?? "",
+            density: Number(lr.Density ?? 0),
+            thickness: Number(lr.Thickness ?? 0),
+            gsm: Number(lr.GSM ?? 0),
+            consumableItems,
+          };
+        })
+      );
+
+      const builtProcs: GravureEstimationProcess[] = (Array.isArray(procRows) ? procRows : []).map(pr => ({
+        processId: String(pr.ProcessID ?? ""),
+        processName: pr.ProcessName ?? "",
+        chargeUnit: pr.ChargeUnit ?? "",
+        rate: Number(pr.Rate ?? 0),
+        qty: Number(pr.Qty ?? 0),
+        setupCharge: Number(pr.SetupCharge ?? 0),
+        amount: Number(pr.Amount ?? 0),
+      }));
+
+      setForm(p => ({ ...p, secondaryLayers: builtLayers, processes: builtProcs }));
+    } catch {}
   };
 
   // ── Material row handlers ─────────────────────────────────
@@ -448,31 +573,34 @@ export default function GravureEstimationPage() {
   };
 
   // ── Save ─────────────────────────────────────────────────
-  const save = () => {
+  const save = async () => {
     if (!form.customerId || !form.jobName || !form.machineId) {
-      alert("Please fill required Basic Info & Machine."); return;
+      setSaveError("Please fill required fields: Customer, Job Name, Machine."); return;
     }
     if (form.secondaryLayers.length === 0) {
-      alert("Please configure Ply Details Composition."); return;
+      setSaveError("Please configure at least one Ply layer."); return;
     }
-    const substrateName = form.secondaryLayers.map(l => l.itemSubGroup).join(" + ") || "Multiple Plys";
-
-    if (editing) {
-      // Update single record — preserve quantities array
-      const quantities: number[] = [form.quantity, ...extraQtys.filter(q => q > 0)];
-      const record = { ...form, ...costs, substrateName, quantities };
-      setData(d => d.map(r => r.id === editing.id ? { ...record, id: editing.id, estimationNo: editing.estimationNo } : r));
-    } else {
-      // Save single record with all quantities stored inside
-      const quantities: number[] = [form.quantity, ...extraQtys.filter(q => q > 0)];
-      setData(prev => {
-        const estimationNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.Estimation, prev.map(d => d.estimationNo));
-        const id = `GVES${String(prev.length + 1).padStart(3, "0")}`;
-        return [...prev, { ...form, ...costs, substrateName, quantities, id, estimationNo }];
-      });
+    setSaving(true); setSaveError("");
+    const quantities = [form.quantity, ...extraQtys.filter(q => q > 0)];
+    const payload = {
+      ...form, ...costs, quantities,
+      secondaryLayers: form.secondaryLayers,
+      processes: form.processes,
+    };
+    try {
+      if (editing) {
+        await apiPost(`${API}/updateestimation`, { ...payload, estimationId: editing.id });
+      } else {
+        await apiPost(`${API}/saveestimation`, payload);
+      }
+      refreshList();
+      setModal(false);
+      setShowPlan(false);
+    } catch (err) {
+      setSaveError(String(err));
+    } finally {
+      setSaving(false);
     }
-    setModal(false);
-    setShowPlan(false);
   };
 
   // ── Stats ────────────────────────────────────────────────
@@ -659,8 +787,8 @@ export default function GravureEstimationPage() {
                        })
                        .filter((x): x is GravureEstimationProcess => x !== null);
 
-                     // Total colors from plan window (fallback to noOfColors)
-                     const totalColors = (enq.frontColors || 0) + (enq.backColors || 0) || enq.noOfColors;
+                     // Total colors from plan window
+                     const totalColors = enq.noOfColors || 0;
 
                      const cat = categories.find(c => c.id === enq.categoryId);
 
@@ -702,11 +830,11 @@ export default function GravureEstimationPage() {
                    label="Customer *"
                    value={form.customerId}
                    onChange={e => {
-                     const c = customers.find(x => x.id === e.target.value);
+                     const c = apiCustomers.find(x => x.id === e.target.value);
                      f("customerId", e.target.value);
                      if (c) f("customerName", c.name);
                    }}
-                   options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+                   options={[{ value: "", label: "-- Select Customer --" }, ...apiCustomers.map(c => ({ value: c.id, label: c.name }))]}
                  />
                  <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Job / carton description" />
                  <Select
@@ -1544,14 +1672,17 @@ export default function GravureEstimationPage() {
           <div>
             {activeTab > 1 && <Button variant="secondary" onClick={() => setActiveTab(activeTab - 1)}>Back</Button>}
           </div>
+          <div className="flex flex-col gap-2 flex-1">
+            {saveError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</p>}
+          </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
             {activeTab < 3 ? (
               <Button onClick={() => setActiveTab(activeTab + 1)}>Next</Button>
             ) : (
               <>
-                <Button icon={<Calculator size={14} />} onClick={save}>
-                  {editing ? "Update Estimation" : "Save Estimation"}
+                <Button icon={<Calculator size={14} />} onClick={save} disabled={saving}>
+                  {saving ? "Saving…" : (editing ? "Update Estimation" : "Save Estimation")}
                 </Button>
               </>
             )}
@@ -1748,7 +1879,11 @@ export default function GravureEstimationPage() {
         <p className="text-sm text-gray-600">Delete this estimation? This cannot be undone.</p>
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => { setData(d => d.filter(r => r.id !== deleteId)); setDeleteId(null); }}>Delete</Button>
+          <Button variant="danger" onClick={async () => {
+            if (!deleteId) return;
+            try { await apiGet(`${API}/deleteestimation/${deleteId}`); refreshList(); } catch {}
+            setDeleteId(null);
+          }}>Delete</Button>
         </div>
       </Modal>
 

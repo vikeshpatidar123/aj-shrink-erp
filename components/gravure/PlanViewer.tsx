@@ -51,7 +51,7 @@ const SH = ({ icon, label }: { icon: string; label: string }) => (
 );
 
 // ─── Main component ───────────────────────────────────────────
-export function PlanViewer({ plan }: { plan: PlanInput }) {
+export function PlanViewer({ plan, hideRunningMeterCalc }: { plan: PlanInput; hideRunningMeterCalc?: boolean }) {
   const {
     jobWidth, jobHeight, quantity, unit,
     secondaryLayers,
@@ -192,7 +192,7 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
       )}
 
       {/* ── 3. RUNNING METER CALCULATION ─────────────────────────── */}
-      <div>
+      {!hideRunningMeterCalc && <div>
         <SH icon="📏" label="3. Running Meter Calculation" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {([
@@ -214,7 +214,7 @@ export function PlanViewer({ plan }: { plan: PlanInput }) {
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
     </div>
   );

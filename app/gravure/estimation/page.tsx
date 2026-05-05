@@ -72,12 +72,24 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   wastagePct: 1,
   setupTime: 0,
   machineCostPerHour: 1350,
+  machineShiftHours: 8,
+  machineBaseCostPerHour: 1350,
   minimumOrderValue: 0,
   sellingPrice: 0,
   materials: [],
   processes: [],
   overheadPct: 12, profitPct: 15,
   labourCost: 0, transportationCost: 0, interestCost: 0,
+  loanAmount: 0, loanInterestRatePct: 12,
+  monthlyLabourSalary: 0, workingDaysPerMonth: 25,
+  jobRunHours: 0,
+  cylinderCostOverride: undefined as number | undefined,
+  setupCostOverride:    undefined as number | undefined,
+  packingCostOverride:  undefined as number | undefined,
+  packingBoxRate: 80, packingCoilsPerBox: 6, packingCoilWt: 15,
+  packingPlugsPerBox: 12, packingPlugRate: 2,
+  packingTapeRate: 40, packingTapeMetres: 10,
+  packingStretchFilmGm: 200, packingStretchFilmRate: 90,
   materialCost: 0, processCost: 0, cylinderCost: 0,
   setupCost: 0,
   overheadAmt: 0, profitAmt: 0,
@@ -111,12 +123,13 @@ const GROUP_COLORS: Record<string, string> = {
 
 // ─── Auto qty for a process based on its chargeUnit ──────────
 function autoProcessQty(chargeUnit: string, quantity: number, areaM2: number, noOfColors: number) {
-  if (chargeUnit === "m²")       return areaM2;
+  if (chargeUnit === "m²")       return quantity;
   if (chargeUnit === "m")        return quantity;
+  if (chargeUnit === "Kg")       return quantity;
   if (chargeUnit === "Cylinder") return noOfColors;
   if (chargeUnit === "1000 Pcs") return quantity / 1000;
   if (chargeUnit === "Job")      return 1;
-  return 0;
+  return 0; // unknown / custom → use manual p.qty
 }
 
 // ─── Cost calculator ──────────────────────────────────────────
@@ -147,44 +160,65 @@ function calcCosts(form: typeof blank) {
   // 2. Process cost: rate × qty + setupCharge
   const processCost = parseFloat(
     form.processes.reduce((s, p) => {
-      const qty = p.qty > 0 ? p.qty : autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors);
+      const autoQty = autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors);
+      const qty = autoQty > 0 ? autoQty : (p.qty || 0);
       return s + (p.rate * qty + p.setupCharge);
     }, 0).toFixed(2)
   );
 
-  // 3. Cylinder — always full cost (quotation assumes fresh production)
-  const cylinderCost = form.cylinderCostPerColor * form.noOfColors;
+  // 3. Cylinder — always full cost (quotation assumes fresh production); per-qty override supported
+  const cylinderCost = form.cylinderCostOverride !== undefined && form.cylinderCostOverride > 0
+    ? form.cylinderCostOverride
+    : form.cylinderCostPerColor * form.noOfColors;
 
-  // 4. Machine setup cost
-  const setupCost = form.setupTime > 0 && form.machineCostPerHour > 0
+  // 4. Machine setup cost; per-qty override supported
+  const setupCostCalc = form.setupTime > 0 && form.machineCostPerHour > 0
     ? parseFloat(((form.setupTime / 60) * form.machineCostPerHour).toFixed(2))
     : 0;
+  const setupCost = form.setupCostOverride !== undefined && form.setupCostOverride > 0
+    ? form.setupCostOverride
+    : setupCostCalc;
 
-  const labourCost       = form.labourCost       || 0;
+  const labourCost         = form.labourCost         || 0;
   const transportationCost = form.transportationCost || 0;
-  const interestCost     = form.interestCost     || 0;
+  const interestCost       = form.interestCost       || 0;
 
-  const sub         = materialCost + processCost + cylinderCost + setupCost + labourCost + transportationCost + interestCost;
+  // Packing cost (reference formula: box + plugs + tape + stretch film → ₹/kg → total)
+  const boxWt           = (form.packingCoilsPerBox || 0) * (form.packingCoilWt || 0);
+  const plugCostBox     = (form.packingPlugsPerBox || 0) * (form.packingPlugRate || 0);
+  const tapeRolls       = (form.packingTapeMetres || 0) / 130;
+  const tapeCostBox     = tapeRolls * (form.packingTapeRate || 0);
+  const sfCostBox       = ((form.packingStretchFilmGm || 0) / 1000) * (form.packingStretchFilmRate || 0);
+  const packPerBox      = (form.packingBoxRate || 0) + plugCostBox + tapeCostBox + sfCostBox;
+  const packingPerKg    = boxWt > 0 ? packPerBox / boxWt : 0;
+  const packingCostCalc = parseFloat((packingPerKg * form.quantity).toFixed(2));
+  const packingCost     = form.packingCostOverride !== undefined && form.packingCostOverride > 0
+    ? form.packingCostOverride
+    : packingCostCalc;
+
+  const sub         = materialCost + processCost + cylinderCost + setupCost + labourCost + transportationCost + interestCost + packingCost;
   const overheadAmt = parseFloat(((sub * form.overheadPct) / 100).toFixed(2));
   const profitBase  = sub + overheadAmt;
   const profitAmt   = parseFloat(((profitBase * form.profitPct) / 100).toFixed(2));
   let   totalAmount = parseFloat((profitBase + profitAmt).toFixed(2));
 
-  // 5. Minimum order value floor
-  if (form.minimumOrderValue > 0 && totalAmount < form.minimumOrderValue)
-    totalAmount = form.minimumOrderValue;
+  // 5. Minimum order qty floor — if actual qty < min order qty, rate is based on min qty
+  const effectiveQtyForRate = (form.minimumOrderValue > 0 && form.quantity > 0 && form.quantity < form.minimumOrderValue)
+    ? form.minimumOrderValue
+    : form.quantity;
 
-  const perMeterRate = form.quantity > 0 ? parseFloat((totalAmount / form.quantity).toFixed(4)) : 0;
+  const perMeterRate = effectiveQtyForRate > 0 ? parseFloat((totalAmount / effectiveQtyForRate).toFixed(4)) : 0;
+  const perMeterRateWithoutProfit = effectiveQtyForRate > 0 ? parseFloat(((totalAmount - profitAmt) / effectiveQtyForRate).toFixed(4)) : 0;
   const marginPct    = totalAmount > 0 ? parseFloat(((profitAmt / totalAmount) * 100).toFixed(1)) : 0;
 
   // 6. Contribution & break-even
   const variableCost   = form.quantity > 0 ? parseFloat(((materialCost + processCost) / form.quantity).toFixed(4)) : 0;
   const sellingPriceEff = form.sellingPrice > 0 ? form.sellingPrice : perMeterRate;
   const contribution   = parseFloat((sellingPriceEff - variableCost).toFixed(4));
-  const fixedCost      = cylinderCost + setupCost + overheadAmt + labourCost + transportationCost + interestCost;
+  const fixedCost      = cylinderCost + setupCost + overheadAmt + labourCost + transportationCost + interestCost + packingCost;
   const breakEvenQty   = contribution > 0 ? Math.ceil(fixedCost / contribution) : 0;
 
-  return { materialCost, processCost, cylinderCost, setupCost, labourCost, transportationCost, interestCost, overheadAmt, profitAmt, totalAmount, perMeterRate, marginPct, contribution, breakEvenQty };
+  return { materialCost, processCost, cylinderCost, setupCost, labourCost, transportationCost, interestCost, packingCost, packingPerKg, packPerBox, overheadAmt, profitAmt, totalAmount, perMeterRate, perMeterRateWithoutProfit, marginPct, contribution, breakEvenQty };
 }
 
 // ─── Detailed breakdown (for Tab 3 display) ──────────────────
@@ -225,7 +259,8 @@ function getCostBreakdown(form: typeof blank): { matLines: MatLine[]; procLines:
 
   // Processes
   form.processes.forEach(p => {
-    const qty    = p.qty > 0 ? p.qty : parseFloat(autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors).toFixed(2));
+    const _autoQty = autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors);
+    const qty      = parseFloat((_autoQty > 0 ? _autoQty : (p.qty || 0)).toFixed(2));
     const amount = parseFloat((p.rate * qty + p.setupCharge).toFixed(2));
     procLines.push({ name: p.processName || "—", chargeUnit: p.chargeUnit, qty, rate: p.rate, setupCharge: p.setupCharge, amount });
   });
@@ -329,11 +364,14 @@ export default function GravureEstimationPage() {
   const [qtyOverrides, setQtyOverrides] = useState<Array<{
     labourCost?: number; transportationCost?: number; interestCost?: number;
     overheadPct?: number; profitPct?: number;
+    cylinderCostOverride?: number; setupCostOverride?: number; packingCostOverride?: number;
   }>>([]);
-  const setQtyOverride = (qi: number, field: string, val: number) => {
+  const setQtyOverride = (qi: number, field: string, val: number | undefined) => {
     setQtyOverrides(prev => {
       const next = [...prev];
-      next[qi] = { ...(next[qi] ?? {}), [field]: val };
+      const entry = { ...(next[qi] ?? {}) };
+      if (val === undefined) { delete (entry as any)[field]; } else { (entry as any)[field] = val; }
+      next[qi] = entry;
       return next;
     });
   };
@@ -345,11 +383,14 @@ export default function GravureEstimationPage() {
     const ov = qtyOverrides[qi] ?? {};
     return calcCosts({
       ...form, quantity: qty,
-      labourCost:         ov.labourCost         ?? form.labourCost,
-      transportationCost: ov.transportationCost ?? form.transportationCost,
-      interestCost:       ov.interestCost       ?? form.interestCost,
-      overheadPct:        ov.overheadPct        ?? form.overheadPct,
-      profitPct:          ov.profitPct          ?? form.profitPct,
+      labourCost:           ov.labourCost           ?? form.labourCost,
+      transportationCost:   ov.transportationCost   ?? form.transportationCost,
+      interestCost:         ov.interestCost         ?? form.interestCost,
+      overheadPct:          ov.overheadPct          ?? form.overheadPct,
+      profitPct:            ov.profitPct            ?? form.profitPct,
+      cylinderCostOverride: ov.cylinderCostOverride,
+      setupCostOverride:    ov.setupCostOverride,
+      packingCostOverride:  ov.packingCostOverride,
     });
   }), [form, allQtys, qtyOverrides]);
   const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty })), [form, allQtys]);
@@ -799,10 +840,7 @@ export default function GravureEstimationPage() {
       } as any;
     }));
 
-    // Keep noOfColors in sync
-    if (inkList.length !== form.noOfColors) {
-      f("noOfColors", inkList.length);
-    }
+    // noOfColors is driven by frontColors + backColors — do NOT override from ink list
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.secondaryLayers, modalOpen]);
 
@@ -1075,7 +1113,7 @@ export default function GravureEstimationPage() {
   const addProcess = () =>
     setForm(p => ({
       ...p,
-      processes: [...p.processes, { processId: "", processName: "", chargeUnit: "", rate: 0, qty: 0, setupCharge: 0, amount: 0 }],
+      processes: [...p.processes, { processId: "", processName: "", chargeUnit: "", rate: 0, qty: 0, setupCharge: 0, amount: 0, machineId: "", machineName: "", runHours: 0, interestCost: 0, labourCost: 0 }],
     }));
 
   const removeProcess = (i: number) =>
@@ -1095,11 +1133,25 @@ export default function GravureEstimationPage() {
   const selectProcess = (i: number, processId: string) => {
     const pm = ROTO_PROCESSES.find(x => x.id === processId);
     if (!pm) return;
+    // For Printing processes: prefer the main machine already selected in Machine & Process section
+    // For others: auto-select if only 1 available, else first from list
+    let autoMachineId = pm.machineIds?.[0] || "";
+    if (pm.department === "Printing" && form.machineId && (pm.machineIds || []).includes(form.machineId)) {
+      autoMachineId = form.machineId;
+    }
+    const autoMachine = machines.find(m => m.id === autoMachineId);
     updateProcess(i, {
       processId: pm.id, processName: pm.name,
       chargeUnit: pm.chargeUnit, rate: parseFloat(pm.rate) || 0,
       setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0,
+      machineId:   autoMachineId,
+      machineName: autoMachine?.name || "",
     });
+  };
+
+  const updateProcessMachine = (i: number, machineId: string) => {
+    const m = machines.find(x => x.id === machineId);
+    updateProcess(i, { machineId, machineName: m?.name || "" });
   };
 
   // ── Category auto-load ────────────────────────────────
@@ -1309,8 +1361,7 @@ export default function GravureEstimationPage() {
           <div className="flex bg-gray-100 p-1.5 rounded-xl mb-3 shadow-inner gap-1 overflow-x-auto">
             <button onClick={() => setActiveTab(1)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 1 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">1. Basic Info</span><span className="sm:hidden">① Info</span></button>
             <button onClick={() => setActiveTab(2)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 2 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">2. View Plan (Production)</span><span className="sm:hidden">② Plan</span></button>
-            <button onClick={() => { setActiveTab(3); if (colorShades.length === 0) initEstPrepData(); }} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 3 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">3. Production Prep</span><span className="sm:hidden">③ Prep</span></button>
-            <button onClick={() => setActiveTab(4)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 4 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">4. Cost Estimation</span><span className="sm:hidden">④ Cost</span></button>
+            <button onClick={() => setActiveTab(4)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 4 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">3. Cost Estimation</span><span className="sm:hidden">③ Cost</span></button>
           </div>
         }
       >
@@ -2327,10 +2378,10 @@ export default function GravureEstimationPage() {
                                         {ci.itemGroup === "Ink" && (<>
                                           <div>
                                             <label className="text-[10px] font-semibold text-blue-600 uppercase block mb-1">Dry Ink GSM</label>
-                                            <input type="number" step={0.1} min={0} placeholder="GSM"
+                                            <input type="number" step="any" min={0} placeholder="GSM"
                                               className="w-full text-xs border border-blue-200 bg-blue-50 rounded-lg px-2 py-1.5 font-mono outline-none focus:ring-2 focus:ring-blue-400"
                                               value={ci.gsm || ""}
-                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: parseFloat(e.target.value) || 0 })} />
                                           </div>
                                           <div>
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
@@ -2574,23 +2625,68 @@ export default function GravureEstimationPage() {
             <div>
               <SectionHeader label="Machine & Process Selection" />
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3 md:col-span-2">
                   <Select label="Printing Machine (Machine Master)"
                     value={form.machineId}
                     onChange={e => {
                       const m = PRINT_MACHINES.find(x => x.id === e.target.value);
-                      setForm(p => ({
-                        ...p,
-                        machineId: e.target.value,
-                        machineName: m?.name || "",
-                        machineCostPerHour: parseFloat(m?.costPerHour as string) || p.machineCostPerHour,
-                      }));
+                      const baseRate = parseFloat(m?.costPerHour as string) || 1350;
+                      setForm(p => {
+                        const shiftHrs = p.machineShiftHours || 8;
+                        return {
+                          ...p,
+                          machineId: e.target.value,
+                          machineName: m?.name || "",
+                          machineBaseCostPerHour: baseRate,
+                          machineCostPerHour: parseFloat(((baseRate * 8) / shiftHrs).toFixed(2)),
+                        };
+                      });
                     }}
                     options={[{ value: "", label: "-- All Machines --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status}) – ₹${m.costPerHour}/hr` }))]}
                   />
                 </div>
-                <Input label="Machine Cost / Hr (₹)" type="number" value={form.machineCostPerHour}
-                  onChange={e => f("machineCostPerHour", Number(e.target.value))} />
+                {/* Shift Hours selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Machine Shift (hrs/day)</label>
+                  <div className="flex gap-1">
+                    {[8, 12, 24].map(h => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => {
+                          const base = form.machineBaseCostPerHour || form.machineCostPerHour || 1350;
+                          const effective = parseFloat(((base * 8) / h).toFixed(2));
+                          setForm(p => ({ ...p, machineShiftHours: h, machineCostPerHour: effective }));
+                        }}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
+                          (form.machineShiftHours || 8) === h
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow"
+                            : "bg-white border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600"
+                        }`}
+                      >
+                        {h}hr
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Effective machine cost info bar */}
+              <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px]">
+                <span className="font-bold text-indigo-700 uppercase tracking-wider">Machine Cost:</span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
+                  Shift: <strong>{form.machineShiftHours || 8} hrs/day</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
+                  Base Rate (8hr): <strong>₹{(form.machineBaseCostPerHour || form.machineCostPerHour || 0).toLocaleString()}/hr</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white border border-indigo-600 font-bold">
+                  Effective Rate: ₹{form.machineCostPerHour.toLocaleString()}/hr
+                </span>
+                {(form.machineShiftHours || 8) !== 8 && (
+                  <span className="text-indigo-500 text-[10px]">
+                    = ₹{form.machineBaseCostPerHour || form.machineCostPerHour} × 8 ÷ {form.machineShiftHours}
+                  </span>
+                )}
               </div>
 
               {/* Machine Specs bar */}
@@ -2642,7 +2738,7 @@ export default function GravureEstimationPage() {
                 )}
                 {form.setupTime > 0 && (
                   <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold">
-                    Setup Cost: ₹{((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)} ({form.setupTime} min × ₹{form.machineCostPerHour}/hr)
+                    Other Cost: ₹{((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)} ({form.setupTime} min × ₹{form.machineCostPerHour}/hr)
                   </span>
                 )}
               </div>
@@ -2668,32 +2764,51 @@ export default function GravureEstimationPage() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {["Process (Master)", "Charge Unit", "Rate (₹)", "Qty", "Setup (₹)", "Amount (₹)", ""].map(h => (
+                        {["Process (Master)", "Machine", "Charge Unit", "Rate (₹)", "Setup (₹)", "Amount (₹)", ""].map(h => (
                           <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {form.processes.map((pr, i) => (
+                      {form.processes.map((pr, i) => {
+                        const pm = ROTO_PROCESSES.find(x => x.id === pr.processId);
+                        const availMachines = machines.filter(m => (pm?.machineIds || []).includes(m.id));
+                        return (
                         <tr key={i} className="hover:bg-gray-50">
                           <td className="px-3 py-2 min-w-[200px]">
                             <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
                               <option value="">-- Select Process --</option>
-                              {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
+                              {ROTO_PROCESSES.map(p => <option key={p.id} value={p.id}>{p.name} ({p.department})</option>)}
                             </select>
+                          </td>
+                          <td className="px-3 py-2 min-w-[140px]">
+                            {availMachines.length > 0 ? (
+                              <select value={pr.machineId || ""} onChange={e => updateProcessMachine(i, e.target.value)} className={cellInput}>
+                                <option value="">-- Machine --</option>
+                                {availMachines.map(m => <option key={m.id} value={m.id}>{m.displayName || m.name}</option>)}
+                              </select>
+                            ) : (
+                              <span className="text-gray-400 text-[10px]">—</span>
+                            )}
                           </td>
                           <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
                           <td className="px-3 py-2 w-24"><input type="number" value={pr.rate} onChange={e => updateProcess(i, { rate: Number(e.target.value) })} className={`${cellInput} text-right`} step={0.01} /></td>
-                          <td className="px-3 py-2 w-24"><input type="number" value={pr.qty} onChange={e => updateProcess(i, { qty: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
                           <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                          <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">₹{pr.amount.toLocaleString()}</td>
+                          <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">
+                            {(() => {
+                              const aq2 = autoProcessQty(pr.chargeUnit, form.quantity, form.quantity * (form.jobWidth / 1000), form.noOfColors);
+                              const lq  = aq2 > 0 ? aq2 : (pr.qty || 0);
+                              return `₹${(lq * pr.rate + pr.setupCharge).toLocaleString()}`;
+                            })()}
+                          </td>
                           <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     <tfoot className="bg-purple-50 border-t border-purple-200">
                       <tr>
-                        <td colSpan={5} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Process Cost</td>
+                        <td colSpan={6} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Process Cost</td>
                         <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{costs.processCost.toLocaleString()}</td>
                         <td />
                       </tr>
@@ -2782,7 +2897,13 @@ export default function GravureEstimationPage() {
                       </p>
                     </div>
                     {selectedPlanId && (
-                      <Button onClick={() => setIsPlanApplied(true)} icon={<Check size={13} />}>Apply Selected Plan</Button>
+                      <Button onClick={() => {
+                        setIsPlanApplied(true);
+                        const plan = allPlans.find(p => p.planId === selectedPlanId);
+                        if (plan?.totalTime) {
+                          setForm(p => ({ ...p, jobRunHours: plan.totalTime }));
+                        }
+                      }} icon={<Check size={13} />}>Apply Selected Plan</Button>
                     )}
                   </div>
                   <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
@@ -3058,7 +3179,7 @@ export default function GravureEstimationPage() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-gray-50 text-gray-500 uppercase">
                       <tr>
-                        {["#", `Quantity (${form.unit})`, "Total Cost", "Rate/Mtr", ""].map(h => (
+                        {["#", `Quantity (${form.unit})`, "Total Cost", `Rate/${form.unit}`, ""].map(h => (
                           <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -3247,6 +3368,208 @@ export default function GravureEstimationPage() {
           </div>
           )}
 
+          {/* ── Loan & Labour Cost Calculator ──────────────────── */}
+          <div>
+            <SectionHeader label="Loan & Labour Cost" />
+            <div className="border border-blue-200 rounded-xl overflow-hidden bg-white">
+
+              {/* ── Machine-Wise Per-Process Section ── */}
+              <div className="px-4 py-2 bg-blue-50 border-b border-blue-100 flex items-center justify-between flex-wrap gap-1">
+                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Machine-Wise (Per Process)</p>
+                <span className="text-[10px] text-blue-400">
+                  {form.unit === "Kg"
+                    ? `Kg→m: Qty×10⁶ ÷ (GSM×Width) | Run hrs = Meters ÷ (Speed×60)${form.ups > 1 ? ` ÷ UPS(${form.ups})` : ""}`
+                    : `Run hrs = Qty ÷ (Speed×60)${form.ups > 1 ? ` ÷ UPS(${form.ups})` : ""}`
+                  } &nbsp;|&nbsp; Loan &amp; Labour from Machine Master
+                </span>
+              </div>
+              {(() => {
+                // ── Convert quantity to LINEAR METERS for run-hour calculation ──
+                // If unit = "Kg": need total GSM + job width to convert Kg → meters
+                //   meters = (Qty_Kg × 1,000,000) / (totalGSM_g_per_m2 × jobWidth_mm)
+                // If unit = "m" or "m²": use quantity directly as meters
+                const totalGSM = form.dryWeightTotal > 0
+                  ? form.dryWeightTotal
+                  : form.secondaryLayers.reduce((s, l) =>
+                      s + (l.gsm || 0) + l.consumableItems.reduce((cs, ci) => cs + (ci.gsm || 0), 0), 0);
+
+                const qtyInMeters = form.unit === "Kg" && totalGSM > 0 && form.jobWidth > 0
+                  ? (form.quantity * 1_000_000) / (totalGSM * form.jobWidth)
+                  : form.quantity;
+
+                // UPS considered: with UPS > 1 each web-repeat yields more pieces → fewer web-meters needed
+                const ups = form.ups && form.ups > 1 ? form.ups : 1;
+                const effectiveQty = qtyInMeters > 0 ? qtyInMeters / ups : 0;
+
+                // Build per-process rows
+                const rows = form.processes.map((pr, i) => {
+                  const mach = machines.find(m => m.id === pr.machineId);
+                  const loan    = parseFloat(mach?.loanAmount        || "0");
+                  const rate    = parseFloat(mach?.loanInterestRatePct || "12");
+                  const salary  = parseFloat(mach?.monthlyLabourSalary || "0");
+                  const days    = parseFloat(mach?.workingDaysPerMonth  || "25");
+                  const shift   = parseFloat(mach?.shiftHours           || "8");
+                  const annInt  = loan > 0 ? (loan * rate) / 100 : 0;
+                  const intPerHr = annInt > 0 ? annInt / (12 * days * shift) : 0;
+                  const labPerHr = salary > 0 ? salary / (days * shift) : 0;
+                  // Auto run hours from machine speed; manual pr.runHours overrides
+                  const machSpeed = parseFloat(mach?.speedMax || "0");
+                  const autoHrs   = machSpeed > 0 && effectiveQty > 0
+                    ? parseFloat((effectiveQty / (machSpeed * 60)).toFixed(2))
+                    : 0;
+                  const runHrs  = (pr.runHours && pr.runHours > 0) ? pr.runHours : autoHrs;
+                  const isAutoHrs = !(pr.runHours && pr.runHours > 0);
+                  const intCost = parseFloat((intPerHr * runHrs).toFixed(2));
+                  const labCost = parseFloat((labPerHr * runHrs).toFixed(2));
+                  return { i, pr, mach, loan, rate, salary, days, shift, annInt, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost };
+                });
+                const hasAnyMachine = rows.some(r => r.mach);
+                const totalInterest = parseFloat(rows.reduce((s, r) => s + r.intCost, 0).toFixed(2));
+                const totalLabour   = parseFloat(rows.reduce((s, r) => s + r.labCost, 0).toFixed(2));
+
+                return (
+                  <>
+                    {form.processes.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-gray-400">No processes added. Add processes above and assign machines to calculate costs.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-xs">
+                          <thead className="bg-gray-50 border-b border-gray-200">
+                            <tr>
+                              {["Process", "Machine", "Loan (₹)", "Int%", "Int/hr", "Salary ₹/mo", "Labour/hr", "Run Hrs (auto)", "→ Interest (₹)", "→ Labour (₹)"].map(h => (
+                                <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {rows.map(({ i, pr, mach, loan, rate, salary, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost }) => (
+                              <tr key={i} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap max-w-[160px] truncate">
+                                  {pr.processName || <span className="text-gray-400 italic">—</span>}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  {mach ? (
+                                    <div>
+                                      <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-indigo-700 font-medium text-[10px]">
+                                        {mach.displayName || mach.name}
+                                      </span>
+                                      {mach.speedMax && (
+                                        <div className="text-[9px] text-gray-400 mt-0.5">{mach.speedMax} m/min</div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-400 text-[10px] italic">No machine</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-gray-600">
+                                  {loan > 0 ? `₹${loan.toLocaleString("en-IN")}` : "—"}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-gray-600">
+                                  {mach?.loanInterestRatePct ? `${rate}%` : "—"}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-blue-700 font-semibold">
+                                  {intPerHr > 0 ? `₹${intPerHr.toFixed(2)}` : "—"}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-gray-600">
+                                  {salary > 0 ? `₹${salary.toLocaleString("en-IN")}` : "—"}
+                                </td>
+                                <td className="px-3 py-2 font-mono text-green-700 font-semibold">
+                                  {labPerHr > 0 ? `₹${labPerHr.toFixed(2)}` : "—"}
+                                </td>
+                                <td className="px-3 py-2 w-28">
+                                  <div className="relative">
+                                    <input
+                                      type="number" min={0} step={0.25}
+                                      placeholder={autoHrs > 0 ? `${autoHrs}` : "hrs"}
+                                      value={pr.runHours || ""}
+                                      onChange={e => updateProcess(i, { runHours: e.target.value === "" ? 0 : Number(e.target.value) })}
+                                      className={`w-full border rounded px-2 py-1 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400 ${isAutoHrs ? "border-blue-200 bg-blue-50 text-blue-700" : "border-gray-300"}`}
+                                    />
+                                    {isAutoHrs && autoHrs > 0 && (
+                                      <div className="text-center text-[9px] text-blue-500 mt-0.5 font-semibold">
+                                        AUTO: {autoHrs}h
+                                      </div>
+                                    )}
+                                    {isAutoHrs && autoHrs === 0 && !mach?.speedMax && (
+                                      <div className="text-center text-[9px] text-amber-500 mt-0.5">
+                                        No speed data
+                                      </div>
+                                    )}
+                                    {!isAutoHrs && (
+                                      <button
+                                        onClick={() => updateProcess(i, { runHours: 0 })}
+                                        className="text-[9px] text-gray-400 hover:text-blue-500 block w-full text-center mt-0.5"
+                                        title="Reset to auto"
+                                      >↺ reset auto</button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className={`px-2 py-1 rounded text-xs font-bold font-mono text-center ${intCost > 0 ? "bg-rose-50 border border-rose-200 text-rose-700" : "bg-gray-50 text-gray-400"}`}>
+                                    {intCost > 0 ? `₹${intCost.toLocaleString()}` : "—"}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <div className={`px-2 py-1 rounded text-xs font-bold font-mono text-center ${labCost > 0 ? "bg-lime-50 border border-lime-200 text-lime-700" : "bg-gray-50 text-gray-400"}`}>
+                                    {labCost > 0 ? `₹${labCost.toLocaleString()}` : "—"}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {hasAnyMachine && (
+                            <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+                              <tr>
+                                <td colSpan={8} className="px-3 py-2 text-xs font-bold text-gray-600 uppercase text-right">Total</td>
+                                <td className="px-3 py-2">
+                                  <span className="px-2 py-1 bg-rose-100 border border-rose-300 rounded text-xs font-bold text-rose-800 font-mono block text-center">
+                                    ₹{totalInterest.toLocaleString()}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2">
+                                  <span className="px-2 py-1 bg-lime-100 border border-lime-300 rounded text-xs font-bold text-lime-800 font-mono block text-center">
+                                    ₹{totalLabour.toLocaleString()}
+                                  </span>
+                                </td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    )}
+
+                    {/* Apply Machine-Wise button */}
+                    {hasAnyMachine && (
+                      <div className="p-3 bg-amber-50 border-t border-amber-100 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex flex-wrap gap-2 text-[11px]">
+                          {(form.interestCost || 0) > 0 && (
+                            <span className="px-2 py-1 bg-rose-50 border border-rose-200 rounded-full text-rose-700 font-semibold">
+                              Applied Interest: ₹{(form.interestCost || 0).toLocaleString()}
+                            </span>
+                          )}
+                          {(form.labourCost || 0) > 0 && (
+                            <span className="px-2 py-1 bg-lime-50 border border-lime-200 rounded-full text-lime-700 font-semibold">
+                              Applied Labour: ₹{(form.labourCost || 0).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={totalInterest === 0 && totalLabour === 0}
+                          onClick={() => setForm(p => ({ ...p, interestCost: totalInterest, labourCost: totalLabour }))}
+                          className="py-2 px-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition-colors whitespace-nowrap"
+                        >
+                          Apply All to Cost
+                        </button>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+
+            </div>
+          </div>
+
           {/* ── Section 4: Overhead, Profit & Advanced ────────── */}
           <div>
             <SectionHeader label="Overhead, Profit & Pricing" />
@@ -3256,15 +3579,119 @@ export default function GravureEstimationPage() {
               <Input label="Wastage %" type="number" step={0.1} value={form.wastagePct}
                 onChange={e => f("wastagePct", Number(e.target.value))}
                 placeholder="Default 1%" />
-              <Input label="Min. Order Value (₹)" type="number" value={form.minimumOrderValue || ""}
+              <Input label={`Min. Order Qty (${form.unit || "Kg"})`} type="number" value={form.minimumOrderValue || ""}
                 onChange={e => f("minimumOrderValue", Number(e.target.value))}
-                placeholder="Floor price" />
+                placeholder={`e.g. 500 ${form.unit || "Kg"}`} />
             </div>
-            {/* Selling price for contribution / break-even */}
-            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 border-t border-gray-100 pt-3">
-              <Input label="Selling Price (₹/Kg)" type="number" step={0.01} value={form.sellingPrice || ""}
-                onChange={e => f("sellingPrice", Number(e.target.value))}
-                placeholder="Optional — for break-even" />
+          </div>
+
+          {/* ── Packing Cost Breakup ──────────────────────────── */}
+          <div>
+            <SectionHeader label="Packing Cost Breakup" />
+            <div className="border border-orange-200 rounded-xl overflow-hidden bg-white">
+              {/* Box */}
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Box</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-gray-100">
+                <Input label="Box Rate (₹/box)" type="number" value={form.packingBoxRate ?? 80}
+                  onChange={e => f("packingBoxRate", Number(e.target.value))} />
+                <Input label="Coils / Box" type="number" value={form.packingCoilsPerBox ?? 6}
+                  onChange={e => f("packingCoilsPerBox", Number(e.target.value))} />
+                <Input label="Weight / Coil (kg)" type="number" step={0.1} value={form.packingCoilWt ?? 15}
+                  onChange={e => f("packingCoilWt", Number(e.target.value))} />
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Weight / Box</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-bold text-orange-700 font-mono">
+                    {((form.packingCoilsPerBox ?? 6) * (form.packingCoilWt ?? 15)).toFixed(1)} kg
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">BOX COST / BOX</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-bold text-orange-700 font-mono">
+                    ₹{(form.packingBoxRate ?? 80).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              {/* Core Plug */}
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Core Plug</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-gray-100">
+                <Input label="Plugs / Box" type="number" value={form.packingPlugsPerBox ?? 12}
+                  onChange={e => f("packingPlugsPerBox", Number(e.target.value))} />
+                <Input label="Plug Rate (₹/pcs)" type="number" step={0.1} value={form.packingPlugRate ?? 2}
+                  onChange={e => f("packingPlugRate", Number(e.target.value))} />
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Plug Cost / Box</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-mono font-bold text-orange-700">
+                    ₹{((form.packingPlugsPerBox ?? 12) * (form.packingPlugRate ?? 2)).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              {/* Tape */}
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Tape</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-gray-100">
+                <Input label="Tape Rate (₹/roll)" type="number" value={form.packingTapeRate ?? 40}
+                  onChange={e => f("packingTapeRate", Number(e.target.value))} />
+                <Input label="Tape Used / Box (m)" type="number" value={form.packingTapeMetres ?? 10}
+                  onChange={e => f("packingTapeMetres", Number(e.target.value))} />
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Rolls Used / Box</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-mono font-bold text-orange-700">
+                    {((form.packingTapeMetres ?? 10) / 130).toFixed(3)} rolls
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Tape Cost / Box</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-mono font-bold text-orange-700">
+                    ₹{(((form.packingTapeMetres ?? 10) / 130) * (form.packingTapeRate ?? 40)).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              {/* Stretch Film */}
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">Stretch Film</p>
+              </div>
+              <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 border-b border-gray-100">
+                <Input label="Stretch Film / Box (gm)" type="number" value={form.packingStretchFilmGm ?? 200}
+                  onChange={e => f("packingStretchFilmGm", Number(e.target.value))} />
+                <Input label="Stretch Film Rate (₹/kg)" type="number" value={form.packingStretchFilmRate ?? 90}
+                  onChange={e => f("packingStretchFilmRate", Number(e.target.value))} />
+                <div>
+                  <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">SF Cost / Box</p>
+                  <div className="px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg text-sm font-mono font-bold text-orange-700">
+                    ₹{(((form.packingStretchFilmGm ?? 200) / 1000) * (form.packingStretchFilmRate ?? 90)).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              {/* Summary */}
+              {(() => {
+                const boxWt = (form.packingCoilsPerBox ?? 6) * (form.packingCoilWt ?? 15);
+                const plugC = (form.packingPlugsPerBox ?? 12) * (form.packingPlugRate ?? 2);
+                const tapeC = ((form.packingTapeMetres ?? 10) / 130) * (form.packingTapeRate ?? 40);
+                const sfC   = ((form.packingStretchFilmGm ?? 200) / 1000) * (form.packingStretchFilmRate ?? 90);
+                const total = (form.packingBoxRate ?? 80) + plugC + tapeC + sfC;
+                const perKg = boxWt > 0 ? total / boxWt : 0;
+                return (
+                  <div className="p-4 grid grid-cols-2 gap-3 bg-orange-50/60">
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Packing Cost / Box</p>
+                      <div className="px-3 py-2.5 bg-white border-2 border-orange-300 rounded-xl text-base font-black text-orange-700 font-mono">
+                        ₹{total.toFixed(2)}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1">Packing Cost / kg</p>
+                      <div className="px-3 py-2.5 bg-white border-2 border-orange-400 rounded-xl text-base font-black text-orange-800 font-mono">
+                        ₹{perKg.toFixed(4)} / kg
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -3328,22 +3755,39 @@ export default function GravureEstimationPage() {
                     ) : null)}
                   </tr>
 
-                  {/* Cylinder Cost */}
-                  <tr className="hover:bg-indigo-50/30">
-                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Cylinder ({form.noOfColors}C)</td>
+                  {/* Cylinder Cost — editable per qty */}
+                  <tr className="bg-indigo-50/50">
+                    <td className="sticky left-0 z-10 bg-indigo-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-indigo-800">Cylinder ({form.noOfColors}C) (₹)</td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
-                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-indigo-700 font-semibold">
-                        ₹{(allCosts[qi]?.cylinderCost ?? 0).toLocaleString()}
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        <input
+                          type="number" min={0} step={1}
+                          placeholder={`₹${(form.cylinderCostPerColor * form.noOfColors).toLocaleString()}`}
+                          className="w-full text-right text-xs font-semibold text-indigo-800 bg-white border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                          value={qtyOverrides[qi]?.cylinderCostOverride || ""}
+                          onChange={e => setQtyOverride(qi, "cylinderCostOverride", !e.target.value || Number(e.target.value) === 0 ? undefined : Number(e.target.value))}
+                        />
                       </td>
                     ) : null)}
                   </tr>
 
-                  {/* Setup Cost */}
-                  <tr className="hover:bg-amber-50/30">
-                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Setup Cost</td>
+                  {/* Other Cost — editable per qty */}
+                  <tr className="bg-amber-50/50">
+                    <td className="sticky left-0 z-10 bg-amber-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-amber-800">Other Cost (₹)</td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
-                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-amber-700 font-semibold">
-                        ₹{(allCosts[qi]?.setupCost ?? 0).toLocaleString()}
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        {(() => {
+                          const autoSetup = form.setupTime > 0 ? parseFloat(((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)) : 0;
+                          return (
+                            <input
+                              type="number" min={0} step={1}
+                              placeholder={autoSetup > 0 ? `₹${autoSetup.toLocaleString()}` : "enter other cost →"}
+                              className="w-full text-right text-xs font-semibold text-amber-800 bg-white border border-amber-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                              value={qtyOverrides[qi]?.setupCostOverride || ""}
+                              onChange={e => setQtyOverride(qi, "setupCostOverride", !e.target.value || Number(e.target.value) === 0 ? undefined : Number(e.target.value))}
+                            />
+                          );
+                        })()}
                       </td>
                     ) : null)}
                   </tr>
@@ -3374,6 +3818,33 @@ export default function GravureEstimationPage() {
                           value={(qtyOverrides[qi]?.transportationCost ?? form.transportationCost) || ""}
                           onChange={e => setQtyOverride(qi, "transportationCost", Number(e.target.value))}
                         />
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Packing Cost — editable per qty */}
+                  <tr className="bg-orange-50/50">
+                    <td className="sticky left-0 z-10 bg-orange-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-orange-800">Packing Cost (₹)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
+                        {(() => {
+                          const computed = allCosts[qi]?.packingCost ?? 0;
+                          const hasOverride = qtyOverrides[qi]?.packingCostOverride !== undefined && (qtyOverrides[qi]?.packingCostOverride ?? 0) > 0;
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <input
+                                type="number" min={0} step={1}
+                                placeholder={computed > 0 ? `${computed.toLocaleString()}` : "fill packing details"}
+                                className="w-full text-right text-xs font-semibold text-orange-800 bg-white border border-orange-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                                value={qtyOverrides[qi]?.packingCostOverride || ""}
+                                onChange={e => setQtyOverride(qi, "packingCostOverride", !e.target.value || Number(e.target.value) === 0 ? undefined : Number(e.target.value))}
+                              />
+                              <span className={`text-[9px] text-right font-bold ${hasOverride ? "text-amber-600" : "text-orange-500"}`}>
+                                {hasOverride ? `auto: ₹${computed.toLocaleString()}` : `₹${computed.toLocaleString()} ✓`}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                     ) : null)}
                   </tr>
@@ -3449,6 +3920,18 @@ export default function GravureEstimationPage() {
                     ) : null)}
                   </tr>
 
+                  {/* TOTAL WITHOUT PROFIT */}
+                  <tr className="bg-blue-50">
+                    <td className="sticky left-0 z-10 bg-blue-50 border-b border-r-2 border-gray-200 px-3 py-2 font-bold text-blue-700 text-[11px] uppercase tracking-wide">
+                      Total (Without Profit)
+                    </td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-blue-100 px-3 py-2 text-right font-bold text-blue-800 text-sm">
+                        ₹{((allCosts[qi]?.totalAmount ?? 0) - (allCosts[qi]?.profitAmt ?? 0)).toLocaleString()}
+                      </td>
+                    ) : null)}
+                  </tr>
+
                   {/* TOTAL AMOUNT */}
                   <tr className="bg-purple-100">
                     <td className="sticky left-0 z-10 bg-purple-100 border-b-2 border-r-2 border-purple-300 px-3 py-2.5 font-black text-purple-800 uppercase text-[11px] tracking-wide">
@@ -3457,8 +3940,8 @@ export default function GravureEstimationPage() {
                     {allQtys.map((qty, qi) => qty > 0 ? (
                       <td key={qi} className={`border-b-2 border-r border-purple-200 px-3 py-2.5 text-right font-black text-lg ${qi === 0 ? "text-purple-800" : "text-blue-800"}`}>
                         ₹{(allCosts[qi]?.totalAmount ?? 0).toLocaleString()}
-                        {form.minimumOrderValue > 0 && (allCosts[qi]?.totalAmount ?? 0) <= form.minimumOrderValue && (
-                          <span className="block text-[9px] text-amber-700 font-bold">MOV</span>
+                        {form.minimumOrderValue > 0 && allQtys[qi] > 0 && allQtys[qi] < form.minimumOrderValue && (
+                          <span className="block text-[9px] text-amber-700 font-bold">Min.Qty: {form.minimumOrderValue} {form.unit}</span>
                         )}
                       </td>
                     ) : null)}
@@ -3466,10 +3949,20 @@ export default function GravureEstimationPage() {
 
                   {/* Rate / Unit */}
                   <tr className="hover:bg-gray-50">
-                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Rate / Kg</td>
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-gray-700">Rate / {form.unit}</td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
                       <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-gray-800 font-bold">
                         ₹{allCosts[qi]?.perMeterRate ?? "—"}
+                      </td>
+                    ) : null)}
+                  </tr>
+
+                  {/* Rate / Unit Without Profit */}
+                  <tr className="hover:bg-blue-50/30">
+                    <td className="sticky left-0 z-10 bg-white border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-blue-700">Rate / {form.unit} (W/o Profit)</td>
+                    {allQtys.map((qty, qi) => qty > 0 ? (
+                      <td key={qi} className="border-b border-r border-gray-100 px-3 py-1.5 text-right text-blue-700 font-bold">
+                        ₹{allCosts[qi]?.perMeterRateWithoutProfit ?? "—"}
                       </td>
                     ) : null)}
                   </tr>
@@ -3502,21 +3995,9 @@ export default function GravureEstimationPage() {
             </div>
           )}
 
-          {/* TAB 3: PRODUCTION PREP */}
-          {activeTab === 3 && (
-            <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {/* Sub-tab bar */}
-              <div className="flex overflow-x-auto bg-gray-100 p-1 rounded-xl gap-1">
-                {([{ key: "shade", label: "Color Shade & LAB" }, { key: "cylinder", label: "Cylinder Master" }] as const).map(t => (
-                  <button key={t.key} onClick={() => setPrepTab(t.key)}
-                    className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap ${prepTab === t.key ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+          {/* TAB 3 removed */}
 
-              {/* ── Color Shade & LAB sub-tab ── */}
-              {prepTab === "shade" && (
+          {false && (
                 <div className="space-y-3">
                   <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 flex items-start gap-2">
                     <Palette size={14} className="text-purple-600 mt-0.5 flex-shrink-0" />
@@ -3858,19 +4339,17 @@ export default function GravureEstimationPage() {
                   </div>
                 );
               })()}
-            </div>
-          )}
 
         </div>
 
         <div className="flex justify-between items-center mt-6 pt-6 border-t border-gray-200">
           <div>
-            {activeTab > 1 && <Button variant="secondary" onClick={() => setActiveTab(activeTab - 1)}>Back</Button>}
+            {activeTab > 1 && <Button variant="secondary" onClick={() => setActiveTab(activeTab === 4 ? 2 : activeTab - 1)}>Back</Button>}
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
             {activeTab < 4 ? (
-              <Button onClick={() => { setActiveTab(activeTab + 1); if (activeTab + 1 === 3 && colorShades.length === 0) initEstPrepData(); }}>Next</Button>
+              <Button onClick={() => { const next = activeTab === 2 ? 4 : activeTab + 1; setActiveTab(next); }}>Next</Button>
             ) : (
               <>
                 <Button icon={<Calculator size={14} />} onClick={save}>
@@ -4300,11 +4779,14 @@ export default function GravureEstimationPage() {
                   { label: "Material Cost",   val: `₹${viewRow.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200" },
                   { label: "Process Cost",    val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200" },
                   { label: `Cylinder (${viewRow.noOfColors}C × ₹${viewRow.cylinderCostPerColor})`, val: `₹${viewRow.cylinderCost.toLocaleString()}`, cls: "bg-indigo-50 border-indigo-200" },
-                  { label: "Setup Cost",      val: `₹${(viewRow.setupCost || 0).toLocaleString()}`, cls: "bg-amber-50 border-amber-200" },
+                  { label: "Other Cost",       val: `₹${(viewRow.setupCost || 0).toLocaleString()}`, cls: "bg-amber-50 border-amber-200" },
+                  { label: "Packing Cost",    val: `₹${(viewRow.packingCost ?? calcCosts(viewRow).packingCost ?? 0).toLocaleString()}`, cls: "bg-orange-50 border-orange-200" },
                   { label: `Overhead (${viewRow.overheadPct}%)`, val: `₹${viewRow.overheadAmt.toLocaleString()}`, cls: "bg-yellow-50 border-yellow-200" },
                   { label: `Profit (${viewRow.profitPct}%)`, val: `₹${viewRow.profitAmt.toLocaleString()}`, cls: "bg-green-50 border-green-200" },
+                  { label: "Total (Without Profit)", val: `₹${(viewRow.totalAmount - viewRow.profitAmt).toLocaleString()}`, cls: "bg-blue-50 border-blue-300" },
                   { label: "Total Amount",    val: `₹${viewRow.totalAmount.toLocaleString()}`,   cls: "bg-white border-2 border-purple-400" },
-                  { label: "Rate / Kg",        val: `₹${viewRow.perMeterRate}`,                   cls: "bg-gray-50 border-gray-200" },
+                  { label: `Rate / ${viewRow.unit || "unit"}`, val: `₹${viewRow.perMeterRate}`, cls: "bg-gray-50 border-gray-200" },
+                  { label: `Rate / ${viewRow.unit || "unit"} (W/o Profit)`, val: `₹${viewRow.perMeterRateWithoutProfit ?? ((viewRow.totalAmount - viewRow.profitAmt) / (viewRow.quantity || 1)).toFixed(4)}`, cls: "bg-blue-50 border-blue-200" },
                   { label: "Break-even Qty",  val: viewRow.breakEvenQty > 0 ? `${viewRow.breakEvenQty.toLocaleString()} ${viewRow.unit}` : "—", cls: "bg-orange-50 border-orange-200" },
                 ].map(s => (
                   <div key={s.label} className={`rounded-xl border p-3 ${s.cls}`}>
@@ -4663,7 +5145,7 @@ export default function GravureEstimationPage() {
                             ["Material Cost",                 S(est.materialCost)],
                             ["Process Cost",                  S(est.processCost)],
                             [`Cylinder Cost (${est.noOfColors}C × ₹${est.cylinderCostPerColor})`, S(est.cylinderCost)],
-                            ["Setup Cost",                    S(est.setupCost || 0)],
+                            ["Other Cost",                    S(est.setupCost || 0)],
                           ].map(([k, v]) => (
                             <td key={k} style={{ padding: "5px 8px", border: "1px solid #e5e7eb", width: "25%" }}>
                               <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
@@ -4676,16 +5158,21 @@ export default function GravureEstimationPage() {
                             [`Overhead (${est.overheadPct}%)`, S(est.overheadAmt)],
                             [`Profit (${est.profitPct}%)`,     S(est.profitAmt)],
                             ["Rate / Kg",                      `₹${est.perMeterRate}`],
+                            ["Rate / Kg (W/o Profit)",         `₹${est.perMeterRateWithoutProfit ?? ((est.totalAmount - est.profitAmt) / (est.quantity || 1)).toFixed(4)}`],
                             ["Margin %",                       `${est.marginPct?.toFixed(1) ?? "—"}%`],
                           ].map(([k, v]) => (
-                            <td key={k} style={{ padding: "5px 8px", border: "1px solid #e5e7eb", width: "25%" }}>
+                            <td key={k} style={{ padding: "5px 8px", border: "1px solid #e5e7eb", width: "20%" }}>
                               <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
                               <div style={{ fontWeight: "700", fontSize: "9.5pt" }}>{v}</div>
                             </td>
                           ))}
                         </tr>
                         <tr style={{ background: "#f0f4ff" }}>
-                          <td colSpan={2} style={{ padding: "8px", border: "2px solid #1e3a8a", textAlign: "center" }}>
+                          <td colSpan={1} style={{ padding: "8px", border: "1px solid #bfdbfe", textAlign: "center", background: "#eff6ff" }}>
+                            <div style={{ fontSize: "7pt", color: "#3b82f6", fontWeight: "700", textTransform: "uppercase" }}>Total (Without Profit)</div>
+                            <div style={{ fontWeight: "800", fontSize: "11pt", color: "#1d4ed8" }}>{S(est.totalAmount - est.profitAmt)}</div>
+                          </td>
+                          <td colSpan={1} style={{ padding: "8px", border: "2px solid #1e3a8a", textAlign: "center" }}>
                             <div style={{ fontSize: "7pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>Total Amount</div>
                             <div style={{ fontWeight: "900", fontSize: "14pt", color: "#1e3a8a" }}>{S(est.totalAmount)}</div>
                           </td>

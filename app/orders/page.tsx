@@ -34,7 +34,7 @@ type CombinedOrder = {
   quantity: number; unit: string;
   deliveryDate: string;
   totalAmount: number; advancePaid: number;
-  status: "Confirmed" | "In Production" | "Ready" | "Dispatched";
+  status: "Confirmed" | "In Production" | "Ready" | "Dispatched" | "Hold";
 };
 
 // ─── Converters ──────────────────────────────────────────────────────────────

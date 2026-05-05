@@ -1,29 +1,32 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import {
   Check, ChevronLeft, Save, AlertCircle, CheckCircle2,
   RefreshCw, Wrench,
 } from "lucide-react";
-import { hsnMasters, ledgers } from "@/data/dummyData";
+import { useMasters } from "@/context/MastersContext";
+import { apiPost, apiGet } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type ColorTab = {
-  colorNo:      number;
-  colorName:    string;
-  cylinderCode: string;
-  cylinderName: string;
-  vendor:       string;
-  hsnCode:      string;
-  hsnDesc:      string;
-  purchaseRate: string;
-  numOfRepeat:  string;
-  estLife:      string;
-  remarks:      string;
-  status:       "Pending" | "Ordered" | "Available";
+  colorNo:        number;
+  colorName:      string;
+  cylinderCode:   string;
+  cylinderName:   string;
+  vendor:         string;
+  vendorLedgerID: string;
+  hsnCode:        string;
+  hsnId:          string;
+  hsnDesc:        string;
+  purchaseRate:   string;
+  numOfRepeat:    string;
+  estLife:        string;
+  remarks:        string;
+  status:         "Pending" | "Ordered" | "Available";
 };
 
 type PrefillData = {
+  productMasterId?: string;
   productCode:    string;
   productName:    string;
   customerName:   string;
@@ -32,6 +35,7 @@ type PrefillData = {
   printWidth:     string;
   repeatUPS:      number;
   colors:         string[];
+  colorNos?:      number[];
   // plan details
   totalUPS?:      number;
   filmSize?:      string;
@@ -46,16 +50,6 @@ type PrefillData = {
   jobHeight?:     string;
 };
 
-// ── Constants ────────────────────────────────────────────────────────────────
-const VENDOR_LEDGERS = ledgers.filter(
-  l => (l.ledgerType === "Supplier" || l.ledgerType === "Vendor") && l.status === "Active",
-);
-
-const CYLINDER_HSN = hsnMasters.filter(h =>
-  ["8441", "8442", "8443"].includes(h.hsnCode),
-);
-// Fallback to all if no cylinder-specific HSN found
-const HSN_LIST = CYLINDER_HSN.length > 0 ? CYLINDER_HSN : hsnMasters;
 
 // ── Styles ───────────────────────────────────────────────────────────────────
 const inp  = "w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:bg-white focus:border-purple-400 outline-none focus:ring-2 focus:ring-purple-200 transition-all text-gray-800";
@@ -77,42 +71,91 @@ const SH = ({ label, sub }: { label: string; sub?: string }) => (
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function CreateCylindersPage() {
-  const router = useRouter();
+  const { vendorLedgers } = useMasters();
+  const VENDOR_LEDGERS = vendorLedgers.filter(v =>
+    v.LedgerGroupName?.toLowerCase().includes("sundry creditor") ||
+    v.LedgerGroupName?.toLowerCase().includes("vendor") ||
+    v.LedgerGroupName?.toLowerCase().includes("supplier")
+  );
 
   const [prefill, setPrefill]         = useState<PrefillData | null>(null);
   const [tabs, setTabs]               = useState<ColorTab[]>([]);
   const [activeTab, setActiveTab]     = useState(0);
   const [saved, setSaved]             = useState(false);
+  const [saving, setSaving]           = useState(false);
   const [submitAttempted, setSubmit]  = useState(false);
   const [errors, setErrors]           = useState<Record<number, string[]>>({});
+  const [hsnList, setHsnList]         = useState<{ id: string; hsnCode: string; description: string; gstRate: number }[]>([]);
 
-  // ── Read localStorage on mount ───────────────────────────────────────────
+  useEffect(() => {
+    apiGet<any[]>("api/productcataloggravureShrink/gethsnlist").then(rows => {
+      const arr = Array.isArray(rows) ? rows : [];
+      setHsnList(arr.map((h: any) => ({
+        id:          String(h.ProductHSNID ?? ""),
+        hsnCode:     String(h.HSNCode ?? ""),
+        description: h.DisplayName || h.ProductHSNName || "",
+        gstRate:     Number(h.GSTTaxPercentage ?? 0),
+      })));
+    }).catch(() => {});
+  }, []);
+
+  // ── Read localStorage on mount + fetch next unique cylinder code ─────────
   useEffect(() => {
     const raw = localStorage.getItem("ajsw_cylinder_prefill");
     if (!raw) return;
-    try {
-      const data: PrefillData = JSON.parse(raw);
-      setPrefill(data);
+    let parsedData: PrefillData | null = null;
+    try { parsedData = JSON.parse(raw); } catch { return; }
+    if (!parsedData) return;
+    setPrefill(parsedData);
 
-      const initial: ColorTab[] = Array.from({ length: data.noOfColors }, (_, i) => {
-        const colorName = data.colors?.[i] || `Color ${i + 1}`;
+    // Fetch the next unique CUC-NNN code from ToolMaster before building rows
+    apiGet<any>("api/productcataloggravureShrink/getnextcylindercode").then(resp => {
+      const arr = Array.isArray(resp) ? resp : [resp];
+      const nextNo: number = arr[0]?.NextNo ?? 1;
+
+      const initial: ColorTab[] = Array.from({ length: parsedData!.noOfColors }, (_, i) => {
+        const colorName = parsedData!.colors?.[i] || `Color ${i + 1}`;
         return {
-          colorNo:      i + 1,
+          colorNo:        i + 1,
           colorName,
-          cylinderCode: `CUC-${String(i + 1).padStart(3, "0")}`,
-          cylinderName: `${data.productName} — ${colorName}`,
-          vendor:       "",
-          hsnCode:      "",
-          hsnDesc:      "",
-          purchaseRate: "",
-          numOfRepeat:  String(data.repeatUPS),
-          estLife:      "25000",
-          remarks:      "",
-          status:       "Pending",
+          cylinderCode:   `CUC-${String(nextNo + i).padStart(3, "0")}`,
+          cylinderName:   `${parsedData!.productName} — ${colorName}`,
+          vendor:         "",
+          vendorLedgerID: "",
+          hsnCode:        "",
+          hsnId:          "",
+          hsnDesc:        "",
+          purchaseRate:   "",
+          numOfRepeat:    String(parsedData!.repeatUPS),
+          estLife:        "25000",
+          remarks:        "",
+          status:         "Pending",
         };
       });
       setTabs(initial);
-    } catch { /* ignore */ }
+    }).catch(() => {
+      // Fallback: use sequential codes if API fails
+      const initial: ColorTab[] = Array.from({ length: parsedData!.noOfColors }, (_, i) => {
+        const colorName = parsedData!.colors?.[i] || `Color ${i + 1}`;
+        return {
+          colorNo:        i + 1,
+          colorName,
+          cylinderCode:   `CUC-${String(i + 1).padStart(3, "0")}`,
+          cylinderName:   `${parsedData!.productName} — ${colorName}`,
+          vendor:         "",
+          vendorLedgerID: "",
+          hsnCode:        "",
+          hsnId:          "",
+          hsnDesc:        "",
+          purchaseRate:   "",
+          numOfRepeat:    String(parsedData!.repeatUPS),
+          estLife:        "25000",
+          remarks:        "",
+          status:         "Pending",
+        };
+      });
+      setTabs(initial);
+    });
   }, []);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -138,29 +181,64 @@ export default function CreateCylindersPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     setSubmit(true);
     if (!validate() || !prefill) return;
+    setSaving(true);
+    try {
+      const circ   = parseFloat(prefill.circumference) || 0;
+      const printW = parseFloat(prefill.printWidth) || 0;
 
-    const existing: any[] = JSON.parse(
-      localStorage.getItem("ajsw_cylinders_created") || "[]",
-    );
-    const newEntries = tabs.map(t => ({
-      ...t,
-      productCode:   prefill.productCode,
-      productName:   prefill.productName,
-      circumference: prefill.circumference,
-      printWidth:    prefill.printWidth,
-      repeatUPS:     prefill.repeatUPS,
-      createdAt:     new Date().toISOString(),
-    }));
-    // Replace old entries for same productCode
-    const filtered = existing.filter((e: any) => e.productCode !== prefill.productCode);
-    localStorage.setItem(
-      "ajsw_cylinders_created",
-      JSON.stringify([...filtered, ...newEntries]),
-    );
-    setSaved(true);
+      const payload = {
+        ProductMasterID:         prefill.productMasterId || "",
+        ProductMasterCode:       prefill.productCode || "",
+        ProductMasterContentsID: "",
+        ToolGroupID:             "",
+        Prefix:                  "CYL",
+        CylinderType:            "New",
+        Circumference:           circ,
+        CylinderLength:          printW,
+        PrintWidth:              printW,
+        RepeatUPS:               prefill.repeatUPS,
+        TotalNoOfColors:         tabs.length,
+        CylinderPrintingArea:    0,
+        TotalNonPrintingArea:    0,
+        EstimatedLifeMeters:     parseFloat(tabs[0]?.estLife || "25000") || 25000,
+        PlanCylCode:             "",
+        Cylinders: tabs.map((t, i) => ({
+          colorSequenceNo: prefill.colorNos?.[i] ?? (i + 1),
+          colorName:       t.colorName,
+          cylinderCode:    t.cylinderCode,
+          cylinderName:    t.cylinderName,
+          vendorLedgerID:  t.vendorLedgerID || "",
+          vendorName:      t.vendor || "",
+          hsnID:           t.hsnId || "0",
+          purchaseRate:    parseFloat(t.purchaseRate) || 0,
+          remarks:         t.remarks || "",
+        })),
+      };
+
+      const resp = await apiPost<any>("api/productcataloggravureShrink/saveallcylinders", payload);
+      const r = Array.isArray(resp) ? resp[0] : resp;
+
+      if (r?.Status === "success") {
+        const savedTools: { ToolID: string; ToolCode: string; ColorSeq: number }[] = r.SavedTools ?? [];
+        const results = savedTools.map(st => ({
+          colorNo:      st.ColorSeq,
+          CylinderID:   String(st.ToolID),
+          CylinderCode: st.ToolCode,
+        }));
+        localStorage.setItem("ajsw_cylinders_created_api", JSON.stringify(results));
+        setSaved(true);
+      } else {
+        const errDetail = r?.Message || (typeof r === "string" ? r.slice(0, 300) : JSON.stringify(r));
+        alert("Save failed: " + (errDetail || "No error detail — check browser Network tab"));
+      }
+    } catch (e: any) {
+      alert("Error saving cylinders: " + (e?.message ?? String(e)));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const readyCnt = tabs.filter(
@@ -178,9 +256,9 @@ export default function CreateCylindersPage() {
           Product Catalog → Replan → Production Prep → Cylinder Master tab.
         </p>
         <button
-          onClick={() => router.push("/gravure/product-catalog")}
+          onClick={() => window.close()}
           className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition">
-          <ChevronLeft size={14} /> Go to Product Catalog
+          <ChevronLeft size={14} /> Close Tab
         </button>
       </div>
     );
@@ -232,9 +310,9 @@ export default function CreateCylindersPage() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => router.push("/gravure/product-catalog")}
+            onClick={() => { localStorage.removeItem("ajsw_cylinder_prefill"); window.close(); }}
             className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-xl transition">
-            ← Back to Product Catalog
+            ← Close & Return to Catalog
           </button>
           <button
             onClick={() => setSaved(false)}
@@ -255,7 +333,7 @@ export default function CreateCylindersPage() {
       {/* ── Header ── */}
       <div className="flex items-center gap-3">
         <button
-          onClick={() => router.push("/gravure/product-catalog")}
+          onClick={() => window.close()}
           className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
           <ChevronLeft size={14} /> Back to Catalog
         </button>
@@ -327,11 +405,12 @@ export default function CreateCylindersPage() {
           <Label>Vendor / Engraver</Label>
           <select className={inp} defaultValue=""
             onChange={e => {
-              if (e.target.value) applyToAll({ vendor: e.target.value });
+              const v = VENDOR_LEDGERS.find(l => l.LedgerID === e.target.value);
+              if (v) applyToAll({ vendor: v.LedgerName, vendorLedgerID: v.LedgerID });
             }}>
             <option value="">-- Select to apply all --</option>
             {VENDOR_LEDGERS.map(l => (
-              <option key={l.id} value={l.name}>{l.name}</option>
+              <option key={l.LedgerID} value={l.LedgerID}>{l.LedgerName}</option>
             ))}
           </select>
         </div>
@@ -341,11 +420,11 @@ export default function CreateCylindersPage() {
           <select className={inp} defaultValue=""
             onChange={e => {
               if (!e.target.value) return;
-              const h = hsnMasters.find(x => x.hsnCode === e.target.value);
-              applyToAll({ hsnCode: e.target.value, hsnDesc: h?.description || "" });
+              const h = hsnList.find(x => x.hsnCode === e.target.value);
+              applyToAll({ hsnCode: e.target.value, hsnId: String(h?.id ?? "0"), hsnDesc: h?.description || "" });
             }}>
             <option value="">-- Select to apply all --</option>
-            {hsnMasters.map(h => (
+            {hsnList.map(h => (
               <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>
             ))}
           </select>
@@ -484,11 +563,14 @@ export default function CreateCylindersPage() {
                   <Label required>Vendor / Engraver Name</Label>
                   <select
                     className={submitAttempted && !tab.vendor ? inpE : inp}
-                    value={tab.vendor}
-                    onChange={e => updateTab(activeTab, { vendor: e.target.value })}>
+                    value={tab.vendorLedgerID}
+                    onChange={e => {
+                      const v = VENDOR_LEDGERS.find(l => l.LedgerID === e.target.value);
+                      if (v) updateTab(activeTab, { vendor: v.LedgerName, vendorLedgerID: v.LedgerID });
+                    }}>
                     <option value="">-- Select Vendor --</option>
                     {VENDOR_LEDGERS.map(l => (
-                      <option key={l.id} value={l.name}>{l.name}</option>
+                      <option key={l.LedgerID} value={l.LedgerID}>{l.LedgerName}</option>
                     ))}
                   </select>
                 </div>
@@ -498,11 +580,11 @@ export default function CreateCylindersPage() {
                     className={submitAttempted && !tab.hsnCode ? inpE : inp}
                     value={tab.hsnCode}
                     onChange={e => {
-                      const h = hsnMasters.find(x => x.hsnCode === e.target.value);
-                      updateTab(activeTab, { hsnCode: e.target.value, hsnDesc: h?.description || "" });
+                      const h = hsnList.find(x => x.hsnCode === e.target.value);
+                      updateTab(activeTab, { hsnCode: e.target.value, hsnId: String(h?.id ?? "0"), hsnDesc: h?.description || "" });
                     }}>
                     <option value="">-- Select HSN --</option>
-                    {hsnMasters.map(h => (
+                    {hsnList.map(h => (
                       <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>
                     ))}
                   </select>
@@ -548,9 +630,9 @@ export default function CreateCylindersPage() {
                   Next Color →
                 </button>
               ) : (
-                <button onClick={handleSaveAll}
-                  className="flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition">
-                  <Save size={14} /> Save All {tabs.length} Cylinders
+                <button onClick={handleSaveAll} disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition disabled:opacity-60">
+                  <Save size={14} /> {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
                 </button>
               )}
             </div>
@@ -568,9 +650,9 @@ export default function CreateCylindersPage() {
             </span>
           )}
         </div>
-        <button onClick={handleSaveAll}
-          className="flex items-center gap-2 px-7 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition">
-          <Save size={15} /> Save All {tabs.length} Cylinders
+        <button onClick={handleSaveAll} disabled={saving}
+          className="flex items-center gap-2 px-7 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition disabled:opacity-60">
+          <Save size={15} /> {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
         </button>
       </div>
     </div>

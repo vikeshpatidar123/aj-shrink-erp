@@ -8,6 +8,8 @@ import { CategoriesProvider } from "@/context/CategoriesContext";
 import { EnquiryProvider } from "@/context/EnquiryContext";
 import { ProductCatalogProvider } from "@/context/ProductCatalogContext";
 import { ExtrusionCatalogProvider } from "@/context/ExtrusionCatalogContext";
+import { MastersProvider } from "@/context/MastersContext";
+import { ToastProvider } from "@/components/ui/Toast";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -21,6 +23,9 @@ const pageTitles: Record<string, string> = {
   "/masters/subgroups": "SubGroup Master",
   "/masters/machines": "Machine Master",
   "/masters/units": "Unit Master",
+  "/masters/warehouses": "Warehouse Master",
+  "/masters/users": "User Master",
+  "/masters/field-master": "Field Master",
   "/masters/employees": "Employee Master",
   "/enquiry": "Enquiry Management",
   "/cost-estimation": "Cost Estimation & Planning",
@@ -68,7 +73,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
+    <ToastProvider>
     <ExtrusionCatalogProvider>
+    <MastersProvider>
     <ProductCatalogProvider>
     <EnquiryProvider>
     <CategoriesProvider>
@@ -94,6 +101,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </CategoriesProvider>
     </EnquiryProvider>
     </ProductCatalogProvider>
+    </MastersProvider>
     </ExtrusionCatalogProvider>
+    </ToastProvider>
   );
 }

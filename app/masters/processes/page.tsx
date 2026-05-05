@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, Check, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -6,7 +6,7 @@ import Button from "@/components/ui/Button";
 import { inputCls } from "@/lib/styles";
 import { authHeaders } from "@/lib/auth";
 
-// ─── Types ────────────────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type SelectOpt = { value: string; label: string };
 
 type ProcessRow = {
@@ -68,7 +68,7 @@ type FormState = {
 };
 
 const BASE_URL = "https://api.indusanalytics.co.in";
-const BASE = `${BASE_URL}/api/processmaster`;
+const BASE = `${BASE_URL}/api/processmasterShrink`;
 
 function unwrap(v: any): any {
   if (typeof v === "string") { try { return unwrap(JSON.parse(v)); } catch { return v; } }
@@ -97,7 +97,7 @@ const blank: FormState = {
   selectedMachineIds: [],
 };
 
-// ─── Helper components ─────────────────────────────────────────
+// â”€â”€â”€ Helper components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -125,22 +125,13 @@ const SuffixInput = ({ value, onChange, suffix, placeholder, type = "text" }: an
   </div>
 );
 
-const Checkbox = ({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) => (
-  <label className="flex items-center gap-2.5 cursor-pointer select-none">
-    <div onClick={onChange} className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 cursor-pointer transition-colors ${checked ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"}`}>
-      {checked && <Check size={10} className="text-white" strokeWidth={3} />}
-    </div>
-    <span className="text-sm text-gray-700">{label}</span>
-  </label>
-);
-
 function toBool(v: any): boolean {
   if (typeof v === "boolean") return v;
   if (v === 1 || v === "1" || v === "true" || v === "True") return true;
   return false;
 }
 
-// ─── Page ──────────────────────────────────────────────────────
+// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function ProcessMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<ProcessRow[]>([]);
@@ -148,7 +139,7 @@ export default function ProcessMasterPage() {
   const [saving, setSaving] = useState(false);
   const [editingID, setEditingID] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(blank);
-  const [activeTab, setActiveTab] = useState<"detail" | "costing" | "machines">("detail");
+  const [activeTab, setActiveTab] = useState<"detail" | "machines">("detail");
   const [filterDept, setFilterDept] = useState("All");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [error, setError] = useState("");
@@ -184,7 +175,6 @@ export default function ProcessMasterPage() {
       const unitList: any[] = unwrap(await uRes.json()) ?? [];
       const machines: any[] = unwrap(await mRes.json()) ?? [];
       setDepartments(depts.map(d => ({ value: String(d.DepartmentID), label: d.DepartmentName })));
-      // TypeofCharges in DB stores the text value, not the ID
       setChargeTypes(charges.map(c => ({ value: c.TypeOfCharges, label: c.TypeOfCharges })));
       setUnits(unitList.map(u => ({ value: u.UnitSymbol, label: u.UnitName || u.UnitSymbol })));
       setAllMachines(machines);
@@ -248,9 +238,6 @@ export default function ProcessMasterPage() {
     try {
       const { selectedMachineIds, ...fields } = form;
 
-      // CostingDataProcessDetailMaster — exclude AddColName fields:
-      // ModifiedDate, CreatedDate, UserID, CompanyID, FYear, CreatedBy, ModifiedBy,
-      // AllocatedContentID, AllocattedMachineID, ProductionUnitID
       const detail: Record<string, any> = {
         ProcessName: fields.ProcessName || null,
         DisplayProcessName: fields.DisplayProcessName || null,
@@ -272,7 +259,6 @@ export default function ProcessMasterPage() {
         ProcessProductionType: fields.ProcessProductionType || null,
       };
 
-      // Build machine allocation rows from selected machines
       const machineAllocData = selectedMachineIds.map(id => {
         const m = allMachines.find(x => String(x.MachineID) === id);
         return {
@@ -339,11 +325,10 @@ export default function ProcessMasterPage() {
     }
   };
 
-  // Machines filtered by selected department
   const deptMachines = allMachines.filter(m => String(m.DepartmentID) === form.DepartmentID);
   const selectedDeptName = departments.find(d => d.value === form.DepartmentID)?.label ?? "";
 
-  // ── FORM VIEW ───────────────────────────────────────────────
+  // â”€â”€ FORM VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
@@ -357,9 +342,7 @@ export default function ProcessMasterPage() {
             <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               <List size={16} /> List ({data.length})
             </button>
-            <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-              <Plus size={16} /> New
-            </button>
+
             <button onClick={save} disabled={saving} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
               <Save size={16} /> {saving ? "Saving..." : "Save"}
             </button>
@@ -379,10 +362,10 @@ export default function ProcessMasterPage() {
               </span>
             )}
             <div className="flex gap-8">
-              {(["detail", "costing", "machines"] as const).map((t) => (
+              {(["detail", "machines"] as const).map((t) => (
                 <button key={t} onClick={() => setActiveTab(t)}
                   className={`pb-3 text-sm font-medium transition-colors border-b-2 ${activeTab === t ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}>
-                  {{ detail: "Process Detail", costing: "Costing", machines: "Machine Allocation" }[t]}
+                  {{ detail: "Process Detail", machines: "Machine Allocation" }[t]}
                 </button>
               ))}
             </div>
@@ -390,113 +373,43 @@ export default function ProcessMasterPage() {
 
           <div className="p-8">
 
-            {/* ── PROCESS DETAIL TAB ── */}
+            {/* â”€â”€ PROCESS DETAIL TAB (includes costing) â”€â”€ */}
             {activeTab === "detail" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
                 <div>
                   <SectionTitle title="Process Identity" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <Field label="Process Name" required>
-                      <input type="text" value={form.ProcessName} onChange={(e) => f("ProcessName", e.target.value)} placeholder="e.g. 8-Color Roto Printing" className={submitAttempted && !form.ProcessName.trim() ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls} />
-                    </Field>
-                    <Field label="Display Name">
-                      <input type="text" value={form.DisplayProcessName} onChange={(e) => f("DisplayProcessName", e.target.value)} placeholder="Short display name" className={inputCls} />
+                      <input
+                        type="text"
+                        value={form.ProcessName}
+                        onChange={(e) => f("ProcessName", e.target.value)}
+                        placeholder="e.g. 8-Color Roto Printing"
+                        className={submitAttempted && !form.ProcessName.trim() ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls}
+                      />
                     </Field>
                   </div>
                 </div>
 
                 <div>
-                  <SectionTitle title="Classification" />
-                  <div className="space-y-5">
-
-                    {/* Module toggle */}
-                    <div>
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 block">Module</label>
-                      <div className="flex gap-3 flex-wrap">
-                        {(["Rotogravure", "Extrusion", ""] as const).map((mod, i) => (
-                          <button key={i} onClick={() => f("ProcessModuleType", mod)}
-                            className={`px-5 py-2 rounded-lg text-sm font-semibold border-2 transition-all ${
-                              form.ProcessModuleType === mod
-                                ? mod === "Rotogravure" ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                                  : mod === "Extrusion" ? "bg-orange-500 text-white border-orange-500 shadow-sm"
-                                  : "bg-gray-600 text-white border-gray-600 shadow-sm"
-                                : "bg-white text-gray-600 border-gray-300 hover:border-gray-400"}`}>
-                            {mod || "None"}
-                          </button>
-                        ))}
-                      </div>
+                  <label className={"text-xs font-semibold uppercase tracking-wider mb-3 block " + (submitAttempted && !form.DepartmentID ? "text-red-500" : "text-gray-500")}>
+                    Department <span className="text-red-500">*</span>
+                  </label>
+                  {departments.length === 0 ? (
+                    <p className="text-sm text-gray-400">Loading departments...</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {departments.map((d) => (
+                        <button key={d.value} onClick={() => f("DepartmentID", d.value)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                            form.DepartmentID === d.value
+                              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                              : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"}`}>
+                          {d.label}
+                        </button>
+                      ))}
                     </div>
-
-                    {/* Department pills */}
-                    <div>
-                      <label className={"text-xs font-semibold uppercase tracking-wider mb-3 block " + (submitAttempted && !form.DepartmentID ? "text-red-500" : "text-gray-500")}>
-                        Department <span className="text-red-500">*</span>
-                      </label>
-                      {departments.length === 0 ? (
-                        <p className="text-sm text-gray-400">Loading departments...</p>
-                      ) : (
-                        <div className="flex flex-wrap gap-2">
-                          {departments.map((d) => (
-                            <button key={d.value} onClick={() => f("DepartmentID", d.value)}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                                form.DepartmentID === d.value
-                                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                                  : "bg-white text-gray-600 border-gray-300 hover:border-blue-400 hover:text-blue-600"}`}>
-                              {d.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <Field label="Process Category">
-                        <select value={form.ProcessCategory} onChange={(e) => f("ProcessCategory", e.target.value)} className={inputCls}>
-                          <option value="">Select...</option>
-                          {["Main Process", "Sub Process"].map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Production Type">
-                        <select value={form.ProcessProductionType} onChange={(e) => f("ProcessProductionType", e.target.value)} className={inputCls}>
-                          <option value="">Select...</option>
-                          {["None", "Printing", "Lamination", "Extrusion", "Slitting", "Pouch"].map(o => <option key={o} value={o}>{o}</option>)}
-                        </select>
-                      </Field>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <SectionTitle title="Settings" />
-                  <div className="flex flex-wrap gap-8">
-                    <Checkbox checked={form.IsOnlineProcess} onChange={() => f("IsOnlineProcess", !form.IsOnlineProcess)} label="Online Production Process" />
-                    <Checkbox checked={form.IsDisplay} onChange={() => f("IsDisplay", !form.IsDisplay)} label="Display in Quotation" />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                  <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <button onClick={() => setActiveTab("costing")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">Costing →</button>
-                </div>
-              </div>
-            )}
-
-            {/* ── COSTING TAB ── */}
-            {activeTab === "costing" && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-300">
-
-                <div className="flex gap-2 flex-wrap">
-                  {form.ProcessModuleType && (
-                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${form.ProcessModuleType === "Rotogravure" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}`}>
-                      {form.ProcessModuleType}
-                    </span>
-                  )}
-                  {selectedDeptName && (
-                    <span className="px-3 py-1 text-xs font-semibold text-gray-600 bg-gray-100 rounded-full">{selectedDeptName}</span>
-                  )}
-                  {form.ProcessCategory && (
-                    <span className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-100 rounded-full">{form.ProcessCategory}</span>
                   )}
                 </div>
 
@@ -521,20 +434,8 @@ export default function ProcessMasterPage() {
                         {units.map((u, i) => <option key={`${i}-${u.value}`} value={u.value}>{u.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="Rate (₹)">
-                      <PrefixInput value={form.Rate} onChange={(e: any) => f("Rate", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
-                    </Field>
-                    <Field label="Minimum Charges (₹)">
-                      <PrefixInput value={form.MinimumCharges} onChange={(e: any) => f("MinimumCharges", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
-                    </Field>
-                    <Field label="Setup Charges (₹)">
-                      <PrefixInput value={form.SetupCharges} onChange={(e: any) => f("SetupCharges", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
-                    </Field>
-                    <Field label="Min. Qty To Be Charged">
-                      <input type="number" value={form.MinimumQuantityToBeCharged} onChange={(e) => f("MinimumQuantityToBeCharged", e.target.value)} placeholder="e.g. 100" className={inputCls} />
-                    </Field>
-                    <Field label="Per Hour Costing Parameter">
-                      <input type="text" value={form.PerHourCostingParameter} onChange={(e) => f("PerHourCostingParameter", e.target.value)} placeholder="" className={inputCls} />
+                    <Field label="Rate (â‚¹)">
+                      <PrefixInput value={form.Rate} onChange={(e: any) => f("Rate", e.target.value)} prefix="â‚¹" placeholder="0.00" type="number" />
                     </Field>
                   </div>
                 </div>
@@ -545,27 +446,24 @@ export default function ProcessMasterPage() {
                     <Field label="Process Waste %">
                       <SuffixInput value={form.ProcessWastagePercentage} onChange={(e: any) => f("ProcessWastagePercentage", e.target.value)} suffix="%" placeholder="e.g. 3" type="number" />
                     </Field>
-                    <Field label="Process Waste Flat (₹)">
-                      <PrefixInput value={form.ProcessFlatWastageValue} onChange={(e: any) => f("ProcessFlatWastageValue", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
+                    <Field label="Process Waste Flat (â‚¹)">
+                      <PrefixInput value={form.ProcessFlatWastageValue} onChange={(e: any) => f("ProcessFlatWastageValue", e.target.value)} prefix="â‚¹" placeholder="0.00" type="number" />
                     </Field>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                   <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => setActiveTab("detail")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">← Detail</button>
-                    <button onClick={() => setActiveTab("machines")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">Machines →</button>
-                  </div>
+                  <button onClick={() => setActiveTab("machines")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">Machine Allocation â†’</button>
                 </div>
               </div>
             )}
 
-            {/* ── MACHINE ALLOCATION TAB ── */}
+            {/* â”€â”€ MACHINE ALLOCATION TAB â”€â”€ */}
             {activeTab === "machines" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
-                  <SectionTitle title={`Machines – ${selectedDeptName || "Select Department First"}`} />
+                  <SectionTitle title={`Machines â€” ${selectedDeptName || "Select Department First"}`} />
                   {!form.DepartmentID ? (
                     <div className="flex items-center justify-center py-12 text-sm text-gray-400 italic border-2 border-dashed border-gray-200 rounded-xl">
                       Please select a department in the Process Detail tab first.
@@ -587,7 +485,7 @@ export default function ProcessMasterPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-semibold text-gray-800">{m.MachineName}</p>
                               <p className="text-xs text-gray-500">
-                                Speed: {m.MachineSpeed} · Make-Ready: {m.MakeReadyTime}min · Job Changeover: {m.JobChangeOverTime}min
+                                Speed: {m.MachineSpeed} Â· Make-Ready: {m.MakeReadyTime}min Â· Job Changeover: {m.JobChangeOverTime}min
                               </p>
                             </div>
                           </div>
@@ -605,7 +503,7 @@ export default function ProcessMasterPage() {
                 <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                   <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setActiveTab("costing")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">← Costing</button>
+                    <button onClick={() => setActiveTab("detail")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">â† Process Detail</button>
                     <button onClick={save} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
                       <Check size={16} /> {saving ? "Saving..." : "Save Process"}
                     </button>
@@ -619,32 +517,20 @@ export default function ProcessMasterPage() {
     );
   }
 
-  // ── LIST VIEW ──────────────────────────────────────────────
-  // Dept filter pills built from actual data (deduplicated)
+  // â”€â”€ LIST VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const deptNames = Array.from(new Set(data.map(r => r.DepartmentName).filter(Boolean)));
-
   const filteredData = filterDept === "All" ? data : data.filter(r => r.DepartmentName === filterDept);
 
   const columns: Column<ProcessRow>[] = [
     { key: "ProcessName", header: "Process Name", sortable: true },
-    { key: "DisplayProcessName", header: "Display Name", render: (r) => r.DisplayProcessName || <span className="text-gray-400">—</span> },
+    { key: "DisplayProcessName", header: "Display Name", render: (r) => r.DisplayProcessName || <span className="text-gray-400">â€”</span> },
     {
       key: "DepartmentName", header: "Department", sortable: true,
       render: (r) => <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.DepartmentName}</span>,
     },
-    {
-      key: "ProcessModuleType", header: "Module",
-      render: (r) => r.ProcessModuleType
-        ? <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${r.ProcessModuleType === "Rotogravure" ? "bg-blue-100 text-blue-700" : "bg-orange-100 text-orange-700"}`}>{r.ProcessModuleType === "Rotogravure" ? "Roto" : r.ProcessModuleType}</span>
-        : <span className="text-gray-400">—</span>,
-    },
-    { key: "TypeofCharges", header: "Charge Type", render: (r) => r.TypeofCharges || <span className="text-gray-400">—</span> },
-    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `₹ ${r.Rate}` : "—" },
-    { key: "ProcessWastagePercentage", header: "Waste %", render: (r) => r.ProcessWastagePercentage ? `${r.ProcessWastagePercentage}%` : "—" },
-    {
-      key: "IsDisplay", header: "In Quotation",
-      render: (r) => <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${toBool(r.IsDisplay) ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>{toBool(r.IsDisplay) ? "Yes" : "No"}</span>,
-    },
+    { key: "TypeofCharges", header: "Charge Type", render: (r) => r.TypeofCharges || <span className="text-gray-400">â€”</span> },
+    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `â‚¹ ${r.Rate}` : "â€”" },
+    { key: "ProcessWastagePercentage", header: "Waste %", render: (r) => r.ProcessWastagePercentage ? `${r.ProcessWastagePercentage}%` : "â€”" },
   ];
 
   return (

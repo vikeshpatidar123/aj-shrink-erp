@@ -1,301 +1,1176 @@
-"use client";
-import { useState, useMemo } from "react";
-import { Plus, Pencil, Trash2, X, Search, FileText, ClipboardList, List, Save, Check } from "lucide-react";
+﻿"use client";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  items as allItems, Item,
-  purchaseRequisitions as allPRs, PurchaseRequisition,
-  purchaseOrders as initData, PurchaseOrder, POLine, POCharge,
-  SUPPLIERS, hsnMasters,
-} from "@/data/dummyData";
+  Plus, Pencil, Trash2, X, Search, Check, List,
+  ClipboardList, ChevronRight,
+} from "lucide-react";
+import { authHeaders, getSession } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
-// ─── Constants ───────────────────────────────────────────────
-const COMPANY_STATE = "Maharashtra";
-const DIVISIONS = ["COM", "RTO", "EXT"];
+const BASE_URL = "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
 const TRANSPORT_MODES = ["Road", "Rail", "Air", "Sea", "Courier"];
-const PAYMENT_TERMS = ["Advance", "30 Days", "45 Days", "60 Days", "90 Days", "LC 30 Days", "LC 60 Days"];
-const CHARGE_TYPES = ["Freight Charges", "Insurance", "Loading / Unloading", "Round Off", "TCS", "Discount", "IGST Payable", "Other Charges"];
-const APPROVAL_BY = ["Director", "Purchase Manager", "GM Operations", "CFO"];
+const CALCU_ON = ["Value", "Qty", "Weight", "Fixed"];
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface Supplier {
+  LedgerID: number;
+  LedgerName: string;
+  SupState: string;
+  StateTinNo: number;
+  CompanyStateTinNo: number;
+  CurrencyCode: string;
+  GSTNo: string;
+}
+
+interface ContactPerson {
+  ConcernPersonID: number;
+  Name: string;
+}
+
+interface ReqRow {
+  TransactionDetailID: number;
+  TransactionID: number;
+  VoucherNo: string;
+  VoucherDate: string;
+  ItemID: number;
+  ItemGroupID: number;
+  ItemGroupNameID: number;
+  ItemGroupName: string;
+  ItemSubGroupName: string;
+  ItemCode: string;
+  ItemName: string;
+  ItemDescription: string | null;
+  PurchaseQuantity: number;
+  PurchaseQuantityPacks: number;
+  QuantityPerPack: number;
+  RequiredQuantity: number;
+  PurchaseUnit: string;
+  StockUnit: string;
+  OrderUnit: string;
+  PurchaseRate: number;
+  HSNCode: string;
+  ProductHSNID: number;
+  ProductHSNName: string;
+  GSTTaxPercentage: number;
+  CGSTTaxPercentage: number;
+  SGSTTaxPercentage: number;
+  IGSTTaxPercentage: number;
+  WtPerPacking: number;
+  UnitPerPacking: number;
+  Tolerance: number;
+  ExpectedDeliveryDate: string;
+  Narration: string;
+}
+
+interface POHeader {
+  TransactionID: number;
+  VoucherNo: string;
+  VoucherDate: string;
+  LedgerID: number;
+  LedgerName: string;
+  BasicAmount: number;
+  GSTTaxAmount: number;
+  NetAmount: number;
+  CurrencyCode: string;
+  ContactPersonID: number;
+  IsVoucherItemApproved: number;
+  Narration?: string;
+  DeliveryAddress?: string;
+  TermsOfPayment?: string;
+  ModeOfTransport?: string;
+  VoucherPrefix?: string;
+  FYear?: string;
+}
+
+interface OverflowItem {
+  ItemID: number;
+  ItemGroupID: number;
+  ItemGroupNameID: number;
+  ItemSubGroupID: number;
+  ItemGroupName: string;
+  ItemSubGroupName: string;
+  ItemCode: string;
+  ItemName: string;
+  ItemDescription: string | null;
+  StockUnit: string;
+  PurchaseUnit: string;
+  PurchaseRate: number;
+  BookedStock: number;
+  AllocatedStock: number;
+  PhysicalStock: number;
+  HSNCode: string;
+  ProductHSNID: number;
+  ProductHSNName: string;
+  GSTTaxPercentage: number;
+  CGSTTaxPercentage: number;
+  SGSTTaxPercentage: number;
+  IGSTTaxPercentage: number;
+  WtPerPacking: number;
+  UnitPerPacking: number;
+  Tolerance: number;
+}
+
+interface ChargeLedger {
+  LedgerID: number;
+  LedgerName: string;
+  TaxPercentage: number;
+  TaxType: string;
+  GSTApplicable: string;
+  GSTLedgerType: string;
+  ProductHSNID: number;
+  HSNCode: string;
+  GSTTaxPercentage: number;
+  CGSTTaxPercentage: number;
+  SGSTTaxPercentage: number;
+  IGSTTaxPercentage: number;
+  IsService: string;
+}
+
+interface ItemRate {
+  ItemID: number;
+  PurchaseRate: number;
+  QuantityTolerance: number;
+}
+
+interface POLine {
+  lineKey: string;
+  ItemID: number;
+  ItemGroupID: number;
+  ItemGroupNameID: number;
+  ItemSubGroupID: number;
+  ItemGroupName: string;
+  ItemSubGroupName: string;
+  ItemCode: string;
+  ItemName: string;
+  ItemDescription: string | null;
+  RequisitionTransactionID: number;
+  ReqQtyInPU: number;
+  StockUnit: string;
+  PurchaseUnit: string;
+  WtPerPacking: number;
+  UnitPerPacking: number;
+  NoOfPacks: number;
+  QtyPerPack: number;
+  POQtyInPU: number;
+  POQtyInSU: number;
+  ItemNarration: string;
+  Rate: number;
+  ProductHSNID: number;
+  HSNCode: string;
+  GSTPercentage: number;
+  CGSTPercentage: number;
+  SGSTPercentage: number;
+  IGSTPercentage: number;
+  ExpectedDelivery: string;
+  Tolerance: number;
+  SupplierGrade: string;
+  GrossAmount: number;
+  DiscPct: number;
+  DiscAmount: number;
+  BasicAmount: number;
+  TaxableAmount: number;
+  CGSTAmount: number;
+  SGSTAmount: number;
+  IGSTAmount: number;
+  NetAmount: number;
+}
+
+interface POCharge {
+  chargeKey: string;
+  LedgerID: number;
+  LedgerName: string;
+  TaxPercentage: number;
+  TaxType: string;
+  CalcOn: string;
+  GSTApplicable: boolean;
+  InAmount: boolean;
+  IsService: string;
+  ProductHSNID: number;
+  HSNCode: string;
+  GSTTaxPercentage: number;
+  CGSTTaxPercentage: number;
+  SGSTTaxPercentage: number;
+  IGSTTaxPercentage: number;
+  CGSTAmount: number;
+  SGSTAmount: number;
+  IGSTAmount: number;
+  Amount: number;
+  TotalAmount: number;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const todayISO = () => new Date().toISOString().split("T")[0];
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+const toNum = (v: any) => parseFloat(v) || 0;
+
+// Converts "DD-Mon-YYYY", "DD Mon YYYY", or ISO strings to "YYYY-MM-DD" for date inputs
+const parseDateToISO = (s: string): string => {
+  if (!s || s === "—") return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.split("T")[0];
+  const d = new Date(s.replace(/-/g, " "));
+  return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+};
+const fmtDate = (d: string) => {
+  if (!d) return "—";
+  try { return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
+  catch { return d; }
+};
 const fmtAmt = (n: number) =>
   n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const nextPONo = (list: PurchaseOrder[]) => {
-  const yr = new Date().getFullYear();
-  return `PO${String(list.length + 1).padStart(5, "0")}_${String(yr - 2000).padStart(2, "0")}_${String(yr - 1999).padStart(2, "0")}`;
-};
-
 const recalcLine = (line: POLine, sameState: boolean): POLine => {
-  const basicAmt = line.poQtyInPU * line.rate;
-  const discAmt = basicAmt * line.discPct / 100;
-  const afterDiscAmt = basicAmt - discAmt;
-  const cgstAmt = sameState ? afterDiscAmt * line.gstPct / 2 / 100 : 0;
-  const sgstAmt = sameState ? afterDiscAmt * line.gstPct / 2 / 100 : 0;
-  const igstAmt = !sameState ? afterDiscAmt * line.gstPct / 100 : 0;
-  const totalAmt = afterDiscAmt + cgstAmt + sgstAmt + igstAmt;
-  return { ...line, basicAmt, afterDiscAmt, cgstAmt, sgstAmt, igstAmt, taxableAmt: afterDiscAmt, totalAmt };
+  const gross = line.POQtyInPU * line.Rate;
+  const discAmt = gross * line.DiscPct / 100;
+  const basic = gross - discAmt;
+  const cgst = sameState ? basic * line.CGSTPercentage / 100 : 0;
+  const sgst = sameState ? basic * line.SGSTPercentage / 100 : 0;
+  const igst = !sameState ? basic * line.IGSTPercentage / 100 : 0;
+  const net = basic + cgst + sgst + igst;
+  return { ...line, GrossAmount: gross, DiscAmount: discAmt, BasicAmount: basic, TaxableAmount: basic, CGSTAmount: cgst, SGSTAmount: sgst, IGSTAmount: igst, NetAmount: net };
 };
 
-const STATUS_STYLE: Record<PurchaseOrder["status"], string> = {
-  Draft:     "bg-gray-100 text-gray-600",
-  Approved:  "bg-green-100 text-green-700",
-  Sent:      "bg-blue-100 text-blue-700",
-  Closed:    "bg-purple-100 text-purple-700",
-  Cancelled: "bg-red-100 text-red-700",
-};
+async function apiFetch(url: string): Promise<any> {
+  const res = await fetch(url, { headers: authHeaders() });
+  const text = await res.text();
+  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
+  try {
+    const parsed = JSON.parse(text);
+    // Backend wraps ConvertDataTableToJsonString result with Ok(), causing double-encoding.
+    // If parsed result is a string, try parsing it once more.
+    if (typeof parsed === "string") {
+      try { return JSON.parse(parsed); } catch { return parsed; }
+    }
+    return parsed;
+  } catch { return text; }
+}
 
-const PR_STATUS_STYLE: Record<PurchaseRequisition["status"], string> = {
-  Draft:     "bg-gray-100 text-gray-500",
-  Submitted: "bg-blue-100 text-blue-700",
-  Approved:  "bg-green-100 text-green-700",
-  Rejected:  "bg-red-100 text-red-600",
-  Ordered:   "bg-purple-100 text-purple-700",
-};
+// Unwrap a JSON-quoted string returned by ASP.NET Ok("literal").
+// Ok("Success") produces "\"Success\"" on the wire; this strips those outer quotes.
+function unwrapOk(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith('"') && t.endsWith('"')) {
+    try { return JSON.parse(t) as string; } catch { /* fall through */ }
+  }
+  return t;
+}
 
-// ─── Shared UI helpers ───────────────────────────────────────
-const SectionTitle = ({ title }: { title: string }) => (
-  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
-    {title}
-  </h3>
-);
+// ─── Shared UI ────────────────────────────────────────────────────────────────
 
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-      {label} {required && <span className="text-red-500">*</span>}
+      {label}{required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
     {children}
   </div>
 );
 
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
+);
+
 const selectCls = "w-full border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white";
 const tableInputCls = "text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white";
 
-// ─── Main ────────────────────────────────────────────────────
-export default function PurchaseOrderPage() {
-  const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<PurchaseOrder[]>(initData);
-  const [editing, setEditing] = useState<PurchaseOrder | null>(null);
-  const [activeTab, setActiveTab] = useState<"basic" | "items" | "terms" | "summary">("basic");
+// ─── Main Component ───────────────────────────────────────────────────────────
 
-  // Form state
+export default function PurchaseOrderPage() {
+  // ── View state ──
+  const [view, setView] = useState<"list" | "form">("list");
+  const [listTab, setListTab] = useState<"reqs" | "pos">("reqs");
+  const [activeTab, setActiveTab] = useState<"basic" | "items" | "terms" | "summary">("basic");
+  const [editTxnID, setEditTxnID] = useState<number | null>(null);
+  const [editVoucherNo, setEditVoucherNo] = useState("");
+
+  // ── Data state ──
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [reqs, setReqs] = useState<ReqRow[]>([]);
+  const [pos, setPos] = useState<POHeader[]>([]);
+  const [contacts, setContacts] = useState<ContactPerson[]>([]);
+  const [overflowItems, setOverflowItems] = useState<OverflowItem[]>([]);
+  const [chargeLedgers, setChargeLedgers] = useState<ChargeLedger[]>([]);
+  const [itemRates, setItemRates] = useState<ItemRate[]>([]);
+  const [supplierGrades, setSupplierGrades] = useState<string[]>([]);
+
+  // ── Loading state ──
+  const [loadingReqs, setLoadingReqs] = useState(false);
+  const [loadingPos, setLoadingPos] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // ── Selection state (for creating PO from reqs) ──
+  const [selectedReqIds, setSelectedReqIds] = useState<Set<string>>(new Set());
+
+  // ── Form state ──
   const [poDate, setPoDate] = useState(todayISO());
-  const [prRef, setPrRef] = useState("");
-  const [supplier, setSupplier] = useState("");
-  const [division, setDivision] = useState("COM");
+  const [poNo, setPoNo] = useState("");
+  const [supplierID, setSupplierID] = useState<number>(0);
   const [currency, setCurrency] = useState("INR");
-  const [contactPerson, setContactPerson] = useState("");
-  const [approvalBy, setApprovalBy] = useState("");
-  const [billTo, setBillTo] = useState("");
+  const [contactPersonID, setContactPersonID] = useState<number>(0);
+  const [narration, setNarration] = useState("");
+  const [modeOfTransport, setModeOfTransport] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [termsOfPayment, setTermsOfPayment] = useState("");
   const [lines, setLines] = useState<POLine[]>([]);
   const [charges, setCharges] = useState<POCharge[]>([]);
-  const [paymentTerms, setPaymentTerms] = useState("");
-  const [modeOfTransport, setModeOfTransport] = useState("");
-  const [deliveryLocation, setDeliveryLocation] = useState("");
-  const [purchaseRef, setPurchaseRef] = useState("");
-  const [remark, setRemark] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"All" | PurchaseOrder["status"]>("All");
-  const [listSearch, setListSearch] = useState("");
 
-  // Picker state
+  // ── Picker state ──
   const [showPicker, setShowPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerGroup, setPickerGroup] = useState("All");
   const [showChargeMenu, setShowChargeMenu] = useState(false);
 
-  // Derived
-  const supplierInfo = useMemo(() =>
-    SUPPLIERS.find((s) => s.name === supplier) ?? null, [supplier]);
-  const sameState = supplierInfo?.state === COMPANY_STATE;
+  // ── Password modal (for Update/Delete) ──
+  const [pwModal, setPwModal] = useState<"update" | "delete" | null>(null);
+  const [pwInput, setPwInput] = useState("");
+  const [pwRemark, setPwRemark] = useState("");
 
-  const rmItems = useMemo(
-    () => allItems.filter((i) => i.category === "Raw Material (RM)" && i.active), []
+  // ── List filters ──
+  const [posSearch, setPosSearch] = useState("");
+
+  // ─── Derived ───────────────────────────────────────────────────────────────
+
+  const selectedSupplier = useMemo(
+    () => suppliers.find(s => s.LedgerID === supplierID) ?? null,
+    [suppliers, supplierID]
   );
-  const rmGroups = useMemo(
-    () => ["All", ...Array.from(new Set(rmItems.map((i) => i.group)))], [rmItems]
-  );
-  const pickerItems = useMemo(() => {
+  const sameState = selectedSupplier
+    ? selectedSupplier.StateTinNo === selectedSupplier.CompanyStateTinNo && selectedSupplier.StateTinNo !== 0
+    : true;
+
+  const pickerGroups = useMemo(() => {
+    const gs = Array.from(new Set(overflowItems.map(i => i.ItemGroupName).filter(Boolean)));
+    return ["All", ...gs];
+  }, [overflowItems]);
+
+  const filteredPickerItems = useMemo(() => {
     const s = pickerSearch.toLowerCase();
-    return rmItems.filter((i) => {
-      if (pickerGroup !== "All" && i.group !== pickerGroup) return false;
-      return !s || i.name.toLowerCase().includes(s) || i.code.toLowerCase().includes(s);
+    return overflowItems.filter(i => {
+      if (pickerGroup !== "All" && i.ItemGroupName !== pickerGroup) return false;
+      return !s || i.ItemCode?.toLowerCase().includes(s) || i.ItemName?.toLowerCase().includes(s);
     });
-  }, [rmItems, pickerGroup, pickerSearch]);
+  }, [overflowItems, pickerGroup, pickerSearch]);
+
+  const filteredPos = useMemo(() => {
+    if (!posSearch) return pos;
+    const s = posSearch.toLowerCase();
+    return pos.filter(p =>
+      p.VoucherNo?.toLowerCase().includes(s) ||
+      p.LedgerName?.toLowerCase().includes(s)
+    );
+  }, [pos, posSearch]);
 
   // Totals
-  const basicAmount   = lines.reduce((s, l) => s + l.basicAmt, 0);
-  const discAmount    = lines.reduce((s, l) => s + (l.basicAmt - l.afterDiscAmt), 0);
-  const totalTax      = lines.reduce((s, l) => s + l.cgstAmt + l.sgstAmt + l.igstAmt, 0);
-  const otherCharges  = charges.filter(c => !c.name.toLowerCase().includes("discount"))
-                                .reduce((s, c) => s + c.amount, 0);
-  const chargeDisc    = charges.filter(c => c.name.toLowerCase().includes("discount"))
-                                .reduce((s, c) => s + c.amount, 0);
-  const grossAmount   = basicAmount - discAmount + totalTax + otherCharges - chargeDisc;
+  const totalBasic = lines.reduce((s, l) => s + l.BasicAmount, 0);
+  const totalDisc = lines.reduce((s, l) => s + l.DiscAmount, 0);
+  const totalCGST = lines.reduce((s, l) => s + l.CGSTAmount, 0);
+  const totalSGST = lines.reduce((s, l) => s + l.SGSTAmount, 0);
+  const totalIGST = lines.reduce((s, l) => s + l.IGSTAmount, 0);
+  const totalGST = totalCGST + totalSGST + totalIGST;
+  const totalCharges = charges.reduce((s, c) => s + c.Amount, 0);
+  // BasicAmount is already AfterDisAmt (gross - disc), so don't subtract disc again
+  const netAmount = totalBasic + totalGST + totalCharges;
 
-  // ── open helpers ──
-  const resetForm = () => {
-    setPoDate(todayISO()); setPrRef(""); setSupplier(""); setDivision("COM");
-    setCurrency("INR"); setContactPerson(""); setApprovalBy(""); setBillTo("");
-    setLines([]); setCharges([]); setPaymentTerms(""); setModeOfTransport("");
-    setDeliveryLocation(""); setPurchaseRef(""); setRemark("");
-    setActiveTab("basic");
-  };
+  // ─── API loaders ───────────────────────────────────────────────────────────
 
-  const openNew = () => { setEditing(null); resetForm(); setView("form"); };
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetSuppliers`);
+      setSuppliers(Array.isArray(data) ? data : []);
+    } catch { setSuppliers([]); }
+  }, []);
 
-  const openFromPR = (pr: PurchaseRequisition) => {
-    setEditing(null);
-    resetForm();
-    setPrRef(pr.reqNo);
-    // Convert PR lines → PO lines
-    const newLines: POLine[] = pr.lines.map((l) => {
-      const item = allItems.find((i) => i.code === l.itemCode);
-      const gstPct = item ? parseInt(item.gstRate) : 18;
-      const hsnCode = item?.hsnCode ?? "";
-      const hsnEntry = hsnMasters.find((h) => h.hsnCode === hsnCode);
-      const line: POLine = {
-        lineId: Math.random().toString(36).slice(2),
-        itemCode: l.itemCode, itemGroup: l.itemGroup, subGroup: l.subGroup, itemName: l.itemName,
-        reqQtyInSU: l.poQtyInSU, stockUnit: l.stockUnit, reqQtyInPU: l.poQtyInPU,
-        noOfPacksRolls: l.noOfPacksRolls, qtyPerPackRoll: l.qtyPerPackRoll,
-        poQtyInPU: l.poQtyInPU, poQtyInSU: l.poQtyInSU,
-        rate: 0, purchaseUnit: l.purchaseUnit,
-        hsnName: hsnEntry?.description ?? "", hsnCode,
-        expectedDelivery: "", tolerancePct: 0,
-        basicAmt: 0, discPct: 0, afterDiscAmt: 0,
-        gstPct, cgstAmt: 0, sgstAmt: 0, igstAmt: 0, taxableAmt: 0, totalAmt: 0,
-      };
-      return line;
-    });
-    setLines(newLines);
-    setActiveTab("items");
-    setView("form");
-  };
+  const fetchReqs = useCallback(async () => {
+    setLoadingReqs(true);
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetList?radioValue=Pending+Requisitions`);
+      setReqs(Array.isArray(data) ? data : []);
+    } catch { setReqs([]); }
+    finally { setLoadingReqs(false); }
+  }, []);
 
-  const openEdit = (po: PurchaseOrder) => {
-    setEditing(po);
-    setPoDate(po.poDate); setPrRef(po.prRef ?? "");
-    setSupplier(po.supplier); setDivision(po.division);
-    setCurrency(po.currency); setContactPerson(po.contactPerson);
-    setApprovalBy(po.approvalBy); setBillTo(po.billTo);
-    setLines(po.lines.map((l) => ({ ...l })));
-    setCharges(po.charges.map((c) => ({ ...c })));
-    setPaymentTerms(po.paymentTerms); setModeOfTransport(po.modeOfTransport);
-    setDeliveryLocation(po.deliveryLocation); setPurchaseRef(po.purchaseRef);
-    setRemark(po.remark);
-    setActiveTab("basic");
-    setView("form");
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("Delete this Purchase Order?")) setData((d) => d.filter((r) => r.id !== id));
-  };
-
-  // ── Line ops ──
-  const addItemFromPicker = (item: Item) => {
-    const gstPct = parseInt(item.gstRate) || 18;
-    const hsnEntry = hsnMasters.find((h) => h.hsnCode === item.hsnCode);
-    const line: POLine = {
-      lineId: Math.random().toString(36).slice(2),
-      itemCode: item.code, itemGroup: item.group, subGroup: item.subGroup, itemName: item.name,
-      reqQtyInSU: 0, stockUnit: item.stockUom, reqQtyInPU: 0,
-      noOfPacksRolls: 0, qtyPerPackRoll: 0, poQtyInPU: 0, poQtyInSU: 0,
-      rate: parseFloat(item.purchaseRate) || 0, purchaseUnit: item.purchaseUnit,
-      hsnName: hsnEntry?.description ?? "", hsnCode: item.hsnCode,
-      expectedDelivery: "", tolerancePct: 0,
-      basicAmt: 0, discPct: 0, afterDiscAmt: 0,
-      gstPct, cgstAmt: 0, sgstAmt: 0, igstAmt: 0, taxableAmt: 0, totalAmt: 0,
-    };
-    setLines((prev) => [...prev, recalcLine(line, sameState)]);
-    setShowPicker(false); setPickerSearch(""); setPickerGroup("All");
-  };
-
-  const updateLineNum = (lineId: string, field: keyof POLine, value: number) => {
-    setLines((prev) =>
-      prev.map((l) => {
-        if (l.lineId !== lineId) return l;
-        const updated = { ...l, [field]: value };
-        // Recalc packs → qty
-        if (field === "noOfPacksRolls" || field === "qtyPerPackRoll") {
-          const packs = field === "noOfPacksRolls" ? value : l.noOfPacksRolls;
-          const qty = field === "qtyPerPackRoll" ? value : l.qtyPerPackRoll;
-          updated.poQtyInPU = packs * qty;
-          updated.poQtyInSU = packs * qty;
-        }
-        return recalcLine(updated, sameState);
-      })
-    );
-  };
-
-  const updateLineStr = (lineId: string, field: keyof POLine, value: string) => {
-    setLines((prev) => prev.map((l) => l.lineId !== lineId ? l : { ...l, [field]: value }));
-  };
-
-  const removeLine = (lineId: string) => setLines((prev) => prev.filter((l) => l.lineId !== lineId));
-
-  // ── Charge ops ──
-  const addCharge = (name: string) => {
-    setCharges((prev) => [...prev, { id: Math.random().toString(36).slice(2), name, amount: 0 }]);
-    setShowChargeMenu(false);
-  };
-  const updateCharge = (id: string, amount: number) =>
-    setCharges((prev) => prev.map((c) => c.id === id ? { ...c, amount } : c));
-  const removeCharge = (id: string) =>
-    setCharges((prev) => prev.filter((c) => c.id !== id));
-
-  // ── Save ──
-  const save = (status: PurchaseOrder["status"]) => {
-    if (!supplier) { alert("Select a supplier."); return; }
-    if (lines.length === 0) { alert("Add at least one item."); return; }
-    const po: PurchaseOrder = {
-      id: editing ? editing.id : `PO${String(data.length + 1).padStart(3, "0")}`,
-      poNo: editing ? editing.poNo : nextPONo(data),
-      poDate, prRef, supplier, supplierState: supplierInfo?.state ?? "",
-      division, currency, contactPerson, approvalBy, billTo,
-      lines, charges, paymentTerms, modeOfTransport,
-      deliveryLocation, purchaseRef, remark, status,
-    };
-    if (editing) {
-      setData((d) => d.map((r) => r.id === editing.id ? po : r));
-    } else {
-      setData((d) => [...d, po]);
-    }
-    setView("list");
-  };
-
-  const currentPONo = editing ? editing.poNo : nextPONo(data);
-  const filteredData = (filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus))
-    .filter((r) => {
-      if (!listSearch) return true;
-      const s = listSearch.toLowerCase();
-      return (
-        r.poNo.toLowerCase().includes(s) ||
-        r.supplier.toLowerCase().includes(s) ||
-        (r.prRef ?? "").toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s)
+  const fetchPos = useCallback(async () => {
+    setLoadingPos(true);
+    try {
+      const data = await apiFetch(
+        `${BASE_URL}/api/PurchaseOrderAJ/ProcessList?fromDateValue=2000-01-01&toDateValue=2099-12-31&detail=False`
       );
+      setPos(Array.isArray(data) ? data : []);
+    } catch { setPos([]); }
+    finally { setLoadingPos(false); }
+  }, []);
+
+  const fetchContacts = useCallback(async (ledgerId: number) => {
+    if (!ledgerId) { setContacts([]); return; }
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetContactPerson?ledgerId=${ledgerId}`);
+      setContacts(Array.isArray(data) ? data : []);
+    } catch { setContacts([]); }
+  }, []);
+
+  const fetchOverflowItems = useCallback(async (ledgerId = 0) => {
+    try {
+      const url = ledgerId
+        ? `${BASE_URL}/api/PurchaseOrderAJ/GetOverFlowGrid?selSupplierName=${ledgerId}`
+        : `${BASE_URL}/api/PurchaseOrderAJ/GetOverFlowGrid`;
+      const data = await apiFetch(url);
+      setOverflowItems(Array.isArray(data) ? data : []);
+    } catch { setOverflowItems([]); }
+  }, []);
+
+  const fetchChargeLedgers = useCallback(async (purchaseType = "") => {
+    try {
+      const data = await apiFetch(
+        `${BASE_URL}/api/PurchaseOrderAJ/GetTaxLedgers?purchaseType=${purchaseType}`
+      );
+      setChargeLedgers(Array.isArray(data) ? data : []);
+    } catch { setChargeLedgers([]); }
+  }, []);
+
+  const fetchItemRates = useCallback(async (ledgerId: number) => {
+    if (!ledgerId) { setItemRates([]); return; }
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetItemRate?ledgerId=${ledgerId}`);
+      setItemRates(Array.isArray(data) ? data : []);
+    } catch { setItemRates([]); }
+  }, []);
+
+  const fetchPaymentTerms = useCallback(async (ledgerId: number) => {
+    if (!ledgerId) return;
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetSupplierPaymentTerms?ledgerId=${ledgerId}`);
+      if (typeof data === "string" && data) setTermsOfPayment(data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchSupplierGrades = useCallback(async (ledgerId: number) => {
+    if (!ledgerId) { setSupplierGrades([]); return; }
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/FieldMasterAJ/GetSupplierGrades?ledgerID=${ledgerId}`);
+      setSupplierGrades(Array.isArray(data) ? data : []);
+    } catch { setSupplierGrades([]); }
+  }, []);
+
+  const fetchPONo = useCallback(async () => {
+    try {
+      const data = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetPONo?prefix=PO&purchaseOrderVoucherId=-11`);
+      setPoNo(typeof data === "string" ? data : "");
+    } catch { setPoNo(""); }
+  }, []);
+
+  // ─── Effects ───────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    fetchSuppliers();
+    fetchReqs();
+    fetchPos();
+  }, []);
+
+  // ─── Form reset ────────────────────────────────────────────────────────────
+
+  const resetForm = useCallback(() => {
+    setPoDate(todayISO());
+    setPoNo("");
+    setSupplierID(0);
+    setCurrency("INR");
+    setContactPersonID(0);
+    setNarration("");
+    setModeOfTransport("");
+    setDeliveryAddress("");
+    setTermsOfPayment("");
+    setLines([]);
+    setCharges([]);
+    setContacts([]);
+    setSupplierGrades([]);
+    setActiveTab("basic");
+    setEditTxnID(null);
+    setEditVoucherNo("");
+  }, []);
+
+  // ─── Supplier change ───────────────────────────────────────────────────────
+
+  const handleSupplierChange = useCallback(async (ledgerId: number) => {
+    setSupplierID(ledgerId);
+    setContactPersonID(0);
+    if (ledgerId) {
+      await Promise.all([
+        fetchContacts(ledgerId),
+        fetchOverflowItems(ledgerId),
+        fetchItemRates(ledgerId),
+        fetchPaymentTerms(ledgerId),
+        fetchSupplierGrades(ledgerId),
+      ]);
+      const sup = suppliers.find(s => s.LedgerID === ledgerId);
+      if (sup?.CurrencyCode) setCurrency(sup.CurrencyCode);
+    } else {
+      setContacts([]);
+      setItemRates([]);
+      setSupplierGrades([]);
+      fetchOverflowItems(0);
+    }
+  }, [suppliers, fetchContacts, fetchOverflowItems, fetchItemRates, fetchPaymentTerms, fetchSupplierGrades]);
+
+  // Apply supplier-wise rates to existing lines when supplier changes
+  useEffect(() => {
+    if (!itemRates.length || !lines.length) return;
+    setLines(prev => prev.map(l => {
+      const rate = itemRates.find(r => r.ItemID === l.ItemID);
+      if (!rate) return l;
+      const tolerance = rate.QuantityTolerance > 0 ? rate.QuantityTolerance : l.Tolerance;
+      return recalcLine({ ...l, Rate: rate.PurchaseRate, Tolerance: tolerance }, sameState);
+    }));
+  }, [itemRates]);
+
+  // Recalc GST type when supplier changes
+  useEffect(() => {
+    if (!lines.length) return;
+    setLines(prev => prev.map(l => recalcLine(l, sameState)));
+  }, [sameState]);
+
+  // Load charge ledgers based on state when entering terms tab
+  const handleEnterTermsTab = useCallback(() => {
+    setActiveTab("terms");
+    fetchChargeLedgers(sameState ? "IntraState" : "InterState");
+  }, [sameState, fetchChargeLedgers]);
+
+  // ─── Open New ──────────────────────────────────────────────────────────────
+
+  const openNew = useCallback(async () => {
+    resetForm();
+    await Promise.all([fetchPONo(), fetchOverflowItems(0)]);
+    setView("form");
+    setActiveTab("basic");
+  }, [resetForm, fetchPONo, fetchOverflowItems]);
+
+  // ─── Open from selected requisitions ──────────────────────────────────────
+
+  const openFromSelectedReqs = useCallback(async () => {
+    if (selectedReqIds.size === 0) {
+      alert("Select at least one requisition item.");
+      return;
+    }
+    resetForm();
+    await fetchPONo();
+
+    // Build the unique key: TransactionID-TransactionDetailID
+    const selectedRows = reqs.filter(r =>
+      selectedReqIds.has(`${r.TransactionID}-${r.TransactionDetailID}`)
+    );
+
+    const newLines: POLine[] = selectedRows.map((r, idx) => {
+      const packs = toNum(r.PurchaseQuantityPacks);
+      const qpp = toNum(r.QuantityPerPack);
+      const poQty = toNum(r.PurchaseQuantity);
+      return recalcLine({
+        lineKey: `req-${r.TransactionDetailID}-${idx}`,
+        ItemID: r.ItemID,
+        ItemGroupID: r.ItemGroupID,
+        ItemGroupNameID: toNum((r as any).ItemGroupNameID),
+        ItemSubGroupID: toNum((r as any).ItemSubGroupID),
+        ItemGroupName: r.ItemGroupName ?? "",
+        ItemSubGroupName: r.ItemSubGroupName ?? "",
+        ItemCode: r.ItemCode ?? "",
+        ItemName: r.ItemName ?? "",
+        ItemDescription: r.ItemDescription ?? null,
+        ItemNarration: (r as any).ItemNarration ?? "",
+        RequisitionTransactionID: r.TransactionID,
+        ReqQtyInPU: poQty,
+        StockUnit: r.StockUnit ?? r.OrderUnit ?? "",
+        PurchaseUnit: r.PurchaseUnit ?? "",
+        WtPerPacking: toNum(r.WtPerPacking),
+        UnitPerPacking: toNum(r.UnitPerPacking),
+        NoOfPacks: packs,
+        QtyPerPack: qpp,
+        POQtyInPU: poQty,
+        POQtyInSU: poQty,
+        Rate: toNum(r.PurchaseRate),
+        ProductHSNID: toNum(r.ProductHSNID),
+        HSNCode: r.HSNCode ?? "",
+        GSTPercentage: toNum(r.GSTTaxPercentage),
+        CGSTPercentage: toNum(r.CGSTTaxPercentage),
+        SGSTPercentage: toNum(r.SGSTTaxPercentage),
+        IGSTPercentage: toNum(r.IGSTTaxPercentage),
+        ExpectedDelivery: parseDateToISO(r.ExpectedDeliveryDate ?? ""),
+        Tolerance: toNum(r.Tolerance),
+        SupplierGrade: "",
+        GrossAmount: 0, DiscPct: 0, DiscAmount: 0,
+        BasicAmount: 0, TaxableAmount: 0,
+        CGSTAmount: 0, SGSTAmount: 0, IGSTAmount: 0, NetAmount: 0,
+      }, true /* default same state until supplier chosen */);
     });
-  const statuses: ("All" | PurchaseOrder["status"])[] = ["All", "Draft", "Approved", "Sent", "Closed", "Cancelled"];
 
-  // Pending PRs (submitted or approved, not yet ordered)
-  const pendingPRs = allPRs.filter((p) => p.status === "Submitted" || p.status === "Approved");
+    setLines(newLines);
+    setSelectedReqIds(new Set());
+    setView("form");
+    setActiveTab("basic");
+    await fetchOverflowItems(0);
+  }, [selectedReqIds, reqs, resetForm, fetchPONo, fetchOverflowItems]);
 
-  // ══════════════════════════════════════════════════════════
+  // ─── Open Edit ─────────────────────────────────────────────────────────────
+
+  const openEdit = useCallback(async (po: POHeader) => {
+    resetForm();
+    setFormLoading(true);
+    try {
+      const rows: any[] = await apiFetch(
+        `${BASE_URL}/api/PurchaseOrderAJ/RetrieveData?transactionId=${po.TransactionID}`
+      );
+      if (!Array.isArray(rows) || rows.length === 0) {
+        alert("No data found for this Purchase Order.");
+        return;
+      }
+      if (rows[0]?.ErrMsg) {
+        alert("Failed to load PO: " + rows[0].ErrMsg);
+        return;
+      }
+
+      setEditTxnID(po.TransactionID);
+      setEditVoucherNo(po.VoucherNo ?? "");
+      setPoNo(po.VoucherNo ?? "");
+
+      // Header info from PO list row (po) and first detail row
+      const first = rows[0];
+      setPoDate(po.VoucherDate ? parseDateToISO(po.VoucherDate) || todayISO() : todayISO());
+      setSupplierID(toNum(first.LedgerID));
+      setCurrency(po.CurrencyCode ?? "INR");
+      setContactPersonID(toNum(po.ContactPersonID));
+      setNarration(first.Narration ?? "");
+      setDeliveryAddress(po.DeliveryAddress ?? "");
+      setTermsOfPayment(po.TermsOfPayment ?? "");
+      setModeOfTransport(po.ModeOfTransport ?? "");
+
+      // Fetch supplier-related data
+      if (toNum(first.LedgerID)) {
+        await Promise.all([
+          fetchContacts(toNum(first.LedgerID)),
+          fetchOverflowItems(toNum(first.LedgerID)),
+          fetchItemRates(toNum(first.LedgerID)),
+          fetchSupplierGrades(toNum(first.LedgerID)),
+        ]);
+      } else {
+        await fetchOverflowItems(0);
+      }
+
+      const sup = suppliers.find(s => s.LedgerID === toNum(first.LedgerID));
+      const ss = sup
+        ? sup.StateTinNo === sup.CompanyStateTinNo && sup.StateTinNo !== 0
+        : true;
+
+      // Deduplicate by TransID in case backend returns multiple rows per line
+      const seen = new Set<number>();
+      const uniqueRows = rows.filter((r: any) => {
+        if (seen.has(r.TransID)) return false;
+        seen.add(r.TransID);
+        return true;
+      });
+
+      const ls: POLine[] = uniqueRows.map((r: any, idx: number) => {
+        const poQty = toNum(r.PurchaseQuantity);
+        const packs = toNum(r.RequiredNoOfPacks);
+        const qpp = toNum(r.QuantityPerPack);
+        return {
+          lineKey: `e${r.ItemID}-${idx}`,
+          ItemID: toNum(r.ItemID),
+          ItemGroupID: toNum(r.ItemGroupID),
+          ItemGroupNameID: toNum(r.ItemGroupNameID),
+          ItemSubGroupID: toNum(r.ItemSubGroupID),
+          ItemGroupName: r.ItemGroupName ?? "",
+          ItemSubGroupName: r.ItemSubGroupName ?? "",
+          ItemCode: r.ItemCode ?? "",
+          ItemName: r.ItemName ?? "",
+          ItemDescription: r.ItemDescription ?? null,
+          ItemNarration: r.ItemNarration ?? "",
+          RequisitionTransactionID: toNum(r.RequisitionTransactionID),
+          ReqQtyInPU: toNum(r.TotalRequiredQuantity),
+          StockUnit: r.PurchaseStockUnit ?? "",
+          PurchaseUnit: r.PurchaseUnit ?? "",
+          WtPerPacking: toNum(r.WtPerPacking),
+          UnitPerPacking: toNum(r.UnitPerPacking),
+          NoOfPacks: packs,
+          QtyPerPack: qpp,
+          POQtyInPU: poQty,
+          POQtyInSU: toNum(r.TotalRequiredQuantity),
+          Rate: toNum(r.PurchaseRate),
+          ProductHSNID: toNum(r.ProductHSNID),
+          HSNCode: r.HSNCode ?? "",
+          GSTPercentage: toNum(r.GSTTaxPercentage),
+          CGSTPercentage: toNum(r.CGSTTaxPercentage),
+          SGSTPercentage: toNum(r.SGSTTaxPercentage),
+          IGSTPercentage: toNum(r.IGSTTaxPercentage),
+          ExpectedDelivery: parseDateToISO(r.ExpectedDeliveryDate ?? ""),
+          Tolerance: toNum(r.Tolerance),
+          SupplierGrade: r.GradesOfSupplier ?? "",
+          GrossAmount: toNum(r.BasicAmount),
+          DiscPct: toNum(r.Disc),
+          DiscAmount: toNum(r.DiscountAmount),
+          BasicAmount: toNum(r.AfterDisAmt),
+          TaxableAmount: toNum(r.TaxableAmount),
+          CGSTAmount: toNum(r.CGSTAmt),
+          SGSTAmount: toNum(r.SGSTAmt),
+          IGSTAmount: toNum(r.IGSTAmt),
+          NetAmount: toNum(r.TotalAmount),
+        };
+      });
+
+      setLines(ls);
+
+      // Load tax/charges
+      try {
+        const taxRows: any[] = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/RetrieveTaxCharges?transactionId=${po.TransactionID}`);
+        if (Array.isArray(taxRows) && taxRows.length > 0 && !taxRows[0]?.ErrMsg) {
+          setCharges(taxRows.map((t: any, i: number) => ({
+            chargeKey: `ec-${t.LedgerID}-${i}`,
+            LedgerID: toNum(t.LedgerID),
+            LedgerName: t.LedgerName ?? "",
+            TaxPercentage: toNum(t.TaxRatePer),
+            TaxType: t.TaxType ?? "",
+            CalcOn: t.CalculateON ?? "Value",
+            GSTApplicable: toNum(t.GSTApplicable) === 1,
+            InAmount: toNum(t.InAmount) === 1,
+            IsService: t.IsService ?? "No",
+            ProductHSNID: toNum(t.ProductHSNID),
+            HSNCode: t.HSNCode ?? "",
+            GSTTaxPercentage: toNum(t.GSTTaxPercentage),
+            CGSTTaxPercentage: toNum(t.CGSTTaxPercentage),
+            SGSTTaxPercentage: toNum(t.SGSTTaxPercentage),
+            IGSTTaxPercentage: toNum(t.IGSTTaxPercentage),
+            CGSTAmount: toNum(t.CGSTAmount),
+            SGSTAmount: toNum(t.SGSTAmount),
+            IGSTAmount: toNum(t.IGSTAmount),
+            Amount: toNum(t.ChargesAmount),
+            TotalAmount: toNum(t.TotalAmount),
+          })));
+        }
+      } catch { /* charges remain empty if API fails */ }
+
+      setView("form");
+      setActiveTab("basic");
+    } catch (e: any) {
+      alert("Failed to load PO: " + e.message);
+    } finally {
+      setFormLoading(false);
+    }
+  }, [resetForm, fetchContacts, fetchOverflowItems, fetchItemRates, suppliers]);
+
+  // ─── Line operations ───────────────────────────────────────────────────────
+
+  const addItemFromPicker = useCallback((item: OverflowItem) => {
+    const rate = itemRates.find(r => r.ItemID === item.ItemID);
+    const line: POLine = recalcLine({
+      lineKey: `pick-${item.ItemID}-${Date.now()}`,
+      ItemID: item.ItemID,
+      ItemGroupID: item.ItemGroupID,
+      ItemGroupNameID: toNum(item.ItemGroupNameID),
+      ItemSubGroupID: toNum(item.ItemSubGroupID),
+      ItemGroupName: item.ItemGroupName ?? "",
+      ItemSubGroupName: item.ItemSubGroupName ?? "",
+      ItemCode: item.ItemCode ?? "",
+      ItemName: item.ItemName ?? "",
+      ItemDescription: item.ItemDescription ?? null,
+      ItemNarration: "",
+      RequisitionTransactionID: 0,
+      ReqQtyInPU: 0,
+      StockUnit: item.StockUnit ?? "",
+      PurchaseUnit: item.PurchaseUnit ?? "",
+      WtPerPacking: toNum(item.WtPerPacking),
+      UnitPerPacking: toNum(item.UnitPerPacking),
+      NoOfPacks: 0, QtyPerPack: 0, POQtyInPU: 0, POQtyInSU: 0,
+      Rate: rate?.PurchaseRate ?? toNum(item.PurchaseRate),
+      ProductHSNID: toNum(item.ProductHSNID),
+      HSNCode: item.HSNCode ?? "",
+      GSTPercentage: toNum(item.GSTTaxPercentage),
+      CGSTPercentage: toNum(item.CGSTTaxPercentage),
+      SGSTPercentage: toNum(item.SGSTTaxPercentage),
+      IGSTPercentage: toNum(item.IGSTTaxPercentage),
+      ExpectedDelivery: "", Tolerance: rate?.QuantityTolerance ?? toNum(item.Tolerance),
+      SupplierGrade: "",
+      GrossAmount: 0, DiscPct: 0, DiscAmount: 0, BasicAmount: 0,
+      TaxableAmount: 0, CGSTAmount: 0, SGSTAmount: 0, IGSTAmount: 0, NetAmount: 0,
+    }, sameState);
+    setLines(prev => [...prev, line]);
+    setShowPicker(false);
+    setPickerSearch("");
+    setPickerGroup("All");
+  }, [sameState, itemRates]);
+
+  const updateLineNum = useCallback((key: string, field: keyof POLine, value: number) => {
+    setLines(prev => prev.map(l => {
+      if (l.lineKey !== key) return l;
+      let updated = { ...l, [field]: value };
+      if (field === "NoOfPacks" || field === "QtyPerPack") {
+        const packs = field === "NoOfPacks" ? value : l.NoOfPacks;
+        const qpp = field === "QtyPerPack" ? value : l.QtyPerPack;
+        updated.POQtyInPU = packs * qpp || l.POQtyInPU;
+        updated.POQtyInSU = packs * qpp || l.POQtyInSU;
+      } else if (field === "POQtyInPU") {
+        updated.POQtyInSU = value;
+      }
+      return recalcLine(updated, sameState);
+    }));
+  }, [sameState]);
+
+  const updateLineStr = useCallback((key: string, field: keyof POLine, value: string) => {
+    setLines(prev => prev.map(l => l.lineKey !== key ? l : { ...l, [field]: value }));
+  }, []);
+
+  const removeLine = useCallback((key: string) =>
+    setLines(prev => prev.filter(l => l.lineKey !== key)), []);
+
+  // ─── Charge operations ─────────────────────────────────────────────────────
+
+  const addCharge = useCallback((cl: ChargeLedger) => {
+    setCharges(prev => [...prev, {
+      chargeKey: `c-${cl.LedgerID}-${Date.now()}`,
+      LedgerID: cl.LedgerID,
+      LedgerName: cl.LedgerName,
+      TaxPercentage: toNum(cl.TaxPercentage),
+      TaxType: cl.TaxType ?? "",
+      CalcOn: "Value",
+      GSTApplicable: cl.GSTApplicable === "True",
+      InAmount: false,
+      IsService: cl.IsService ?? "No",
+      ProductHSNID: toNum(cl.ProductHSNID),
+      HSNCode: cl.HSNCode ?? "",
+      GSTTaxPercentage: toNum(cl.GSTTaxPercentage),
+      CGSTTaxPercentage: toNum(cl.CGSTTaxPercentage),
+      SGSTTaxPercentage: toNum(cl.SGSTTaxPercentage),
+      IGSTTaxPercentage: toNum(cl.IGSTTaxPercentage),
+      CGSTAmount: 0, SGSTAmount: 0, IGSTAmount: 0,
+      Amount: 0, TotalAmount: 0,
+    }]);
+    setShowChargeMenu(false);
+  }, []);
+
+  const updateCharge = useCallback((key: string, patch: Partial<POCharge>) =>
+    setCharges(prev => prev.map(c => c.chargeKey !== key ? c : { ...c, ...patch })), []);
+
+  const removeCharge = useCallback((key: string) =>
+    setCharges(prev => prev.filter(c => c.chargeKey !== key)), []);
+
+  // ─── Save ──────────────────────────────────────────────────────────────────
+
+  const validateForm = useCallback((): string | null => {
+    if (!supplierID) return "Please select a supplier.";
+    if (lines.length === 0) return "Add at least one item to the PO.";
+    if (!modeOfTransport) return "Please select Mode of Transport (in Tax & Terms tab).";
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.POQtyInPU <= 0) return `Item ${i + 1} (${l.ItemCode}): Purchase quantity must be greater than 0.`;
+      if (l.Rate <= 0) return `Item ${i + 1} (${l.ItemCode}): Rate must be greater than 0.`;
+      if (l.TaxableAmount <= 0) return `Item ${i + 1} (${l.ItemCode}): Taxable amount is 0. Check quantity and rate.`;
+      if (!l.ExpectedDelivery) return `Item ${i + 1} (${l.ItemCode}): Expected Delivery Date is required.`;
+    }
+    return null;
+  }, [supplierID, lines, modeOfTransport]);
+
+  const doSave = useCallback(async () => {
+    const err = validateForm();
+    if (err) { alert(err); return; }
+    setSaving(true);
+    try {
+      const payload = buildPayload();
+      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/Save`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const text = unwrapOk(await res.text());
+      if (text.startsWith("Success|")) {
+        const [, , newPoNo] = text.split("|");
+        alert(`Purchase Order ${newPoNo} saved successfully.`);
+        await Promise.all([fetchReqs(), fetchPos()]);
+        setView("list");
+        setListTab("pos");
+      } else if (text.includes("not authorized")) {
+        alert(text);
+      } else {
+        alert("Save failed: " + text);
+      }
+    } catch (e: any) {
+      alert("Save error: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  }, [supplierID, lines, charges, poDate, currency, contactPersonID, narration,
+      modeOfTransport, deliveryAddress, termsOfPayment, netAmount, totalGST, totalCharges,
+      validateForm, fetchReqs, fetchPos, suppliers]);
+
+  // ─── Update (needs password) ───────────────────────────────────────────────
+
+  const doUpdate = useCallback(async (password: string, remark: string) => {
+    const session = getSession();
+    if (!session) { alert("Session expired."); return; }
+    const err = validateForm();
+    if (err) { alert(err); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        ...buildPayload(),
+        transactionId: String(editTxnID),
+        voucherNo: editVoucherNo,
+        ValidateUser: { userName: session.userName, password, transactionRemark: remark },
+      };
+      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/Update`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const text = unwrapOk(await res.text());
+      if (text === "Success") {
+        alert("Purchase Order updated successfully.");
+        await Promise.all([fetchReqs(), fetchPos()]);
+        setView("list");
+        setListTab("pos");
+      } else if (text === "TransactionUsed") {
+        alert("This PO is already used in a GRN and cannot be updated.");
+      } else if (text === "PurchaseOrderApproved") {
+        alert("This PO has approved items and cannot be updated.");
+      } else {
+        alert("Update failed: " + text);
+      }
+    } catch (e: any) {
+      alert("Update error: " + e.message);
+    } finally {
+      setSaving(false);
+      setPwModal(null);
+    }
+  }, [editTxnID, editVoucherNo, supplierID, lines, charges, poDate, currency,
+      contactPersonID, narration, modeOfTransport, deliveryAddress, termsOfPayment,
+      netAmount, totalGST, totalCharges, validateForm, fetchReqs, fetchPos, suppliers]);
+
+  // ─── Delete ────────────────────────────────────────────────────────────────
+
+  const doDelete = useCallback(async (password: string, remark: string) => {
+    const session = getSession();
+    if (!session) { alert("Session expired."); return; }
+    setDeleting(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/Delete`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          transactionId: String(editTxnID),
+          ValidateUser: { userName: session.userName, password, transactionRemark: remark },
+        }),
+      });
+      const text = unwrapOk(await res.text());
+      if (text === "Success") {
+        alert("Purchase Order deleted successfully.");
+        await Promise.all([fetchReqs(), fetchPos()]);
+        setView("list");
+        setListTab("pos");
+      } else if (text === "InvalidUser") {
+        alert("Invalid password. Please try again.");
+      } else if (text === "TransactionUsed") {
+        alert("This PO is linked to a GRN and cannot be deleted.");
+      } else if (text === "PurchaseOrderApproved") {
+        alert("This PO has approved items and cannot be deleted.");
+      } else {
+        alert(text);
+      }
+    } catch (e: any) {
+      alert("Delete error: " + e.message);
+    } finally {
+      setDeleting(false);
+      setPwModal(null);
+    }
+  }, [editTxnID]);
+
+  // ─── Build payload ─────────────────────────────────────────────────────────
+
+  const buildPayload = useCallback(() => {
+    const afterDiscTotal = lines.reduce((s, l) => s + l.BasicAmount, 0);
+    const cgstTotal = lines.reduce((s, l) => s + l.CGSTAmount, 0);
+    const sgstTotal = lines.reduce((s, l) => s + l.SGSTAmount, 0);
+    const igstTotal = lines.reduce((s, l) => s + l.IGSTAmount, 0);
+    const gstTotal = cgstTotal + sgstTotal + igstTotal;
+    const chargesTotal = charges.reduce((s, c) => s + c.Amount, 0);
+    const net = afterDiscTotal + gstTotal + chargesTotal;
+
+    const Main = {
+      LedgerID: supplierID,
+      VoucherDate: poDate,
+      Narration: narration,
+      ContactPersonID: contactPersonID || 0,
+      ProductionUnitID: 0,
+      CurrencyCode: currency,
+      NetAmount: parseFloat(net.toFixed(2)),
+      TotalBasicAmount: parseFloat(afterDiscTotal.toFixed(2)),
+      TotalCGSTTaxAmount: parseFloat(cgstTotal.toFixed(2)),
+      TotalSGSTTaxAmount: parseFloat(sgstTotal.toFixed(2)),
+      TotalIGSTTaxAmount: parseFloat(igstTotal.toFixed(2)),
+      TotalTaxAmount: parseFloat(gstTotal.toFixed(2)),
+      TotalOverheadAmount: parseFloat(chargesTotal.toFixed(2)),
+      TotalQuantity: lines.reduce((s, l) => s + l.POQtyInPU, 0),
+      ModeOfTransport: modeOfTransport,
+      DeliveryAddress: deliveryAddress,
+      TermsOfPayment: termsOfPayment,
+      PurchaseDivision: 0,
+      PurchaseReferenceRemark: "",
+      DealerID: 0,
+      VoucherApprovalByEmployeeID: 0,
+      PurchaseTerms: "",
+      BillToProductionUnitID: 0,
+    };
+
+    const Detail = lines.map((l, idx) => ({
+      TransID: idx + 1,
+      ItemID: l.ItemID,
+      ItemGroupID: l.ItemGroupID,
+      ProductionUnitID: 0,
+      PurchaseOrderQuantity: parseFloat(l.POQtyInPU.toFixed(2)),
+      ChallanWeight: parseFloat(l.POQtyInSU.toFixed(2)),
+      PurchaseUnit: l.PurchaseUnit,
+      StockUnit: l.StockUnit,
+      ItemDescription: l.ItemDescription ?? "",
+      PurchaseRate: parseFloat(l.Rate.toFixed(4)),
+      PurchaseTolerance: l.Tolerance,
+      GrossAmount: parseFloat(l.GrossAmount.toFixed(2)),
+      DiscountPercentage: parseFloat(l.DiscPct.toFixed(2)),
+      DiscountAmount: parseFloat(l.DiscAmount.toFixed(2)),
+      DistributedDiscount: 0,
+      BasicAmount: parseFloat(l.BasicAmount.toFixed(2)),
+      TaxableAmount: parseFloat(l.TaxableAmount.toFixed(2)),
+      GSTPercentage: l.GSTPercentage,
+      CGSTPercentage: l.CGSTPercentage,
+      SGSTPercentage: l.SGSTPercentage,
+      IGSTPercentage: l.IGSTPercentage,
+      CGSTAmount: parseFloat(l.CGSTAmount.toFixed(2)),
+      SGSTAmount: parseFloat(l.SGSTAmount.toFixed(2)),
+      IGSTAmount: parseFloat(l.IGSTAmount.toFixed(2)),
+      NetAmount: parseFloat(l.NetAmount.toFixed(2)),
+      RequiredNoOfPacks: l.NoOfPacks,
+      QuantityPerPack: l.QtyPerPack,
+      RequiredQuantity: parseFloat(l.ReqQtyInPU.toFixed(3)),
+      ExpectedDeliveryDate: l.ExpectedDelivery || null,
+      ProductHSNID: l.ProductHSNID || 0,
+      RequisitionTransactionID: l.RequisitionTransactionID,
+      ItemNarration: l.ItemNarration ?? "",
+      Remark: "",
+      RefJobBookingJobCardContentsID: 0,
+      RefJobCardContentNo: "",
+      RefJobName: "",
+      ClientID: 0,
+      GradesOfSupplier: l.SupplierGrade ?? "",
+    }));
+
+    const Tax = charges.map((c, idx) => ({
+      TransID: idx + 1,
+      LedgerID: c.LedgerID,
+      TaxPercentage: c.TaxPercentage,
+      Amount: parseFloat(c.Amount.toFixed(2)),
+      TaxInAmount: c.InAmount ? 1 : 0,
+      IsComulative: 0,
+      GSTApplicable: c.GSTApplicable ? 1 : 0,
+      IsService: c.IsService,
+      CalculatedON: c.CalcOn,
+      ProductHSNID: c.ProductHSNID || 0,
+      GSTPercentage: c.GSTTaxPercentage,
+      CGSTPercentage: c.CGSTTaxPercentage,
+      SGSTPercentage: c.SGSTTaxPercentage,
+      IGSTPercentage: c.IGSTTaxPercentage,
+      CGSTAmount: parseFloat(c.CGSTAmount.toFixed(2)),
+      SGSTAmount: parseFloat(c.SGSTAmount.toFixed(2)),
+      IGSTAmount: parseFloat(c.IGSTAmount.toFixed(2)),
+      TotalAmount: parseFloat(c.TotalAmount.toFixed(2)),
+    }));
+
+    // Requisition links — only for lines that came from requisitions
+    const Requisition = lines
+      .filter(l => l.RequisitionTransactionID > 0)
+      .map((l, idx) => ({
+        TransID: idx + 1,
+        RequisitionTransactionID: l.RequisitionTransactionID,
+        ItemID: l.ItemID,
+        RequisitionProcessQuantity: parseFloat(l.POQtyInPU.toFixed(3)),
+        StockUnit: l.StockUnit,
+      }));
+
+    const supplierLedgerName = suppliers.find(s => s.LedgerID === supplierID)?.LedgerName ?? "";
+    const UserApprovalProcess = lines.map(l => ({
+      LedgerID: supplierID,
+      LedgerName: supplierLedgerName,
+      ItemID: l.ItemID,
+      ItemName: l.ItemName,
+      ItemCode: l.ItemCode,
+      ItemRate: l.Rate,
+      ItemAmount: l.NetAmount,
+      PurchaseQty: l.POQtyInPU,
+      ExpectedDeliveryDate: l.ExpectedDelivery || null,
+    }));
+
+    return {
+      prefix: "PO",
+      purchaseOrderVoucherId: "-11",
+      txtNetAmt: String(parseFloat(net.toFixed(2))),
+      currencyCode: currency,
+      Main,
+      Detail,
+      Tax,
+      Schedule: [],
+      OverHead: [],
+      Requisition,
+      UserApprovalProcess,
+    };
+  }, [supplierID, poDate, narration, contactPersonID, currency, netAmount, totalGST, totalCharges,
+      modeOfTransport, deliveryAddress, termsOfPayment, lines, charges, suppliers]);
+
+  // ─── Req selection helpers ────────────────────────────────────────────────
+
+  const reqKey = (r: ReqRow) => `${r.TransactionID}-${r.TransactionDetailID}`;
+
+  const toggleReqRow = (r: ReqRow) => {
+    const k = reqKey(r);
+    setSelectedReqIds(prev => {
+      const n = new Set(prev);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
+  };
+
+  const toggleAllReqs = () => {
+    if (selectedReqIds.size === reqs.length) {
+      setSelectedReqIds(new Set());
+    } else {
+      setSelectedReqIds(new Set(reqs.map(reqKey)));
+    }
+  };
+
+  // Group reqs by VoucherNo for display
+  const reqsByVoucher = useMemo(() => {
+    const map = new Map<string, ReqRow[]>();
+    for (const r of reqs) {
+      const k = r.VoucherNo ?? String(r.TransactionID);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    return map;
+  }, [reqs]);
+
+  // ─── Password modal submit ─────────────────────────────────────────────────
+
+  const handlePwSubmit = () => {
+    if (!pwInput) { alert("Enter your password."); return; }
+    if (pwModal === "update") doUpdate(pwInput, pwRemark);
+    else if (pwModal === "delete") doDelete(pwInput, pwRemark);
+  };
+
+  // ══════════════════════════════════════════════════════════════════════════
   // LIST VIEW
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+
   if (view === "list") {
     return (
-      <div className="max-w-6xl mx-auto space-y-5">
-        {/* Page title + New button */}
+      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
+
+        {/* Page header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Purchase Orders</h2>
-            <p className="text-sm text-gray-500">{filteredData.length} of {data.length} orders</p>
+            <p className="text-sm text-gray-500">Manage requisition-based and direct purchase orders</p>
           </div>
           <button
             onClick={openNew}
@@ -305,216 +1180,248 @@ export default function PurchaseOrderPage() {
           </button>
         </div>
 
-        {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Status</span>
-            {statuses.map((s) => (
-              <button
-                key={s}
-                onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  filterStatus === s
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <input
-              type="text"
-              placeholder="Search by PO no, supplier, PR ref..."
-              value={listSearch}
-              onChange={e => setListSearch(e.target.value)}
-              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-            />
-          </div>
+        {/* List tabs */}
+        <div className="flex gap-6 border-b border-gray-200">
+          {(["reqs", "pos"] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setListTab(tab)}
+              className={`pb-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                listTab === tab ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
+              }`}
+            >
+              {tab === "reqs" ? (
+                <span className="flex items-center gap-2"><ClipboardList size={14} /> Pending Requisitions
+                  {reqs.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">{reqs.length}</span>}
+                </span>
+              ) : (
+                <span className="flex items-center gap-2"><List size={14} /> Created POs
+                  {pos.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-full">{pos.length}</span>}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
 
-        {/* Purchase Orders table */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">PO No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">PR Ref.</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Items</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Basic Amt (₹)</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">GST (₹)</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Gross Amt (₹)</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-14 text-gray-400 text-sm">No purchase orders found</td>
-                </tr>
-              ) : (
-                filteredData.map((po, i) => {
-                  const poBasic = po.lines.reduce((s, l) => s + l.basicAmt, 0);
-                  const poTax   = po.lines.reduce((s, l) => s + l.cgstAmt + l.sgstAmt + l.igstAmt, 0);
-                  const poGross = poBasic + poTax + po.charges.reduce((s, c) => s + c.amount, 0);
-                  return (
-                    <tr key={po.id} className={`border-t border-gray-100 hover:bg-blue-50/20 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{po.poNo}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(po.poDate)}</td>
-                      <td className="px-4 py-3 text-gray-800 text-xs font-medium">{po.supplier}</td>
-                      <td className="px-4 py-3 text-gray-700 text-xs font-mono">{po.prRef || "—"}</td>
-                      <td className="px-4 py-3 text-center font-medium text-gray-700">{po.lines.length}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 text-xs font-semibold">₹{fmtAmt(poBasic)}</td>
-                      <td className="px-4 py-3 text-right text-gray-600 text-xs">₹{fmtAmt(poTax)}</td>
-                      <td className="px-4 py-3 text-right text-blue-700 text-xs font-bold">₹{fmtAmt(poGross)}</td>
+        {/* ── PENDING REQUISITIONS TAB ── */}
+        {listTab === "reqs" && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {selectedReqIds.size > 0 && (
+              <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+                <span className="text-sm text-blue-700 font-medium">{selectedReqIds.size} item(s) selected</span>
+                <button
+                  onClick={openFromSelectedReqs}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <ChevronRight size={15} /> Create Purchase Order
+                </button>
+              </div>
+            )}
+
+            {loadingReqs ? (
+              <div className="text-center py-14 text-gray-400 text-sm">Loading requisitions…</div>
+            ) : reqs.length === 0 ? (
+              <div className="text-center py-14 text-gray-400 text-sm">No pending requisitions found</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs" style={{ minWidth: 1100 }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-3 py-3 text-left">
+                        <input type="checkbox"
+                          checked={selectedReqIds.size === reqs.length && reqs.length > 0}
+                          onChange={toggleAllReqs}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                      </th>
+                      {["Req. No.", "Date", "Item Code", "Item Name", "Group", "Pending Qty", "P.Unit", "Rate", "HSN", "GST%", "Exp. Delivery"].map(h => (
+                        <th key={h} className="px-3 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from(reqsByVoucher.entries()).map(([voucherNo, rows]) => (
+                      <React.Fragment key={voucherNo}>
+                        {rows.map((r, ri) => {
+                        const k = reqKey(r);
+                        const selected = selectedReqIds.has(k);
+                        return (
+                          <tr
+                            key={k}
+                            onClick={() => toggleReqRow(r)}
+                            className={`border-b border-gray-100 cursor-pointer transition-colors ${selected ? "bg-blue-50 hover:bg-blue-100" : ri % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/40 hover:bg-gray-100"}`}
+                          >
+                            <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                              <input type="checkbox" checked={selected} onChange={() => toggleReqRow(r)}
+                                className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                            </td>
+                            <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
+                              {ri === 0 ? voucherNo : ""}
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{ri === 0 ? r.VoucherDate : ""}</td>
+                            <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold">
+                              {r.ItemCode}
+                              {r.ItemDescription && <span className="text-gray-400 block font-normal text-xs">{r.ItemDescription}</span>}
+                            </td>
+                            <td className="px-3 py-2.5 text-gray-800 font-medium max-w-[180px]">{r.ItemName}</td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.ItemGroupName}</td>
+                            <td className="px-3 py-2.5 text-right font-semibold text-gray-800">{toNum(r.PurchaseQuantity).toLocaleString()}</td>
+                            <td className="px-3 py-2.5 text-gray-600">{r.PurchaseUnit}</td>
+                            <td className="px-3 py-2.5 text-right text-gray-700">₹{toNum(r.PurchaseRate).toFixed(2)}</td>
+                            <td className="px-3 py-2.5 font-mono text-gray-600">{r.HSNCode || "—"}</td>
+                            <td className="px-3 py-2.5 text-right text-gray-700">{toNum(r.GSTTaxPercentage)}%</td>
+                            <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.ExpectedDeliveryDate || "—"}</td>
+                          </tr>
+                        );
+                        })}
+                      </React.Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── CREATED POs TAB ── */}
+        {listTab === "pos" && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3">
+              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50 flex-1 max-w-xs">
+                <Search size={13} className="text-gray-400" />
+                <input
+                  value={posSearch}
+                  onChange={e => setPosSearch(e.target.value)}
+                  placeholder="Search PO no., supplier…"
+                  className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+                />
+              </div>
+              <button onClick={fetchPos} className="text-xs text-blue-600 hover:underline font-medium">Refresh</button>
+            </div>
+
+            {loadingPos ? (
+              <div className="text-center py-14 text-gray-400 text-sm">Loading purchase orders…</div>
+            ) : filteredPos.length === 0 ? (
+              <div className="text-center py-14 text-gray-400 text-sm">No purchase orders found</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {["PO No.", "Date", "Supplier", "Basic Amt", "GST", "Net Amount", "Currency", "Actions"].map(h => (
+                      <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === "Actions" || h === "Currency" ? "text-center" : h.includes("Amt") || h === "GST" || h === "Net Amount" ? "text-right" : "text-left"}`}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPos.map((po, i) => (
+                    <tr key={po.TransactionID} className={`border-t border-gray-100 hover:bg-blue-50/20 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{po.VoucherNo}</td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">{po.VoucherDate}</td>
+                      <td className="px-4 py-3 text-gray-800 text-xs font-medium">{po.LedgerName}</td>
+                      <td className="px-4 py-3 text-right text-gray-700 text-xs font-semibold">₹{fmtAmt(toNum(po.BasicAmount))}</td>
+                      <td className="px-4 py-3 text-right text-gray-600 text-xs">₹{fmtAmt(toNum(po.GSTTaxAmount))}</td>
+                      <td className="px-4 py-3 text-right text-blue-700 text-xs font-bold">₹{fmtAmt(toNum(po.NetAmount))}</td>
+                      <td className="px-4 py-3 text-center text-gray-600 text-xs">{po.CurrencyCode || "INR"}</td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[po.status]}`}>
-                          {po.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center gap-2 justify-end">
-                          <button onClick={() => openEdit(po)} className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
+                        <div className="flex items-center gap-2 justify-center">
+                          <button
+                            onClick={() => openEdit(po)}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors"
+                          >
                             <Pencil size={11} /> Edit
-                          </button>
-                          <button onClick={() => handleDelete(po.id)} className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:border-red-400 hover:bg-red-50 transition-colors">
-                            <Trash2 size={11} /> Delete
                           </button>
                         </div>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Pending Requisitions section */}
-        {pendingPRs.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-gray-50 px-5 py-3 border-b border-gray-200 flex items-center gap-2">
-              <ClipboardList size={15} className="text-blue-600" />
-              <span className="text-sm font-semibold text-gray-700">
-                Pending Requisitions — click to create Purchase Order
-              </span>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Req. No.</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Items</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Req. Qty</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Remark</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pendingPRs.map((pr, i) => (
-                  <tr
-                    key={pr.id}
-                    className={`border-t border-gray-100 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                  >
-                    <td className="px-4 py-2.5 font-mono font-semibold text-blue-700">{pr.reqNo}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{fmtDate(pr.reqDate)}</td>
-                    <td className="px-4 py-2.5 text-center font-medium text-gray-700">{pr.lines.length}</td>
-                    <td className="px-4 py-2.5 text-right font-semibold text-gray-700">
-                      {pr.lines.reduce((s, l) => s + l.poQtyInPU, 0).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-700 max-w-[180px] truncate">{pr.remark || "—"}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PR_STATUS_STYLE[pr.status]}`}>
-                        {pr.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <button
-                        onClick={() => openFromPR(pr)}
-                        className="flex items-center gap-1 mx-auto px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                      >
-                        <Plus size={11} /> Create PO
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
     );
   }
 
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
   // FORM VIEW
-  // ══════════════════════════════════════════════════════════
-  const tabs: { key: "basic" | "items" | "terms" | "summary"; label: string }[] = [
-    { key: "basic", label: "Basic" },
-    { key: "items", label: "Items" },
-    { key: "terms", label: "Terms" },
-    { key: "summary", label: "Summary" },
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const tabs = [
+    { key: "basic" as const, label: "Basic" },
+    { key: "items" as const, label: `Items (${lines.length})` },
+    { key: "terms" as const, label: "Tax & Terms" },
+    { key: "summary" as const, label: "Summary" },
   ];
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
-      {/* Header Ribbon */}
+    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+
+      {/* Header ribbon */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
-          <h2 className="text-xl font-bold text-gray-800">Purchase Order</h2>
-          <div className="flex items-center gap-2 mt-1">
-            {editing && (
-              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[editing.status]}`}>
-                {editing.status}
-              </span>
-            )}
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
-              {currentPONo}
+          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Purchase Order</p>
+          <h2 className="text-xl font-bold text-gray-800">{editTxnID ? `Edit — ${editVoucherNo}` : "New Purchase Order"}</h2>
+          {poNo && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 mt-1">
+              {poNo}
             </span>
-          </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <List size={16} /> List ({data.length})
+          <button
+            onClick={() => setView("list")}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <List size={16} /> Back to List
           </button>
-          <button onClick={openNew} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-            <Plus size={16} /> New
-          </button>
-          <button onClick={() => save("Draft")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Save size={16} /> Draft
-          </button>
-          <button onClick={() => save("Approved")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Check size={16} /> {editing ? "Save" : "Approve & Save"}
-          </button>
-          {editing && (
-            <button onClick={() => handleDelete(editing.id)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-400 transition-colors">
-              <Trash2 size={16} /> Delete
+
+          {editTxnID ? (
+            <>
+              <button
+                onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("update"); }}
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60"
+              >
+                <Check size={16} /> {saving ? "Saving…" : "Update PO"}
+              </button>
+              <button
+                onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("delete"); }}
+                disabled={deleting}
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-400 transition-colors disabled:opacity-60"
+              >
+                <Trash2 size={16} /> {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={doSave}
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60"
+            >
+              <Check size={16} /> {saving ? "Saving…" : "Save PO"}
             </button>
           )}
         </div>
       </div>
 
-      {/* Main Content Card */}
+      {formLoading && (
+        <div className="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-gray-200 mb-4">
+          Loading Purchase Order data…
+        </div>
+      )}
+
+      {/* Tab content */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
-        {/* Tab Header */}
+        {/* Tab bar */}
         <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
           <div className="flex gap-8">
-            {tabs.map((tab) => (
+            {tabs.map(tab => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => tab.key === "terms" ? handleEnterTermsTab() : setActiveTab(tab.key)}
                 className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
-                  activeTab === tab.key
-                    ? "text-blue-600 border-blue-600"
-                    : "text-gray-500 border-transparent hover:text-gray-700"
+                  activeTab === tab.key ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
                 }`}
               >
                 {tab.label}
@@ -523,29 +1430,23 @@ export default function PurchaseOrderPage() {
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="p-8">
 
-          {/* ─── BASIC TAB ─── */}
+          {/* ── BASIC TAB ── */}
           {activeTab === "basic" && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-8">
               <div>
                 <SectionTitle title="Order Details" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <Field label="PO No.">
-                    <input readOnly value={currentPONo} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none" />
+                    <input readOnly value={poNo} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none" />
                   </Field>
-                  <Field label="PO Date">
-                    <input type="date" value={poDate} onChange={(e) => setPoDate(e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="Division">
-                    <select value={division} onChange={(e) => setDivision(e.target.value)} className={selectCls}>
-                      {DIVISIONS.map((d) => <option key={d}>{d}</option>)}
-                    </select>
+                  <Field label="PO Date" required>
+                    <input type="date" value={poDate} onChange={e => setPoDate(e.target.value)} className={inputCls} />
                   </Field>
                   <Field label="Currency">
-                    <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={selectCls}>
-                      {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
+                    <select value={currency} onChange={e => setCurrency(e.target.value)} className={selectCls}>
+                      {CURRENCIES.map(c => <option key={c}>{c}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -555,24 +1456,20 @@ export default function PurchaseOrderPage() {
                 <SectionTitle title="Supplier & Contact" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-2">
-                    <Field label="Supplier Name" required>
+                    <Field label="Supplier" required>
                       <select
-                        value={supplier}
-                        onChange={(e) => {
-                          setSupplier(e.target.value);
-                          const s = SUPPLIERS.find((x) => x.name === e.target.value);
-                          setContactPerson(s?.contact ?? "");
-                        }}
+                        value={supplierID || ""}
+                        onChange={e => handleSupplierChange(Number(e.target.value))}
                         className={selectCls}
                       >
                         <option value="">Select Supplier…</option>
-                        {SUPPLIERS.map((s) => (
-                          <option key={s.name} value={s.name}>{s.name} — {s.state}</option>
+                        {suppliers.map(s => (
+                          <option key={s.LedgerID} value={s.LedgerID}>{s.LedgerName}</option>
                         ))}
                       </select>
-                      {supplierInfo && (
+                      {selectedSupplier && (
                         <p className="text-xs text-gray-500 mt-1">
-                          State: {supplierInfo.state} —{" "}
+                          State: {selectedSupplier.SupState} —{" "}
                           {sameState
                             ? <span className="text-green-600 font-semibold">CGST + SGST applicable</span>
                             : <span className="text-orange-600 font-semibold">IGST applicable</span>}
@@ -580,197 +1477,182 @@ export default function PurchaseOrderPage() {
                       )}
                     </Field>
                   </div>
+
                   <Field label="Contact Person">
-                    <input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} placeholder="Contact name" className={inputCls} />
-                  </Field>
-                  <Field label="Bill To">
-                    <input value={billTo} onChange={(e) => setBillTo(e.target.value)} placeholder="Billing address / location" className={inputCls} />
-                  </Field>
-                  <Field label="PR Reference">
-                    <input value={prRef} onChange={(e) => setPrRef(e.target.value)} placeholder="Requisition reference" className={`${inputCls} ${prRef ? "bg-blue-50 text-blue-700 font-mono" : ""}`} />
-                  </Field>
-                  <Field label="Approval By">
-                    <select value={approvalBy} onChange={(e) => setApprovalBy(e.target.value)} className={selectCls}>
-                      <option value="">Select…</option>
-                      {APPROVAL_BY.map((a) => <option key={a}>{a}</option>)}
+                    <select
+                      value={contactPersonID || ""}
+                      onChange={e => setContactPersonID(Number(e.target.value))}
+                      className={selectCls}
+                      disabled={!contacts.length}
+                    >
+                      <option value="">Select Contact…</option>
+                      {contacts.map(c => (
+                        <option key={c.ConcernPersonID} value={c.ConcernPersonID}>{c.Name}</option>
+                      ))}
                     </select>
                   </Field>
+
+                  <div className="md:col-span-3">
+                    <Field label="Narration">
+                      <textarea
+                        value={narration}
+                        onChange={e => setNarration(e.target.value)}
+                        rows={2}
+                        placeholder="Optional notes…"
+                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </Field>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("items")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                  Items →
+              <div className="flex items-center justify-end pt-4 border-t border-gray-200">
+                <button onClick={() => setActiveTab("items")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                  Items <ChevronRight size={15} />
                 </button>
               </div>
             </div>
           )}
 
-          {/* ─── ITEMS TAB ─── */}
+          {/* ── ITEMS TAB ── */}
           {activeTab === "items" && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <SectionTitle title="Purchase Order Lines" />
                 <button
                   onClick={() => { setShowPicker(true); setPickerSearch(""); setPickerGroup("All"); }}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Plus size={13} /> Add Item
                 </button>
               </div>
 
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs border-collapse" style={{ minWidth: 1800 }}>
+                <table className="w-full text-xs border-collapse" style={{ minWidth: 2100 }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       {[
-                        { label: "Group", right: false },
-                        { label: "Item Code", right: false },
-                        { label: "Item Name", right: false },
-                        { label: "Req.Qty\n(S.U.)", right: true },
-                        { label: "Stock\nUnit", right: false },
-                        { label: "Req.Qty\n(P.U.)", right: true },
-                        { label: "No. Of\nPacks/Rolls", right: true },
-                        { label: "Qty/\nPack/Roll", right: true },
-                        { label: "PO Qty\n(P.U.)", right: true },
-                        { label: "PO Qty\n(S.U.)", right: true },
-                        { label: "Rate", right: true },
-                        { label: "Purch.\nUnit", right: false },
-                        { label: "HSN Code", right: false },
-                        { label: "Exp.\nDelivery", right: false },
-                        { label: "Tol.\n%", right: true },
-                        { label: "Basic\nAmt", right: true },
-                        { label: "Disc\n%", right: true },
-                        { label: "After Disc\nAmt", right: true },
-                        { label: "GST\n%", right: true },
-                        { label: "CGST\nAmt", right: true },
-                        { label: "SGST\nAmt", right: true },
-                        { label: "IGST\nAmt", right: true },
-                        { label: "Taxable\nAmt", right: true },
-                        { label: "Total\nAmt", right: true },
-                        { label: "", right: false },
+                        "Group", "Item Code", "Item Name",
+                        "Req.Qty\n(P.U.)", "No. of\nPacks", "Qty/\nPack", "PO Qty\n(P.U.)", "PO Qty\n(S.U.)",
+                        "Rate", "P.Unit", "HSN", "Exp.Del.", "Tol.%", "Item Narration", "Sup.Grade",
+                        "Gross\nAmt", "Disc\n%", "After\nDisc", "CGST\nAmt", "SGST\nAmt", "IGST\nAmt",
+                        "Taxable\nAmt", "Net\nAmt", "",
                       ].map((col, i) => (
-                        <th
-                          key={i}
-                          className={`px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 last:border-r-0 whitespace-pre-line leading-tight ${col.right ? "text-right" : "text-left"}`}
-                          style={{ fontSize: 10 }}
-                        >
-                          {col.label}
+                        <th key={i} className={`px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 last:border-r-0 whitespace-pre-line leading-tight ${i >= 3 && i <= 23 ? "text-right" : "text-left"}`} style={{ fontSize: 10 }}>
+                          {col}
                         </th>
                       ))}
                     </tr>
                   </thead>
-
                   <tbody>
                     {lines.length === 0 ? (
-                      <tr>
-                        <td colSpan={25} className="text-center py-16 text-gray-400 text-sm">
-                          No items — click &ldquo;Add Item&rdquo; to begin
+                      <tr><td colSpan={24} className="text-center py-16 text-gray-400 text-sm">No items — click "Add Item" or create from requisitions</td></tr>
+                    ) : lines.map((l, idx) => (
+                      <tr key={l.lineKey} className={`border-b border-gray-100 hover:bg-blue-50/20 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                        <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">{l.ItemGroupName}</td>
+                        <td className="px-2 py-1.5 font-mono text-blue-700 whitespace-nowrap">
+                          {l.ItemCode}
+                          {l.ItemDescription && <span className="text-gray-400 block font-normal text-xs">{l.ItemDescription}</span>}
+                        </td>
+                        <td className="px-2 py-1.5 text-gray-800" style={{ maxWidth: 150 }}>{l.ItemName}</td>
+                        <td className="px-2 py-1.5 text-right text-gray-600">{l.ReqQtyInPU || "—"}</td>
+
+                        {/* No. of packs */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} value={l.NoOfPacks || ""} placeholder="0"
+                            onChange={e => updateLineNum(l.lineKey, "NoOfPacks", Number(e.target.value))}
+                            className={`w-16 ${tableInputCls}`} />
+                        </td>
+                        {/* Qty/pack */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} value={l.QtyPerPack || ""} placeholder="0"
+                            onChange={e => updateLineNum(l.lineKey, "QtyPerPack", Number(e.target.value))}
+                            className={`w-20 ${tableInputCls}`} />
+                        </td>
+
+                        {/* PO Qty (P.U.) — directly editable */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} step={0.001} value={l.POQtyInPU || ""} placeholder="0"
+                            onChange={e => updateLineNum(l.lineKey, "POQtyInPU", Number(e.target.value))}
+                            className={`w-20 ${tableInputCls} font-semibold text-blue-700`} />
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-gray-700">{l.POQtyInSU.toFixed(3)}</td>
+
+                        {/* Rate */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} step={0.01} value={l.Rate || ""} placeholder="0.00"
+                            onChange={e => updateLineNum(l.lineKey, "Rate", Number(e.target.value))}
+                            className={`w-20 ${tableInputCls}`} />
+                        </td>
+                        <td className="px-2 py-1.5 text-gray-700">{l.PurchaseUnit}</td>
+
+                        {/* HSN */}
+                        <td className="px-2 py-1.5 text-gray-600 font-mono">{l.HSNCode || "—"}</td>
+
+                        {/* Expected delivery */}
+                        <td className="px-1 py-1">
+                          <input type="date" value={l.ExpectedDelivery}
+                            onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
+                            className="w-32 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                        </td>
+
+                        {/* Tolerance */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} max={100} value={l.Tolerance || ""} placeholder="0"
+                            onChange={e => updateLineNum(l.lineKey, "Tolerance", Number(e.target.value))}
+                            className={`w-12 ${tableInputCls}`} />
+                        </td>
+
+                        {/* Item Narration */}
+                        <td className="px-1 py-1">
+                          <input type="text" value={l.ItemNarration} placeholder="Remark…"
+                            onChange={e => updateLineStr(l.lineKey, "ItemNarration", e.target.value)}
+                            className="w-28 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                        </td>
+
+                        {/* Supplier Grade */}
+                        <td className="px-1 py-1">
+                          <select value={l.SupplierGrade}
+                            onChange={e => updateLineStr(l.lineKey, "SupplierGrade", e.target.value)}
+                            className="w-24 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                            <option value="">— Select —</option>
+                            {supplierGrades.map(g => <option key={g} value={g}>{g}</option>)}
+                          </select>
+                        </td>
+
+                        <td className="px-2 py-1.5 text-right font-semibold text-gray-700">{fmtAmt(l.GrossAmount)}</td>
+
+                        {/* Disc % */}
+                        <td className="px-1 py-1">
+                          <input type="number" min={0} max={100} step={0.01} value={l.DiscPct || ""} placeholder="0"
+                            onChange={e => updateLineNum(l.lineKey, "DiscPct", Number(e.target.value))}
+                            className={`w-12 ${tableInputCls}`} />
+                        </td>
+
+                        <td className="px-2 py-1.5 text-right text-gray-700">{fmtAmt(l.BasicAmount)}</td>
+                        <td className="px-2 py-1.5 text-right text-blue-700">{fmtAmt(l.CGSTAmount)}</td>
+                        <td className="px-2 py-1.5 text-right text-blue-700">{fmtAmt(l.SGSTAmount)}</td>
+                        <td className="px-2 py-1.5 text-right text-orange-700">{fmtAmt(l.IGSTAmount)}</td>
+                        <td className="px-2 py-1.5 text-right text-gray-700">{fmtAmt(l.TaxableAmount)}</td>
+                        <td className="px-2 py-1.5 text-right font-bold text-blue-800">{fmtAmt(l.NetAmount)}</td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button onClick={() => removeLine(l.lineKey)} className="text-gray-300 hover:text-red-500 transition-colors"><X size={14} /></button>
                         </td>
                       </tr>
-                    ) : (
-                      lines.map((line, idx) => (
-                        <tr key={line.lineId} className={`border-b border-gray-100 hover:bg-blue-50/20 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">{line.itemGroup}</td>
-                          <td className="px-2 py-1.5 font-mono text-blue-700 whitespace-nowrap">{line.itemCode}</td>
-                          <td className="px-2 py-1.5 text-gray-800" style={{ maxWidth: 160 }}>{line.itemName}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-700">{line.reqQtyInSU || "—"}</td>
-                          <td className="px-2 py-1.5 text-gray-700">{line.stockUnit}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-700">{line.reqQtyInPU || "—"}</td>
-
-                          {/* Editable: Packs */}
-                          <td className="px-1 py-1">
-                            <input type="number" min={0} value={line.noOfPacksRolls || ""} placeholder="0"
-                              onChange={(e) => updateLineNum(line.lineId, "noOfPacksRolls", Number(e.target.value))}
-                              className={`w-16 ${tableInputCls}`} />
-                          </td>
-
-                          {/* Editable: Qty/pack */}
-                          <td className="px-1 py-1">
-                            <input type="number" min={0} value={line.qtyPerPackRoll || ""} placeholder="0"
-                              onChange={(e) => updateLineNum(line.lineId, "qtyPerPackRoll", Number(e.target.value))}
-                              className={`w-20 ${tableInputCls}`} />
-                          </td>
-
-                          <td className="px-2 py-1.5 text-right font-semibold text-blue-700">{line.poQtyInPU.toLocaleString()}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-700">{line.poQtyInSU.toLocaleString()}</td>
-
-                          {/* Editable: Rate */}
-                          <td className="px-1 py-1">
-                            <input type="number" min={0} step={0.01} value={line.rate || ""} placeholder="0.00"
-                              onChange={(e) => updateLineNum(line.lineId, "rate", Number(e.target.value))}
-                              className={`w-20 ${tableInputCls}`} />
-                          </td>
-                          <td className="px-2 py-1.5 text-gray-700">{line.purchaseUnit}</td>
-
-                          {/* HSN */}
-                          <td className="px-1 py-1">
-                            <select value={line.hsnCode}
-                              onChange={(e) => {
-                                const h = hsnMasters.find(x => x.hsnCode === e.target.value);
-                                updateLineStr(line.lineId, "hsnCode", e.target.value);
-                                updateLineStr(line.lineId, "hsnName", h?.description ?? "");
-                                if (h) updateLineNum(line.lineId, "gstPct", h.gstRate);
-                              }}
-                              className="w-20 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                              <option value="">—</option>
-                              {hsnMasters.map((h) => <option key={h.id} value={h.hsnCode}>{h.hsnCode}</option>)}
-                            </select>
-                          </td>
-
-                          {/* Expected delivery date */}
-                          <td className="px-1 py-1">
-                            <input type="date" value={line.expectedDelivery}
-                              onChange={(e) => updateLineStr(line.lineId, "expectedDelivery", e.target.value)}
-                              className="w-32 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
-                          </td>
-
-                          {/* Editable: Tolerance % */}
-                          <td className="px-1 py-1">
-                            <input type="number" min={0} max={100} value={line.tolerancePct || ""} placeholder="0"
-                              onChange={(e) => updateLineNum(line.lineId, "tolerancePct", Number(e.target.value))}
-                              className={`w-12 ${tableInputCls}`} />
-                          </td>
-
-                          <td className="px-2 py-1.5 text-right font-semibold text-gray-700">{fmtAmt(line.basicAmt)}</td>
-
-                          {/* Editable: Disc % */}
-                          <td className="px-1 py-1">
-                            <input type="number" min={0} max={100} step={0.01} value={line.discPct || ""} placeholder="0"
-                              onChange={(e) => updateLineNum(line.lineId, "discPct", Number(e.target.value))}
-                              className={`w-12 ${tableInputCls}`} />
-                          </td>
-
-                          <td className="px-2 py-1.5 text-right text-gray-700">{fmtAmt(line.afterDiscAmt)}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-700">{line.gstPct}%</td>
-                          <td className="px-2 py-1.5 text-right text-blue-700">{fmtAmt(line.cgstAmt)}</td>
-                          <td className="px-2 py-1.5 text-right text-blue-700">{fmtAmt(line.sgstAmt)}</td>
-                          <td className="px-2 py-1.5 text-right text-orange-700">{fmtAmt(line.igstAmt)}</td>
-                          <td className="px-2 py-1.5 text-right text-gray-700">{fmtAmt(line.taxableAmt)}</td>
-                          <td className="px-2 py-1.5 text-right font-bold text-blue-800">{fmtAmt(line.totalAmt)}</td>
-                          <td className="px-2 py-1.5 text-center">
-                            <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500 transition-colors">
-                              <X size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
+                    ))}
                   </tbody>
-
                   {lines.length > 0 && (
                     <tfoot>
                       <tr className="bg-blue-50 border-t-2 border-blue-200 text-xs font-bold">
                         <td colSpan={15} className="px-3 py-2 text-right text-blue-800">Totals</td>
-                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(basicAmount)}</td>
+                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(lines.reduce((s, l) => s + l.GrossAmount, 0))}</td>
                         <td />
-                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(lines.reduce((s, l) => s + l.afterDiscAmt, 0))}</td>
-                        <td />
-                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(lines.reduce((s, l) => s + l.cgstAmt, 0))}</td>
-                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(lines.reduce((s, l) => s + l.sgstAmt, 0))}</td>
-                        <td className="px-2 py-2 text-right text-orange-700">{fmtAmt(lines.reduce((s, l) => s + l.igstAmt, 0))}</td>
-                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(lines.reduce((s, l) => s + l.taxableAmt, 0))}</td>
-                        <td className="px-2 py-2 text-right text-blue-900">{fmtAmt(lines.reduce((s, l) => s + l.totalAmt, 0))}</td>
+                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(totalBasic)}</td>
+                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(totalCGST)}</td>
+                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(totalSGST)}</td>
+                        <td className="px-2 py-2 text-right text-orange-700">{fmtAmt(totalIGST)}</td>
+                        <td className="px-2 py-2 text-right text-blue-800">{fmtAmt(lines.reduce((s, l) => s + l.TaxableAmount, 0))}</td>
+                        <td className="px-2 py-2 text-right text-blue-900">{fmtAmt(lines.reduce((s, l) => s + l.NetAmount, 0))}</td>
                         <td />
                       </tr>
                     </tfoot>
@@ -779,245 +1661,206 @@ export default function PurchaseOrderPage() {
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("basic")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  ← Basic
-                </button>
-                <button onClick={() => setActiveTab("terms")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                  Terms →
-                </button>
+                <button onClick={() => setActiveTab("basic")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Basic</button>
+                <button onClick={handleEnterTermsTab} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Tax & Terms <ChevronRight size={15} /></button>
               </div>
             </div>
           )}
 
-          {/* ─── TERMS TAB ─── */}
+          {/* ── TERMS TAB ── */}
           {activeTab === "terms" && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="space-y-8">
               <div>
-                <SectionTitle title="Payment & Delivery" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Field label="Terms of Payment">
-                    <select value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} className={selectCls}>
-                      <option value="">Select payment term…</option>
-                      {PAYMENT_TERMS.map((t) => <option key={t}>{t}</option>)}
-                    </select>
-                  </Field>
+                <SectionTitle title="Delivery & Payment" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <Field label="Mode of Transport">
-                    <select value={modeOfTransport} onChange={(e) => setModeOfTransport(e.target.value)} className={selectCls}>
+                    <select value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)} className={selectCls}>
                       <option value="">Select…</option>
-                      {TRANSPORT_MODES.map((m) => <option key={m}>{m}</option>)}
+                      {TRANSPORT_MODES.map(m => <option key={m}>{m}</option>)}
                     </select>
                   </Field>
-                  <Field label="Delivery Location">
-                    <input value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value)}
-                      placeholder="e.g. Main Store, Gate 2…" className={inputCls} />
+                  <Field label="Delivery Address">
+                    <input value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Delivery location" className={inputCls} />
                   </Field>
-                  <Field label="Purchase Ref">
-                    <input value={purchaseRef} onChange={(e) => setPurchaseRef(e.target.value)}
-                      placeholder="Internal purchase reference" className={inputCls} />
+                  <Field label="Payment Terms">
+                    <input value={termsOfPayment} onChange={e => setTermsOfPayment(e.target.value)} placeholder="e.g. Net 30 days" className={inputCls} />
                   </Field>
                 </div>
               </div>
 
-              <div>
-                <SectionTitle title="Remarks" />
-                <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3}
-                  placeholder="Any additional notes or instructions…"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
-              </div>
-
+              {/* Tax & Charge Ledgers */}
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <SectionTitle title="Additional Charges" />
+                  <SectionTitle title="Tax & Additional Charges" />
                   <div className="relative">
                     <button
-                      onClick={() => setShowChargeMenu((p) => !p)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors"
+                      onClick={() => setShowChargeMenu(p => !p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
                     >
-                      <Plus size={12} /> Add Charge
+                      <Plus size={13} /> Add Charge
                     </button>
                     {showChargeMenu && (
-                      <div className="absolute right-0 top-9 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-52 py-1">
-                        {CHARGE_TYPES.map((ct) => (
-                          <button key={ct} onClick={() => addCharge(ct)}
-                            className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors">
-                            {ct}
+                      <div className="absolute right-0 top-10 z-30 bg-white border border-gray-200 rounded-lg shadow-xl w-64 py-1 max-h-72 overflow-y-auto">
+                        {chargeLedgers.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-gray-400">Loading…</p>
+                        ) : chargeLedgers.map(cl => (
+                          <button key={cl.LedgerID} onClick={() => addCharge(cl)}
+                            className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700">
+                            {cl.LedgerName}
+                            {cl.TaxType && <span className="ml-1 text-gray-400">({cl.TaxType})</span>}
                           </button>
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
-                {charges.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">No additional charges added</p>
-                ) : (
-                  <div className="space-y-2">
-                    {charges.map((c) => (
-                      <div key={c.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <span className="text-sm text-gray-700 flex-1">{c.name}</span>
-                        <input type="number" value={c.amount || ""} placeholder="0.00"
-                          onChange={(e) => updateCharge(c.id, Number(e.target.value))}
-                          className="w-32 text-right px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                        <button onClick={() => removeCharge(c.id)} className="text-gray-400 hover:text-red-500 transition-colors">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
+                <div className="rounded-lg border border-gray-200 overflow-x-auto">
+                  <table className="w-full text-xs" style={{ minWidth: 800 }}>
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-200">
+                        {["Ledger", "Tax %", "Calc. On", "GST Applicable", "In Amount", "Amount", ""].map(h => (
+                          <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {charges.length === 0 ? (
+                        <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm italic">No charges added</td></tr>
+                      ) : charges.map((c, idx) => (
+                        <tr key={c.chargeKey} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                          <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap">{c.LedgerName}</td>
+                          <td className="px-2 py-1">
+                            <input type="number" min={0} value={c.TaxPercentage || ""} placeholder="0"
+                              onChange={e => updateCharge(c.chargeKey, { TaxPercentage: Number(e.target.value) })}
+                              className="w-16 text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                          </td>
+                          <td className="px-2 py-1">
+                            <select value={c.CalcOn} onChange={e => updateCharge(c.chargeKey, { CalcOn: e.target.value })}
+                              className="w-24 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none bg-white">
+                              {CALCU_ON.map(t => <option key={t}>{t}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <input type="checkbox" checked={c.GSTApplicable}
+                              onChange={e => updateCharge(c.chargeKey, { GSTApplicable: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <input type="checkbox" checked={c.InAmount}
+                              onChange={e => updateCharge(c.chargeKey, { InAmount: e.target.checked })}
+                              className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                          </td>
+                          <td className="px-2 py-1">
+                            <input type="number" min={0} step={0.01} value={c.Amount || ""} placeholder="0.00"
+                              onChange={e => updateCharge(c.chargeKey, { Amount: Number(e.target.value), TotalAmount: Number(e.target.value) })}
+                              className="w-28 text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <button onClick={() => removeCharge(c.chargeKey)} className="text-red-400 hover:text-red-600">
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("items")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  ← Items
-                </button>
-                <button onClick={() => setActiveTab("summary")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                  Summary →
-                </button>
+                <button onClick={() => setActiveTab("items")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Items</button>
+                <button onClick={() => setActiveTab("summary")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Summary <ChevronRight size={15} /></button>
               </div>
             </div>
           )}
 
-          {/* ─── SUMMARY TAB ─── */}
+          {/* ── SUMMARY TAB ── */}
           {activeTab === "summary" && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-
-              {/* Amount Breakdown */}
-              <div>
-                <SectionTitle title="Amount Summary" />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 space-y-3">
-                    {[
-                      { label: "Basic Amount",      value: basicAmount,           cls: "text-gray-800" },
-                      { label: "Discount Amount",   value: discAmount + chargeDisc, cls: "text-red-600" },
-                      { label: "Total GST",         value: totalTax,              cls: "text-blue-700" },
-                      { label: "Other Charges",     value: otherCharges,          cls: "text-gray-700" },
-                    ].map((row) => (
-                      <div key={row.label} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
-                        <span className="text-sm text-gray-500">{row.label}</span>
-                        <span className={`text-sm font-semibold font-mono ${row.cls}`}>₹{fmtAmt(row.value)}</span>
-                      </div>
-                    ))}
-                    <div className="pt-3 flex items-center justify-between border-t-2 border-blue-200">
-                      <span className="text-base font-bold text-blue-800">Gross Amount</span>
-                      <span className="text-base font-bold text-blue-800 font-mono">₹{fmtAmt(grossAmount)}</span>
+            <div className="space-y-8">
+              <SectionTitle title="Order Summary" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 space-y-3">
+                  {[
+                    { label: "Gross Amount (before disc)", value: lines.reduce((s, l) => s + l.GrossAmount, 0), cls: "text-gray-700" },
+                    { label: "Discount Amount", value: totalDisc, cls: "text-red-600" },
+                    { label: "Basic Amount (after disc)", value: totalBasic, cls: "text-gray-800 font-bold" },
+                    { label: "CGST", value: totalCGST, cls: "text-blue-600" },
+                    { label: "SGST", value: totalSGST, cls: "text-blue-600" },
+                    { label: "IGST", value: totalIGST, cls: "text-orange-600" },
+                    { label: "Additional Charges", value: totalCharges, cls: "text-gray-700" },
+                  ].map(row => (
+                    <div key={row.label} className="flex justify-between py-1 border-b border-gray-100 last:border-0">
+                      <span className="text-sm text-gray-500">{row.label}</span>
+                      <span className={`text-sm font-semibold font-mono ${row.cls}`}>₹{fmtAmt(row.value)}</span>
                     </div>
+                  ))}
+                  <div className="pt-3 flex justify-between border-t-2 border-blue-200">
+                    <span className="text-base font-bold text-blue-800">Net Amount</span>
+                    <span className="text-base font-bold text-blue-800 font-mono">₹{fmtAmt(netAmount)}</span>
                   </div>
+                </div>
 
-                  <div className="space-y-4">
-                    <div className="bg-blue-50 rounded-xl border border-blue-100 p-4 space-y-2">
-                      <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider">Order Info</p>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                        <span className="text-gray-500">PO Number</span>
-                        <span className="font-mono font-semibold text-blue-700">{currentPONo}</span>
-                        <span className="text-gray-500">PO Date</span>
-                        <span className="text-gray-700">{fmtDate(poDate)}</span>
-                        <span className="text-gray-500">Supplier</span>
-                        <span className="text-gray-800 font-medium">{supplier || "—"}</span>
-                        <span className="text-gray-500">Division</span>
-                        <span className="text-gray-700">{division}</span>
-                        <span className="text-gray-500">Currency</span>
-                        <span className="text-gray-700">{currency}</span>
-                        <span className="text-gray-500">Approval By</span>
-                        <span className="text-gray-700">{approvalBy || "—"}</span>
-                        <span className="text-gray-500">Line Items</span>
-                        <span className="text-gray-700 font-semibold">{lines.length}</span>
-                        <span className="text-gray-500">GST Type</span>
-                        <span className={sameState ? "text-green-700 font-semibold" : "text-orange-600 font-semibold"}>
-                          {supplierInfo ? (sameState ? "CGST + SGST" : "IGST") : "—"}
-                        </span>
-                      </div>
-                    </div>
+                <div className="bg-blue-50 rounded-xl border border-blue-100 p-5 space-y-2">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-3">Order Info</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    {[
+                      ["PO Number", poNo],
+                      ["PO Date", fmtDate(poDate)],
+                      ["Supplier", selectedSupplier?.LedgerName ?? "—"],
+                      ["Currency", currency],
+                      ["GST Type", sameState ? "CGST + SGST" : "IGST"],
+                      ["Line Items", String(lines.length)],
+                      ["Mode", modeOfTransport || "—"],
+                      ["Delivery To", deliveryAddress || "—"],
+                    ].map(([k, v]) => (
+                      <React.Fragment key={k}>
+                        <span className="text-gray-500">{k}</span>
+                        <span className="text-gray-800 font-medium">{v}</span>
+                      </React.Fragment>
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* Pending PRs in Summary */}
-              {pendingPRs.length > 0 && (
-                <div>
-                  <SectionTitle title="Pending Requisitions" />
-                  <div className="rounded-xl border border-gray-200 overflow-hidden">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Req. No.</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                          <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Items</th>
-                          <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Remark</th>
-                          <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pendingPRs.map((pr, i) => (
-                          <tr key={pr.id} className={`border-t border-gray-100 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}>
-                            <td className="px-4 py-2.5 font-mono font-semibold text-blue-700">{pr.reqNo}</td>
-                            <td className="px-4 py-2.5 text-gray-600">{fmtDate(pr.reqDate)}</td>
-                            <td className="px-4 py-2.5 text-center font-medium text-gray-700">{pr.lines.length}</td>
-                            <td className="px-4 py-2.5 text-gray-700 max-w-[200px] truncate">{pr.remark || "—"}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PR_STATUS_STYLE[pr.status]}`}>
-                                {pr.status}
-                              </span>
-                            </td>
-                            <td className="px-4 py-2.5 text-center">
-                              <button
-                                onClick={() => openFromPR(pr)}
-                                className="flex items-center gap-1 mx-auto px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                              >
-                                <Plus size={11} /> Load PR
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("terms")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  ← Terms
-                </button>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => save("Draft")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    <Save size={16} /> Save as Draft
+                <button onClick={() => setActiveTab("terms")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Terms</button>
+                {editTxnID ? (
+                  <button onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("update"); }} disabled={saving}
+                    className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                    <Check size={16} /> {saving ? "Updating…" : "Update PO"}
                   </button>
-                  <button onClick={() => save("Approved")} className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                    <Check size={16} /> Approve & Save
+                ) : (
+                  <button onClick={doSave} disabled={saving}
+                    className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                    <Check size={16} /> {saving ? "Saving…" : "Save Purchase Order"}
                   </button>
-                </div>
+                )}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════
-          ITEM PICKER MODAL
-         ══════════════════════════════════════════════════════ */}
+      {/* ── ITEM PICKER MODAL ── */}
       {showPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-[720px] max-h-[82vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1300px] max-h-[88vh] flex flex-col overflow-hidden">
             <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
-              <h3 className="font-semibold text-sm tracking-wide">Select Raw Material Item</h3>
+              <h3 className="font-semibold text-sm">Select Item</h3>
               <button onClick={() => setShowPicker(false)} className="text-blue-200 hover:text-white"><X size={18} /></button>
             </div>
             <div className="px-5 py-3 border-b border-gray-100 space-y-2.5 shrink-0">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input autoFocus value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)}
-                  placeholder="Search by item name or code…"
+                <input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+                  placeholder="Search by item code or name…"
                   className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div className="flex gap-2 flex-wrap">
-                {rmGroups.map((g) => (
+                {pickerGroups.map(g => (
                   <button key={g} onClick={() => setPickerGroup(g)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                      pickerGroup === g
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50 hover:border-blue-300"
-                    }`}>
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pickerGroup === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}>
                     {g}
                   </button>
                 ))}
@@ -1027,44 +1870,81 @@ export default function PurchaseOrderPage() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-500">Code</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-500">Item Name</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-500">Group</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-500">Purchase Rate</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-500">GST</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-500">Stock</th>
+                    {["Code", "Item Name", "Group", "P.Unit", "Purchase Rate", "GST%", "Stock"].map(h => (
+                      <th key={h} className="px-4 py-2 text-left font-semibold text-gray-500">{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {pickerItems.length === 0 ? (
-                    <tr><td colSpan={6} className="text-center py-12 text-gray-400">No items found</td></tr>
-                  ) : (
-                    pickerItems.map((item) => (
-                      <tr key={item.id} onClick={() => addItemFromPicker(item)}
-                        className="border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold">{item.code}</td>
-                        <td className="px-4 py-2.5 text-gray-800 font-medium">{item.name}</td>
-                        <td className="px-4 py-2.5 text-gray-700">{item.group}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700 font-semibold">₹{item.purchaseRate}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700">{item.gstRate}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700">{item.stockUom}</td>
-                      </tr>
-                    ))
-                  )}
+                  {filteredPickerItems.length === 0 ? (
+                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">No items found</td></tr>
+                  ) : filteredPickerItems.map(item => (
+                    <tr key={item.ItemID} onClick={() => addItemFromPicker(item)}
+                      className="border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors">
+                      <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
+                        {item.ItemCode}
+                        {item.ItemDescription && <span className="block text-gray-400 font-normal text-xs">{item.ItemDescription}</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-800 font-medium">{item.ItemName}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{item.ItemGroupName}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{item.PurchaseUnit}</td>
+                      <td className="px-4 py-2.5 text-right font-semibold text-gray-800">₹{toNum(item.PurchaseRate).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.GSTTaxPercentage)}%</td>
+                      <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.PhysicalStock).toLocaleString()} {item.StockUnit}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
             <div className="px-5 py-2.5 border-t border-gray-100 text-right shrink-0">
-              <p className="text-xs text-gray-400">Click any row to add item to Purchase Order</p>
+              <p className="text-xs text-gray-400">Click any row to add item</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PASSWORD CONFIRMATION MODAL ── */}
+      {pwModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-base font-bold text-gray-800 mb-1">
+              {pwModal === "delete" ? "Confirm Deletion" : "Confirm Update"}
+            </h3>
+            <p className="text-xs text-gray-500 mb-5">
+              {pwModal === "delete"
+                ? "Enter your password to permanently soft-delete this Purchase Order."
+                : "Enter your password to save changes to this Purchase Order."}
+            </p>
+            <div className="space-y-4">
+              <Field label="Password" required>
+                <input type="password" value={pwInput} onChange={e => setPwInput(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handlePwSubmit()}
+                  autoFocus placeholder="Your login password"
+                  className={inputCls} />
+              </Field>
+              <Field label="Remark">
+                <input value={pwRemark} onChange={e => setPwRemark(e.target.value)}
+                  placeholder="Reason for this action (optional)"
+                  className={inputCls} />
+              </Field>
+            </div>
+            <div className="flex gap-3 mt-6 justify-end">
+              <button onClick={() => setPwModal(null)}
+                className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+                Cancel
+              </button>
+              <button onClick={handlePwSubmit}
+                disabled={saving || deleting}
+                className={`px-5 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-60 ${pwModal === "delete" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+                {(saving || deleting) ? "Processing…" : pwModal === "delete" ? "Delete" : "Update"}
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* Close charge menu on outside click */}
-      {showChargeMenu && (
-        <div className="fixed inset-0 z-20" onClick={() => setShowChargeMenu(false)} />
-      )}
+      {showChargeMenu && <div className="fixed inset-0 z-20" onClick={() => setShowChargeMenu(false)} />}
     </div>
   );
 }

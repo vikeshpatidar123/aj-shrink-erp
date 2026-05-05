@@ -1,159 +1,219 @@
 "use client";
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
-  Plus, X, Search, FileText, Scan, Printer, CheckCircle2,
-  Camera, Keyboard, Trash2, Pencil, QrCode, List, Save, ArrowLeft
+  Plus, X, Scan, Printer, CheckCircle2,
+  Camera, Keyboard, Trash2, QrCode,
+  Layers, Package, ArrowLeft, FileText, ChevronRight, ChevronDown, RefreshCw,
 } from "lucide-react";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
-import {
-  purchaseOrders, PurchaseOrder, POLine,
-  grnRecords as initData, GRN, GRNLine,
-  SUPPLIERS, WAREHOUSES,
-} from "@/data/dummyData";
+import { authHeaders, getSession } from "@/lib/auth";
 import { inputCls, labelCls } from "@/lib/styles";
 
-// ─── Constants ───────────────────────────────────────────────
-const COMPANY = "AJ Shrink Wrap Pvt Ltd";
-const COMPANY_STATE = "Maharashtra";
+// ─── Config ──────────────────────────────────────────────────
+const BASE_URL = "http://localhost:57214";
 
-const todayISO = () => new Date().toISOString().split("T")[0];
-const fmtDate = (iso: string) =>
-  iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-const fmtAmt = (n: number) =>
-  n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const nextGRNNo = (list: GRN[]) => {
-  const yr = new Date().getFullYear();
-  return `GRN${String(list.length + 1).padStart(5, "0")}_${String(yr - 2000).padStart(2, "0")}_${String(yr - 1999).padStart(2, "0")}`;
-};
-
-const genBatchNo = (itemCode: string, date: string, seq: number) => {
-  const d = date.replace(/-/g, "");
-  return `BATCH-${itemCode}-${d}-${String(seq).padStart(3, "0")}`;
-};
-
-const STATUS_STYLE: Record<GRN["status"], string> = {
-  Draft:     "bg-gray-100 text-gray-600",
-  Completed: "bg-green-100 text-green-700",
-  Verified:  "bg-blue-100 text-blue-700",
-};
-
-// ─── QR Slip Print ──────────────────────────────────────────
-async function printQRSlip(line: GRNLine, grn: GRN) {
-  const qrData = JSON.stringify({
-    batchNo: line.batchNo,
-    supplierBatchNo: line.supplierBatchNo,
-    itemCode: line.itemCode,
-    itemName: line.itemName,
-    grnNo: grn.grnNo,
-    qty: line.receivedQty,
-    unit: line.stockUnit,
-    supplier: grn.supplier,
-    warehouseId: line.warehouseId,
-    bin: line.bin,
-  });
-
-  const qrDataURL = await QRCode.toDataURL(qrData, {
-    width: 200, margin: 1,
-    color: { dark: "#0f4c5c", light: "#ffffff" },
-  });
-
-  const slipHTML = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>GRN QR Slip</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #111; background: #fff; }
-        .slip { width: 340px; border: 2px solid #0f4c5c; border-radius: 6px; overflow: hidden; }
-        .header { background: #0f4c5c; color: white; padding: 8px 12px; text-align: center; }
-        .header h2 { font-size: 13px; font-weight: bold; letter-spacing: 0.5px; }
-        .header p { font-size: 9px; opacity: 0.8; margin-top: 2px; }
-        .body { display: flex; padding: 10px; gap: 10px; }
-        .qr img { width: 110px; height: 110px; border: 1px solid #ddd; border-radius: 4px; }
-        .details { flex: 1; }
-        .row { display: flex; flex-direction: column; margin-bottom: 5px; }
-        .label { font-size: 8px; color: #666; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
-        .value { font-size: 10px; font-weight: bold; color: #0f4c5c; word-break: break-all; }
-        .batch-box { background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 4px; padding: 6px; margin-bottom: 6px; }
-        .batch-box .label { color: #0369a1; }
-        .batch-box .value { font-size: 11px; color: #0369a1; font-family: monospace; }
-        .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 5px 12px; font-size: 9px; color: #64748b; display: flex; justify-content: space-between; }
-      </style>
-    </head>
-    <body>
-      <div class="slip">
-        <div class="header">
-          <h2>${COMPANY}</h2>
-          <p>Goods Receipt Note — Stock Label</p>
-        </div>
-        <div class="body">
-          <div class="qr"><img src="${qrDataURL}" alt="QR" /></div>
-          <div class="details">
-            <div class="batch-box">
-              <div class="label">Internal Batch No.</div>
-              <div class="value">${line.batchNo}</div>
-            </div>
-            <div class="row">
-              <div class="label">Supplier Batch No.</div>
-              <div class="value">${line.supplierBatchNo || "—"}</div>
-            </div>
-            <div class="row">
-              <div class="label">Item Code</div>
-              <div class="value">${line.itemCode}</div>
-            </div>
-            <div class="row">
-              <div class="label">Item Name</div>
-              <div class="value" style="font-size:9px;color:#111;">${line.itemName}</div>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <div class="row" style="flex:1;">
-                <div class="label">Received Qty</div>
-                <div class="value">${line.receivedQty} ${line.stockUnit}</div>
-              </div>
-              <div class="row" style="flex:1;">
-                <div class="label">Warehouse</div>
-                <div class="value">${line.warehouseName}</div>
-              </div>
-            </div>
-            <div style="display:flex;gap:8px;margin-top:4px;">
-              <div class="row" style="flex:1;">
-                <div class="label">Bin</div>
-                <div class="value">${line.bin}</div>
-              </div>
-              <div class="row" style="flex:1;">
-                <div class="label">GRN No.</div>
-                <div class="value" style="font-size:9px;">${grn.grnNo}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="footer">
-          <span>Date: ${fmtDate(grn.grnDate)}</span>
-          <span>Supplier: ${grn.supplier}</span>
-          <span>HSN: ${line.hsnCode}</span>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  const win = window.open("", "_blank", "width=420,height=450");
-  if (!win) return;
-  win.document.write(slipHTML);
-  win.document.close();
-  win.onload = () => { win.print(); };
+async function apiFetch(url: string): Promise<any> {
+  const res = await fetch(url, { headers: authHeaders() });
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return text; }
 }
 
-// ─── QR Scanner Component ────────────────────────────────────
-function QRScannerModal({
-  onScan, onClose,
-}: {
-  onScan: (value: string) => void;
-  onClose: () => void;
-}) {
+function unwrap(raw: string): string {
+  const t = raw.trim();
+  if (t.startsWith('"') && t.endsWith('"')) { try { return JSON.parse(t); } catch { } }
+  return t;
+}
+
+// ─── Types ───────────────────────────────────────────────────
+interface Supplier  { LedgerID: number; LedgerName: string; }
+interface WH        { Warehouse: string; }
+interface BinRow    { Bin: string; WarehouseID: number; }
+interface Receiver  { LedgerID: number; LedgerName: string; }
+
+interface PendingPOItem {
+  TransactionID: number;
+  PurchaseVoucherNo: string;
+  PurchaseVoucherDate: string;
+  LedgerID: number;
+  LedgerName: string;
+  ItemID: number;
+  ItemGroupID: number;
+  ItemSubGroupID: number;
+  ItemCode: string;
+  ItemName: string;
+  PurchaseOrderQuantity: number;
+  ReceiptQuantity: number;
+  PendingQty: number;
+  PurchaseTolerance: number;
+  PurchaseUnit: string;
+  StockUnit: string;
+  GradesOfSupplier: string;
+  PurchaseRate: number;
+  BatchSeqBase: number;
+}
+
+interface GRNListRow {
+  TransactionID: number;
+  PurchaseTransactionID: number;
+  LedgerID: number;
+  LedgerName: string;
+  ReceiptVoucherNo: string;
+  ReceiptVoucherDate: string;
+  PurchaseVoucherNo: string;
+  ChallanQuantity: number;
+  DeliveryNoteNo: string;
+  DeliveryNoteDate: string;
+  GateEntryNo: string;
+  GateEntryDate: string;
+  EWayBillNumber: string;
+  EWayBillDate: string;
+  LRNoVehicleNo: string;
+  Transporter: string;
+  ReceiverName: string;
+  Narration: string;
+  ReceivedBy: number;
+  IsGRNApprovalRequired: boolean;
+}
+
+interface GRNLine {
+  lineId: string;
+  poTransactionId: number;
+  poVoucherNo: string;
+  itemId: number;
+  itemGroupId: number;
+  itemCode: string;
+  itemName: string;
+  purchaseOrderQty: number;
+  pendingQty: number;
+  challanQty: number;
+  purchaseUnit: string;
+  stockUnit: string;
+  supplierBatchNo: string;
+  batchNo: string;
+  itemTagNo: string;
+  supplierGrade: string;
+  warehouseId: number;
+  warehouseName: string;
+  bin: string;
+  mfgDate: string;
+  expiryDate: string;
+  purchaseRate: number;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+const todayISO = () => new Date().toISOString().split("T")[0];
+const fmtDate = (s: string) =>
+  s ? new Date(s).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+
+function toInputDate(s: string | undefined | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function genBatchNo(poVoucherNo: string, itemId: number, seq: number): string {
+  return `_${poVoucherNo}_${itemId}_${String(seq).padStart(3, "0")}`;
+}
+
+// ─── QR Slip Print ────────────────────────────────────────────
+type PrintLine = Pick<GRNLine, "batchNo" | "itemCode" | "itemName" | "supplierBatchNo" | "itemTagNo" | "supplierGrade" | "challanQty" | "stockUnit" | "warehouseName" | "bin">;
+
+// Compact slip — 2 columns × 3 rows fits exactly on A4 (each slip ~96mm × 88mm)
+const QR_SLIP_STYLES = `
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:Arial,sans-serif;font-size:9px;background:#fff;}
+.slip{border:1.5px solid #0f4c5c;border-radius:5px;overflow:hidden;break-inside:avoid;}
+.hdr{background:#0f4c5c;color:#fff;padding:3px 8px;text-align:center;font-size:7.5px;font-weight:700;letter-spacing:.3px;}
+.batch{background:#dbeafe;border-bottom:1.5px solid #93c5fd;padding:4px 8px;text-align:center;}
+.batch .bl{font-size:6.5px;font-weight:700;color:#1e40af;text-transform:uppercase;}
+.batch .bv{font-size:10px;font-weight:900;color:#1e3a8a;font-family:monospace;word-break:break-all;line-height:1.2;}
+.body{display:flex;align-items:flex-start;}
+.qrc{padding:5px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;}
+.qrc img{width:72px;height:72px;border:1px solid #cbd5e1;border-radius:3px;display:block;}
+.qrc span{font-size:5.5px;color:#94a3b8;text-align:center;line-height:1.2;}
+.info{flex:1;padding:4px 6px;min-width:0;}
+.row{margin-bottom:2.5px;}
+.lbl{font-size:6px;color:#64748b;text-transform:uppercase;font-weight:700;line-height:1;}
+.val{font-size:8px;font-weight:700;color:#0f172a;word-break:break-word;line-height:1.2;}
+hr{border:none;border-top:1px dashed #e2e8f0;margin:3px 0;}
+.ftr{background:#f1f5f9;border-top:1px solid #e2e8f0;padding:3px 8px;display:flex;justify-content:space-between;font-size:6.5px;color:#64748b;}
+@media print{body{margin:0;}}`;
+
+function buildSlipHtml(line: PrintLine, qrDataURL: string, grnNo: string, supplier: string): string {
+  return `<div class="slip">
+    <div class="hdr">Goods Receipt Note — Stock Label</div>
+    <div class="batch"><div class="bl">Batch No.</div><div class="bv">${line.batchNo}</div></div>
+    <div class="body">
+      <div class="qrc"><img src="${qrDataURL}" alt="QR"/><span>Scan: Batch·Item·Batch</span></div>
+      <div class="info">
+        <div class="row"><div class="lbl">Item</div><div class="val">${line.itemName}</div></div>
+        <div class="row"><div class="lbl">Item Code</div><div class="val" style="font-family:monospace">${line.itemCode}</div></div>
+        <hr/>
+        <div class="row"><div class="lbl">Supplier Batch No.</div><div class="val" style="font-family:monospace">${line.supplierBatchNo || "—"}</div></div>
+        <div class="row"><div class="lbl">Tag No.</div><div class="val">${line.itemTagNo || "—"}</div></div>
+        <div class="row"><div class="lbl">Grade</div><div class="val">${line.supplierGrade || "—"}</div></div>
+        <hr/>
+        <div class="row"><div class="lbl">Warehouse / Bin</div><div class="val">${line.warehouseName} / ${line.bin || "—"}</div></div>
+        <div class="row"><div class="lbl">Received Qty</div><div class="val">${line.challanQty} ${line.stockUnit}</div></div>
+      </div>
+    </div>
+    <div class="ftr"><span>GRN: <strong>${grnNo}</strong></span><span>${supplier}</span></div>
+  </div>`;
+}
+
+function openPrintTab(html: string) {
+  const printableHtml = html.replace(
+    "</head>",
+    "<script>window.onload=function(){window.print();}<\/script></head>"
+  );
+  const blob = new Blob([printableHtml], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const tab = window.open(url, "_blank");
+  if (!tab) alert("Pop-up blocked. Please allow pop-ups for this site.");
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function printQRSlips(lines: PrintLine[], grnNo: string, supplier: string, eachPage: boolean) {
+  const slipHtmls = await Promise.all(lines.map(async (line) => {
+    const qrDataURL = await QRCode.toDataURL(
+      JSON.stringify({ batchNo: line.batchNo, itemCode: line.itemCode, supplierBatchNo: line.supplierBatchNo }),
+      { width: 120, margin: 1, color: { dark: "#0f4c5c", light: "#ffffff" } }
+    );
+    return buildSlipHtml(line, qrDataURL, grnNo, supplier);
+  }));
+
+  const GRID_STYLES = `
+    @media print{@page{size:A4 portrait;margin:6mm;}body{padding:0;}}
+    body{padding:4px;}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:4mm;}`;
+
+  if (eachPage) {
+    // One slip per page — wrap each in the same 2-col grid so slip width matches "Print All"
+    const body = slipHtmls
+      .map((s, i) => `<div class="grid" style="page-break-after:${i < slipHtmls.length - 1 ? "always" : "auto"}">${s}</div>`)
+      .join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GRN Labels — ${grnNo}</title>
+    <style>${QR_SLIP_STYLES}${GRID_STYLES}</style>
+    </head><body>${body}</body></html>`;
+    openPrintTab(html);
+  } else {
+    // Multiple slips — 2 columns × N rows grid
+    const body = slipHtmls.join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GRN Labels — ${grnNo}</title>
+    <style>${QR_SLIP_STYLES}${GRID_STYLES}</style>
+    </head><body><div class="grid">${body}</div></body></html>`;
+    openPrintTab(html);
+  }
+}
+
+// ─── QR Scanner Modal ────────────────────────────────────────
+function QRScannerModal({ onScan, onClose }: { onScan: (v: string) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -164,37 +224,27 @@ function QRScannerModal({
   const [scanning, setScanning] = useState(false);
 
   const stopCamera = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
   }, []);
 
   const scan = useCallback(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
+    const video = videoRef.current; const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) return;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(imageData.data, imageData.width, imageData.height);
-    if (code?.data) {
-      stopCamera();
-      onScan(code.data);
-    }
+    if (code?.data) { stopCamera(); onScan(code.data); }
   }, [onScan, stopCamera]);
 
   const startCamera = useCallback(async () => {
     setCameraError("");
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -202,102 +252,60 @@ function QRScannerModal({
         setScanning(true);
         intervalRef.current = setInterval(scan, 150);
       }
-    } catch {
-      setCameraError("Camera access denied or not available. Use manual entry.");
-      setMode("manual");
-    }
+    } catch { setCameraError("Camera access denied. Use manual entry."); setMode("manual"); }
   }, [scan]);
 
-  useEffect(() => {
-    if (mode === "camera") startCamera();
-    return () => stopCamera();
-  }, [mode, startCamera, stopCamera]);
+  useEffect(() => { if (mode === "camera") startCamera(); return () => stopCamera(); }, [mode, startCamera, stopCamera]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden">
-        {/* Header */}
         <div className="bg-blue-600 text-white px-5 py-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <QrCode size={16} />
-            <span className="font-semibold text-sm">QR / Barcode Scanner</span>
-          </div>
-          <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
+          <div className="flex items-center gap-2"><QrCode size={16} /><span className="font-semibold text-sm">QR / Barcode Scanner</span></div>
+          <button onClick={onClose}><X size={18} className="text-blue-200 hover:text-white" /></button>
         </div>
-
-        {/* Mode tabs */}
         <div className="flex border-b border-gray-100">
-          <button
-            onClick={() => setMode("camera")}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-colors ${mode === "camera" ? "bg-blue-50 text-blue-700 border-b-2 border-blue-600" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            <Camera size={14} /> Camera Scan
-          </button>
-          <button
-            onClick={() => { setMode("manual"); stopCamera(); }}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-colors ${mode === "manual" ? "bg-blue-50 text-blue-700 border-b-2 border-blue-600" : "text-gray-500 hover:bg-gray-50"}`}
-          >
-            <Keyboard size={14} /> Manual Entry
-          </button>
+          {(["camera", "manual"] as const).map((m) => (
+            <button key={m} onClick={() => { setMode(m); if (m === "manual") stopCamera(); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold transition-colors ${mode === m ? "bg-blue-50 text-blue-700 border-b-2 border-blue-600" : "text-gray-500 hover:bg-gray-50"}`}>
+              {m === "camera" ? <><Camera size={14} /> Camera Scan</> : <><Keyboard size={14} /> Manual Entry</>}
+            </button>
+          ))}
         </div>
-
-        {/* Camera view */}
         {mode === "camera" && (
           <div className="p-4">
             {cameraError ? (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-600 text-center">
-                {cameraError}
-              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-600 text-center">{cameraError}</div>
             ) : (
               <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
                 <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
                 <canvas ref={canvasRef} className="hidden" />
-                {/* Scan overlay */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="w-48 h-48 border-2 border-blue-400 rounded-lg relative">
                     <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl" />
                     <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr" />
                     <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl" />
                     <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br" />
-                    {scanning && (
-                      <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-400 animate-bounce" style={{ animationDuration: "1.5s" }} />
-                    )}
+                    {scanning && <div className="absolute inset-x-0 top-0 h-0.5 bg-blue-400 animate-bounce" style={{ animationDuration: "1.5s" }} />}
                   </div>
                 </div>
                 <div className="absolute bottom-3 inset-x-0 text-center">
-                  <span className="bg-black/60 text-white text-xs px-3 py-1 rounded-full">
-                    Point camera at QR / Barcode
-                  </span>
+                  <span className="bg-black/60 text-white text-xs px-3 py-1 rounded-full">Point camera at QR / Barcode</span>
                 </div>
               </div>
             )}
-            <p className="text-center text-xs text-gray-400 mt-3">
-              Scanned value will auto-fill Supplier Batch No.
-            </p>
+            <p className="text-center text-xs text-gray-400 mt-3">Scanned value will auto-fill Supplier Batch No.</p>
           </div>
         )}
-
-        {/* Manual entry */}
         {mode === "manual" && (
           <div className="p-5 space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">
-                Enter / Paste Batch No. or Barcode
-              </label>
-              <textarea
-                autoFocus
-                value={manual}
-                onChange={(e) => setManual(e.target.value)}
-                rows={3}
-                placeholder="Scan or type supplier batch / barcode value here…"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono"
-              />
-            </div>
-            <button
-              onClick={() => { if (manual.trim()) onScan(manual.trim()); }}
+            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste Batch No. or Barcode</label>
+            <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)}
+              rows={3} placeholder="Scan or type supplier batch / barcode value here…"
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
+            <button onClick={() => { if (manual.trim()) onScan(manual.trim()); }}
               disabled={!manual.trim()}
-              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            >
+              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
               Use This Value
             </button>
           </div>
@@ -307,288 +315,338 @@ function QRScannerModal({
   );
 }
 
-// ─── Line Edit Modal ─────────────────────────────────────────
-function LineEditModal({
-  line, sameState, onSave, onClose,
+// ─── Bulk Roll Entry Modal ────────────────────────────────────
+interface RollRow { id: string; itemTagNo: string; supplierBatchNo: string; qty: number; grade: string; }
+
+function BulkRollEntryModal({
+  poItem, seqBase, warehouses, supplierGrades, onAdd, onClose,
 }: {
-  line: GRNLine;
-  sameState: boolean;
-  onSave: (updated: GRNLine) => void;
+  poItem: PendingPOItem;
+  seqBase: number;
+  warehouses: WH[];
+  supplierGrades: string[];
+  onAdd: (lines: GRNLine[], warehouseName: string, bins: BinRow[]) => void;
   onClose: () => void;
 }) {
-  const [form, setForm] = useState<GRNLine>({ ...line });
-  const [showScanner, setShowScanner] = useState(false);
+  const [warehouseName, setWarehouseName] = useState("");
+  const [bins, setBins] = useState<BinRow[]>([]);
+  const [bin, setBin]   = useState("");
+  const [rate, setRate] = useState(poItem.PurchaseRate || 0);
+  const [tagPrefix, setTagPrefix] = useState("TAG-");
+  const [tagStartNo, setTagStartNo] = useState("101");
+  const [count, setCount] = useState("5");
+  const [commonGrade, setCommonGrade] = useState(poItem.GradesOfSupplier || "");
+  const [rolls, setRolls] = useState<RollRow[]>([]);
+  const [scanningId, setScanningId] = useState<string | null>(null);
 
-  const wh = WAREHOUSES.find((w) => w.id === form.warehouseId);
-  const bins = wh?.bins ?? [];
+  useEffect(() => {
+    if (!warehouseName) { setBins([]); setBin(""); return; }
+    apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetBinsList?warehouseName=${encodeURIComponent(warehouseName)}`)
+      .then((d) => { if (Array.isArray(d) && !d[0]?.ErrMsg) { setBins(d); setBin(""); } });
+  }, [warehouseName]);
 
-  const f = (k: keyof GRNLine, v: string | number) => {
-    setForm((p) => {
-      const updated = { ...p, [k]: v };
-      // Recalc amounts when receivedQty or rate changes
-      const qty = k === "receivedQty" ? Number(v) : updated.receivedQty;
-      const rate = k === "rate" ? Number(v) : updated.rate;
-      const basic = qty * rate;
-      const cgst = sameState ? basic * updated.gstPct / 2 / 100 : 0;
-      const sgst = sameState ? basic * updated.gstPct / 2 / 100 : 0;
-      const igst = !sameState ? basic * updated.gstPct / 100 : 0;
-      return { ...updated, basicAmt: basic, cgstAmt: cgst, sgstAmt: sgst, igstAmt: igst, totalAmt: basic + cgst + sgst + igst };
-    });
+  const generateRows = () => {
+    const n = Math.min(parseInt(count) || 0, 500);
+    if (n < 1) return;
+    const start = parseInt(tagStartNo) || 1;
+    setRolls(Array.from({ length: n }, (_, i) => ({
+      id: Math.random().toString(36).slice(2),
+      itemTagNo: tagPrefix ? `${tagPrefix}${String(start + i).padStart(3, "0")}` : String(start + i),
+      supplierBatchNo: "",
+      qty: 0,
+      grade: commonGrade,
+    })));
   };
 
-  const onScanResult = (val: string) => {
-    setForm((p) => ({ ...p, supplierBatchNo: val }));
-    setShowScanner(false);
+  const upd = (id: string, field: keyof RollRow, val: string | number) =>
+    setRolls((p) => p.map((r) => r.id === id ? { ...r, [field]: val } : r));
+
+  const handleAdd = () => {
+    if (!warehouseName || !bin) { alert("Please select Warehouse and Bin."); return; }
+    const filled = rolls.filter((r) => r.qty > 0);
+    if (!filled.length) { alert("Enter quantity for at least one item."); return; }
+    const totalQty = filled.reduce((s, r) => s + r.qty, 0);
+    const maxAllowed = poItem.PendingQty + poItem.PurchaseOrderQuantity * (poItem.PurchaseTolerance / 100);
+    if (poItem.PendingQty > 0 && totalQty > maxAllowed) {
+      alert(`Total qty (${totalQty}) exceeds pending qty + tolerance (${maxAllowed.toFixed(3)} ${poItem.StockUnit}). Reduce quantities.`);
+      return;
+    }
+    const lines: GRNLine[] = filled.map((r, i) => ({
+      lineId: Math.random().toString(36).slice(2),
+      poTransactionId: poItem.TransactionID,
+      poVoucherNo: poItem.PurchaseVoucherNo,
+      itemId: poItem.ItemID,
+      itemGroupId: poItem.ItemGroupID,
+      itemCode: poItem.ItemCode,
+      itemName: poItem.ItemName,
+      purchaseOrderQty: poItem.PurchaseOrderQuantity,
+      pendingQty: poItem.PendingQty,
+      challanQty: r.qty,
+      purchaseUnit: poItem.PurchaseUnit,
+      stockUnit: poItem.StockUnit,
+      supplierBatchNo: r.supplierBatchNo,
+      batchNo: genBatchNo(poItem.PurchaseVoucherNo, poItem.ItemID, seqBase + i + 1),
+      itemTagNo: r.itemTagNo,
+      supplierGrade: r.grade,
+      warehouseId: bins.find((b) => b.Bin === bin)?.WarehouseID ?? 0,
+      warehouseName,
+      bin,
+      mfgDate: "",
+      expiryDate: "",
+      purchaseRate: rate,
+    }));
+    onAdd(lines, warehouseName, bins);
   };
 
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="bg-white rounded-2xl shadow-2xl w-[640px] max-h-[90vh] flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[1200px] max-h-[92vh] flex flex-col overflow-hidden">
+          <div className="bg-blue-700 text-white px-7 py-4 flex items-center justify-between shrink-0">
             <div>
-              <p className="font-semibold text-sm">{form.itemName}</p>
-              <p className="text-xs text-blue-200 font-mono">{form.itemCode} · PO: {form.poRef}</p>
+              <div className="flex items-center gap-2.5"><Layers size={16} /><span className="font-bold text-sm">Bulk Entry</span></div>
+              <p className="text-xs text-blue-200 mt-0.5">
+                <span className="font-semibold">{poItem.ItemName}</span>
+                <span className="mx-1.5 opacity-50">·</span>
+                <span className="font-mono">{poItem.PurchaseVoucherNo}</span>
+                <span className="mx-1.5 opacity-50">·</span>
+                <span>PO: <strong>{poItem.PurchaseOrderQuantity}</strong></span>
+                {(poItem.ReceiptQuantity || 0) > 0 && (
+                  <><span className="mx-1.5 opacity-50">·</span><span className="text-green-300">Received: <strong>{poItem.ReceiptQuantity}</strong></span></>
+                )}
+                <span className="mx-1.5 opacity-50">·</span>
+                <span className="text-yellow-300">Pending: <strong>{poItem.PendingQty} {poItem.StockUnit}</strong></span>
+              </p>
             </div>
-            <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
+            <button onClick={onClose}><X size={18} className="text-blue-200 hover:text-white" /></button>
           </div>
 
-          <div className="overflow-y-auto p-6 space-y-6 flex-1">
-            {/* Batch / Scan */}
-            <div>
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">
-                Batch Identification
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Internal Batch No.</label>
-                  <input readOnly value={form.batchNo} className={`${inputCls} bg-blue-50 font-mono text-blue-700 text-xs`} />
-                </div>
-                <div>
-                  <label className={labelCls}>Supplier Batch No. <span className="text-blue-600">(Scan / Enter)</span></label>
-                  <div className="flex gap-2">
-                    <input
-                      value={form.supplierBatchNo}
-                      onChange={(e) => f("supplierBatchNo", e.target.value)}
-                      placeholder="Scan QR or type…"
-                      className={`${inputCls} flex-1 font-mono`}
-                    />
-                    <button
-                      onClick={() => setShowScanner(true)}
-                      title="Open QR / Barcode Scanner"
-                      className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
-                    >
-                      <Scan size={14} /> Scan
-                    </button>
-                  </div>
-                </div>
+          {/* Common settings */}
+          <div className="px-7 py-4 bg-blue-50 border-b border-blue-100 shrink-0">
+            <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3">Common — same for all items</p>
+            {/* Row 1: warehouse / bin / rate / grade */}
+            <div className="grid grid-cols-4 gap-4 items-end mb-3">
+              <div>
+                <label className={labelCls}>Warehouse *</label>
+                <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className={inputCls}>
+                  <option value="">Select…</option>
+                  {warehouses.map((w) => <option key={w.Warehouse}>{w.Warehouse}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Bin *</label>
+                <select value={bin} onChange={(e) => setBin(e.target.value)} className={inputCls} disabled={!bins.length}>
+                  <option value="">Select…</option>
+                  {bins.map((b) => <option key={b.Bin}>{b.Bin}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Rate (₹/{poItem.PurchaseUnit})</label>
+                <input type="number" value={rate} onChange={(e) => setRate(Number(e.target.value))} className={inputCls} min={0} step={0.01} />
+              </div>
+              <div>
+                <label className={labelCls}>Grade of Supplier</label>
+                <select value={commonGrade}
+                  onChange={(e) => { setCommonGrade(e.target.value); setRolls((p) => p.map((r) => ({ ...r, grade: e.target.value }))); }}
+                  className={inputCls}>
+                  <option value="">— Select —</option>
+                  {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
+                </select>
               </div>
             </div>
-
-            {/* Qty / Expiry */}
-            <div>
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">
-                Receipt Details
-              </h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className={labelCls}>Ordered Qty ({form.stockUnit})</label>
-                  <input readOnly value={form.orderedQty} className={`${inputCls} bg-gray-50 text-gray-500`} />
-                </div>
-                <div>
-                  <label className={labelCls}>Received Qty ({form.stockUnit}) *</label>
-                  <input
-                    type="number" min={0} value={form.receivedQty || ""}
-                    onChange={(e) => f("receivedQty", Number(e.target.value))}
-                    className={inputCls} placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Rate (₹/{form.purchaseUnit})</label>
-                  <input
-                    type="number" min={0} step={0.01} value={form.rate || ""}
-                    onChange={(e) => f("rate", Number(e.target.value))}
-                    className={inputCls} placeholder="0.00"
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Expiry Date</label>
-                  <input type="date" value={form.expiryDate}
-                    onChange={(e) => f("expiryDate", e.target.value)}
-                    className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>HSN Code</label>
-                  <input readOnly value={form.hsnCode} className={`${inputCls} bg-gray-50 text-gray-500`} />
-                </div>
-                <div>
-                  <label className={labelCls}>GST %</label>
-                  <input readOnly value={`${form.gstPct}%`} className={`${inputCls} bg-gray-50 text-gray-500`} />
-                </div>
+            {/* Row 2: tag prefix / start no / count / generate */}
+            <div className="flex items-end gap-4">
+              <div className="flex-none">
+                <label className={labelCls}>Tag Prefix</label>
+                <input value={tagPrefix} onChange={(e) => setTagPrefix(e.target.value)} placeholder="TAG-"
+                  className={inputCls} style={{ width: "8rem" }} />
               </div>
-            </div>
-
-            {/* Warehouse / Bin */}
-            <div>
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">
-                Storage Location
-              </h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Warehouse *</label>
-                  <select value={form.warehouseId}
-                    onChange={(e) => {
-                      const w = WAREHOUSES.find((x) => x.id === e.target.value);
-                      setForm((p) => ({ ...p, warehouseId: e.target.value, warehouseName: w?.name ?? "", bin: "" }));
-                    }}
-                    className={inputCls}>
-                    <option value="">Select warehouse…</option>
-                    {WAREHOUSES.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={labelCls}>Bin *</label>
-                  <select value={form.bin}
-                    onChange={(e) => setForm((p) => ({ ...p, bin: e.target.value }))}
-                    className={inputCls} disabled={bins.length === 0}>
-                    <option value="">Select bin…</option>
-                    {bins.map((b) => <option key={b}>{b}</option>)}
-                  </select>
-                </div>
+              <div className="flex-none">
+                <label className={labelCls}>Start No.</label>
+                <input value={tagStartNo} onChange={(e) => setTagStartNo(e.target.value)} placeholder="101"
+                  className={inputCls} style={{ width: "7rem" }} />
               </div>
-            </div>
-
-            {/* Amount preview */}
-            <div className="bg-blue-50 rounded-xl p-4 grid grid-cols-4 gap-3 text-center">
-              {[
-                { label: "Basic Amt", value: fmtAmt(form.basicAmt), cls: "text-gray-800" },
-                { label: sameState ? "CGST" : "—", value: sameState ? fmtAmt(form.cgstAmt) : "—", cls: "text-blue-700" },
-                { label: sameState ? "SGST" : "IGST", value: sameState ? fmtAmt(form.sgstAmt) : fmtAmt(form.igstAmt), cls: "text-blue-700" },
-                { label: "Total Amt", value: `₹${fmtAmt(form.totalAmt)}`, cls: "text-blue-800 font-bold text-base" },
-              ].map((col) => (
-                <div key={col.label}>
-                  <p className="text-xs text-gray-500 mb-0.5">{col.label}</p>
-                  <p className={`text-sm ${col.cls}`}>{col.value}</p>
-                </div>
-              ))}
+              <div className="flex-none">
+                <label className={labelCls}>No. of Items</label>
+                <input type="number" min={1} max={500} value={count} onChange={(e) => setCount(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && generateRows()}
+                  className={inputCls} style={{ width: "7rem" }} />
+              </div>
+              <div className="flex-none pb-0">
+                <button onClick={generateRows}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
+                  Generate Rows
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0">
-            <button onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
-              Cancel
-            </button>
-            <button
-              onClick={() => onSave(form)}
-              disabled={!form.receivedQty || !form.warehouseId || !form.bin}
-              className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              <CheckCircle2 size={16} /> Confirm Receipt
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {showScanner && (
-        <QRScannerModal onScan={onScanResult} onClose={() => setShowScanner(false)} />
-      )}
-    </>
-  );
-}
-
-// ─── PO Picker Modal ─────────────────────────────────────────
-function POPickerModal({
-  supplier, supplierPOs, onAdd, onClose,
-}: {
-  supplier: string;
-  supplierPOs: PurchaseOrder[];
-  onAdd: (po: PurchaseOrder, line: POLine) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-[750px] max-h-[82vh] flex flex-col overflow-hidden">
-        <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
-          <div>
-            <h3 className="font-semibold text-sm">Select Item from Purchase Order</h3>
-            <p className="text-xs text-blue-200 mt-0.5">Supplier: {supplier}</p>
-          </div>
-          <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
-          {supplierPOs.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
-              No approved / pending purchase orders found for {supplier}
-            </div>
-          ) : supplierPOs.map((po) => (
-            <div key={po.id}>
-              <div className="bg-blue-50 px-5 py-2 flex items-center gap-3">
-                <span className="font-mono text-xs font-semibold text-blue-700">{po.poNo}</span>
-                <span className="text-xs text-gray-500">{fmtDate(po.poDate)}</span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${po.status === "Approved" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                  {po.status}
-                </span>
+          {/* Rows table */}
+          <div className="flex-1 overflow-y-auto overflow-x-auto">
+            {rolls.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+                <Layers size={36} className="text-gray-300" />
+                <p className="text-sm">Enter count and click <strong className="text-gray-600">Generate</strong></p>
               </div>
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50">
+            ) : (
+              <table className="w-full text-xs border-collapse" style={{ minWidth: 780 }}>
+                <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-500">Item Code</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-500">Item Name</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-500">PO Qty</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-500">Rate (₹)</th>
-                    <th className="px-4 py-2 text-center font-semibold text-gray-500">Action</th>
+                    <th className="px-4 py-2.5 text-left font-semibold text-gray-500 w-10">#</th>
+                    <th className="px-4 py-2.5 text-left font-semibold text-gray-500 w-44">Tag No.</th>
+                    <th className="px-4 py-2.5 text-left font-semibold text-gray-500 w-36">Grade of Supplier</th>
+                    <th className="px-4 py-2.5 text-left font-semibold text-gray-500">Supplier Batch No. / Barcode</th>
+                    <th className="px-4 py-2.5 text-right font-semibold text-gray-500 w-36">Qty ({poItem.StockUnit})</th>
+                    <th className="px-4 py-2.5 text-center w-14">Scan</th>
+                    <th className="w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {po.lines.map((l) => (
-                    <tr key={l.lineId} className="border-t border-gray-50 hover:bg-blue-50 transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold">{l.itemCode}</td>
-                      <td className="px-4 py-2.5 text-gray-800">{l.itemName}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700 font-semibold">{l.poQtyInPU.toLocaleString()} {l.stockUnit}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">₹{fmtAmt(l.rate)}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <button onClick={() => onAdd(po, l)}
-                          className="flex items-center gap-1 mx-auto px-3 py-1 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                          <Plus size={11} /> Add &amp; Scan
+                  {rolls.map((r, i) => (
+                    <tr key={r.id} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                      <td className="px-4 py-2 text-gray-400 font-mono text-[10px]">{i + 1}</td>
+                      <td className="px-4 py-2">
+                        <input value={r.itemTagNo} onChange={(e) => upd(r.id, "itemTagNo", e.target.value)}
+                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                      </td>
+                      <td className="px-4 py-2">
+                        <select value={r.grade} onChange={(e) => upd(r.id, "grade", e.target.value)}
+                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                          <option value="">— Select —</option>
+                          {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input value={r.supplierBatchNo} onChange={(e) => upd(r.id, "supplierBatchNo", e.target.value)}
+                          placeholder="Scan QR or type…"
+                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input type="number" min={0} step={0.001} value={r.qty || ""}
+                          onChange={(e) => upd(r.id, "qty", Number(e.target.value))}
+                          placeholder="0.000"
+                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-right font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                      </td>
+                      <td className="px-4 py-2 text-center">
+                        <button onClick={() => setScanningId(r.id)}
+                          className="p-1.5 text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100">
+                          <Scan size={12} />
                         </button>
+                      </td>
+                      <td className="pr-4 py-2">
+                        <button onClick={() => setRolls((p) => p.filter((x) => x.id !== r.id))}
+                          className="text-gray-300 hover:text-red-500 transition-colors"><X size={13} /></button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+
+          {rolls.length > 0 && (
+            <div className="px-7 py-3.5 border-t border-gray-100 bg-white flex items-center justify-between shrink-0">
+              <div className="text-xs text-gray-500">
+                <span className="font-bold text-blue-700">{rolls.filter((r) => r.qty > 0).length}</span>/{rolls.length} filled ·
+                Total: <span className="font-bold text-blue-800">
+                  {rolls.reduce((s, r) => s + r.qty, 0).toFixed(3)} {poItem.StockUnit}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button onClick={handleAdd}
+                  disabled={rolls.filter((r) => r.qty > 0).length === 0 || !warehouseName || !bin}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                  <CheckCircle2 size={15} />
+                  Add {rolls.filter((r) => r.qty > 0).length} Item{rolls.filter((r) => r.qty > 0).length !== 1 ? "s" : ""} to GRN
+                </button>
+              </div>
             </div>
-          ))}
+          )}
         </div>
-        <div className="px-5 py-2.5 border-t border-gray-100 text-right shrink-0">
-          <p className="text-xs text-gray-400">Click &ldquo;Add &amp; Scan&rdquo; to add item — QR scanner will open automatically</p>
+      </div>
+      {scanningId && (
+        <QRScannerModal
+          onScan={(val) => { upd(scanningId, "supplierBatchNo", val); setScanningId(null); }}
+          onClose={() => setScanningId(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── Password Modal ───────────────────────────────────────────
+function PwModal({
+  title, onConfirm, onClose, busy,
+}: { title: string; onConfirm: (pw: string, remark: string) => void; onClose: () => void; busy: boolean }) {
+  const [pw, setPw] = useState("");
+  const [rm, setRm] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-96 overflow-hidden">
+        <div className="bg-red-600 text-white px-5 py-3.5 flex items-center justify-between">
+          <span className="font-semibold text-sm">{title}</span>
+          <button onClick={onClose}><X size={18} className="text-red-200 hover:text-white" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className={labelCls}>Your Password</label>
+            <input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)}
+              className={inputCls} placeholder="Enter password…" />
+          </div>
+          <div>
+            <label className={labelCls}>Remark (optional)</label>
+            <input value={rm} onChange={(e) => setRm(e.target.value)} className={inputCls} placeholder="Reason…" />
+          </div>
+          <div className="flex gap-3 justify-end pt-1">
+            <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Cancel</button>
+            <button onClick={() => onConfirm(pw, rm)} disabled={!pw || busy}
+              className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+              {busy ? "Processing…" : "Confirm"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Section Title ────────────────────────────────────────────
-const SectionTitle = ({ title }: { title: string }) => (
-  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
-    {title}
-  </h3>
-);
-
 // ─── Main Page ───────────────────────────────────────────────
-export default function PurchaseGRNPage() {
-  const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<GRN[]>(initData);
-  const [editing, setEditing] = useState<GRN | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"All" | GRN["status"]>("All");
-  const [activeTab, setActiveTab] = useState<"basic" | "items" | "documents">("basic");
+type TabId = "basic" | "po" | "receiving" | "documents";
 
-  // Form state
-  const [grnDate, setGrnDate] = useState(todayISO());
-  const [supplier, setSupplier] = useState("");
-  const [lines, setLines] = useState<GRNLine[]>([]);
-  const [invoiceNo, setInvoiceNo] = useState("");
+export default function PurchaseGRNPage() {
+  // ── Master data ─────────────────────────────────────────────
+  const [suppliers, setSuppliers]   = useState<Supplier[]>([]);
+  const [warehouses, setWarehouses] = useState<WH[]>([]);
+  const [receivers, setReceivers]   = useState<Receiver[]>([]);
+
+  // ── GRN list ────────────────────────────────────────────────
+  const [grnList, setGrnList]       = useState<GRNListRow[]>([]);
+  const [fromDate, setFromDate]     = useState(() => {
+    const d = new Date(); d.setMonth(d.getMonth() - 1);
+    return d.toISOString().split("T")[0];
+  });
+  const [toDate, setToDate] = useState(todayISO);
+  const [listLoading, setListLoading] = useState(false);
+
+  // ── Pending POs ─────────────────────────────────────────────
+  const [pendingItems, setPendingItems] = useState<PendingPOItem[]>([]);
+  const [poLoading, setPoLoading]       = useState(false);
+
+  // ── Bins per selection ──────────────────────────────────────
+  const [binsMap, setBinsMap] = useState<Record<string, BinRow[]>>({});
+
+  // ── View ────────────────────────────────────────────────────
+  const [view, setView]         = useState<"list" | "form">("list");
+  const [editTxnId, setEditTxnId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("basic");
+
+  // ── Form state ──────────────────────────────────────────────
+  const [grnNo, setGrnNo]           = useState("");
+  const [grnDate, setGrnDate]       = useState(todayISO);
+  const [supplierId, setSupplierId] = useState<number>(0);
+  const [receivedById, setReceivedById] = useState<number>(0);
+  const [invoiceNo, setInvoiceNo]   = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [eWayBillNo, setEWayBillNo] = useState("");
   const [eWayBillDate, setEWayBillDate] = useState("");
@@ -596,118 +654,461 @@ export default function PurchaseGRNPage() {
   const [gateEntryDate, setGateEntryDate] = useState("");
   const [lrVehicleNo, setLrVehicleNo] = useState("");
   const [transporter, setTransporter] = useState("");
-  const [receivedBy, setReceivedBy] = useState("");
-  const [remark, setRemark] = useState("");
+  const [remark, setRemark]         = useState("");
+  const [lines, setLines]           = useState<GRNLine[]>([]);
 
-  // PO picker state
-  const [showPOPicker, setShowPOPicker] = useState(false);
+  // ── Bins for lines ──────────────────────────────────────────
+  const [lineBins, setLineBins] = useState<Record<string, BinRow[]>>({});
 
-  // Line edit modal
-  const [editingLine, setEditingLine] = useState<GRNLine | null>(null);
+  // ── Supplier grades (dynamic from LedgerMaster) ─────────────
+  const [supplierGrades, setSupplierGrades] = useState<string[]>([]);
 
-  // Derived: POs for selected supplier
-  const supplierPOs = useMemo(
-    () => purchaseOrders.filter((po) =>
-      po.supplier === supplier &&
-      (po.status === "Approved" || po.status === "Sent")
-    ),
-    [supplier]
+  useEffect(() => {
+    if (!supplierId) { setSupplierGrades([]); return; }
+    apiFetch(`${BASE_URL}/api/FieldMasterAJ/GetSupplierGrades?ledgerID=${supplierId}`)
+      .then(data => setSupplierGrades(Array.isArray(data) ? data : []))
+      .catch(() => setSupplierGrades([]));
+  }, [supplierId]);
+
+  // ── Modals ──────────────────────────────────────────────────
+  const [scanningLineId, setScanningLineId] = useState<string | null>(null);
+  const [bulkTarget, setBulkTarget] = useState<PendingPOItem | null>(null);
+  const [pwModal, setPwModal]       = useState<"update" | "delete" | null>(null);
+  const [saving, setSaving]         = useState(false);
+  const [deleting, setDeleting]     = useState(false);
+
+  // ── QR print from list ──────────────────────────────────────
+  const [qrMenuGrnId, setQrMenuGrnId] = useState<number | null>(null);
+  const [qrPrinting, setQrPrinting]   = useState<number | null>(null);
+
+  const supplierName = useMemo(
+    () => suppliers.find((s) => s.LedgerID === supplierId)?.LedgerName ?? "",
+    [suppliers, supplierId]
   );
 
-  const supplierInfo = SUPPLIERS.find((s) => s.name === supplier);
-  const sameState = supplierInfo?.state === COMPANY_STATE;
+  // ── Grouped pending POs ─────────────────────────────────────
+  const groupedPOs = useMemo(() => {
+    const map = new Map<number, { txnId: number; voucherNo: string; date: string; items: PendingPOItem[] }>();
+    pendingItems.forEach((item) => {
+      if (!map.has(item.TransactionID)) {
+        map.set(item.TransactionID, {
+          txnId: item.TransactionID,
+          voucherNo: item.PurchaseVoucherNo,
+          date: item.PurchaseVoucherDate,
+          items: [],
+        });
+      }
+      const group = map.get(item.TransactionID)!;
+      if (!group.items.some((i) => i.ItemID === item.ItemID)) {
+        group.items.push(item);
+      }
+    });
+    return Array.from(map.values());
+  }, [pendingItems]);
 
-  const openNew = () => {
-    setEditing(null);
-    setGrnDate(todayISO()); setSupplier(""); setLines([]);
+  // ── Fetch master data once ──────────────────────────────────
+  useEffect(() => {
+    apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetPurchaseSuppliersList`)
+      .then((d) => Array.isArray(d) && !d[0]?.ErrMsg && setSuppliers(d));
+    apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetWarehouseList`)
+      .then((d) => Array.isArray(d) && !d[0]?.ErrMsg && setWarehouses(d));
+    apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiverList`)
+      .then((d) => Array.isArray(d) && !d[0]?.ErrMsg && setReceivers(d));
+  }, []);
+
+  // ── Fetch GRN list ──────────────────────────────────────────
+  const fetchGrnList = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const d = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptNoteList?fromDateValue=${fromDate}&toDateValue=${toDate}`);
+      if (Array.isArray(d) && !d[0]?.ErrMsg) setGrnList(d);
+      else setGrnList([]);
+    } finally { setListLoading(false); }
+  }, [fromDate, toDate]);
+
+  useEffect(() => { fetchGrnList(); }, [fetchGrnList]);
+
+  // Close QR dropdown on outside click (bubble phase so button onClick fires first)
+  useEffect(() => {
+    if (!qrMenuGrnId) return;
+    const handler = () => setQrMenuGrnId(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [qrMenuGrnId]);
+
+  // ── Fetch pending POs when supplier changes ─────────────────
+  useEffect(() => {
+    if (!supplierId) { setPendingItems([]); return; }
+    setPoLoading(true);
+    apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetPendingOrdersList?ledgerId=${supplierId}`)
+      .then((d) => { if (Array.isArray(d) && !d[0]?.ErrMsg) setPendingItems(d); else setPendingItems([]); })
+      .finally(() => setPoLoading(false));
+  }, [supplierId]);
+
+  // ── Fetch bins for a warehouse ──────────────────────────────
+  const fetchBins = useCallback(async (whName: string): Promise<BinRow[]> => {
+    if (!whName) return [];
+    if (binsMap[whName]) return binsMap[whName];
+    const d = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetBinsList?warehouseName=${encodeURIComponent(whName)}`);
+    const bins = Array.isArray(d) && !d[0]?.ErrMsg ? d : [];
+    setBinsMap((prev) => ({ ...prev, [whName]: bins }));
+    return bins;
+  }, [binsMap]);
+
+  // ── Fetch GRN No ────────────────────────────────────────────
+  const fetchGrnNo = useCallback(async () => {
+    const res = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptNo?prefix=GRN`);
+    setGrnNo(typeof res === "string" ? unwrap(res) : "");
+  }, []);
+
+  // ── Open new form ───────────────────────────────────────────
+  const openNew = useCallback(async () => {
+    setEditTxnId(null);
+    setGrnDate(todayISO()); setSupplierId(0); setReceivedById(0);
     setInvoiceNo(""); setInvoiceDate(""); setEWayBillNo(""); setEWayBillDate("");
     setGateEntryNo(""); setGateEntryDate(""); setLrVehicleNo("");
-    setTransporter(""); setReceivedBy(""); setRemark("");
+    setTransporter(""); setRemark(""); setLines([]); setLineBins({});
+    await fetchGrnNo();
     setActiveTab("basic");
     setView("form");
-  };
+  }, [fetchGrnNo]);
 
-  const openEdit = (grn: GRN) => {
-    setEditing(grn);
-    setGrnDate(grn.grnDate); setSupplier(grn.supplier);
-    setLines(grn.lines.map((l) => ({ ...l })));
-    setInvoiceNo(grn.invoiceNo); setInvoiceDate(grn.invoiceDate);
-    setEWayBillNo(grn.eWayBillNo); setEWayBillDate(grn.eWayBillDate);
-    setGateEntryNo(grn.gateEntryNo); setGateEntryDate(grn.gateEntryDate);
-    setLrVehicleNo(grn.lrVehicleNo); setTransporter(grn.transporter);
-    setReceivedBy(grn.receivedBy); setRemark(grn.remark);
-    setActiveTab("basic");
-    setView("form");
-  };
+  // ── Open edit form ──────────────────────────────────────────
+  const openEdit = useCallback(async (row: GRNListRow) => {
+    setEditTxnId(row.TransactionID);
+    setGrnDate(toInputDate(row.ReceiptVoucherDate) || todayISO());
+    setSupplierId(row.LedgerID);
+    setReceivedById(row.ReceivedBy ?? 0);
+    setInvoiceNo(row.DeliveryNoteNo ?? "");
+    setInvoiceDate(toInputDate(row.DeliveryNoteDate));
+    setEWayBillNo(row.EWayBillNumber ?? "");
+    setEWayBillDate(toInputDate(row.EWayBillDate));
+    setGateEntryNo(row.GateEntryNo ?? "");
+    setGateEntryDate(toInputDate(row.GateEntryDate));
+    setLrVehicleNo(row.LRNoVehicleNo ?? "");
+    setTransporter(row.Transporter ?? "");
+    setRemark(row.Narration ?? "");
+    setGrnNo(row.ReceiptVoucherNo ?? "");
 
-  const handleDelete = (id: string) => {
-    if (confirm("Delete this GRN?")) setData((d) => d.filter((r) => r.id !== id));
-  };
+    // Load batch detail lines
+    const detail = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptVoucherBatchDetail?transactionId=${row.TransactionID}`);
+    if (Array.isArray(detail) && !detail[0]?.ErrMsg) {
+      // Deduplicate by TransID — SQL JOIN fan-out can return the same GRN row multiple times
+      // if the source PO has the same ItemID on multiple detail rows.
+      const seenTransIds = new Set<number>();
+      const uniqueDetail = detail.filter((d: any) => {
+        const tid = Number(d.TransID);
+        if (seenTransIds.has(tid)) return false;
+        seenTransIds.add(tid);
+        return true;
+      });
+      const loaded: GRNLine[] = uniqueDetail.map((d: any, i: number) => ({
+        lineId: `edit-${i}`,
+        poTransactionId: Number(d.PurchaseTransactionID) || 0,
+        poVoucherNo: d.PurchaseVoucherNo ?? "",
+        itemId: Number(d.ItemID) || 0,
+        itemGroupId: Number(d.ItemGroupID) || 0,
+        itemCode: d.ItemCode ?? "",
+        itemName: d.ItemName ?? "",
+        purchaseOrderQty: Number(d.PurchaseOrderQuantity) || 0,
+        pendingQty: 0,
+        challanQty: Number(d.ChallanQuantity) || 0,
+        purchaseUnit: d.PurchaseUnit ?? "",
+        stockUnit: d.StockUnit ?? "",
+        supplierBatchNo: d.SupplierBatchNo ?? "",
+        batchNo: d.BatchNo ?? "",
+        itemTagNo: d.ItemTagNo ?? "",
+        supplierGrade: d.GradesOfSupplier ?? "",
+        warehouseId: Number(d.WarehouseID) || 0,
+        warehouseName: d.Warehouse ?? "",
+        bin: d.Bin ?? "",
+        mfgDate: d.MfgDate ?? "",
+        expiryDate: d.ExpiryDate ?? "",
+        purchaseRate: Number(d.PurchaseRate) || 0,
+      }));
+      setLines(loaded);
 
-  const addPOLine = (po: PurchaseOrder, poLine: POLine) => {
-    const seq = lines.filter((l) => l.itemCode === poLine.itemCode).length + 1;
-    const newLine: GRNLine = {
-      lineId: Math.random().toString(36).slice(2),
-      poRef: po.poNo,
-      itemCode: poLine.itemCode, itemGroup: poLine.itemGroup,
-      subGroup: poLine.subGroup, itemName: poLine.itemName,
-      orderedQty: poLine.poQtyInPU, receivedQty: poLine.poQtyInPU,
-      stockUnit: poLine.stockUnit, purchaseUnit: poLine.purchaseUnit,
-      rate: poLine.rate, hsnCode: poLine.hsnCode, gstPct: poLine.gstPct,
-      batchNo: genBatchNo(poLine.itemCode, grnDate, seq),
-      supplierBatchNo: "", expiryDate: "",
-      warehouseId: "", warehouseName: "", bin: "",
-      basicAmt: poLine.basicAmt, cgstAmt: poLine.cgstAmt,
-      sgstAmt: poLine.sgstAmt, igstAmt: poLine.igstAmt, totalAmt: poLine.totalAmt,
-    };
-    setLines((prev) => [...prev, newLine]);
-    setShowPOPicker(false);
-    setEditingLine(newLine);
-  };
-
-  const saveLineEdit = (updated: GRNLine) => {
-    setLines((prev) => prev.map((l) => l.lineId === updated.lineId ? updated : l));
-    setEditingLine(null);
-  };
-
-  const removeLine = (lineId: string) => setLines((prev) => prev.filter((l) => l.lineId !== lineId));
-
-  const save = (status: GRN["status"]) => {
-    if (!supplier) { alert("Select a supplier."); return; }
-    if (lines.length === 0) { alert("Add at least one item line."); return; }
-    const grn: GRN = {
-      id: editing ? editing.id : `GRN${String(data.length + 1).padStart(3, "0")}`,
-      grnNo: editing ? editing.grnNo : nextGRNNo(data),
-      grnDate, supplier, supplierState: supplierInfo?.state ?? "",
-      lines, invoiceNo, invoiceDate, eWayBillNo, eWayBillDate,
-      gateEntryNo, gateEntryDate, lrVehicleNo, transporter, receivedBy, remark, status,
-    };
-    if (editing) {
-      setData((d) => d.map((r) => r.id === editing.id ? grn : r));
+      // Pre-load bins for each warehouse used
+      const uniqueWH = [...new Set(loaded.map((l) => l.warehouseName).filter(Boolean))];
+      const newBinsMap: Record<string, BinRow[]> = {};
+      await Promise.all(uniqueWH.map(async (wh) => {
+        const bins = await fetchBins(wh);
+        newBinsMap[wh] = bins;
+      }));
+      setLineBins(newBinsMap);
     } else {
-      setData((d) => [...d, grn]);
+      setLines([]);
     }
-    setView("list");
-  };
 
-  const currentGRNNo = editing ? editing.grnNo : nextGRNNo(data);
-  const totalBasic = lines.reduce((s, l) => s + l.basicAmt, 0);
-  const totalTax   = lines.reduce((s, l) => s + l.cgstAmt + l.sgstAmt + l.igstAmt, 0);
-  const totalAmt   = lines.reduce((s, l) => s + l.totalAmt, 0);
-  const filteredData = filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus);
-  const statuses: ("All" | GRN["status"])[] = ["All", "Draft", "Completed", "Verified"];
+    setActiveTab("basic");
+    setView("form");
+  }, [fetchBins]);
 
-  // ══════════════════════════════════════════════════════════
+  // ── Line helpers ────────────────────────────────────────────
+  const addSingleLine = useCallback((item: PendingPOItem) => {
+    const existingBatches = item.BatchSeqBase ?? 0;
+    const formBatches = lines.filter((l) => l.itemId === item.ItemID && l.poTransactionId === item.TransactionID).length;
+    const seq = existingBatches + formBatches + 1;
+    setLines((prev) => [...prev, {
+      lineId: Math.random().toString(36).slice(2),
+      poTransactionId: item.TransactionID,
+      poVoucherNo: item.PurchaseVoucherNo,
+      itemId: item.ItemID,
+      itemGroupId: item.ItemGroupID,
+      itemCode: item.ItemCode,
+      itemName: item.ItemName,
+      purchaseOrderQty: item.PurchaseOrderQuantity,
+      pendingQty: item.PendingQty,
+      challanQty: 0,
+      purchaseUnit: item.PurchaseUnit,
+      stockUnit: item.StockUnit,
+      supplierBatchNo: "",
+      batchNo: genBatchNo(item.PurchaseVoucherNo, item.ItemID, seq),
+      itemTagNo: "",
+      supplierGrade: item.GradesOfSupplier ?? "",
+      warehouseId: 0,
+      warehouseName: "",
+      bin: "",
+      mfgDate: "",
+      expiryDate: "",
+      purchaseRate: item.PurchaseRate || 0,
+    }]);
+    setActiveTab("receiving");
+  }, [lines]);
+
+  const addBulkLines = useCallback((newLines: GRNLine[], wh: string, whBins: BinRow[]) => {
+    setLines((prev) => [...prev, ...newLines]);
+    if (wh && whBins.length) {
+      setLineBins((prev) => ({ ...prev, [wh]: whBins }));
+    }
+    setBulkTarget(null);
+    setActiveTab("receiving");
+  }, []);
+
+  const updateLine = useCallback((lineId: string, field: keyof GRNLine, val: any) =>
+    setLines((prev) => prev.map((l) => l.lineId === lineId ? { ...l, [field]: val } : l)), []);
+
+  const updateLineWarehouse = useCallback(async (lineId: string, whName: string) => {
+    const bins = await fetchBins(whName);
+    setLineBins((prev) => ({ ...prev, [whName]: bins }));
+    const warehouseId = bins[0]?.WarehouseID ?? 0;
+    setLines((prev) => prev.map((l) => l.lineId === lineId ? { ...l, warehouseName: whName, warehouseId, bin: "" } : l));
+  }, [fetchBins]);
+
+  const updateLineBin = useCallback((lineId: string, bin: string, whName: string) => {
+    const warehouseId = (lineBins[whName] ?? []).find((b) => b.Bin === bin)?.WarehouseID ?? 0;
+    setLines((prev) => prev.map((l) => l.lineId === lineId ? { ...l, bin, warehouseId } : l));
+  }, [lineBins]);
+
+  const removeLine = useCallback((lineId: string) => setLines((prev) => prev.filter((l) => l.lineId !== lineId)), []);
+
+  // ── QR print handler (list view) ───────────────────────────
+  const handleQRPrint = useCallback(async (row: GRNListRow, mode: "each" | "all") => {
+    setQrMenuGrnId(null);
+    setQrPrinting(row.TransactionID);
+    try {
+      const detail = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptVoucherBatchDetail?transactionId=${row.TransactionID}`);
+      if (!Array.isArray(detail) || detail[0]?.ErrMsg) { alert("Could not load GRN detail."); return; }
+      const seenTransIds = new Set<number>();
+      const printLines: PrintLine[] = detail
+        .filter((d: any) => {
+          const tid = Number(d.TransID);
+          if (seenTransIds.has(tid)) return false;
+          seenTransIds.add(tid);
+          return true;
+        })
+        .map((d: any) => ({
+          batchNo: d.BatchNo ?? "",
+          itemCode: d.ItemCode ?? "",
+          itemName: d.ItemName ?? "",
+          supplierBatchNo: d.SupplierBatchNo ?? "",
+          itemTagNo: d.ItemTagNo ?? "",
+          supplierGrade: d.GradesOfSupplier ?? "",
+          challanQty: Number(d.ChallanQuantity) || 0,
+          stockUnit: d.StockUnit ?? "",
+          warehouseName: d.Warehouse ?? "",
+          bin: d.Bin ?? "",
+        }));
+      if (!printLines.length) { alert("No batch lines found for this GRN."); return; }
+      await printQRSlips(printLines, row.ReceiptVoucherNo, row.LedgerName, mode === "each");
+    } catch (e: any) { alert("Print error: " + e.message); }
+    finally { setQrPrinting(null); }
+  }, []);
+
+  // ── Build payload ───────────────────────────────────────────
+  const buildPayload = useCallback((prefix = "GRN") => {
+    const Main = {
+      VoucherID: -14,
+      VoucherDate: grnDate,
+      LedgerID: supplierId,
+      TotalQuantity: lines.reduce((s, l) => s + l.challanQty, 0).toString(),
+      Particular: "Receipt Note",
+      ProductionUnitID: 0,
+      ReceivedBy: receivedById || 0,
+      DeliveryNoteNo: invoiceNo,
+      DeliveryNoteDate: invoiceDate || null,
+      EWayBillNumber: eWayBillNo,
+      EWayBillDate: eWayBillDate || null,
+      GateEntryNo: gateEntryNo,
+      GateEntryDate: gateEntryDate || null,
+      LRNoVehicleNo: lrVehicleNo,
+      Transporter: transporter,
+      Narration: remark,
+    };
+    const Detail = lines.map((l, i) => ({
+      TransID: i + 1,
+      ItemID: l.itemId,
+      ItemGroupID: l.itemGroupId,
+      ChallanQuantity: l.challanQty.toString(),
+      ChallanWeight: l.challanQty.toString(),
+      BatchNo: l.batchNo,
+      StockUnit: l.stockUnit,
+      ProductionUnitID: 0,
+      SupplierBatchNo: l.supplierBatchNo || "-",
+      MFGdate: l.mfgDate || null,
+      ExpiryDate: l.expiryDate || null,
+      ReceiptWtPerPacking: "0",
+      WarehouseID: l.warehouseId,
+      PurchaseTransactionID: l.poTransactionId,
+      GradesOfSupplier: l.supplierGrade,
+      ItemTagNo: l.itemTagNo,
+      PurchaseRate: l.purchaseRate,
+    }));
+    const PO = lines.reduce<{ PurchaseTransactionID: number; ItemID: number }[]>((acc, l) => {
+      if (!acc.find((x) => x.PurchaseTransactionID === l.poTransactionId && x.ItemID === l.itemId))
+        acc.push({ PurchaseTransactionID: l.poTransactionId, ItemID: l.itemId });
+      return acc;
+    }, []);
+    return { prefix, voucherid: -14, Main, Detail, PO };
+  }, [grnDate, supplierId, receivedById, invoiceNo, invoiceDate, eWayBillNo, eWayBillDate, gateEntryNo, gateEntryDate, lrVehicleNo, transporter, remark, lines]);
+
+  // ── Save ────────────────────────────────────────────────────
+  const doSave = useCallback(async () => {
+    if (!supplierId) { alert("Please select a supplier."); setActiveTab("basic"); return; }
+    if (!lines.length) { alert("Add at least one receiving line."); setActiveTab("po"); return; }
+    if (lines.some((l) => !l.challanQty)) { alert("All lines must have a quantity."); setActiveTab("receiving"); return; }
+    if (lines.some((l) => !l.warehouseId)) { alert("All lines must have a Warehouse and Bin."); setActiveTab("receiving"); return; }
+
+    // Validate total qty per item against pending qty + tolerance (create mode only)
+    if (!editTxnId) {
+      const qtyByItem = new Map<string, { total: number; line: GRNLine }>();
+      lines.forEach((l) => {
+        const key = `${l.poTransactionId}-${l.itemId}`;
+        const cur = qtyByItem.get(key);
+        qtyByItem.set(key, { total: (cur?.total ?? 0) + l.challanQty, line: l });
+      });
+      for (const { total, line } of qtyByItem.values()) {
+        if (line.pendingQty <= 0) continue; // edit-loaded lines skip validation
+        const poItem = pendingItems.find((p) => p.TransactionID === line.poTransactionId && p.ItemID === line.itemId);
+        if (!poItem) continue;
+        const maxAllowed = poItem.PendingQty + poItem.PurchaseOrderQuantity * (poItem.PurchaseTolerance / 100);
+        if (total > maxAllowed) {
+          alert(`${line.itemName}: Total qty (${total}) exceeds pending qty + tolerance (${maxAllowed.toFixed(3)} ${line.stockUnit}). Please reduce.`);
+          setActiveTab("receiving");
+          return;
+        }
+      }
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseGrnAJ/SaveReceiptData`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload()),
+      });
+      const text = unwrap(await res.text());
+      let parsed: any = null;
+      try { parsed = JSON.parse(text); } catch { }
+      const result = parsed?.result ?? text;
+      if (result === "Success") {
+        alert(`GRN saved successfully! GRN No: ${parsed?.voucherNo ?? grnNo}`);
+        await fetchGrnList();
+        setView("list");
+      } else {
+        alert(text);
+      }
+    } catch (e: any) { alert("Save error: " + e.message); }
+    finally { setSaving(false); }
+  }, [supplierId, lines, buildPayload, fetchGrnList, grnNo]);
+
+  // ── Update ──────────────────────────────────────────────────
+  const doUpdate = useCallback(async (password: string, remarkPw: string) => {
+    const session = getSession();
+    if (!session) { alert("Session expired."); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        TransactionID: String(editTxnId),
+        ValidateUser: { userName: session.userName, password, transactionRemark: remarkPw },
+        ...buildPayload(),
+      };
+      const res = await fetch(`${BASE_URL}/api/PurchaseGrnAJ/UpdateReceiptData`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const text = unwrap(await res.text());
+      if (text === "Success") {
+        alert("GRN updated successfully.");
+        await fetchGrnList();
+        setView("list");
+      } else if (text === "InvalidUser") {
+        alert("Invalid password.");
+      } else if (text === "Exist") {
+        alert("This GRN cannot be updated — it is used in a further process.");
+      } else {
+        alert(text);
+      }
+    } catch (e: any) { alert("Update error: " + e.message); }
+    finally { setSaving(false); setPwModal(null); }
+  }, [editTxnId, buildPayload, fetchGrnList]);
+
+  // ── Delete ──────────────────────────────────────────────────
+  const doDelete = useCallback(async (password: string, remarkPw: string) => {
+    const session = getSession();
+    if (!session) { alert("Session expired."); return; }
+    setDeleting(true);
+    const PO = lines.reduce<{ PurchaseTransactionID: number; ItemID: number }[]>((acc, l) => {
+      if (!acc.find((x) => x.PurchaseTransactionID === l.poTransactionId && x.ItemID === l.itemId))
+        acc.push({ PurchaseTransactionID: l.poTransactionId, ItemID: l.itemId });
+      return acc;
+    }, []);
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseGrnAJ/DeletePGRN`, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          TransactionID: String(editTxnId),
+          ObjvalidateLoginUser: { userName: session.userName, password, transactionRemark: remarkPw },
+          PurchaseTransactionID: lines[0]?.poTransactionId?.toString() ?? "0",
+          jsonObjectsPO: PO,
+        }),
+      });
+      const text = unwrap(await res.text());
+      if (text === "Success") {
+        alert("GRN deleted successfully.");
+        await fetchGrnList();
+        setView("list");
+      } else if (text === "InvalidUser") {
+        alert("Invalid password.");
+      } else {
+        alert(text);
+      }
+    } catch (e: any) { alert("Delete error: " + e.message); }
+    finally { setDeleting(false); setPwModal(null); }
+  }, [editTxnId, lines, fetchGrnList]);
+
+  // ══════════════════════════════════════════════════════════════
   // LIST VIEW
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
   if (view === "list") {
     return (
       <div className="max-w-6xl mx-auto space-y-5">
-        {/* Title + New button */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Purchase GRN</h2>
-            <p className="text-sm text-gray-500">Goods Receipt Note — {filteredData.length} records</p>
+            <p className="text-sm text-gray-500">Goods Receipt Note · {grnList.length} records</p>
           </div>
           <button onClick={openNew}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
@@ -715,88 +1116,80 @@ export default function PurchaseGRNPage() {
           </button>
         </div>
 
-        {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Status</span>
-            {statuses.map((s) => (
-              <button key={s} onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                {s}
-              </button>
-            ))}
+        {/* Date filter */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3 flex items-center gap-4">
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
+          <div className="flex items-center gap-2">
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} />
+            <span className="text-gray-400 text-xs">to</span>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} />
           </div>
+          <button onClick={fetchGrnList} disabled={listLoading}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            <RefreshCw size={12} className={listLoading ? "animate-spin" : ""} /> Refresh
+          </button>
         </div>
 
-        {/* GRN Table */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">GRN No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Supplier</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice No.</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Items</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Basic Amt (₹)</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Tax (₹)</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Total (₹)</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                {["GRN No.", "Date", "Supplier", "PO Ref.", "Invoice No.", "Transporter", "Actions"].map((h, i) => (
+                  <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${i >= 6 ? "text-center" : "text-left"}`}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {filteredData.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-16 text-gray-400">No GRN records found</td></tr>
-              ) : filteredData.map((grn, i) => {
-                const gBasic = grn.lines.reduce((s, l) => s + l.basicAmt, 0);
-                const gTax   = grn.lines.reduce((s, l) => s + l.cgstAmt + l.sgstAmt + l.igstAmt, 0);
-                const gTotal = grn.lines.reduce((s, l) => s + l.totalAmt, 0);
-                return (
-                  <tr key={grn.id} className="border-t border-gray-100 hover:bg-blue-50/30 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{grn.grnNo}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(grn.grnDate)}</td>
-                    <td className="px-4 py-3 text-gray-800 text-xs font-medium">{grn.supplier}</td>
-                    <td className="px-4 py-3 text-gray-700 text-xs font-mono">{grn.invoiceNo || "—"}</td>
-                    <td className="px-4 py-3 text-center font-medium text-gray-700">{grn.lines.length}</td>
-                    <td className="px-4 py-3 text-right text-gray-700 text-xs font-semibold">₹{fmtAmt(gBasic)}</td>
-                    <td className="px-4 py-3 text-right text-gray-600 text-xs">₹{fmtAmt(gTax)}</td>
-                    <td className="px-4 py-3 text-right text-blue-700 text-xs font-bold">₹{fmtAmt(gTotal)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[grn.status]}`}>
-                        {grn.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5 justify-center">
-                        <button onClick={() => openEdit(grn)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                          <Pencil size={11} /> Edit
+              {listLoading ? (
+                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Loading…</td></tr>
+              ) : grnList.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-16 text-gray-400">No GRN records found</td></tr>
+              ) : grnList.map((g) => (
+                <tr key={g.TransactionID}
+                  className="border-t border-gray-100 hover:bg-blue-50/30 transition-colors">
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{g.ReceiptVoucherNo}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(g.ReceiptVoucherDate)}</td>
+                  <td className="px-4 py-3 text-gray-800 text-xs font-medium">{g.LedgerName}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs font-mono">{g.PurchaseVoucherNo}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs font-mono">{g.DeliveryNoteNo || "—"}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{g.Transporter || "—"}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 justify-center">
+                      <button onClick={() => openEdit(g)}
+                        className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
+                        Edit
+                      </button>
+                      {/* QR Print dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setQrMenuGrnId(qrMenuGrnId === g.TransactionID ? null : g.TransactionID); }}
+                          disabled={qrPrinting === g.TransactionID}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50">
+                          {qrPrinting === g.TransactionID
+                            ? <><RefreshCw size={11} className="animate-spin" /> Printing…</>
+                            : <><QrCode size={11} /> QR <ChevronDown size={10} /></>}
                         </button>
-                        {/* Per-line QR print dropdown */}
-                        <div className="relative group">
-                          <button className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                            <Printer size={11} /> QR Slip ▾
-                          </button>
-                          <div className="absolute right-0 top-7 z-20 hidden group-hover:block bg-white border border-gray-200 rounded-lg shadow-lg w-56 py-1">
-                            {grn.lines.map((l) => (
-                              <button key={l.lineId} onClick={() => printQRSlip(l, grn)}
-                                className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 transition-colors">
-                                <QrCode size={12} />
-                                <span className="truncate">{l.itemCode} — {l.batchNo.slice(-10)}</span>
-                              </button>
-                            ))}
+                        {qrMenuGrnId === g.TransactionID && (
+                          <div className="absolute right-0 top-full mt-1 z-[999] bg-white border border-gray-200 rounded-xl shadow-lg py-1 w-52">
+                            <button
+                              onClick={() => handleQRPrint(g, "each")}
+                              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
+                              <Printer size={12} />
+                              Print Each QR (Individual)
+                            </button>
+                            <button
+                              onClick={() => handleQRPrint(g, "all")}
+                              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
+                              <QrCode size={12} />
+                              Print All QR (Single Page)
+                            </button>
                           </div>
-                        </div>
-                        <button onClick={() => handleDelete(grn.id)}
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                          <Trash2 size={11} />
-                        </button>
+                        )}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -804,323 +1197,439 @@ export default function PurchaseGRNPage() {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
   // FORM VIEW
-  // ══════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════
+  const totalQty = lines.reduce((s, l) => s + l.challanQty, 0);
+
   return (
     <div className="max-w-5xl mx-auto pb-10">
-
-      {/* Header Ribbon */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{COMPANY}</p>
-          <div className="flex items-center gap-3 mt-0.5">
-            <h2 className="text-xl font-bold text-gray-800">Purchase GRN</h2>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 font-mono">
-              {currentGRNNo}
-            </span>
-            {editing && (
-              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[editing.status]}`}>
-                {editing.status}
+      {/* Header ribbon */}
+      <div className="flex items-center justify-between mb-5 bg-white px-5 py-3.5 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setView("list")}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors">
+            <ArrowLeft size={15} /> List
+          </button>
+          <div className="w-px h-5 bg-gray-200" />
+          <div>
+            <div className="flex items-center gap-2.5 mt-0.5">
+              <h2 className="text-base font-bold text-gray-800">Purchase GRN</h2>
+              <span className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-xs font-bold text-blue-700 font-mono">
+                {grnNo || "…"}
               </span>
-            )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setView("list")}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <List size={16} /> List ({data.length})
-          </button>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-            <Plus size={16} /> New
-          </button>
-          <button onClick={() => save("Draft")}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Save size={16} /> Draft
-          </button>
-          <button onClick={() => save("Completed")}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <CheckCircle2 size={16} /> Save
-          </button>
-          {editing && (
-            <button onClick={() => { handleDelete(editing.id); setView("list"); }}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-              <Trash2 size={16} /> Delete
+          {editTxnId ? (
+            <>
+              <button onClick={() => setPwModal("delete")} disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
+                <Trash2 size={14} /> Delete
+              </button>
+              <button onClick={() => setPwModal("update")} disabled={saving}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
+                <CheckCircle2 size={15} /> {saving ? "Saving…" : "Update GRN"}
+              </button>
+            </>
+          ) : (
+            <button onClick={doSave} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
+              <CheckCircle2 size={15} /> {saving ? "Saving…" : "Save GRN"}
             </button>
           )}
         </div>
       </div>
 
-      {/* Content Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-
-        {/* Tab Header */}
-        <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-          <div className="flex gap-8">
-            {(["basic", "items", "documents"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`pb-3 text-sm font-medium transition-colors border-b-2 capitalize ${activeTab === tab ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"}`}
-              >
-                {tab === "basic" ? "Basic" : tab === "items" ? "Items" : "Documents"}
-              </button>
-            ))}
-          </div>
+      {/* Tab card */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Tab header */}
+        <div className="flex border-b border-gray-200 bg-gray-50/40">
+          {([
+            { id: "basic", label: "GRN Details", desc: supplierId ? supplierName : "Date & Supplier" },
+            { id: "po", label: "Purchase Orders", desc: poLoading ? "Loading…" : groupedPOs.length > 0 ? `${pendingItems.length} pending items` : "Select Items" },
+            { id: "receiving", label: "Receiving Lines", desc: lines.length > 0 ? `${lines.length} line${lines.length !== 1 ? "s" : ""} · ${totalQty.toFixed(3)} qty` : "Qty & Storage" },
+            { id: "documents", label: "Documents", desc: "Invoice & Transport" },
+          ] as { id: TabId; label: string; desc: string }[]).map((tab) => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 px-4 py-3.5 text-left transition-colors border-b-2 ${activeTab === tab.id ? "border-blue-600 bg-white" : "border-transparent hover:bg-gray-50"}`}>
+              <p className={`text-xs font-bold ${activeTab === tab.id ? "text-blue-700" : "text-gray-500"}`}>{tab.label}</p>
+              <p className={`text-[10px] mt-0.5 ${activeTab === tab.id ? "text-blue-500" : "text-gray-400"}`}>{tab.desc}</p>
+            </button>
+          ))}
         </div>
 
-        {/* Tab Content */}
-        <div className="p-6">
-
-          {/* ── BASIC TAB ── */}
-          {activeTab === "basic" && (
-            <div className="space-y-8">
+        {/* ── TAB 1: BASIC ───────────────────────────────────── */}
+        {activeTab === "basic" && (
+          <div className="p-6 space-y-5">
+            <div className="grid grid-cols-3 gap-5">
               <div>
-                <SectionTitle title="GRN Details" />
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">GRN No.</label>
-                    <input
-                      readOnly value={currentGRNNo}
-                      className="border border-gray-300 rounded-lg px-4 py-2 text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none w-full"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">GRN Date</label>
-                    <input
-                      type="date" value={grnDate}
-                      onChange={(e) => setGrnDate(e.target.value)}
-                      className={inputCls}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Supplier Name <span className="text-red-500">*</span>
-                      {supplierInfo && (
-                        <span className="ml-2 normal-case font-normal text-gray-400">
-                          {supplierInfo.state}
-                          {sameState
-                            ? <span className="ml-1 text-green-600 font-semibold">CGST+SGST</span>
-                            : <span className="ml-1 text-orange-600 font-semibold">IGST</span>}
-                        </span>
-                      )}
-                    </label>
-                    <select
-                      value={supplier}
-                      onChange={(e) => { setSupplier(e.target.value); setLines([]); }}
-                      className={inputCls}
-                    >
-                      <option value="">Select Supplier…</option>
-                      {SUPPLIERS.map((s) => <option key={s.name} value={s.name}>{s.name} — {s.state}</option>)}
-                    </select>
-                  </div>
-                </div>
+                <label className={labelCls}>GRN No.</label>
+                <input readOnly value={grnNo || "…"}
+                  className="border border-gray-200 rounded-lg px-4 py-2 text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none w-full" />
               </div>
-
-              {/* GST type indicator */}
-              {supplier && (
-                <div className={`rounded-lg px-4 py-3 text-sm font-medium ${sameState ? "bg-green-50 border border-green-200 text-green-700" : "bg-orange-50 border border-orange-200 text-orange-700"}`}>
-                  {sameState
-                    ? `Intra-state supply — CGST + SGST will apply (Supplier: ${supplierInfo?.state})`
-                    : `Inter-state supply — IGST will apply (Supplier: ${supplierInfo?.state})`}
-                </div>
-              )}
-
+              <div>
+                <label className={labelCls}>GRN Date *</label>
+                <input type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Supplier *</label>
+                <select value={supplierId} onChange={(e) => { setSupplierId(Number(e.target.value)); setLines([]); }}
+                  className={inputCls} disabled={!!editTxnId}>
+                  <option value={0}>Select supplier…</option>
+                  {suppliers.map((s) => <option key={s.LedgerID} value={s.LedgerID}>{s.LedgerName}</option>)}
+                </select>
+              </div>
             </div>
-          )}
-
-          {/* ── ITEMS TAB ── */}
-          {activeTab === "items" && (
-            <div className="space-y-4">
-              {/* Add from PO button */}
-              <div className="flex items-center justify-between">
-                <SectionTitle title="Line Items" />
-                <button
-                  onClick={() => { if (!supplier) { alert("Select a supplier first (Basic tab)."); return; } setShowPOPicker(true); }}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Plus size={14} /> Add from PO
+            <div className="grid grid-cols-3 gap-5">
+              <div>
+                <label className={labelCls}>Received By</label>
+                <select value={receivedById} onChange={(e) => setReceivedById(Number(e.target.value))} className={inputCls}>
+                  <option value={0}>Select…</option>
+                  {receivers.map((r) => <option key={r.LedgerID} value={r.LedgerID}>{r.LedgerName}</option>)}
+                </select>
+              </div>
+            </div>
+            {supplierId > 0 && (
+              <div className="flex justify-end">
+                <button onClick={() => setActiveTab("po")}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                  View Purchase Orders <ChevronRight size={15} />
                 </button>
               </div>
+            )}
+          </div>
+        )}
 
-              {/* Items table */}
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
+        {/* ── TAB 2: PURCHASE ORDERS ─────────────────────────── */}
+        {activeTab === "po" && (
+          <div className="p-6 space-y-5">
+            {!supplierId ? (
+              <div className="text-center py-16">
+                <Package size={36} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm text-gray-500">Select a supplier on the <strong>GRN Details</strong> tab first</p>
+                <button onClick={() => setActiveTab("basic")}
+                  className="mt-3 px-4 py-2 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+                  ← Go to GRN Details
+                </button>
+              </div>
+            ) : poLoading ? (
+              <div className="text-center py-16 text-gray-400">Loading pending orders…</div>
+            ) : groupedPOs.length === 0 ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center text-sm text-green-700">
+                <CheckCircle2 size={24} className="mx-auto mb-2 text-green-400" />
+                All POs for <strong>{supplierName}</strong> are fully received.
+              </div>
+            ) : (
+              <>
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">
+                  Pending Purchase Orders — {supplierName}
+                </p>
+                <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+                  {groupedPOs.map((po) => (
+                    <div key={po.txnId}>
+                      <div className="px-4 py-2 bg-gray-50 flex items-center gap-3">
+                        <span className="font-mono text-xs font-bold text-blue-700">{po.voucherNo}</span>
+                        <span className="text-xs text-gray-400">{fmtDate(po.date)}</span>
+                        <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded">ID: {po.txnId}</span>
+                      </div>
+                      {po.items.map((item, idx) => {
+                        const inThisGrn = lines
+                          .filter((l) => l.itemId === item.ItemID && l.poTransactionId === item.TransactionID)
+                          .reduce((s, l) => s + l.challanQty, 0);
+                        const pendingAfterThis = Math.max(0, item.PendingQty - inThisGrn);
+                        const isComplete = item.PendingQty <= 0;
+                        const isPartial = !isComplete && (item.ReceiptQuantity || 0) > 0;
+                        return (
+                          <div key={`${item.TransactionID}-${item.ItemID}-${idx}`}
+                            className={`px-4 py-3 flex items-center gap-4 border-t border-gray-50 transition-colors ${isComplete ? "bg-green-50/40" : "hover:bg-blue-50/30"}`}>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                <span className="font-mono text-xs font-bold text-blue-600">{item.ItemCode}</span>
+                                <span className={`text-sm font-medium ${isComplete ? "text-gray-400" : "text-gray-800"}`}>{item.ItemName}</span>
+                                {isComplete && (
+                                  <span className="text-[10px] bg-green-100 text-green-700 font-semibold px-1.5 py-0.5 rounded">Complete</span>
+                                )}
+                                {isPartial && (
+                                  <span className="text-[10px] bg-orange-100 text-orange-700 font-semibold px-1.5 py-0.5 rounded">Partial</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-5 mt-1 text-[11px] text-gray-500 flex-wrap">
+                                <span>PO Qty: <strong className="text-gray-700">{item.PurchaseOrderQuantity} {item.StockUnit}</strong></span>
+                                {(item.ReceiptQuantity || 0) > 0 && (
+                                  <span>Received: <strong className="text-green-600">{item.ReceiptQuantity} {item.StockUnit}</strong></span>
+                                )}
+                                {!isComplete && (
+                                  <span>Pending: <strong className="text-orange-600">{item.PendingQty} {item.StockUnit}</strong></span>
+                                )}
+                                {inThisGrn > 0 && (
+                                  <span>In this GRN: <strong className="text-blue-600">{inThisGrn}</strong>
+                                    {pendingAfterThis > 0 && <span className="text-gray-400"> · Still pending: {pendingAfterThis.toFixed(3)}</span>}
+                                  </span>
+                                )}
+                                {item.PurchaseTolerance > 0 && (
+                                  <span className="text-gray-400">Tolerance: {item.PurchaseTolerance}%</span>
+                                )}
+                                {item.GradesOfSupplier && (
+                                  <span>Grade: <strong className="text-purple-700">{item.GradesOfSupplier}</strong></span>
+                                )}
+                              </div>
+                            </div>
+                            {!isComplete && (
+                              <div className="flex gap-2 shrink-0">
+                                <button onClick={() => addSingleLine(item)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                                  <Plus size={12} /> Single Entry
+                                </button>
+                                <button onClick={() => setBulkTarget(item)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                                  <Layers size={12} /> Bulk Entry
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {lines.length > 0 && (
+                  <div className="flex justify-end">
+                    <button onClick={() => setActiveTab("receiving")}
+                      className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                      View Receiving Lines ({lines.length}) <ChevronRight size={15} />
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── TAB 3: RECEIVING LINES ─────────────────────────── */}
+        {activeTab === "receiving" && (
+          <div className="p-6 space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Receiving Lines</p>
+                {lines.length > 0 && (
+                  <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">{lines.length}</span>
+                )}
+              </div>
+              <button onClick={() => setActiveTab("po")}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                + Add More Items
+              </button>
+            </div>
+
+            {lines.length === 0 ? (
+              <div className="border border-dashed border-gray-300 rounded-xl text-center py-14">
+                <Package size={32} className="mx-auto mb-3 text-gray-300" />
+                <p className="text-sm text-gray-400">No items added yet</p>
+                <button onClick={() => setActiveTab("po")}
+                  className="mt-3 px-4 py-2 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+                  ← Go to Purchase Orders
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-gray-200 rounded-xl">
                 <table className="w-full text-xs border-collapse" style={{ minWidth: 1100 }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
-                      {[
-                        { l: "PO Ref", r: false }, { l: "Item Code", r: false }, { l: "Item Name", r: false },
-                        { l: "Ordered Qty", r: true }, { l: "Received Qty", r: true }, { l: "Unit", r: false },
-                        { l: "Rate (₹)", r: true }, { l: "Internal Batch No.", r: false },
-                        { l: "Supplier Batch No.", r: false },
-                        { l: "Expiry Date", r: false }, { l: "Warehouse", r: false }, { l: "Bin", r: false },
-                        { l: "Basic Amt", r: true }, { l: "CGST", r: true }, { l: "SGST", r: true },
-                        { l: "IGST", r: true }, { l: "Total Amt", r: true }, { l: "", r: false },
-                      ].map((col, i) => (
-                        <th key={i} className={`px-2 py-3 text-[10px] font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-100 last:border-r-0 ${col.r ? "text-right" : "text-left"}`}>
-                          {col.l}
-                        </th>
-                      ))}
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-8">#</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-24">PO Ref</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase">Item</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-28">Tag No.</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-24">Grade</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase" style={{ minWidth: 180 }}>Supplier Batch No.</th>
+                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-28">Qty</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-36">Warehouse</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-28">Bin</th>
+                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-24">Rate</th>
+                      <th className="px-2 py-2.5 w-8"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.length === 0 ? (
-                      <tr>
-                        <td colSpan={18} className="text-center py-16 text-gray-400 text-sm">
-                          {supplier
-                            ? 'Click "+ Add from PO" to begin'
-                            : "Select a supplier on the Basic tab to get started"}
-                        </td>
-                      </tr>
-                    ) : lines.map((line, idx) => (
-                      <tr key={line.lineId} className={`border-t border-gray-100 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                        <td className="px-2 py-2 font-mono text-blue-600 whitespace-nowrap text-[10px]">{line.poRef}</td>
-                        <td className="px-2 py-2 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.itemCode}</td>
-                        <td className="px-2 py-2 text-gray-800" style={{ maxWidth: 160 }}>{line.itemName}</td>
-                        <td className="px-2 py-2 text-right text-gray-600">{line.orderedQty.toLocaleString()}</td>
-                        <td className="px-2 py-2 text-right font-semibold text-blue-700">{line.receivedQty.toLocaleString()}</td>
-                        <td className="px-2 py-2 text-gray-700">{line.stockUnit}</td>
-                        <td className="px-2 py-2 text-right text-gray-700">₹{fmtAmt(line.rate)}</td>
-                        <td className="px-2 py-2 font-mono text-blue-600 text-[9px] whitespace-nowrap">{line.batchNo}</td>
-                        <td className="px-2 py-2 font-mono text-gray-600">
-                          {line.supplierBatchNo || <span className="text-orange-400 italic">Not set</span>}
-                        </td>
-                        <td className="px-2 py-2 text-gray-700">{line.expiryDate ? fmtDate(line.expiryDate) : "—"}</td>
-                        <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{line.warehouseName || <span className="text-red-400 italic">Not set</span>}</td>
-                        <td className="px-2 py-2 text-gray-600">{line.bin || "—"}</td>
-                        <td className="px-2 py-2 text-right text-gray-700">{fmtAmt(line.basicAmt)}</td>
-                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(line.cgstAmt)}</td>
-                        <td className="px-2 py-2 text-right text-blue-700">{fmtAmt(line.sgstAmt)}</td>
-                        <td className="px-2 py-2 text-right text-orange-700">{fmtAmt(line.igstAmt)}</td>
-                        <td className="px-2 py-2 text-right font-bold text-blue-800">{fmtAmt(line.totalAmt)}</td>
-                        <td className="px-2 py-2">
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={() => setEditingLine(line)} title="Fill Details"
-                              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 transition-colors whitespace-nowrap">
-                              <Scan size={11} /> Fill Details
-                            </button>
-                            <button onClick={() => removeLine(line.lineId)} title="Remove"
-                              className="text-gray-300 hover:text-red-500 transition-colors"><X size={14} /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {lines.map((line, idx) => {
+                      const whBins = lineBins[line.warehouseName] ?? [];
+                      const incomplete = !line.challanQty || !line.warehouseId || !line.bin;
+                      return (
+                        <tr key={line.lineId}
+                          className={`border-t border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/30"} ${incomplete ? "border-l-2 border-l-orange-300" : "border-l-2 border-l-transparent"}`}>
+                          <td className="px-2 py-1.5 text-gray-400 text-[10px] font-mono">{idx + 1}</td>
+                          <td className="px-2 py-1.5 font-mono text-blue-600 text-[10px] whitespace-nowrap truncate">{line.poVoucherNo}</td>
+                          <td className="px-2 py-1.5">
+                            <div className="font-mono text-blue-700 font-semibold text-[10px]">{line.itemCode}</div>
+                            <div className="text-gray-500 text-[10px] truncate max-w-[150px]">{line.itemName}</div>
+                            <div className="text-gray-400 text-[9px] font-mono">{line.batchNo}</div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <input value={line.itemTagNo} onChange={(e) => updateLine(line.lineId, "itemTagNo", e.target.value)}
+                              placeholder="Tag…"
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select value={line.supplierGrade} onChange={(e) => updateLine(line.lineId, "supplierGrade", e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                              <option value="">—</option>
+                              {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <div className="flex gap-1">
+                              <input value={line.supplierBatchNo} onChange={(e) => updateLine(line.lineId, "supplierBatchNo", e.target.value)}
+                                placeholder="Scan or type…"
+                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0 bg-white" />
+                              <button onClick={() => setScanningLineId(line.lineId)}
+                                className="p-1.5 text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 shrink-0">
+                                <Scan size={10} />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            {(() => {
+                              const isOver = line.pendingQty > 0 && line.challanQty > line.pendingQty;
+                              return (
+                                <div className="flex flex-col gap-0.5">
+                                  <input type="number" min={0} step={0.001} value={line.challanQty || ""}
+                                    onChange={(e) => updateLine(line.lineId, "challanQty", Number(e.target.value))}
+                                    placeholder="0.000"
+                                    className={`w-full border rounded px-2 py-1 text-xs text-right font-semibold focus:outline-none focus:ring-1 bg-white ${isOver ? "border-red-400 focus:ring-red-400 text-red-600" : "border-gray-200 focus:ring-blue-500"}`} />
+                                  <span className="text-[9px] text-right" style={{ color: isOver ? "#ef4444" : "#9ca3af" }}>
+                                    {line.stockUnit}{line.pendingQty > 0 ? ` · max ${line.pendingQty}` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select value={line.warehouseName}
+                              onChange={(e) => updateLineWarehouse(line.lineId, e.target.value)}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                              <option value="">Select…</option>
+                              {warehouses.map((w) => <option key={w.Warehouse}>{w.Warehouse}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select value={line.bin}
+                              onChange={(e) => updateLineBin(line.lineId, e.target.value, line.warehouseName)}
+                              disabled={!whBins.length}
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
+                              <option value="">Select…</option>
+                              {whBins.map((b) => <option key={b.Bin}>{b.Bin}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <input type="number" min={0} step={0.01} value={line.purchaseRate || ""}
+                              onChange={(e) => updateLine(line.lineId, "purchaseRate", Number(e.target.value))}
+                              placeholder="0.00"
+                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500 transition-colors"><X size={13} /></button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
-                  {lines.length > 0 && (
-                    <tfoot>
-                      <tr className="bg-blue-50 border-t-2 border-blue-200 text-xs font-bold">
-                        <td colSpan={12} className="px-3 py-2.5 text-right text-blue-800">Totals</td>
-                        <td className="px-2 py-2.5 text-right text-blue-800">{fmtAmt(totalBasic)}</td>
-                        <td className="px-2 py-2.5 text-right text-blue-700">{fmtAmt(lines.reduce((s, l) => s + l.cgstAmt, 0))}</td>
-                        <td className="px-2 py-2.5 text-right text-blue-700">{fmtAmt(lines.reduce((s, l) => s + l.sgstAmt, 0))}</td>
-                        <td className="px-2 py-2.5 text-right text-orange-700">{fmtAmt(lines.reduce((s, l) => s + l.igstAmt, 0))}</td>
-                        <td className="px-2 py-2.5 text-right text-blue-900 font-bold">₹{fmtAmt(totalAmt)}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  )}
+                  <tfoot>
+                    <tr className="bg-blue-50 border-t-2 border-blue-200">
+                      <td colSpan={6} className="px-3 py-2 text-right text-xs font-bold text-blue-700">
+                        {lines.length} line{lines.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-2 py-2 text-right text-sm font-bold text-blue-900">{totalQty.toFixed(3)}</td>
+                      <td colSpan={4} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
+            )}
+            {lines.length > 0 && (
+              <div className="flex justify-end">
+                <button onClick={() => setActiveTab("documents")}
+                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                  Go to Documents <ChevronRight size={15} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
-              {/* Summary footer */}
-              {lines.length > 0 && (
-                <div className="flex items-center justify-end text-sm text-gray-500 pt-1">
-                  {lines.length} item{lines.length !== 1 ? "s" : ""} · Total:&nbsp;<span className="font-bold text-blue-700">₹{fmtAmt(totalAmt)}</span>
+        {/* ── TAB 4: DOCUMENTS ───────────────────────────────── */}
+        {activeTab === "documents" && (
+          <div className="p-6">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
+              <FileText size={13} className="text-gray-400" /> Invoice &amp; Transport Details
+              <span className="text-[10px] font-normal text-gray-400 normal-case ml-1">(optional)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-5">
+              {[
+                { label: "Invoice No. (Delivery Note No.)", value: invoiceNo, set: setInvoiceNo, type: "text", ph: "INV/DN-..." },
+                { label: "Invoice Date", value: invoiceDate, set: setInvoiceDate, type: "date", ph: "" },
+                { label: "E-Way Bill No.", value: eWayBillNo, set: setEWayBillNo, type: "text", ph: "EWB..." },
+                { label: "E-Way Bill Date", value: eWayBillDate, set: setEWayBillDate, type: "date", ph: "" },
+                { label: "Gate Entry No.", value: gateEntryNo, set: setGateEntryNo, type: "text", ph: "GE-..." },
+                { label: "Gate Entry Date", value: gateEntryDate, set: setGateEntryDate, type: "date", ph: "" },
+                { label: "LR No. / Vehicle No.", value: lrVehicleNo, set: setLrVehicleNo, type: "text", ph: "MH-XX-AB-1234" },
+                { label: "Transporter", value: transporter, set: setTransporter, type: "text", ph: "Logistics name" },
+                { label: "Narration / Remark", value: remark, set: setRemark, type: "text", ph: "Optional notes" },
+              ].map((f) => (
+                <div key={f.label}>
+                  <label className={labelCls}>{f.label}</label>
+                  <input type={f.type} value={f.value} onChange={(e) => f.set(e.target.value)}
+                    placeholder={f.ph} className={inputCls} />
                 </div>
+              ))}
+            </div>
+            <div className="mt-6 flex justify-end">
+              {editTxnId ? (
+                <button onClick={() => setPwModal("update")} disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
+                  <CheckCircle2 size={16} /> {saving ? "Saving…" : "Update GRN"}
+                </button>
+              ) : (
+                <button onClick={doSave} disabled={saving}
+                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
+                  <CheckCircle2 size={16} /> {saving ? "Saving…" : "Save GRN"}
+                </button>
               )}
             </div>
-          )}
-
-          {/* ── DOCUMENTS TAB ── */}
-          {activeTab === "documents" && (
-            <div className="space-y-8">
-              <div>
-                <SectionTitle title="Invoice Details" />
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice No.</label>
-                    <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="INV/..." className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Invoice Date</label>
-                    <input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className={inputCls} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <SectionTitle title="E-Way Bill" />
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">E-Way Bill No.</label>
-                    <input value={eWayBillNo} onChange={(e) => setEWayBillNo(e.target.value)} placeholder="EWB..." className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">E-Way Bill Date</label>
-                    <input type="date" value={eWayBillDate} onChange={(e) => setEWayBillDate(e.target.value)} className={inputCls} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <SectionTitle title="Gate Entry" />
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Gate Entry No.</label>
-                    <input value={gateEntryNo} onChange={(e) => setGateEntryNo(e.target.value)} placeholder="GE-..." className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Gate Entry Date</label>
-                    <input type="date" value={gateEntryDate} onChange={(e) => setGateEntryDate(e.target.value)} className={inputCls} />
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <SectionTitle title="Transport & Receipt" />
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">LR No. / Vehicle No.</label>
-                    <input value={lrVehicleNo} onChange={(e) => setLrVehicleNo(e.target.value)} placeholder="MH-XX-AB-1234" className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Transporter</label>
-                    <input value={transporter} onChange={(e) => setTransporter(e.target.value)} placeholder="Logistics name" className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Received By</label>
-                    <input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} placeholder="Staff name" className={inputCls} />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Remark</label>
-                    <input value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Optional notes" className={inputCls} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* PO Picker Modal */}
-      {showPOPicker && (
-        <POPickerModal
-          supplier={supplier}
-          supplierPOs={supplierPOs}
-          onAdd={addPOLine}
-          onClose={() => setShowPOPicker(false)}
+      {/* ── Modals ───────────────────────────────────────────── */}
+      {scanningLineId && (
+        <QRScannerModal
+          onScan={(val) => { updateLine(scanningLineId, "supplierBatchNo", val); setScanningLineId(null); }}
+          onClose={() => setScanningLineId(null)}
         />
       )}
-
-      {/* Line Edit Modal */}
-      {editingLine && (
-        <LineEditModal
-          line={editingLine}
-          sameState={sameState}
-          onSave={saveLineEdit}
-          onClose={() => setEditingLine(null)}
+      {bulkTarget && (
+        <BulkRollEntryModal
+          poItem={bulkTarget}
+          seqBase={(bulkTarget.BatchSeqBase ?? 0) + lines.filter((l) => l.itemId === bulkTarget.ItemID && l.poTransactionId === bulkTarget.TransactionID).length}
+          warehouses={warehouses}
+          supplierGrades={supplierGrades}
+          onAdd={addBulkLines}
+          onClose={() => setBulkTarget(null)}
+        />
+      )}
+      {pwModal === "update" && (
+        <PwModal
+          title="Confirm Update"
+          onConfirm={(pw, rm) => doUpdate(pw, rm)}
+          onClose={() => setPwModal(null)}
+          busy={saving}
+        />
+      )}
+      {pwModal === "delete" && (
+        <PwModal
+          title="Confirm Deletion"
+          onConfirm={(pw, rm) => doDelete(pw, rm)}
+          onClose={() => setPwModal(null)}
+          busy={deleting}
         />
       )}
     </div>

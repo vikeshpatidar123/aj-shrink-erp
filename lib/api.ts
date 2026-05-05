@@ -1,0 +1,46 @@
+// API client for AJ Shrink ERP — local backend at http://localhost:57214
+// Uses Basic Auth + custom headers set up in lib/auth.ts (authHeaders function).
+// The [Validate] filter on every backend controller reads these headers.
+
+import { authHeaders } from "@/lib/auth";
+
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+
+// The .NET controllers return Ok(JsonConvert.SerializeObject(data.Message))
+// which wraps the JSON in an extra string layer — double-parse to get the object.
+async function parseResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`${res.status}: ${text}`);
+  }
+  const text = await res.text();
+  if (!text) return undefined as T;
+  try {
+    // Some .NET endpoints triple-encode: ToJson(DataTable) + JsonConvert.SerializeObject + Ok(serializer).
+    // Keep unwrapping string layers until we reach the actual data object/array.
+    let result: any = JSON.parse(text);
+    while (typeof result === "string") {
+      try { result = JSON.parse(result); } catch { break; }
+    }
+    return result as T;
+  } catch {
+    return text as unknown as T;
+  }
+}
+
+export async function apiGet<T = unknown>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+  return parseResponse<T>(res);
+}
+
+export async function apiPost<T = unknown>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  return parseResponse<T>(res);
+}

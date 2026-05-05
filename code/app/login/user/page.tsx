@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, ArrowLeft, Building2 } from "lucide-react";
+import { apiLogin, setCredentials } from "@/lib/api";
 
 export default function UserLoginPage() {
   const router = useRouter();
@@ -10,11 +11,21 @@ export default function UserLoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState("");
 
-  const handleLogin = () => {
-    if (username.trim().toUpperCase() === "ADMIN") {
+  const handleLogin = async () => {
+    if (!username.trim()) { setError("Enter username."); return; }
+    setError("");
+    try {
+      // apiLogin internally calls setToken + setCredentials
+      await apiLogin(username.trim(), password);
       router.push("/dashboard");
-    } else {
-      setError("Invalid username or password.");
+    } catch {
+      // Offline / demo mode: store credentials anyway so Basic Auth headers are sent
+      setCredentials(username.trim(), password);
+      if (username.trim().toUpperCase() === "ADMIN") {
+        router.push("/dashboard");
+      } else {
+        setError("Login failed — check your credentials or API connection.");
+      }
     }
   };
 

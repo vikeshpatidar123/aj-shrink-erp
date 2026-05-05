@@ -20,7 +20,9 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+// Login always uses the production server (has the company auth table + UserMaster)
+const LOGIN_URL = "https://api.indusanalytics.co.in";
+
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -54,7 +56,7 @@ export async function loginCompany(
   try {
     const basicAuth = btoa(`${apiCompanyUserName.trim()}:${apiCompanyPassword.trim()}`);
 
-    const res = await fetch(`${BASE_URL}/api/Login/CompanyLogin`, {
+    const res = await fetch(`${LOGIN_URL}/api/Login/CompanyLogin`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
@@ -96,7 +98,7 @@ export async function loginUser(
     const basicAuth = localStorage.getItem("basicAuth");
     if (!basicAuth) return { success: false, error: "Company not verified. Please go back to Step 1." };
 
-    const res = await fetch(`${BASE_URL}/api/Login/UserLogin`, {
+    const res = await fetch(`${LOGIN_URL}/api/Login/UserLogin`, {
       method: "POST",
       headers: {
         Authorization: `Basic ${basicAuth}`,
@@ -149,24 +151,24 @@ export function saveSession(session: UserSession): void {
 
 export function getSession(): UserSession | null {
   const basicAuth = localStorage.getItem("basicAuth");
-  const userID    = localStorage.getItem("userID");
+  const userID = localStorage.getItem("userID");
   if (!basicAuth || !userID) return null;
   return {
     userID,
-    userName:         localStorage.getItem("userName") || "",
-    companyID:        localStorage.getItem("companyID") || "",
-    companyName:      localStorage.getItem("companyName") || "",
-    fYear:            localStorage.getItem("fYear") || "",
-    dbType:           localStorage.getItem("dbType") || "MSSQL",
+    userName: localStorage.getItem("userName") || "",
+    companyID: localStorage.getItem("companyID") || "",
+    companyName: localStorage.getItem("companyName") || "",
+    fYear: localStorage.getItem("fYear") || "",
+    dbType: localStorage.getItem("dbType") || "MSSQL",
     basicAuth,
-    productionUnits:  JSON.parse(localStorage.getItem("productionUnits") || "[]"),
+    productionUnits: JSON.parse(localStorage.getItem("productionUnits") || "[]"),
     productionUnitID: localStorage.getItem("productionUnitID") || "",
   };
 }
 
 export function clearAuth(): void {
   ["basicAuth", "userID", "userName", "companyID", "companyName",
-   "fYear", "dbType", "productionUnits"].forEach(k => localStorage.removeItem(k));
+    "fYear", "dbType", "productionUnits"].forEach(k => localStorage.removeItem(k));
 }
 
 export function isLoggedIn(): boolean {
@@ -179,12 +181,12 @@ export function isLoggedIn(): boolean {
 
 export function authHeaders(): Record<string, string> {
   return {
-    "Content-Type":   "application/json",
-    Authorization:    `Basic ${localStorage.getItem("basicAuth") || ""}`,
-    CompanyID:        localStorage.getItem("companyID") || "",
-    UserID:           localStorage.getItem("userID") || "",
-    FYear:            localStorage.getItem("fYear") || "",
-    DBType:           localStorage.getItem("dbType") || "MSSQL",
+    "Content-Type": "application/json",
+    Authorization: `Basic ${localStorage.getItem("basicAuth") || ""}`,
+    CompanyID: localStorage.getItem("companyID") || "",
+    UserID: localStorage.getItem("userID") || "",
+    FYear: localStorage.getItem("fYear") || "",
+    DBType: localStorage.getItem("dbType") || "MSSQL",
     ProductionUnitID: localStorage.getItem("productionUnitID") || "",
   };
 }

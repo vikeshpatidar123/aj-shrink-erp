@@ -1,80 +1,176 @@
-"use client";
+﻿"use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
 import {
   FileText, X, Scan, QrCode, CheckCircle2, Pencil,
   Trash2, Plus, Camera, Keyboard, Search, PackageMinus, List,
+  Users, RefreshCw, AlertCircle, ChevronRight,
 } from "lucide-react";
-import {
-  grnRecords,
-  issueJobCards, IssueJobCard,
-  itemIssues as initData, ItemIssue, ItemIssueLine,
-  FLOOR_AREAS,
-} from "@/data/dummyData";
+import { authHeaders } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
+
+// ─── Config ──────────────────────────────────────────────────
+const BASE_URL = "https://api.indusanalytics.co.in";
+
+async function apiFetch(url: string): Promise<any> {
+  const res = await fetch(url, { headers: authHeaders() });
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return text; }
+}
+
+function unwrap(raw: any): string {
+  if (typeof raw !== "string") return String(raw ?? "");
+  const t = raw.trim();
+  if (t.startsWith('"') && t.endsWith('"')) { try { return JSON.parse(t); } catch { } }
+  return t;
+}
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
 const fmtDate = (iso: string) =>
   iso ? new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-
-const nextVoucherNo = (list: ItemIssue[]) => {
-  const yr = new Date().getFullYear();
-  return `ISS${String(list.length + 1).padStart(5, "0")}_${String(yr - 2000).padStart(2, "0")}_${String(yr - 1999).padStart(2, "0")}`;
-};
 const nextSlipNo = (date: string, seq: number) =>
   `SLIP-${date.replace(/-/g, "")}-${String(seq).padStart(3, "0")}`;
 
-const STATUS_STYLE: Record<ItemIssue["status"], string> = {
-  Draft:  "bg-gray-100 text-gray-600",
-  Issued: "bg-green-100 text-green-700",
+// ─── Types ───────────────────────────────────────────────────
+type Dept = { DepartmentID: number; DepartmentName: string };
+
+type JobCardRow = {
+  JobBookingID: number;
+  JobBookingJobCardContentsID: number;
+  JobCardContentNo: string;
+  JobName: string;
+  PlanContName: string;
+  BookingNo: string;
+  ClientName?: string;
+  LedgerName?: string;
 };
 
-// ─── Parse scanned QR data ───────────────────────────────────
-type ScannedBatch = {
-  batchNo: string; supplierBatchNo: string;
-  itemCode: string; itemName: string;
-  grnNo: string; qty: number; unit: string;
-  warehouseId: string; bin: string; warehouseName?: string;
+// One item requirement loaded from the job card picklist
+type JobItem = {
+  jobItemId: string;            // client-only key
+  ItemID: number;
+  ItemGroupID: number;
+  ItemCode: string;
+  ItemName: string;
+  ItemGroup?: string;
+  SubGroup?: string;
+  StockUnit: string;
+  BookedQuantity: number;
+  PendingToPick: number;        // remaining to issue
+  PhysicalStock: number;
+  FreeStock: number;
+  JobBookingJobCardContentsID: number;
+  JobBookingID: number;
+  ProcessID: number;
+  MachineID: number;
+  picklistTransactionID: number;
+  picklistReleaseTransactionID: number;
 };
 
-function parseQR(raw: string): ScannedBatch | null {
-  try {
-    const d = JSON.parse(raw);
-    if (!d.batchNo || !d.itemCode) return null;
-    // Find the GRN line for richer data
-    for (const grn of grnRecords) {
-      const l = grn.lines.find((x) => x.batchNo === d.batchNo && x.itemCode === d.itemCode);
-      if (l) {
-        return {
-          batchNo: l.batchNo, supplierBatchNo: l.supplierBatchNo,
-          itemCode: l.itemCode, itemName: l.itemName,
-          grnNo: grn.grnNo, qty: l.receivedQty, unit: l.stockUnit,
-          warehouseId: l.warehouseId, bin: l.bin, warehouseName: l.warehouseName,
-        };
-      }
-    }
-    // Fallback: use QR data directly
-    return {
-      batchNo: d.batchNo, supplierBatchNo: d.supplierBatchNo ?? "",
-      itemCode: d.itemCode, itemName: d.itemName ?? "",
-      grnNo: d.grnNo ?? "", qty: d.qty ?? 0, unit: d.unit ?? "Kg",
-      warehouseId: d.warehouseId ?? "", bin: d.bin ?? "",
-    };
-  } catch {
-    return null;
-  }
-}
+// One confirmed batch scan — multiple per JobItem are allowed
+type ScanLine = {
+  lineId: string;
+  jobItemId: string;            // links to JobItem.jobItemId, or "item-wise" / "edit-loaded"
+  TransactionDetailID: number;  // set on edit-load; 0 for new
+  // Item identity
+  ItemID: number;
+  ItemGroupID: number;
+  ItemCode: string;
+  ItemName: string;
+  StockUnit: string;
+  // Job card linkage
+  JobBookingJobCardContentsID: number;
+  JobBookingID: number;
+  ProcessID: number;
+  MachineID: number;
+  picklistTransactionID: number;
+  picklistReleaseTransactionID: number;
+  // Batch scan result
+  batchNo: string;
+  supplierBatchNo: string;
+  batchID: number;
+  parentTransactionID: number;
+  warehouseID: number;
+  issueQty: number;
+  availableQty: number;
+  fromWarehouseName: string;
+  fromBin: string;
+  floorWarehouseID: number;
+  floorWarehouseName: string;
+  floorBin: string;
+  slipNo: string;
+  slipDate: string;
+  collectedBy: string;
+  jobCardContentNo: string;
+  issueReason: string;
+  jobBookingID: number;
+  jobBookingNo: string;
+  multiJobAllocations: { jobBookingID: number; jobBookingNo: string; allocatedQty: number }[];
+};
 
-function parseJobCardQR(raw: string): { jobCardNo: string } | null {
-  try {
-    const d = JSON.parse(raw);
-    if (d.jobCardNo) return { jobCardNo: d.jobCardNo };
-  } catch { /* plain text */ }
-  // Try plain text job card number
-  if (raw.startsWith("JC-") || raw.startsWith("JC")) return { jobCardNo: raw.trim() };
-  return null;
-}
+type BatchInfo = {
+  ItemID: number;
+  ItemCode: string;
+  ItemName: string;
+  ItemGroupID: number;
+  ItemGroupNameID: number;
+  ItemSubGroupID: number;
+  BatchID: number;
+  BatchNo: string;
+  SupplierBatchNo: string;
+  BatchStock: number;
+  IssueQuantity: number;
+  StockUnit: string;
+  PurchaseUnit: string;
+  WarehouseID: number;
+  Warehouse: string;
+  Bin: string;
+  ParentTransactionID: number;
+  MfgDate?: string;
+  ExpiryDate?: string;
+  WtPerPacking: number;
+  UnitPerPacking: number;
+  ConversionFactor: number;
+};
+
+type FloorWarehouse = { Warehouse: string };
+type FloorBin = { Bin: string; WarehouseID: number };
+type Receiver = { LedgerID: number; LedgerName: string };
+type JobBooking = { JobBookingID: number; JobBookingNo: string };
+type AllocRow = {
+  id: string;
+  jobBookingID: number;
+  jobBookingNo: string;
+  search: string;
+  allocatedQty: number;
+  showDropdown: boolean;
+};
+
+type IssueRecord = {
+  TransactionID: number;
+  VoucherNo: string;
+  VoucherDate: string;
+  DepartmentID?: number;
+  DepartmentName?: string;
+  JobCardNo?: string;
+  JobName?: string;
+  ItemName?: string;
+  IssueQuantity?: number;
+  StockUnit?: string;
+  UserName?: string;
+  // aggregated on client
+  _totalQty?: number;
+  _itemCount?: number;
+};
+
+const ISSUE_REASONS = [
+  "Exact Requirement",
+  "For Multi Job Consumption",
+  "Lot Size",
+  "General Purpose",
+] as const;
+type IssueReason = typeof ISSUE_REASONS[number];
 
 // ─── QR Scanner Modal ────────────────────────────────────────
 function ScannerModal({
@@ -94,10 +190,7 @@ function ScannerModal({
   const [scanning, setScanning] = useState(false);
 
   const stopCamera = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setScanning(false);
@@ -114,37 +207,36 @@ function ScannerModal({
     ctx.drawImage(video, 0, 0);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(imageData.data, imageData.width, imageData.height);
-    if (code?.data) {
-      stopCamera();
-      onScan(code.data);
-    }
+    if (code?.data) { stopCamera(); onScan(code.data); }
   }, [onScan, stopCamera]);
 
-  const startCamera = useCallback(async () => {
-    setCameraError("");
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setScanning(true);
-        intervalRef.current = setInterval(scan, 150);
-      }
-    } catch {
-      setCameraError("Camera unavailable. Use manual entry.");
-      setMode("manual");
-    }
-  }, [scan]);
-
   useEffect(() => {
-    if (mode === "camera") startCamera();
-    return () => stopCamera();
-  }, [mode, startCamera, stopCamera]);
+    let active = true;
+    if (mode === "camera") {
+      const initCamera = async () => {
+        setCameraError("");
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+          if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
+          streamRef.current = stream;
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            await videoRef.current.play();
+            setScanning(true);
+            intervalRef.current = setInterval(scan, 150);
+          }
+        } catch {
+          if (active) { setCameraError("Camera unavailable. Use manual entry."); setMode("manual"); }
+        }
+      };
+      initCamera();
+    }
+    return () => { active = false; stopCamera(); };
+  }, [mode, scan, stopCamera]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-[480px] overflow-hidden">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[700px] overflow-hidden">
         <div className="bg-blue-600 text-white px-5 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <QrCode size={16} />
@@ -193,9 +285,7 @@ function ScannerModal({
         {mode === "manual" && (
           <div className="p-5 space-y-4">
             <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">
-                Enter / Paste value
-              </label>
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste value</label>
               <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
                 placeholder="Paste QR data or type value…"
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
@@ -212,20 +302,31 @@ function ScannerModal({
   );
 }
 
-// ─── Job Card Picker Modal ────────────────────────────────────
+// ─── Job Card Picker Modal ───────────────────────────────────
 function JobCardPickerModal({ onSelect, onClose }: {
-  onSelect: (jc: IssueJobCard) => void; onClose: () => void;
+  onSelect: (jc: JobCardRow) => void; onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const filtered = issueJobCards.filter(
-    (j) => j.status !== "Completed" &&
-      (j.jobCardNo.toLowerCase().includes(search.toLowerCase()) ||
-       j.product.toLowerCase().includes(search.toLowerCase()) ||
-       j.customer.toLowerCase().includes(search.toLowerCase()))
-  );
+  const [rows, setRows] = useState<JobCardRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/JobCardRender`)
+      .then((d) => { if (Array.isArray(d)) setRows(d); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = rows.filter((j) => {
+    const s = search.toLowerCase();
+    return !s || (j.JobCardContentNo?.toLowerCase().includes(s) ||
+      j.JobName?.toLowerCase().includes(s) ||
+      j.PlanContName?.toLowerCase().includes(s) ||
+      j.BookingNo?.toLowerCase().includes(s));
+  });
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-[600px] max-h-[80vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1000px] max-h-[80vh] flex flex-col overflow-hidden">
         <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-sm">Select Job Card</h3>
           <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
@@ -234,25 +335,24 @@ function JobCardPickerModal({ onSelect, onClose }: {
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by job card no, product, customer…"
+              placeholder="Search by job card no, job name, content…"
               className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12 text-gray-400">Loading job cards…</div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-12 text-gray-400">No open job cards found</div>
-          ) : filtered.map((jc) => (
-            <div key={jc.id} onClick={() => onSelect(jc)}
+          ) : filtered.map((jc, i) => (
+            <div key={`${jc.JobBookingJobCardContentsID}-${i}`} onClick={() => onSelect(jc)}
               className="px-5 py-3.5 border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors">
               <div className="flex items-center justify-between mb-1">
-                <span className="font-mono text-sm font-bold text-blue-700">{jc.jobCardNo}</span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${jc.status === "Open" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
-                  {jc.status}
-                </span>
+                <span className="font-mono text-sm font-bold text-blue-700">{jc.JobCardContentNo}</span>
+                <span className="text-xs text-gray-400">#{jc.BookingNo}</span>
               </div>
-              <p className="text-sm font-medium text-gray-800">{jc.product}</p>
-              <p className="text-xs text-gray-500">{jc.customer} · {fmtDate(jc.jobDate)} · {jc.machine}</p>
-              <p className="text-xs text-gray-400 mt-1">{jc.items.length} items required</p>
+              <p className="text-sm font-medium text-gray-800">{jc.JobName}</p>
+              <p className="text-xs text-gray-500">{jc.PlanContName} · {jc.ClientName || jc.LedgerName || ""}</p>
             </div>
           ))}
         </div>
@@ -263,61 +363,125 @@ function JobCardPickerModal({ onSelect, onClose }: {
 
 // ─── Batch Confirm Modal ──────────────────────────────────────
 function BatchConfirmModal({
-  batch, requiredQty, seq, onConfirm, onClose,
+  batch, requiredQty, seq, issueMode, onConfirm, onClose,
 }: {
-  batch: ScannedBatch; requiredQty: number; seq: number;
-  onConfirm: (line: Partial<ItemIssueLine>) => void;
+  batch: BatchInfo; requiredQty: number; seq: number;
+  issueMode: "Job-wise" | "Item-wise";
+  onConfirm: (updates: Partial<ScanLine>) => void;
   onClose: () => void;
 }) {
-  const [issueQty, setIssueQty] = useState(Math.min(requiredQty || batch.qty, batch.qty));
-  const [toFloorId, setToFloorId] = useState("");
-  const [toBin, setToBin] = useState("");
+  const [issueQty, setIssueQty] = useState(
+    Math.min(requiredQty > 0 ? requiredQty : batch.BatchStock, batch.BatchStock)
+  );
+  const [floorWarehouseName, setFloorWarehouseName] = useState("");
+  const [floorBin, setFloorBin] = useState("");
+  const [floorWarehouseID, setFloorWarehouseID] = useState(0);
+  const jobCardContentNo = "";
+  const [issueReason, setIssueReason] = useState<IssueReason | "">("");
+  const [jobBookingID, setJobBookingID] = useState<number>(0);
+  const [jobBookingNo, setJobBookingNo] = useState<string>("");
+  const [jobBookingSearch, setJobBookingSearch] = useState("");
+  const [jobBookings, setJobBookings] = useState<JobBooking[]>([]);
+  const [showJBDropdown, setShowJBDropdown] = useState(false);
+  const [showJBScanner, setShowJBScanner] = useState(false);
+  const [allocations, setAllocations] = useState<AllocRow[]>([]);
+  const [scanningAllocIdx, setScanningAllocIdx] = useState<number | null>(null);
 
-  const floor = FLOOR_AREAS.find((f) => f.id === toFloorId);
+  const [floorWarehouses, setFloorWarehouses] = useState<FloorWarehouse[]>([]);
+  const [floorBins, setFloorBins] = useState<FloorBin[]>([]);
+  const [loadingWH, setLoadingWH] = useState(false);
+  const [loadingBins, setLoadingBins] = useState(false);
+
+  useEffect(() => {
+    setLoadingWH(true);
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetWarehouseList`)
+      .then((d) => { if (Array.isArray(d)) setFloorWarehouses(d); })
+      .finally(() => setLoadingWH(false));
+  }, []);
+
+  useEffect(() => {
+    if (!floorWarehouseName) { setFloorBins([]); setFloorBin(""); setFloorWarehouseID(0); return; }
+    setLoadingBins(true);
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetBinsList?warehousename=${encodeURIComponent(floorWarehouseName)}`)
+      .then((d) => { if (Array.isArray(d)) { setFloorBins(d); if (d.length > 0) setFloorWarehouseID(d[0].WarehouseID); } })
+      .finally(() => setLoadingBins(false));
+  }, [floorWarehouseName]);
+
   const today = todayISO();
+  const needsReason = requiredQty > 0 && issueQty > requiredQty * 1.1;
+  const isMultiJob = issueReason === "For Multi Job Consumption";
+
+  // Load job bookings for Multi Job allocations and Item-wise optional picker
+  useEffect(() => {
+    if ((!isMultiJob && issueMode !== "Item-wise") || jobBookings.length > 0) return;
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetJobBookingList`)
+      .then((d) => { if (Array.isArray(d)) setJobBookings(d); });
+  }, [isMultiJob, issueMode, jobBookings.length]);
+
+  // Auto-add one empty allocation row when Multi Job is selected
+  useEffect(() => {
+    if (isMultiJob && allocations.length === 0) {
+      setAllocations([{ id: Math.random().toString(36).slice(2), jobBookingID: 0, jobBookingNo: "", search: "", allocatedQty: 0, showDropdown: false }]);
+    }
+  }, [isMultiJob]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filteredJB = jobBookings.filter((jb) =>
+    !jobBookingSearch || jb.JobBookingNo?.toLowerCase().includes(jobBookingSearch.toLowerCase())
+  );
+
+  const selectJobBooking = (jb: JobBooking) => {
+    setJobBookingID(jb.JobBookingID);
+    setJobBookingNo(jb.JobBookingNo);
+    setJobBookingSearch(jb.JobBookingNo);
+    setShowJBDropdown(false);
+  };
+
+  const validAllocs = allocations.filter((a) => (a.jobBookingID > 0 || a.search.trim() !== "") && a.allocatedQty > 0);
+  const canConfirm = !!issueQty && issueQty > 0 && !!floorWarehouseName && !!floorBin &&
+    !(needsReason && !issueReason) &&
+    !(isMultiJob && validAllocs.length === 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-[540px] overflow-hidden">
-        {/* Header */}
-        <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1100px] min-h-[82vh] max-h-[94vh] flex flex-col overflow-hidden">
+        <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 size={16} className="text-green-300" />
             <div>
               <p className="font-semibold text-sm">Batch Scanned — Confirm Issue</p>
-              <p className="text-xs text-blue-200 font-mono">{batch.batchNo}</p>
+              <p className="text-xs text-blue-200 font-mono">{batch.BatchNo}</p>
             </div>
           </div>
           <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Batch info card */}
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 grid grid-cols-2 gap-3 text-xs">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 grid grid-cols-3 gap-3 text-xs">
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Item</p>
-              <p className="font-semibold text-gray-800">{batch.itemName}</p>
-              <p className="font-mono text-blue-700">{batch.itemCode}</p>
+              <p className="font-semibold text-gray-800">{batch.ItemName}</p>
+              <p className="font-mono text-blue-700">{batch.ItemCode}</p>
             </div>
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Internal Batch No.</p>
-              <p className="font-mono text-blue-700 font-bold text-xs">{batch.batchNo}</p>
+              <p className="font-mono text-blue-700 font-bold">{batch.BatchNo}</p>
             </div>
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Supplier Batch</p>
-              <p className="font-mono text-gray-700">{batch.supplierBatchNo || "—"}</p>
+              <p className="font-mono text-gray-700">{batch.SupplierBatchNo || "—"}</p>
             </div>
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Available Stock</p>
-              <p className="font-bold text-green-700 text-sm">{batch.qty.toLocaleString()} {batch.unit}</p>
+              <p className="font-bold text-green-700 text-sm">{batch.BatchStock.toLocaleString()} {batch.StockUnit}</p>
             </div>
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">From Warehouse</p>
-              <p className="text-gray-700">{batch.warehouseName || batch.warehouseId}</p>
+              <p className="text-gray-700">{batch.Warehouse}</p>
             </div>
             <div>
               <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">From Bin</p>
-              <p className="text-gray-700 font-mono">{batch.bin}</p>
+              <p className="text-gray-700 font-mono">{batch.Bin}</p>
             </div>
           </div>
 
@@ -325,64 +489,265 @@ function BatchConfirmModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-                Issue Qty ({batch.unit}) * <span className="text-gray-400 font-normal">max {batch.qty}</span>
+                Issue Qty ({batch.StockUnit}) *{" "}
+                <span className="text-gray-400 font-normal">available: {batch.BatchStock}</span>
+                {requiredQty > 0 && <span className="ml-2 text-orange-500 font-normal">remaining: {requiredQty}</span>}
               </label>
-              <input type="number" min={0.01} max={batch.qty} step={0.01}
+              <input type="number" min={0.01} max={batch.BatchStock} step={0.01}
                 value={issueQty}
-                onChange={(e) => setIssueQty(Math.min(Number(e.target.value), batch.qty))}
+                onChange={(e) => { setIssueQty(Number(e.target.value)); setIssueReason(""); }}
                 className={inputCls} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Slip No.</label>
-              <input readOnly value={nextSlipNo(today, seq)} className={`${inputCls} bg-gray-50 font-mono text-blue-700`} />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">To Floor / Work Area *</label>
-              <select value={toFloorId} onChange={(e) => { setToFloorId(e.target.value); setToBin(""); }} className={inputCls}>
-                <option value="">Select floor…</option>
-                {FLOOR_AREAS.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">To Floor / Warehouse *</label>
+              <select value={floorWarehouseName}
+                onChange={(e) => { setFloorWarehouseName(e.target.value); setFloorBin(""); }}
+                className={inputCls} disabled={loadingWH}>
+                <option value="">{loadingWH ? "Loading…" : "Select floor warehouse…"}</option>
+                {floorWarehouses.map((w) => <option key={w.Warehouse} value={w.Warehouse}>{w.Warehouse}</option>)}
               </select>
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">To Bin *</label>
-              <select value={toBin} onChange={(e) => setToBin(e.target.value)} disabled={!floor} className={inputCls}>
-                <option value="">Select bin…</option>
-                {floor?.bins.map((b) => <option key={b}>{b}</option>)}
+              <select value={floorBin} onChange={(e) => setFloorBin(e.target.value)}
+                disabled={!floorWarehouseName || loadingBins} className={inputCls}>
+                <option value="">{loadingBins ? "Loading…" : "Select bin…"}</option>
+                {floorBins.map((b) => <option key={b.Bin} value={b.Bin}>{b.Bin}</option>)}
               </select>
             </div>
+            {issueMode === "Item-wise" && (
+              <div className="col-span-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                  Job Booking No.
+                  <span className="ml-1 text-gray-400 font-normal normal-case">(optional)</span>
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={jobBookingSearch}
+                      onChange={(e) => { setJobBookingSearch(e.target.value); setJobBookingID(0); setJobBookingNo(""); setShowJBDropdown(true); }}
+                      onFocus={() => setShowJBDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowJBDropdown(false), 150)}
+                      placeholder="Type to search Job Booking No…"
+                      className={inputCls}
+                    />
+                    {showJBDropdown && filteredJB.length > 0 && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {filteredJB.map((jb) => (
+                          <button key={jb.JobBookingID} type="button"
+                            onMouseDown={() => selectJobBooking(jb)}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 font-mono text-blue-700 border-b border-gray-50 last:border-0">
+                            {jb.JobBookingNo}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => setShowJBScanner(true)}
+                    className="flex-shrink-0 flex items-center gap-2 px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors h-[38px]">
+                    <Scan size={15} /> <span className="hidden sm:inline">Scan</span>
+                  </button>
+                </div>
+                {jobBookingID > 0 && (
+                  <p className="text-xs text-green-700 font-semibold mt-1.5 flex items-center gap-1">
+                    <CheckCircle2 size={11} /> {jobBookingNo}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Slip info preview */}
+          {/* Issue Reason */}
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <label className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2">
+              Issue Reason
+              <span className="font-normal normal-case tracking-normal text-gray-400">
+                {needsReason ? "— required, qty exceeds 110% of remaining" : "(optional)"}
+              </span>
+            </label>
+            <select value={issueReason}
+              onChange={(e) => { setIssueReason(e.target.value as IssueReason | ""); setJobBookingID(0); setJobBookingNo(""); setJobBookingSearch(""); setAllocations([]); }}
+              className={inputCls}>
+              <option value="">— Select reason —</option>
+              {ISSUE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+
+          {/* Multi Job — Multi-Row Allocation Table */}
+          {isMultiJob && (
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-purple-700 uppercase tracking-widest flex items-center gap-2">
+                  <Users size={13} /> Job Booking Allocations *
+                </label>
+                <button type="button"
+                  onClick={() => setAllocations((prev) => [...prev, { id: Math.random().toString(36).slice(2), jobBookingID: 0, jobBookingNo: "", search: "", allocatedQty: 0, showDropdown: false }])}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-purple-700 border border-purple-300 rounded-lg bg-white hover:bg-purple-50">
+                  <Plus size={12} /> Add Row
+                </button>
+              </div>
+
+              {/* Column headers */}
+              <div className="grid gap-2 px-0.5" style={{ gridTemplateColumns: "1fr 36px 100px 28px" }}>
+                <span className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider">Job Booking No.</span>
+                <span />
+                <span className="text-[10px] font-semibold text-purple-500 uppercase tracking-wider">Qty</span>
+                <span />
+              </div>
+
+              {allocations.map((alloc, idx) => (
+                <div key={alloc.id} className="grid items-start gap-2" style={{ gridTemplateColumns: "1fr 36px 100px 28px" }}>
+                  {/* Searchable job booking combobox */}
+                  <div className="relative min-w-0">
+                    <input
+                      type="text"
+                      value={alloc.search}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, search: v, jobBookingID: 0, jobBookingNo: "", showDropdown: true } : a));
+                      }}
+                      onFocus={() => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, showDropdown: true } : a))}
+                      onBlur={() => setTimeout(() => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, showDropdown: false } : a)), 150)}
+                      placeholder="Search…"
+                      className={inputCls}
+                    />
+                    {alloc.showDropdown && (
+                      <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                        {jobBookings
+                          .filter((jb) => !alloc.search || jb.JobBookingNo?.toLowerCase().includes(alloc.search.toLowerCase()))
+                          .map((jb) => (
+                            <button key={jb.JobBookingID} type="button"
+                              onMouseDown={() => setAllocations((prev) => prev.map((a, i) => i === idx
+                                ? { ...a, jobBookingID: jb.JobBookingID, jobBookingNo: jb.JobBookingNo, search: jb.JobBookingNo, showDropdown: false }
+                                : a))}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 font-mono text-blue-700 border-b border-gray-50 last:border-0">
+                              {jb.JobBookingNo}
+                            </button>
+                          ))}
+                      </div>
+                    )}
+                    {alloc.jobBookingID > 0 && (
+                      <p className="text-[10px] text-green-700 font-semibold mt-0.5 flex items-center gap-1 truncate">
+                        <CheckCircle2 size={9} /> {alloc.jobBookingNo}
+                      </p>
+                    )}
+                  </div>
+                  {/* Scan */}
+                  <button type="button" onClick={() => setScanningAllocIdx(idx)}
+                    className="flex items-center justify-center h-[38px] w-[36px] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 flex-shrink-0">
+                    <Scan size={14} />
+                  </button>
+                  {/* Qty */}
+                  <input type="number" min={0.01} step={0.01}
+                    value={alloc.allocatedQty || ""}
+                    onChange={(e) => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, allocatedQty: Number(e.target.value) } : a))}
+                    placeholder="0"
+                    className={inputCls}
+                  />
+                  {/* Remove row — invisible when only 1 row so grid stays stable */}
+                  <button type="button" onClick={() => setAllocations((prev) => prev.filter((_, i) => i !== idx))}
+                    className={`flex items-center justify-center h-[38px] w-7 text-red-400 hover:text-red-600 transition-colors ${allocations.length <= 1 ? "invisible" : ""}`}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+
+              {validAllocs.length === 0 && (
+                <p className="text-xs text-red-500">At least one Job Booking with qty is required.</p>
+              )}
+              {validAllocs.length > 0 && (
+                <p className="text-xs text-green-700 font-semibold flex items-center gap-1">
+                  <CheckCircle2 size={12} /> {validAllocs.length} allocation{validAllocs.length > 1 ? "s" : ""} ready
+                </p>
+              )}
+
+              {/* Scanner for a specific allocation row */}
+              {scanningAllocIdx !== null && (
+                <ScannerModal title="Scan Job Booking No." hint="Scan QR or barcode on the job booking"
+                  onScan={(val) => {
+                    const capturedIdx = scanningAllocIdx;
+                    setScanningAllocIdx(null);
+                    const searchVal = (() => {
+                      try { const d = JSON.parse(val); return d.JobBookingNo || d.jobBookingNo || val; } catch { return val; }
+                    })();
+                    const match = jobBookings.find((jb) => jb.JobBookingNo?.toLowerCase().includes(searchVal.toLowerCase()));
+                    if (match) {
+                      setAllocations((prev) => prev.map((a, i) => i === capturedIdx
+                        ? { ...a, jobBookingID: match.JobBookingID, jobBookingNo: match.JobBookingNo, search: match.JobBookingNo, showDropdown: false }
+                        : a));
+                    } else {
+                      setAllocations((prev) => prev.map((a, i) => i === capturedIdx ? { ...a, search: searchVal, showDropdown: true } : a));
+                    }
+                  }}
+                  onClose={() => setScanningAllocIdx(null)}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Slip preview */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center justify-between">
             <span>Slip No: <span className="font-mono font-semibold text-blue-700">{nextSlipNo(today, seq)}</span></span>
             <span>Slip Date: <span className="font-semibold text-gray-700">{fmtDate(today)}</span></span>
           </div>
         </div>
 
-        <div className="px-6 pb-5 flex items-center justify-between">
+        <div className="px-6 pb-5 flex items-center justify-between border-t border-gray-100 pt-4 shrink-0">
           <button onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
           <button
             onClick={() => {
-              const f = FLOOR_AREAS.find((x) => x.id === toFloorId);
               onConfirm({
-                itemCode: batch.itemCode, itemName: batch.itemName,
-                batchNo: batch.batchNo, supplierBatchNo: batch.supplierBatchNo,
-                grnNo: batch.grnNo, availableQty: batch.qty,
-                issueQty, stockUnit: batch.unit,
-                fromWarehouseId: batch.warehouseId,
-                fromWarehouseName: batch.warehouseName ?? batch.warehouseId,
-                fromBin: batch.bin,
-                toFloorId, toFloorName: f?.name ?? "", toBin,
-                slipNo: nextSlipNo(today, seq), slipDate: today,
-                batchScanned: true,
+                ItemID: batch.ItemID,
+                ItemGroupID: batch.ItemGroupID,
+                ItemCode: batch.ItemCode,
+                ItemName: batch.ItemName,
+                StockUnit: batch.StockUnit,
+                issueQty,
+                batchNo: batch.BatchNo,
+                supplierBatchNo: batch.SupplierBatchNo || "",
+                batchID: batch.BatchID,
+                parentTransactionID: batch.ParentTransactionID,
+                warehouseID: batch.WarehouseID,
+                availableQty: batch.BatchStock,
+                fromWarehouseName: batch.Warehouse,
+                fromBin: batch.Bin,
+                floorWarehouseID,
+                floorWarehouseName,
+                floorBin,
+                slipNo: nextSlipNo(today, seq),
+                slipDate: today,
+                collectedBy: "",
+                jobCardContentNo: issueMode === "Item-wise" ? jobCardContentNo : "",
+                issueReason: issueReason || "",
+                jobBookingID: isMultiJob ? 0 : jobBookingID,
+                jobBookingNo: isMultiJob ? "" : jobBookingNo,
+                multiJobAllocations: isMultiJob
+                  ? validAllocs.map((a) => ({ jobBookingID: a.jobBookingID, jobBookingNo: a.jobBookingNo || a.search.trim(), allocatedQty: a.allocatedQty }))
+                  : [],
               });
             }}
-            disabled={!issueQty || !toFloorId || !toBin}
+            disabled={!canConfirm}
             className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
             <PackageMinus size={15} /> Confirm Issue
           </button>
         </div>
       </div>
+
+      {showJBScanner && (
+        <ScannerModal title="Scan Job Booking No." hint="Scan QR or barcode on the job booking"
+          onScan={(val) => {
+            setShowJBScanner(false);
+            const searchVal = (() => {
+              try { const d = JSON.parse(val); return d.JobBookingNo || d.jobBookingNo || val; } catch { return val; }
+            })();
+            const match = jobBookings.find((jb) => jb.JobBookingNo?.toLowerCase().includes(searchVal.toLowerCase()));
+            if (match) { selectJobBooking(match); }
+            else { setJobBookingSearch(searchVal); setShowJBDropdown(true); }
+          }}
+          onClose={() => setShowJBScanner(false)}
+        />
+      )}
     </div>
   );
 }
@@ -390,158 +755,508 @@ function BatchConfirmModal({
 // ─── Main Page ───────────────────────────────────────────────
 export default function ItemIssuePage() {
   const [view, setView] = useState<"list" | "form">("list");
-  const [data, setData] = useState<ItemIssue[]>(initData);
-  const [editing, setEditing] = useState<ItemIssue | null>(null);
-  const [filterStatus, setFilterStatus] = useState<"All" | ItemIssue["status"]>("All");
+  const [editingID, setEditingID] = useState<number | null>(null);
   const [listSearch, setListSearch] = useState("");
+  const [fromDate, setFromDate] = useState(() => {
+    const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
+  });
+  const [toDate, setToDate] = useState(todayISO());
   const [activeTab, setActiveTab] = useState<"basic" | "scan" | "items">("basic");
 
-  // Form state
+  // List
+  const [listData, setListData] = useState<IssueRecord[]>([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [listError, setListError] = useState("");
+
+  // Form
   const [voucherDate, setVoucherDate] = useState(todayISO());
   const [issueMode, setIssueMode] = useState<"Job-wise" | "Item-wise">("Job-wise");
-  const [jobCard, setJobCard] = useState<IssueJobCard | null>(null);
-  const [lines, setLines] = useState<ItemIssueLine[]>([]);
+  const [departmentID, setDepartmentID] = useState<number>(0);
+  const [departments, setDepartments] = useState<Dept[]>([]);
+  const [selectedJobCard, setSelectedJobCard] = useState<JobCardRow | null>(null);
+  const [jobItems, setJobItems] = useState<JobItem[]>([]);   // picklist items per job card
+  const [lines, setLines] = useState<ScanLine[]>([]);         // one per confirmed batch scan
   const [remark, setRemark] = useState("");
+  const [receivedById, setReceivedById] = useState<number>(0);
+  const [receivers, setReceivers] = useState<Receiver[]>([]);
+  const [currentVoucherNo, setCurrentVoucherNo] = useState("…");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   // Scan / modal state
   const [showJobScanner, setShowJobScanner] = useState(false);
   const [showJobPicker, setShowJobPicker] = useState(false);
-  const [showItemScanner, setShowItemScanner] = useState<{ lineId: string | "new"; itemCode?: string } | null>(null);
-  const [pendingBatch, setPendingBatch] = useState<{ batch: ScannedBatch; lineId: string | "new"; requiredQty: number } | null>(null);
-  const [recentScans, setRecentScans] = useState<ItemIssueLine[]>([]);
+  const [showItemScanner, setShowItemScanner] = useState<{
+    jobItemId: string; itemCode?: string; remainingQty: number;
+  } | null>(null);
+  const [pendingBatch, setPendingBatch] = useState<{
+    batch: BatchInfo; jobItemId: string; remainingQty: number;
+  } | null>(null);
+  const [recentScans, setRecentScans] = useState<ScanLine[]>([]);
+  const [loadingItems, setLoadingItems] = useState(false);
 
-  const currentVoucherNo = editing ? editing.voucherNo : nextVoucherNo(data);
+  // Total qty issued so far for a given job item
+  const issuedForItem = useCallback((jobItemId: string) =>
+    lines.filter((l) => l.jobItemId === jobItemId).reduce((s, l) => s + l.issueQty, 0),
+    [lines]);
 
-  const resetForm = () => {
-    setVoucherDate(todayISO()); setIssueMode("Job-wise"); setJobCard(null);
-    setLines([]); setRemark(""); setRecentScans([]); setActiveTab("basic");
-  };
-  const openNew = () => { setEditing(null); resetForm(); setView("form"); };
-  const openEdit = (iss: ItemIssue) => {
-    setEditing(iss);
-    setVoucherDate(iss.voucherDate); setIssueMode(iss.issueMode);
-    setJobCard(iss.jobCardRef ? issueJobCards.find((j) => j.jobCardNo === iss.jobCardRef) ?? null : null);
-    setLines(iss.lines.map((l) => ({ ...l })));
-    setRemark(iss.remark);
-    setRecentScans([]);
-    setActiveTab("basic");
-    setView("form");
-  };
-  const handleDelete = (id: string) => {
-    if (confirm("Delete this Issue voucher?")) setData((d) => d.filter((r) => r.id !== id));
-  };
+  // Load departments and receivers on mount
+  useEffect(() => {
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/DepartmentName`)
+      .then((d) => { if (Array.isArray(d)) setDepartments(d); });
+    apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetReceiverList`)
+      .then((d) => { if (Array.isArray(d)) setReceivers(d); });
+  }, []);
 
-  // Job card scanned / picked
-  const handleJobCardScan = (raw: string) => {
-    setShowJobScanner(false);
-    const parsed = parseJobCardQR(raw);
-    if (!parsed) { alert("Could not read job card from scan. Try manual entry."); return; }
-    const jc = issueJobCards.find((j) => j.jobCardNo === parsed.jobCardNo);
-    if (!jc) { alert(`Job card ${parsed.jobCardNo} not found.`); return; }
-    loadJobCard(jc);
-  };
+  const loadVoucherNo = useCallback(async () => {
+    const raw = await apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetIssueNO?prefix=IS`);
+    setCurrentVoucherNo(unwrap(raw) || "IS-NEW");
+  }, []);
 
-  const loadJobCard = (jc: IssueJobCard) => {
-    setJobCard(jc);
+  // ── Load list ─────────────────────────────────────────────
+  const loadList = useCallback(async () => {
+    setLoadingList(true);
+    setListError("");
+    try {
+      const d = await apiFetch(
+        `${BASE_URL}/api/ItemIssueDirectAJ/Showlist?FromDate=${fromDate}&ToDate=${toDate}&isBatchWiseChecked=false`
+      );
+      if (Array.isArray(d)) {
+        // Aggregate: one entry per voucher, summing qty across all items
+        const map = new Map<number, { row: IssueRecord; totalQty: number; itemCount: number }>();
+        d.forEach((r: IssueRecord) => {
+          const ex = map.get(r.TransactionID);
+          if (ex) {
+            ex.totalQty += (r.IssueQuantity || 0);
+            ex.itemCount += 1;
+          } else {
+            map.set(r.TransactionID, { row: r, totalQty: r.IssueQuantity || 0, itemCount: 1 });
+          }
+        });
+        setListData(
+          Array.from(map.values()).map((v) => ({
+            ...v.row,
+            _totalQty: v.totalQty,
+            _itemCount: v.itemCount,
+          }))
+        );
+      } else {
+        setListError(typeof d === "string" ? d : "Error loading list");
+      }
+    } catch {
+      setListError("Network error loading list");
+    }
+    setLoadingList(false);
+  }, [fromDate, toDate]);
+
+  useEffect(() => { if (view === "list") loadList(); }, [view, loadList]);
+
+  // ── Load job card items ───────────────────────────────────
+  const loadJobCardItems = async (jc: JobCardRow) => {
+    setSelectedJobCard(jc);
     setShowJobPicker(false);
-    // Create pending lines for each job card item (batch not yet scanned)
-    setLines(jc.items.map((item) => ({
-      lineId: Math.random().toString(36).slice(2),
-      itemCode: item.itemCode, itemName: item.itemName,
-      itemGroup: "", subGroup: "",
-      requiredQty: item.requiredQty, issueQty: 0, stockUnit: item.unit,
-      batchNo: "", supplierBatchNo: "", grnNo: "", availableQty: 0,
-      fromWarehouseId: "", fromWarehouseName: "", fromBin: "",
-      toFloorId: "", toFloorName: "", toBin: "",
-      slipNo: "", slipDate: "", batchScanned: false,
-    })));
+    setLoadingItems(true);
+    setJobItems([]);
+    setLines([]);
+    try {
+      const d = await apiFetch(
+        `${BASE_URL}/api/ItemIssueDirectAJ/GetPickListGridData?JobCardContentNo=${encodeURIComponent(jc.JobCardContentNo)}`
+      );
+      if (Array.isArray(d) && d.length > 0) {
+        setJobItems(d.map((item: any) => ({
+          jobItemId: Math.random().toString(36).slice(2),
+          ItemID: item.ItemID || 0,
+          ItemGroupID: item.ItemGroupID || 0,
+          ItemCode: item.ItemCode || "",
+          ItemName: item.ItemName || "",
+          ItemGroup: item.ItemGroup || item.ItemGroupName || "",
+          SubGroup: item.SubGroup || item.ItemSubGroupName || "",
+          StockUnit: item.StockUnit || "",
+          BookedQuantity: parseFloat(item.BookedQuantity) || 0,
+          PendingToPick: parseFloat(item.PendingToPick) || 0,
+          PhysicalStock: parseFloat(item.PhysicalStock) || 0,
+          FreeStock: parseFloat(item.FreeStock) || 0,
+          JobBookingJobCardContentsID: item.JobBookingJobCardContentsID || jc.JobBookingJobCardContentsID,
+          JobBookingID: item.JobBookingID || jc.JobBookingID,
+          ProcessID: item.ProcessID || 0,
+          MachineID: item.MachineID || 0,
+          picklistTransactionID: item.PicklistTransactionID || 0,
+          picklistReleaseTransactionID: item.PicklistReleaseTransactionID || 0,
+        })));
+        setActiveTab("scan");
+      } else {
+        setJobItems([]);
+        alert("No pending items found for this Job Card.");
+      }
+    } catch {
+      alert("Error loading job card items.");
+    }
+    setLoadingItems(false);
   };
 
-  // Item batch scanned (from GRN QR)
-  const handleBatchScan = (raw: string, lineId: string | "new", requiredQty: number) => {
+  // ── Job card QR scan ──────────────────────────────────────
+  const handleJobCardScan = async (raw: string) => {
+    setShowJobScanner(false);
+    let jobCardNo = raw.trim();
+    try { const d = JSON.parse(raw); jobCardNo = d.jobCardNo || d.JobCardContentNo || raw.trim(); } catch { }
+    const d = await apiFetch(
+      `${BASE_URL}/api/ItemIssueDirectAJ/GetJobCardNoscan?JobCardContentNo=${encodeURIComponent(jobCardNo)}`
+    );
+    if (!Array.isArray(d) || d.length === 0) {
+      alert(`Job card "${jobCardNo}" not found.`); return;
+    }
+    const jcRow = d[0];
+    loadJobCardItems({
+      JobBookingID: jcRow.JobBookingID || 0,
+      JobBookingJobCardContentsID: jcRow.JobBookingJobCardContentsID || 0,
+      JobCardContentNo: jcRow.JobCardContentNo || jobCardNo,
+      JobName: jcRow.JobName || "",
+      PlanContName: jcRow.PlanContName || "",
+      BookingNo: jcRow.JobBookingNo || "",
+    });
+  };
+
+  // ── Batch QR scan ─────────────────────────────────────────
+  const handleBatchScan = async (raw: string, jobItemId: string, remainingQty: number) => {
     setShowItemScanner(null);
-    const batch = parseQR(raw);
-    if (!batch) {
-      alert("Could not parse batch QR. Ensure you are scanning a GRN-generated QR label.");
+
+    let batchNo = raw.trim();
+    let itemIDHint = "";
+    try {
+      const d = JSON.parse(raw);
+      batchNo = d.BatchNo || d.batchNo || raw.trim();
+      itemIDHint = String(d.ItemID || d.itemID || "");
+    } catch { }
+
+    const jobItem = jobItemId !== "item-wise" && jobItemId !== "edit-loaded"
+      ? jobItems.find((j) => j.jobItemId === jobItemId)
+      : null;
+    const itemIDParam = itemIDHint || (jobItem ? String(jobItem.ItemID) : "");
+
+    const d = await apiFetch(
+      `${BASE_URL}/api/ItemIssueDirectAJ/GetQRBatchNO?BatchNO=${encodeURIComponent(batchNo)}&itemID=${itemIDParam}`
+    );
+
+    if (!Array.isArray(d) || d.length === 0) {
+      alert(`Batch "${batchNo}" not found in stock. Check batch number and try again.`);
       return;
     }
-    // In job-wise mode, validate itemCode matches expected line
-    if (lineId !== "new") {
-      const line = lines.find((l) => l.lineId === lineId);
-      if (line && line.itemCode && line.itemCode !== batch.itemCode) {
-        if (!confirm(`Scanned item (${batch.itemCode}) does not match expected item (${line.itemCode}). Continue anyway?`)) return;
-      }
+
+    const b = d[0];
+    const batch: BatchInfo = {
+      ItemID: b.ItemID || 0,
+      ItemCode: b.ItemCode || "",
+      ItemName: b.ItemName || "",
+      ItemGroupID: b.ItemGroupID || 0,
+      ItemGroupNameID: b.ItemGroupNameID || 0,
+      ItemSubGroupID: b.ItemSubGroupID || 0,
+      BatchID: b.BatchID || 0,
+      BatchNo: b.BatchNo || batchNo,
+      SupplierBatchNo: b.SupplierBatchNo || "",
+      BatchStock: parseFloat(b.BatchStock) || 0,
+      IssueQuantity: parseFloat(b.IssueQuantity) || 0,
+      StockUnit: b.StockUnit || "",
+      PurchaseUnit: b.PurchaseUnit || "",
+      WarehouseID: b.WarehouseID || 0,
+      Warehouse: b.Warehouse || "",
+      Bin: b.Bin || "",
+      ParentTransactionID: b.ParentTransactionID || 0,
+      MfgDate: b.MfgDate,
+      ExpiryDate: b.ExpiryDate,
+      WtPerPacking: b.WtPerPacking || 0,
+      UnitPerPacking: b.UnitPerPacking || 1,
+      ConversionFactor: b.ConversionFactor || 1,
+    };
+
+    // Validate item match in job-wise mode
+    if (jobItem && jobItem.ItemID && jobItem.ItemID !== batch.ItemID) {
+      if (!confirm(`Scanned item (${batch.ItemCode}) does not match expected item (${jobItem.ItemCode}). Continue anyway?`)) return;
     }
-    setPendingBatch({ batch, lineId, requiredQty });
+
+    setPendingBatch({ batch, jobItemId, remainingQty });
   };
 
-  // Confirm issue from batch modal
-  const confirmIssueLine = (lineId: string | "new", updates: Partial<ItemIssueLine>) => {
+  // ── Confirm batch — always creates a new ScanLine ─────────
+  const confirmIssueLine = (jobItemId: string, updates: Partial<ScanLine>) => {
     setPendingBatch(null);
-    if (lineId === "new") {
-      // Item-wise: add new line
-      const newLine: ItemIssueLine = {
-        lineId: Math.random().toString(36).slice(2),
-        itemCode: "", itemName: "", itemGroup: "", subGroup: "",
-        requiredQty: 0, issueQty: 0, stockUnit: "Kg",
-        batchNo: "", supplierBatchNo: "", grnNo: "", availableQty: 0,
-        fromWarehouseId: "", fromWarehouseName: "", fromBin: "",
-        toFloorId: "", toFloorName: "", toBin: "",
-        slipNo: "", slipDate: "", batchScanned: false,
-        ...updates,
-      };
-      setLines((prev) => [...prev, newLine]);
-      setRecentScans((prev) => [newLine, ...prev].slice(0, 10));
-    } else {
-      setLines((prev) => prev.map((l) => {
-        if (l.lineId === lineId) {
-          const updated = { ...l, ...updates };
-          setRecentScans((rs) => [updated, ...rs].slice(0, 10));
-          return updated;
-        }
-        return l;
-      }));
-    }
+    const jobItem = jobItemId !== "item-wise" && jobItemId !== "edit-loaded"
+      ? jobItems.find((j) => j.jobItemId === jobItemId)
+      : null;
+
+    const newLine: ScanLine = {
+      lineId: Math.random().toString(36).slice(2),
+      jobItemId,
+      TransactionDetailID: 0,
+      ItemID: jobItem?.ItemID ?? updates.ItemID ?? 0,
+      ItemGroupID: jobItem?.ItemGroupID ?? updates.ItemGroupID ?? 0,
+      ItemCode: jobItem?.ItemCode ?? updates.ItemCode ?? "",
+      ItemName: jobItem?.ItemName ?? updates.ItemName ?? "",
+      StockUnit: jobItem?.StockUnit ?? updates.StockUnit ?? "",
+      JobBookingJobCardContentsID: jobItem?.JobBookingJobCardContentsID ?? 0,
+      JobBookingID: jobItem?.JobBookingID ?? 0,
+      ProcessID: jobItem?.ProcessID ?? 0,
+      MachineID: jobItem?.MachineID ?? 0,
+      picklistTransactionID: jobItem?.picklistTransactionID ?? 0,
+      picklistReleaseTransactionID: jobItem?.picklistReleaseTransactionID ?? 0,
+      batchNo: "", supplierBatchNo: "", batchID: 0, parentTransactionID: 0,
+      warehouseID: 0, issueQty: 0, availableQty: 0,
+      fromWarehouseName: "", fromBin: "",
+      floorWarehouseID: 0, floorWarehouseName: "", floorBin: "",
+      slipNo: "", slipDate: "", collectedBy: "",
+      jobCardContentNo: "", issueReason: "",
+      jobBookingID: 0, jobBookingNo: "",
+      multiJobAllocations: [],
+      ...updates,
+    };
+    setLines((prev) => [...prev, newLine]);
+    setRecentScans((prev) => [newLine, ...prev].slice(0, 10));
   };
 
   const removeLine = (lineId: string) => setLines((prev) => prev.filter((l) => l.lineId !== lineId));
 
-  const save = (status: ItemIssue["status"]) => {
-    if (lines.length === 0) { alert("No items to issue."); return; }
-    const iss: ItemIssue = {
-      id: editing ? editing.id : `ISS${String(data.length + 1).padStart(3, "0")}`,
-      voucherNo: currentVoucherNo, voucherDate,
-      issueMode, jobCardRef: jobCard?.jobCardNo ?? "",
-      jobCardData: jobCard ? { product: jobCard.product, customer: jobCard.customer, machine: jobCard.machine } : null,
-      lines, remark, status,
-    };
-    if (editing) setData((d) => d.map((r) => r.id === editing.id ? iss : r));
-    else setData((d) => [...d, iss]);
-    setView("list");
+  // ── Save ──────────────────────────────────────────────────
+  const save = async () => {
+    if (lines.length === 0) { alert("No batch scans to issue."); return; }
+    if (!departmentID) { alert("Please select a department."); setActiveTab("basic"); return; }
+
+    // Warn if any job item has zero scans
+    if (issueMode === "Job-wise" && jobItems.length > 0) {
+      const unstarted = jobItems.filter((ji) => issuedForItem(ji.jobItemId) === 0);
+      if (unstarted.length > 0) {
+        if (!confirm(`${unstarted.length} item(s) have no batch scans yet. Continue saving anyway?`)) return;
+      }
+    }
+
+    setSaving(true);
+    setSaveError("");
+
+    const totalIssuedQty = lines.reduce((s, l) => s + (l.issueQty || 0), 0);
+
+    const jsonObjectsRecordMain = [{
+      VoucherDate: voucherDate,
+      TotalQuantity: totalIssuedQty,
+      DepartmentID: departmentID,
+      JobBookingJobCardContentsID: lines[0]?.JobBookingJobCardContentsID || 0,
+      ReceivedBy: receivedById || 0,
+      GateEntryNo: lines[0]?.slipNo || "",
+      GateEntryDate: lines[0]?.slipDate || voucherDate,
+      Narration: remark,
+      IsDeletedTransaction: 0,
+    }];
+
+    const jsonObjectsRecordDetail = lines.map((line, idx) => ({
+      TransID: idx + 1,
+      PicklistTransactionID: line.picklistTransactionID || 0,
+      PicklistReleaseTransactionID: line.picklistReleaseTransactionID || 0,
+      ItemID: line.ItemID,
+      ItemGroupID: line.ItemGroupID,
+      BatchID: line.batchID || 0,
+      BatchNo: line.batchNo || "",
+      ParentTransactionID: line.parentTransactionID || 0,
+      WarehouseID: line.warehouseID || 0,
+      FloorWarehouseID: line.floorWarehouseID || 0,
+      IssueQuantity: line.issueQty || 0,
+      RequiredQuantity: line.issueQty || 0,
+      StockUnit: line.StockUnit,
+      JobBookingJobCardContentsID: line.JobBookingJobCardContentsID || 0,
+      JobBookingID: line.jobBookingID || line.JobBookingID || 0,
+      DepartmentID: departmentID,
+      ProcessID: line.ProcessID || 0,
+      MachineID: line.MachineID || 0,
+      Remark: line.issueReason || "",
+      IsDeletedTransaction: 0,
+    }));
+
+    const ObjectsConsumeMain = [{
+      VoucherDate: voucherDate,
+      TotalQuantity: totalIssuedQty,
+      DepartmentID: departmentID,
+      Narration: remark,
+      JobBookingJobCardContentsID: lines[0]?.JobBookingJobCardContentsID || 0,
+    }];
+
+    const ObjectsConsumeDetails = lines.map((line, idx) => ({
+      JobBookingJobCardContentsID: line.JobBookingJobCardContentsID || 0,
+      JobBookingID: line.jobBookingID || line.JobBookingID || 0,
+      MachineID: line.MachineID || 0,
+      ProcessID: line.ProcessID || 0,
+      DepartmentID: departmentID,
+      ParentTransactionID: line.parentTransactionID || 0,
+      ItemID: line.ItemID,
+      ItemGroupID: line.ItemGroupID || 0,
+      WarehouseID: line.warehouseID || 0,
+      ReceivedQuantity: line.issueQty || 0,
+      BatchNo: line.batchNo || "",
+      BatchID: line.batchID || 0,
+      StockUnit: line.StockUnit || "",
+      FloorWarehouseID: line.floorWarehouseID || 0,
+      TransID: idx + 1,
+    }));
+
+    // Build multi-job allocation rows keyed by lineIndex
+    const ObjectsMultiJobAllocations = lines.flatMap((line, lineIdx) =>
+      (line.multiJobAllocations || []).map((alloc) => ({
+        LineIndex: lineIdx,
+        JobBookingID: alloc.jobBookingID,
+        JobBookingNo: alloc.jobBookingNo,
+        AllocatedQty: alloc.allocatedQty,
+      }))
+    );
+
+    try {
+      const isUpdate = !!editingID;
+      const url = isUpdate
+        ? `${BASE_URL}/api/ItemIssueDirectAJ/UpdateIssue?TransactionID=${editingID}`
+        : `${BASE_URL}/api/ItemIssueDirectAJ/SaveIssueData?prefix=IS`;
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonObjectsRecordMain, jsonObjectsRecordDetail, ObjectsConsumeMain, ObjectsConsumeDetails, ObjectsMultiJobAllocations }),
+      });
+
+      const raw = await res.text();
+      const result = unwrap(raw);
+
+      if (result === "Success" || /^\d+$/.test(result)) {
+        alert(isUpdate ? "Issue updated successfully." : `Issue saved! Voucher: ${currentVoucherNo}`);
+        resetForm();
+        setView("list");
+      } else if (result.toLowerCase().includes("not authorized")) {
+        setSaveError(result);
+      } else {
+        setSaveError(result || "Unknown error from server.");
+      }
+    } catch (e: any) {
+      setSaveError("Network error: " + e.message);
+    }
+    setSaving(false);
   };
 
-  const filteredData = (filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus))
-    .filter((r) => {
-      if (!listSearch) return true;
-      const s = listSearch.toLowerCase();
-      return (
-        r.voucherNo.toLowerCase().includes(s) ||
-        r.jobCardRef.toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s)
-      );
-    });
-  const scannedCount = lines.filter((l) => l.batchScanned).length;
+  const openNew = async () => {
+    setEditingID(null);
+    resetForm();
+    await loadVoucherNo();
+    setView("form");
+  };
+
+  const openEdit = async (rec: IssueRecord) => {
+    setEditingID(rec.TransactionID);
+    resetForm();
+    setCurrentVoucherNo(rec.VoucherNo || "");
+    setVoucherDate(rec.VoucherDate ? rec.VoucherDate.split("T")[0] : todayISO());
+
+    const [d, allocData] = await Promise.all([
+      apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetIssueVoucherDetails?transactionID=${rec.TransactionID}`),
+      apiFetch(`${BASE_URL}/api/ItemIssueDirectAJ/GetMultiJobAllocations?transactionID=${rec.TransactionID}`),
+    ]);
+
+    if (Array.isArray(d) && d.length > 0) {
+      const firstRow = d[0];
+      setDepartmentID(firstRow.DepartmentID || 0);
+      setReceivedById(firstRow.ReceivedBy || 0);
+
+      // Group allocations by TransactionDetailID
+      const allocMap = new Map<number, { jobBookingID: number; jobBookingNo: string; allocatedQty: number }[]>();
+      if (Array.isArray(allocData)) {
+        allocData.forEach((alloc: any) => {
+          const detId = alloc.TransactionDetailID || 0;
+          if (!allocMap.has(detId)) allocMap.set(detId, []);
+          allocMap.get(detId)!.push({
+            jobBookingID: alloc.JobBookingID || 0,
+            jobBookingNo: alloc.JobBookingNo || "",
+            allocatedQty: parseFloat(alloc.AllocatedQty) || 0,
+          });
+        });
+      }
+
+      setLines(d.map((row: any) => {
+        const detId = row.TransactionDetailID || 0;
+        const multiAllocs = allocMap.get(detId) || [];
+        const hasMultiJob = multiAllocs.length > 0;
+        return {
+          lineId: Math.random().toString(36).slice(2),
+          jobItemId: "edit-loaded",
+          TransactionDetailID: detId,
+          ItemID: row.ItemID || 0,
+          ItemGroupID: row.ItemGroupID || 0,
+          ItemCode: row.ItemCode || "",
+          ItemName: row.ItemName || "",
+          StockUnit: row.StockUnit || "",
+          JobBookingJobCardContentsID: row.JobBookingJobCardContentsID || 0,
+          JobBookingID: 0,
+          ProcessID: row.ProcessID || 0,
+          MachineID: row.MachineID || 0,
+          batchNo: row.BatchNo || "",
+          supplierBatchNo: row.SupplierBatchNo || "",
+          batchID: row.BatchID || 0,
+          parentTransactionID: row.ParentTransactionID || 0,
+          picklistTransactionID: row.PicklistTransactionID || 0,
+          picklistReleaseTransactionID: row.PicklistReleaseTransactionID || 0,
+          warehouseID: row.WarehouseID || 0,
+          issueQty: parseFloat(row.IssueQuantity) || 0,
+          availableQty: 0,
+          fromWarehouseName: row.Warehouse || "",
+          fromBin: row.Bin || "",
+          floorWarehouseID: row.FloorWarehouseID || 0,
+          floorWarehouseName: row.FloorWarehouseName || "",
+          floorBin: row.FloorBin || "",
+          slipNo: row.SlipNo || "",
+          slipDate: row.SlipDate || "",
+          collectedBy: "",
+          jobCardContentNo: row.JobCardNo || "",
+          issueReason: hasMultiJob ? "For Multi Job Consumption" : (row.IssueReason || ""),
+          jobBookingID: hasMultiJob ? 0 : (row.JobBookingID || 0),
+          jobBookingNo: "",
+          multiJobAllocations: multiAllocs,
+        };
+      }));
+    }
+    setActiveTab("items");
+    setView("form");
+  };
+
+  const handleDelete = async (transactionID: number) => {
+    if (!confirm("Delete this Issue voucher?")) return;
+    const url = `${BASE_URL}/api/ItemIssueDirectAJ/DeleteIssue?TransactionID=${transactionID}&JobContID=0`;
+    const res = await fetch(url, { method: "POST", headers: authHeaders() });
+    const raw = await res.text();
+    const result = unwrap(raw);
+    if (result === "Success") {
+      await loadList();
+      alert("Issue voucher deleted successfully.");
+    } else {
+      alert(result || "Failed to delete");
+    }
+  };
+
+  const resetForm = () => {
+    setVoucherDate(todayISO()); setIssueMode("Job-wise"); setDepartmentID(0); setReceivedById(0);
+    setSelectedJobCard(null); setJobItems([]); setLines([]); setRemark(""); setRecentScans([]);
+    setActiveTab("basic"); setSaveError("");
+  };
+
+  const filteredList = listData.filter((r) => {
+    if (!listSearch) return true;
+    const s = listSearch.toLowerCase();
+    return (r.VoucherNo?.toLowerCase().includes(s) ||
+      r.JobCardNo?.toLowerCase().includes(s) ||
+      r.DepartmentName?.toLowerCase().includes(s) ||
+      r.ItemName?.toLowerCase().includes(s));
+  });
+
+  const totalScans = lines.length;
 
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="max-w-6xl mx-auto space-y-5">
+      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-bold text-gray-800">Item Issue</h2>
-            <p className="text-sm text-gray-500">{filteredData.length} issue vouchers</p>
+            <p className="text-sm text-gray-500">{filteredList.length} issue vouchers</p>
           </div>
           <button onClick={openNew}
             className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
@@ -551,74 +1266,74 @@ export default function ItemIssuePage() {
 
         {/* Filter bar */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Status</span>
-            {(["All", "Draft", "Issued"] as const).map((s) => (
-              <button key={s} onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                {s}
-              </button>
-            ))}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onClick={loadList} disabled={loadingList}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
+              <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} /> {loadingList ? "Loading…" : "Refresh"}
+            </button>
           </div>
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
             <Search size={14} className="text-gray-400 shrink-0" />
-            <input
-              type="text"
-              placeholder="Search by voucher no, job card..."
-              value={listSearch}
-              onChange={e => setListSearch(e.target.value)}
-              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-            />
+            <input type="text" placeholder="Search by voucher no, job card, department, item…" value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400" />
           </div>
         </div>
 
-        {/* Table card */}
+        {listError && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+            <AlertCircle size={15} /> {listError}
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No.</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Mode</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Department</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Card</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Product / Customer</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Issue Qty</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Created By</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredData.length === 0 ? (
+              {loadingList ? (
+                <tr><td colSpan={8} className="text-center py-16 text-gray-400">Loading…</td></tr>
+              ) : filteredList.length === 0 ? (
                 <tr><td colSpan={8} className="text-center py-16 text-gray-400">No issue vouchers found. Click &ldquo;New Issue&rdquo; to begin.</td></tr>
-              ) : filteredData.map((iss, i) => (
-                <tr key={iss.id} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{iss.voucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(iss.voucherDate)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${iss.issueMode === "Job-wise" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                      {iss.issueMode}
-                    </span>
+              ) : filteredList.map((iss, i) => (
+                <tr key={iss.TransactionID} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{iss.VoucherNo}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(iss.VoucherDate)}</td>
+                  <td className="px-4 py-3 text-xs text-gray-700">{iss.DepartmentName || "—"}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{iss.JobCardNo || "—"}</td>
+                  <td className="px-4 py-3 text-xs text-gray-700">
+                    {(iss._itemCount ?? 1) > 1
+                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">{iss._itemCount} items</span>
+                      : <span className="text-gray-800">{iss.ItemName || iss.JobName || "—"}</span>
+                    }
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{iss.jobCardRef || "—"}</td>
-                  <td className="px-4 py-3 text-xs">
-                    {iss.jobCardData ? (
-                      <div>
-                        <p className="font-medium text-gray-800">{iss.jobCardData.product}</p>
-                        <p className="text-gray-700">{iss.jobCardData.customer}</p>
-                      </div>
-                    ) : "—"}
+                  <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
+                    {(iss._totalQty ?? iss.IssueQuantity ?? 0).toLocaleString()} {iss.StockUnit || ""}
                   </td>
-                  <td className="px-4 py-3 text-center font-medium text-gray-700">{iss.lines.length}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[iss.status]}`}>{iss.status}</span>
-                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">{iss.UserName || "—"}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center gap-2 justify-end">
                       <button onClick={() => openEdit(iss)}
                         className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
                         <Pencil size={11} /> Edit
                       </button>
-                      <button onClick={() => handleDelete(iss.id)}
+                      <button onClick={() => handleDelete(iss.TransactionID)}
                         className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
                         <Trash2 size={11} />
                       </button>
@@ -636,13 +1351,13 @@ export default function ItemIssuePage() {
   // ══════════════════════════════════════════════════════════
   // FORM VIEW
   // ══════════════════════════════════════════════════════════
+  const showScanTab = jobItems.length > 0;
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
+    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
 
-      {/* Header Ribbon */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        {/* Left: company name, title, voucher badge, status badge */}
         <div className="flex items-center gap-3">
           <div>
             <p className="text-xs text-gray-400 font-medium">Inventory</p>
@@ -651,34 +1366,25 @@ export default function ItemIssuePage() {
           <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-semibold border border-blue-100">
             {currentVoucherNo}
           </span>
-          {editing && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[editing.status]}`}>
-              {editing.status}
+          {editingID && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+              Editing #{editingID}
             </span>
           )}
         </div>
-
-        {/* Right: action buttons */}
         <div className="flex items-center gap-2">
           <button onClick={() => setView("list")}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
             <List size={13} /> List
           </button>
-          <button onClick={openNew}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Plus size={13} /> New
-          </button>
-          <button onClick={() => save("Draft")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            Draft
-          </button>
-          <button onClick={() => save("Issued")}
-            disabled={lines.length === 0}
+          <button onClick={save}
+            disabled={lines.length === 0 || saving}
             className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-40">
-            <PackageMinus size={13} /> Issue
+            {saving ? <RefreshCw size={13} className="animate-spin" /> : <PackageMinus size={13} />}
+            {saving ? "Saving…" : `Issue${lines.length > 0 ? ` (${lines.length})` : ""}`}
           </button>
-          {editing && (
-            <button onClick={() => handleDelete(editing.id)}
+          {editingID && (
+            <button onClick={() => handleDelete(editingID)}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
               <Trash2 size={13} /> Delete
             </button>
@@ -686,41 +1392,44 @@ export default function ItemIssuePage() {
         </div>
       </div>
 
-      {/* Content Card with Tabs */}
+      {saveError && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <AlertCircle size={15} /> {saveError}
+        </div>
+      )}
+
+      {/* Content Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
-        {/* Tab Header */}
+        {/* Tabs */}
         <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
           <div className="flex gap-1">
             {([
-              { id: "basic", label: "Basic" },
-              { id: "scan",  label: "Scan" },
-              { id: "items", label: `Items${lines.length > 0 ? ` (${lines.length})` : ""}` },
-            ] as const).map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${
-                  activeTab === tab.id
+              { id: "basic" as const, label: "Basic", show: true },
+              { id: "scan" as const, label: `Scan Details${showScanTab ? ` (${jobItems.length})` : ""}`, show: showScanTab },
+              { id: "items" as const, label: `Items${totalScans > 0 ? ` (${totalScans})` : ""}`, show: true },
+            ] as const)
+              .filter((t) => t.show)
+              .map((tab) => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${activeTab === tab.id
                     ? "bg-white text-blue-700 border-blue-600"
                     : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white/60"
-                }`}>
-                {tab.label}
-              </button>
-            ))}
+                  }`}>
+                  {tab.label}
+                </button>
+              ))}
           </div>
         </div>
 
-        {/* Tab Content */}
         <div className="p-6">
 
           {/* ── BASIC TAB ── */}
           {activeTab === "basic" && (
             <div className="space-y-4">
-              {/* Section: Issue Details */}
               <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Issue Details
-                </p>
-                <div className="grid grid-cols-3 gap-3">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Issue Details</p>
+                <div className="grid grid-cols-4 gap-3">
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Voucher No.</label>
                     <input readOnly value={currentVoucherNo}
@@ -731,10 +1440,24 @@ export default function ItemIssuePage() {
                     <input type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} className={inputCls} />
                   </div>
                   <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Department *</label>
+                    <select value={departmentID} onChange={(e) => setDepartmentID(Number(e.target.value))} className={inputCls}>
+                      <option value={0}>Select Dept…</option>
+                      {departments.map((d) => <option key={d.DepartmentID} value={d.DepartmentID}>{d.DepartmentName}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Issue Mode</label>
                     <div className="flex rounded-lg border border-gray-300 overflow-hidden">
                       {(["Job-wise", "Item-wise"] as const).map((m) => (
-                        <button key={m} onClick={() => { setIssueMode(m); setJobCard(null); setLines([]); }}
+                        <button key={m}
+                          onClick={() => {
+                            setIssueMode(m);
+                            setSelectedJobCard(null);
+                            setJobItems([]);
+                            setLines([]);
+                            if (m === "Item-wise") setActiveTab("items");
+                          }}
                           className={`flex-1 px-4 py-2 text-sm font-semibold transition-colors ${issueMode === m ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
                           {m}
                         </button>
@@ -742,18 +1465,25 @@ export default function ItemIssuePage() {
                     </div>
                   </div>
                 </div>
+                <div className="grid grid-cols-4 gap-3 mt-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Received By</label>
+                    <select value={receivedById} onChange={(e) => setReceivedById(Number(e.target.value))} className={inputCls}>
+                      <option value={0}>Select…</option>
+                      {receivers.map((r) => <option key={r.LedgerID} value={r.LedgerID}>{r.LedgerName}</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              {/* Section: Job Card (Job-wise only) */}
+              {/* Job Card selector (Job-wise only) */}
               {issueMode === "Job-wise" && (
                 <div>
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                    Job Card
-                  </p>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Job Card</p>
                   <div className="flex items-end gap-3">
                     <div className="w-56">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Job Card No.</label>
-                      <input readOnly value={jobCard?.jobCardNo ?? ""} placeholder="Scan or pick a job card…"
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Job Card Content No.</label>
+                      <input readOnly value={selectedJobCard?.JobCardContentNo ?? ""} placeholder="Scan or pick a job card…"
                         className={`${inputCls} bg-gray-50 font-mono text-blue-700`} />
                     </div>
                     <button onClick={() => setShowJobScanner(true)}
@@ -766,24 +1496,24 @@ export default function ItemIssuePage() {
                     </button>
                   </div>
 
-                  {/* Job card info card */}
-                  {jobCard && (
+                  {selectedJobCard && (
                     <div className="mt-4 flex items-center gap-6 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3">
                       <div className="flex items-center gap-2">
                         <FileText size={14} className="text-blue-600" />
-                        <span className="font-mono font-bold text-blue-700 text-sm">{jobCard.jobCardNo}</span>
+                        <span className="font-mono font-bold text-blue-700 text-sm">{selectedJobCard.JobCardContentNo}</span>
                       </div>
                       <div className="text-sm">
-                        <span className="font-semibold text-gray-700">{jobCard.product}</span>
+                        <span className="font-semibold text-gray-700">{selectedJobCard.JobName}</span>
                         <span className="text-gray-400 mx-2">·</span>
-                        <span className="text-gray-600">{jobCard.customer}</span>
+                        <span className="text-gray-600">{selectedJobCard.PlanContName}</span>
                       </div>
-                      <div className="text-xs text-gray-500">{jobCard.machine} · {jobCard.operator}</div>
-                      <div className="text-xs text-gray-500">{fmtDate(jobCard.jobDate)}</div>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">{jobCard.status}</span>
-                      <div className="ml-auto text-xs text-gray-500">
-                        <span className="font-semibold text-blue-700">{scannedCount}/{lines.length}</span> batches scanned
-                      </div>
+                      {loadingItems && <span className="text-xs text-blue-600 animate-pulse">Loading items…</span>}
+                      {jobItems.length > 0 && (
+                        <button onClick={() => setActiveTab("scan")}
+                          className="ml-auto flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
+                          View {jobItems.length} items <ChevronRight size={12} />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -791,106 +1521,127 @@ export default function ItemIssuePage() {
             </div>
           )}
 
-          {/* ── SCAN TAB ── */}
-          {activeTab === "scan" && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Scan Item Batches
-                </p>
+          {/* ── SCAN TAB (Job-wise: shows job items with multi-scan per item) ── */}
+          {activeTab === "scan" && showScanTab && (
+            <div className="space-y-5">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2">
+                Job Card Items — Scan Batches
+              </p>
 
-                {/* Item-wise: global scan button */}
-                {issueMode === "Item-wise" && (
-                  <div className="mb-5">
-                    <button onClick={() => setShowItemScanner({ lineId: "new", itemCode: undefined })}
-                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                      <Scan size={15} /> Scan Item Batch
-                    </button>
-                  </div>
-                )}
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide w-6">#</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Required Qty</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Remaining</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Batches</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobItems.map((item, idx) => {
+                      const issued = issuedForItem(item.jobItemId);
+                      const remaining = Math.max(0, item.PendingToPick - issued);
+                      const batchCount = lines.filter((l) => l.jobItemId === item.jobItemId).length;
+                      const isComplete = item.PendingToPick > 0 && issued >= item.PendingToPick;
+                      const isPartial = !isComplete && issued > 0;
+                      const pct = item.PendingToPick > 0 ? Math.min(100, Math.round((issued / item.PendingToPick) * 100)) : 0;
 
-                {/* Job-wise: show items list with per-row scan buttons */}
-                {issueMode === "Job-wise" && (
-                  <>
-                    {!jobCard ? (
-                      <div className="text-center py-12 text-gray-400 text-sm">
-                        Go to the Basic tab to load a Job Card first.
-                      </div>
-                    ) : lines.length === 0 ? (
-                      <div className="text-center py-12 text-gray-400 text-sm">No items on this job card.</div>
-                    ) : (
-                      <div className="overflow-x-auto rounded-xl border border-gray-200">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-50 border-b border-gray-200">
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Required Qty</th>
-                              <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Qty</th>
-                              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch No.</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                              <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {lines.map((line, idx) => (
-                              <tr key={line.lineId} className={`border-t border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                                <td className="px-4 py-3">
-                                  <p className="font-semibold text-gray-800 text-sm">{line.itemName}</p>
-                                  <p className="font-mono text-xs text-blue-600">{line.itemCode}</p>
-                                </td>
-                                <td className="px-4 py-3 text-right text-gray-600">{line.requiredQty || "—"}</td>
-                                <td className="px-4 py-3 text-right font-bold text-blue-700">{line.issueQty || "—"}</td>
-                                <td className="px-4 py-3 font-mono text-xs text-gray-600">
-                                  {line.batchNo || <span className="text-gray-300 italic">Pending scan…</span>}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  {line.batchScanned ? (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                                      <CheckCircle2 size={11} /> Scanned
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-xs font-semibold">
-                                      Pending
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-4 py-3 text-center">
-                                  {!line.batchScanned && (
-                                    <button onClick={() => setShowItemScanner({ lineId: line.lineId, itemCode: line.itemCode })}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors mx-auto">
-                                      <Scan size={12} /> Scan
-                                    </button>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </>
-                )}
+                      return (
+                        <tr key={item.jobItemId}
+                          className={`border-t border-gray-100 ${isComplete ? "bg-green-50/40" : isPartial ? "bg-orange-50/30" : "bg-white"}`}>
+                          <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-800 text-sm">{item.ItemName}</p>
+                            <p className="font-mono text-xs text-blue-600">{item.ItemCode}</p>
+                            {/* progress bar */}
+                            <div className="mt-1.5 h-1 w-40 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${isComplete ? "bg-green-500" : "bg-blue-400"}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] text-gray-400">{pct}%</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-600 text-xs">{item.PendingToPick} {item.StockUnit}</td>
+                          <td className="px-4 py-3 text-right font-bold text-blue-700 text-xs">{issued || "—"}</td>
+                          <td className="px-4 py-3 text-right text-xs">
+                            {isComplete
+                              ? <span className="text-green-600 font-semibold">0</span>
+                              : <span className="text-orange-600 font-semibold">{remaining}</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-center text-xs text-gray-600">
+                            {batchCount > 0 ? `${batchCount} batch${batchCount > 1 ? "es" : ""}` : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {isComplete
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                  <CheckCircle2 size={11} /> Complete
+                                </span>
+                              : isPartial
+                              ? <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-xs font-semibold">Partial</span>
+                              : <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs font-semibold">Pending</span>
+                            }
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              disabled={isComplete}
+                              onClick={() => setShowItemScanner({
+                                jobItemId: item.jobItemId,
+                                itemCode: item.ItemCode,
+                                remainingQty: remaining,
+                              })}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg mx-auto transition-colors ${
+                                isComplete
+                                  ? "text-gray-400 bg-gray-100 cursor-not-allowed"
+                                  : "text-white bg-blue-600 hover:bg-blue-700"
+                              }`}>
+                              <Scan size={12} />
+                              {batchCount === 0 ? "Scan Batch" : "Add Batch"}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
 
-              {/* Recently scanned batches */}
+              {/* Progress summary */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center gap-4">
+                <span className="font-semibold text-gray-700">{jobItems.length} items</span>
+                <span>·</span>
+                <span className="text-green-600 font-semibold">
+                  {jobItems.filter((ji) => issuedForItem(ji.jobItemId) >= ji.PendingToPick && ji.PendingToPick > 0).length} complete
+                </span>
+                <span>·</span>
+                <span className="text-blue-600 font-semibold">{lines.length} batch scans</span>
+                <span>·</span>
+                <span>Total issued: <span className="font-semibold text-gray-800">{lines.reduce((s, l) => s + l.issueQty, 0).toLocaleString()}</span></span>
+              </div>
+
+              {/* Recently scanned */}
               {recentScans.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                    Recently Scanned Batches
-                  </p>
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-3">Recently Scanned</p>
                   <div className="space-y-2">
                     {recentScans.map((line, i) => (
                       <div key={i} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs">
                         <div className="flex items-center gap-3">
                           <CheckCircle2 size={14} className="text-green-500 shrink-0" />
                           <div>
-                            <p className="font-semibold text-gray-800">{line.itemName}</p>
+                            <p className="font-semibold text-gray-800">{line.ItemName}</p>
                             <p className="font-mono text-blue-600">{line.batchNo}</p>
                           </div>
                         </div>
                         <div className="text-right text-gray-600">
-                          <p className="font-bold text-blue-700">{line.issueQty} {line.stockUnit}</p>
-                          <p className="text-gray-600">{line.slipNo}</p>
+                          <p className="font-bold text-blue-700">{line.issueQty} {line.StockUnit}</p>
+                          <p className="text-gray-500">{line.floorWarehouseName} / {line.floorBin}</p>
                         </div>
                       </div>
                     ))}
@@ -904,22 +1655,31 @@ export default function ItemIssuePage() {
           {activeTab === "items" && (
             <div className="space-y-5">
               <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Scanned Items
-                </p>
+                <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-4">
+                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">Scanned Batches</p>
+                  {/* Allow adding item-wise scans in any mode */}
+                  <button onClick={() => setShowItemScanner({ jobItemId: "item-wise", itemCode: undefined, remainingQty: 0 })}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    <Scan size={14} /> Scan Item Batch
+                  </button>
+                </div>
+
                 <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1200 }}>
+                  <table className="w-full text-xs" style={{ minWidth: 1100 }}>
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {[
                           { l: "Item Code", r: false }, { l: "Item Name", r: false },
-                          { l: "Req. Qty", r: true }, { l: "Issue Qty", r: true }, { l: "Unit", r: false },
-                          { l: "Internal Batch No.", r: false }, { l: "Supplier Batch", r: false },
+                          { l: "Issue Qty", r: true }, { l: "Unit", r: false },
+                          { l: "Internal Batch", r: false }, { l: "Supplier Batch", r: false },
                           { l: "Avail. Stock", r: true },
                           { l: "From Warehouse", r: false }, { l: "From Bin", r: false },
-                          { l: "To Floor / Area", r: false }, { l: "To Bin", r: false },
-                          { l: "Slip No.", r: false }, { l: "Slip Date", r: false },
-                          { l: "Status", r: false }, { l: "", r: false },
+                          { l: "To Floor WH", r: false }, { l: "To Bin", r: false },
+                          { l: "Slip No.", r: false },
+                          { l: "Collected By", r: false },
+                          { l: "JC Content No.", r: false },
+                          { l: "Issue Reason", r: false },
+                          { l: "", r: false },
                         ].map((col, i) => (
                           <th key={i} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${col.r ? "text-right" : "text-left"}`}>
                             {col.l}
@@ -930,43 +1690,61 @@ export default function ItemIssuePage() {
                     <tbody>
                       {lines.length === 0 ? (
                         <tr>
-                          <td colSpan={16} className="text-center py-16 text-gray-400">
-                            {issueMode === "Job-wise"
-                              ? jobCard ? "Go to Scan tab to scan batch QR codes" : "Load a Job Card on the Basic tab"
-                              : "Go to Scan tab to add items by scanning GRN QR labels"
+                          <td colSpan={16} className="text-center py-20 text-gray-400">
+                            {issueMode === "Job-wise" && jobItems.length === 0 && !editingID
+                              ? "Load a Job Card on the Basic tab, then scan batches on the Scan Details tab."
+                              : issueMode === "Job-wise" && jobItems.length > 0
+                              ? <button onClick={() => setActiveTab("scan")}
+                                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors">
+                                  <Scan size={14} /> Go to Scan Details
+                                </button>
+                              : (
+                                <div className="space-y-4 flex flex-col items-center">
+                                  <QrCode size={36} className="text-gray-300" />
+                                  <p className="text-sm font-medium text-gray-500">No items added yet.</p>
+                                  <button onClick={() => setShowItemScanner({ jobItemId: "item-wise", itemCode: undefined, remainingQty: 0 })}
+                                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors shadow-sm">
+                                    <Scan size={15} /> Scan Your First Batch
+                                  </button>
+                                </div>
+                              )
                             }
                           </td>
                         </tr>
                       ) : lines.map((line, idx) => (
                         <tr key={line.lineId} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.itemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800" style={{ maxWidth: 180 }}>{line.itemName}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">{line.requiredQty || "—"}</td>
+                          <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
+                          <td className="px-3 py-2.5 text-gray-800" style={{ maxWidth: 180 }}>{line.ItemName}</td>
                           <td className="px-3 py-2.5 text-right font-bold text-blue-700">{line.issueQty || "—"}</td>
-                          <td className="px-3 py-2.5 text-gray-700">{line.stockUnit}</td>
-                          <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap max-w-[160px] truncate">
-                            {line.batchNo || <span className="text-gray-300 italic">Pending scan…</span>}
-                          </td>
+                          <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
+                          <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap max-w-[160px] truncate">{line.batchNo || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-600">{line.supplierBatchNo || "—"}</td>
                           <td className="px-3 py-2.5 text-right font-semibold text-green-700">
                             {line.availableQty ? line.availableQty.toLocaleString() : "—"}
                           </td>
                           <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.fromWarehouseName || "—"}</td>
                           <td className="px-3 py-2.5 text-gray-700 font-mono">{line.fromBin || "—"}</td>
-                          <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.toFloorName || "—"}</td>
-                          <td className="px-3 py-2.5 text-gray-700 font-mono">{line.toBin || "—"}</td>
+                          <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.floorWarehouseName || "—"}</td>
+                          <td className="px-3 py-2.5 text-gray-700 font-mono">{line.floorBin || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-blue-600 whitespace-nowrap">{line.slipNo || "—"}</td>
-                          <td className="px-3 py-2.5 text-gray-700">{line.slipDate ? fmtDate(line.slipDate) : "—"}</td>
                           <td className="px-3 py-2.5">
-                            {line.batchScanned ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
-                                <CheckCircle2 size={10} /> Scanned
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 text-[10px] font-semibold">
-                                Pending
-                              </span>
-                            )}
+                            {line.collectedBy
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200 text-purple-700 text-[10px] font-semibold whitespace-nowrap">{line.collectedBy}</span>
+                              : <span className="text-gray-300 italic">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5">
+                            {line.jobCardContentNo
+                              ? <span className="font-mono text-[10px] text-gray-700 bg-gray-100 border border-gray-200 rounded px-1.5 py-0.5 whitespace-nowrap">{line.jobCardContentNo}</span>
+                              : <span className="text-gray-300 italic text-[10px]">—</span>}
+                          </td>
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {line.issueReason
+                              ? line.issueReason === "For Multi Job Consumption"
+                                ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 border border-purple-200 text-purple-700 text-[10px] font-bold">
+                                    <Users size={9} /> Multi-Job ({line.multiJobAllocations?.length || 0} jobs)
+                                  </span>
+                                : <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 border border-gray-200 text-gray-600 text-[10px] font-medium">{line.issueReason}</span>
+                              : <span className="text-gray-300 italic text-[10px]">—</span>}
                           </td>
                           <td className="px-3 py-2.5 text-center">
                             <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500">
@@ -982,37 +1760,26 @@ export default function ItemIssuePage() {
 
               {/* Remark */}
               <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Remark
-                </p>
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark</p>
                 <input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…"
-                  className={inputCls} />
+                  placeholder="Optional notes…" className={inputCls} />
               </div>
 
               {/* Summary */}
               {lines.length > 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center gap-4">
-                  <span>{lines.length} items total</span>
+                  <span><span className="font-semibold text-blue-700">{lines.length}</span> batch scan{lines.length !== 1 ? "s" : ""}</span>
                   <span>·</span>
-                  <span className="font-semibold text-blue-700">{scannedCount}</span> scanned
-                  {scannedCount < lines.length && (
-                    <>
-                      <span>·</span>
-                      <span className="text-orange-500">{lines.length - scannedCount} pending</span>
-                    </>
-                  )}
+                  <span>Total issued: <span className="font-semibold text-gray-800">{lines.reduce((s, l) => s + l.issueQty, 0).toLocaleString()}</span></span>
                 </div>
               )}
             </div>
           )}
-
         </div>
       </div>
 
       {/* ── Modals ── */}
 
-      {/* Job Card Scanner */}
       {showJobScanner && (
         <ScannerModal
           title="Scan Job Card" hint="Scan the Job Card QR or barcode"
@@ -1021,28 +1788,26 @@ export default function ItemIssuePage() {
         />
       )}
 
-      {/* Job Card Picker */}
       {showJobPicker && (
-        <JobCardPickerModal onSelect={loadJobCard} onClose={() => setShowJobPicker(false)} />
+        <JobCardPickerModal onSelect={loadJobCardItems} onClose={() => setShowJobPicker(false)} />
       )}
 
-      {/* Item Batch Scanner */}
       {showItemScanner && (
         <ScannerModal
           title="Scan Item Batch QR"
           hint={showItemScanner.itemCode ? `Scanning for: ${showItemScanner.itemCode}` : "Scan GRN-generated batch QR label"}
-          onScan={(raw) => handleBatchScan(raw, showItemScanner.lineId, lines.find((l) => l.lineId === showItemScanner.lineId)?.requiredQty ?? 0)}
+          onScan={(raw) => handleBatchScan(raw, showItemScanner.jobItemId, showItemScanner.remainingQty)}
           onClose={() => setShowItemScanner(null)}
         />
       )}
 
-      {/* Batch Confirm Modal */}
       {pendingBatch && (
         <BatchConfirmModal
           batch={pendingBatch.batch}
-          requiredQty={pendingBatch.requiredQty}
-          seq={lines.filter((l) => l.batchScanned).length + 1}
-          onConfirm={(updates) => confirmIssueLine(pendingBatch.lineId, updates)}
+          requiredQty={pendingBatch.remainingQty}
+          seq={lines.length + 1}
+          issueMode={issueMode}
+          onConfirm={(updates) => confirmIssueLine(pendingBatch.jobItemId, updates)}
           onClose={() => setPendingBatch(null)}
         />
       )}

@@ -56,6 +56,9 @@ const navItems: NavItem[] = [
       { label: "Recipe Master",           href: "/masters/recipes",      icon: BookOpen },
       { label: "HSN Master",              href: "/masters/hsn",          icon: Barcode },
       { label: "Unit Master",             href: "/masters/units",        icon: Factory },
+      { label: "Warehouse Master",        href: "/masters/warehouses",   icon: Warehouse },
+      { label: "User Master",             href: "/masters/users",        icon: UserCheck },
+      { label: "Field Master",            href: "/masters/field-master", icon: Layers },
     ],
   },
   {

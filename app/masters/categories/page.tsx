@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -6,16 +6,16 @@ import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
 const BASE_URL = "https://api.indusanalytics.co.in";
-const BASE = `${BASE_URL}/api/categorymaster`;
+const BASE = `${BASE_URL}/api/categorymasterShrink`;
 
-// ── Unwrap triple-encoded JSON ─────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬ Unwrap triple-encoded JSON Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 function unwrap(raw: any): any {
   let r = raw;
   while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
   return r;
 }
 
-// ── Shared UI ──────────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬ Shared UI Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -30,12 +30,11 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬ Types Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 type CategoryRow = {
   id: string;
   CategoryID: string;
   CategoryName: string;
-  Orientation: string;
   Layer: string;
   Remark: string;
   SegmentID: string;
@@ -72,7 +71,7 @@ type CoaRow = {
   SpecificationFieldUnit: string;
   ResultDataFieldType: string;
   Defaults: string;
-  ShowIn: string;
+  ShowIn: boolean;
 };
 
 type DryRow = {
@@ -101,7 +100,6 @@ type PlyConfigRow = {
 
 type FormState = {
   CategoryName: string;
-  Orientation: string;
   Layer: string;
   SegmentID: string;
   Remark: string;
@@ -115,11 +113,11 @@ type FormState = {
 const uid = () => Math.random().toString(36).slice(2, 8);
 
 const blank = (): FormState => ({
-  CategoryName: "", Orientation: "2D", Layer: "", SegmentID: "", Remark: "",
+  CategoryName: "", Layer: "", SegmentID: "", Remark: "",
   contents: [], processAllocations: [], coaRows: [], dryRows: [], plyRows: [],
 });
 
-// Layer string → max ply count
+// Layer string Ã¢â€ ' max ply count
 const layerToPlyCount = (layer: string): number => {
   if (!layer || layer.toLowerCase() === "mono") return 1;
   const m = layer.match(/(\d+)/);
@@ -128,21 +126,22 @@ const layerToPlyCount = (layer: string): number => {
 
 const blankply = () => ({ PlyNumber: 1, ItemGroupID: "", ItemGroupName: "", ItemSubGroupName: "", FieldDisplayName: "", DefaultGSM: 0, MinimumValue: 0, MaximumValue: 0, SharePercentageFormula: "" });
 
-const ORIENTATIONS = [
-  { value: "2D", label: "2D" },
-  { value: "3D", label: "3D" },
-  { value: "BOOK", label: "BOOK" },
+const LAYERS = [
+  { value: "Mono", label: "Mono" },
+  { value: "2 Ply", label: "2 Ply" },
+  { value: "3 Ply", label: "3 Ply" },
+  { value: "4 Ply", label: "4 Ply" },
+  { value: "5 Ply", label: "5 Ply" },
 ];
-const LAYERS = ["Mono", "2 Layer", "3 Layer", "4 Layer", "5 Layer"].map(v => ({ value: v, label: v }));
 
 const blankcoa = () => ({
   TestParameterName: "", Specification: "", SpecificationFieldDataFromTable: "",
   SpecificationFieldValue: "", SpecificationFieldUnit: "",
-  ResultDataFieldType: "", Defaults: "", ShowIn: "",
+  ResultDataFieldType: "", Defaults: "", ShowIn: false,
 });
 const blankdry = () => ({ Particular: "", GSM: 0, MinimumValue: 0, MaximumValue: 0, IsEditableField: true });
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Ã¢"â‚¬Ã¢"â‚¬ Page Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
 export default function CategoryMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -154,7 +153,7 @@ export default function CategoryMasterPage() {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<CategoryRow | null>(null);
   const [form, setForm] = useState<FormState>(blank());
-  const [activeTab, setActiveTab] = useState<"detail" | "content" | "coa" | "dryweight" | "ply">("detail");
+  const [activeTab, setActiveTab] = useState<"detail" | "content" | "coa" | "ply">("detail");
   const [filterSegment, setFilterSegment] = useState("All");
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [processModalContentId, setProcessModalContentId] = useState<string | null>(null);
@@ -163,13 +162,14 @@ export default function CategoryMasterPage() {
   const [coaDraft, setCoaDraft] = useState(blankcoa());
   const [dryDraft, setDryDraft] = useState(blankdry());
   const [plyDraft, setPlyDraft] = useState(blankply());
+  const [plyDraftErr, setPlyDraftErr] = useState<Record<string, boolean>>({});
   const [itemGroupsFull, setItemGroupsFull] = useState<{ItemGroupID: string; ItemGroupName: string}[]>([]);
   const [itemSubGroups, setItemSubGroups] = useState<string[]>([]);
   const [allSubGroupsFull, setAllSubGroupsFull] = useState<{ItemSubGroupName: string; UnderSubGroupID: string}[]>([]);
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // ── Load list ──────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Load list Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/getcategory`, { headers: authHeaders() })
@@ -213,7 +213,7 @@ export default function CategoryMasterPage() {
   }, []);
 
   const loadAllSubGroups = useCallback(() => {
-    fetch(`${BASE_URL}/api/itemmaster/group`, { headers: authHeaders() })
+    fetch(`${BASE_URL}/api/itemmasterShrink/group`, { headers: authHeaders() })
       .then(r => r.text())
       .then(text => {
         const raw = unwrap(text);
@@ -227,7 +227,7 @@ export default function CategoryMasterPage() {
 
   useEffect(() => { loadList(); loadSegments(); loadProcesses(); loadItemGroups(); loadAllSubGroups(); }, [loadList, loadSegments, loadProcesses, loadItemGroups, loadAllSubGroups]);
 
-  // ── Load content + process allocations ────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Load content + process allocations Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const fetchContents = useCallback(async (categoryID: string): Promise<{ contents: ContentItem[]; processAllocations: ProcessAllocation[] }> => {
     try {
       const res = await fetch(`${BASE}/getallcontents/${categoryID}`, { headers: authHeaders() });
@@ -259,11 +259,14 @@ export default function CategoryMasterPage() {
     } catch { return { contents: [], processAllocations: [] }; }
   }, []);
 
-  // ── Load COA rows for a category ──────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Load COA rows for a category Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const fetchCoa = useCallback(async (categoryID: string): Promise<CoaRow[]> => {
     try {
       const res = await fetch(`${BASE}/categorywisegriddata/${categoryID}`, { headers: authHeaders() });
-      const raw = unwrap(await res.text());
+      const text = await res.text();
+      console.log("fetchCoa raw response (CategoryID=" + categoryID + "):", text);
+      const raw = unwrap(text);
+      console.log("fetchCoa unwrapped:", raw);
       const rows: any[] = Array.isArray(raw) ? raw : [];
       return rows.map(r => ({
         id: uid(),
@@ -274,33 +277,41 @@ export default function CategoryMasterPage() {
         SpecificationFieldUnit: r.SpecificationFieldUnit ?? "",
         ResultDataFieldType: r.ResultDataFieldType ?? "",
         Defaults: r.Defaults ?? "",
-        ShowIn: r.ShowIn ?? "",
+        ShowIn: r.ShowIn === true || r.ShowIn === 1 || r.ShowIn === "1" || r.ShowIn === "true",
       }));
-    } catch { return []; }
+    } catch (e) {
+      console.error("fetchCoa error:", e);
+      return [];
+    }
   }, []);
 
-  // ── Load ply configuration for a category ──────────────────────────────────────
-  const fetchPlyConfig = useCallback(async (categoryID: string): Promise<PlyConfigRow[]> => {
+  // Ã¢"â‚¬Ã¢"â‚¬ Load ply configuration for a category Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  const fetchPlyConfig = useCallback(async (categoryID: string, groups: {ItemGroupID: string; ItemGroupName: string}[]): Promise<PlyConfigRow[]> => {
     try {
       const res = await fetch(`${BASE}/getplyconfiguration/${categoryID}`, { headers: authHeaders() });
       const raw = unwrap(await res.text());
       const rows: any[] = Array.isArray(raw) ? raw : [];
-      return rows.map(r => ({
-        id: uid(),
-        PlyNumber: Number(r.PlyNumber ?? 1),
-        ItemGroupID: r.ItemGroupID ? String(r.ItemGroupID) : "",
-        ItemGroupName: r.ItemGroupName ?? "",
-        ItemSubGroupName: r.ItemSubGroupName ?? "",
-        FieldDisplayName: r.FieldDisplayName ?? "",
-        DefaultGSM: Number(r.DefaultGSM ?? 0),
-        MinimumValue: Number(r.MinimumValue ?? 0),
-        MaximumValue: Number(r.MaximumValue ?? 0),
-        SharePercentageFormula: r.SharePercentageFormula ?? "",
-      }));
+      return rows.map(r => {
+        const name = r.ItemGroupName ?? "";
+        // ItemGroupID is not stored in CategoryPlyConfiguration â€” resolve it by matching name
+        const grp = groups.find(g => g.ItemGroupName === name);
+        return {
+          id: uid(),
+          PlyNumber: Number(r.PlyNumber ?? 1),
+          ItemGroupID: grp ? String(grp.ItemGroupID) : "",
+          ItemGroupName: name,
+          ItemSubGroupName: r.ItemSubGroupName ?? "",
+          FieldDisplayName: r.FieldDisplayName ?? "",
+          DefaultGSM: Number(r.DefaultGSM ?? 0),
+          MinimumValue: Number(r.MinimumValue ?? 0),
+          MaximumValue: Number(r.MaximumValue ?? 0),
+          SharePercentageFormula: r.SharePercentageFormula ?? "",
+        };
+      });
     } catch { return []; }
   }, []);
 
-  // ── Open add ───────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Open add Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const openAdd = async () => {
     setEditing(null);
     setError("");
@@ -312,7 +323,7 @@ export default function CategoryMasterPage() {
     setFormLoading(false);
   };
 
-  // ── Open edit ──────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Open edit Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const openEdit = async (row: CategoryRow) => {
     setEditing(row);
     setError("");
@@ -322,11 +333,13 @@ export default function CategoryMasterPage() {
     const [{ contents, processAllocations }, coaRows, plyRows] = await Promise.all([
       fetchContents(row.CategoryID),
       fetchCoa(row.CategoryID),
-      fetchPlyConfig(row.CategoryID),
+      fetchPlyConfig(row.CategoryID, itemGroupsFull),
     ]);
+    
+    console.log("COA Data on Edit Click (fetchCoa):", coaRows);
+
     setForm({
       CategoryName: row.CategoryName ?? "",
-      Orientation: row.Orientation ?? "2D",
       Layer: row.Layer ?? "",
       SegmentID: String(row.SegmentID ?? ""),
       Remark: row.Remark ?? "",
@@ -339,12 +352,12 @@ export default function CategoryMasterPage() {
     setFormLoading(false);
   };
 
-  // ── Toggle content selection ───────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Toggle content selection Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const toggleContent = (idx: number, field: "IsSelected" | "IsDefault") => {
     const items = [...form.contents];
     items[idx] = { ...items[idx], [field]: !items[idx][field] };
     if (field === "IsSelected" && !items[idx].IsSelected) {
-      // Deselected — remove process allocations for this content
+      // Deselected â€” remove process allocations for this content
       const contentID = items[idx].ContentID;
       setForm(p => ({
         ...p,
@@ -356,7 +369,7 @@ export default function CategoryMasterPage() {
     f("contents", items);
   };
 
-  // ── Toggle process allocation for a content ────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Toggle process allocation for a content Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const toggleProcessAllocation = (processID: string, contentID: string) => {
     setForm(p => {
       const exists = p.processAllocations.some(a => a.ProcessID === processID && a.ContentID === contentID);
@@ -367,7 +380,7 @@ export default function CategoryMasterPage() {
     });
   };
 
-  // ── Save ───────────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Save Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const saveCategory = async () => {
     setSubmitAttempted(true);
     if (!form.CategoryName.trim()) { setError("Category Name is required."); return; }
@@ -378,7 +391,6 @@ export default function CategoryMasterPage() {
 
       const masterRecord: Record<string, any> = {
         CategoryName: form.CategoryName,
-        Orientation: form.Orientation || null,
         Layer: form.Layer || null,
         SegmentID: form.SegmentID ? Number(form.SegmentID) : null,
         Remark: form.Remark || null,
@@ -415,7 +427,7 @@ export default function CategoryMasterPage() {
         SpecificationFieldUnit: r.SpecificationFieldUnit,
         ResultDataFieldType: r.ResultDataFieldType,
         Defaults: r.Defaults,
-        ShowIn: r.ShowIn,
+        ShowIn: r.ShowIn ? 1 : 0,
       }));
 
       // Only send process allocations for selected contents
@@ -424,9 +436,9 @@ export default function CategoryMasterPage() {
         .filter(a => selectedContentIDs.has(a.ContentID))
         .map(a => ({ ProcessID: a.ProcessID, ContentID: a.ContentID }));
 
+      // Note: 'id' (client uid) and 'ItemGroupID' excluded â€” neither exists as a column in CategoryPlyConfiguration
       const plyConfigPayload = form.plyRows.map(r => ({
         PlyNumber: r.PlyNumber,
-        ItemGroupID: r.ItemGroupID,
         ItemGroupName: r.ItemGroupName,
         ItemSubGroupName: r.ItemSubGroupName,
         FieldDisplayName: r.FieldDisplayName,
@@ -435,6 +447,8 @@ export default function CategoryMasterPage() {
         MaximumValue: r.MaximumValue,
         SharePercentageFormula: r.SharePercentageFormula,
       }));
+
+      console.log("COA Payload rows:", coaPayload.length, coaPayload);
 
       const payload: any = {
         CostingDataGroupMaster: [masterRecord],
@@ -474,7 +488,7 @@ export default function CategoryMasterPage() {
     setSaving(false);
   };
 
-  // ── Delete ─────────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Delete Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const deleteCategory = async (CategoryID: string) => {
     if (!confirm("Delete this category?")) return;
     try {
@@ -489,7 +503,7 @@ export default function CategoryMasterPage() {
     }
   };
 
-  // ── List derived ───────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ List derived Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const uniqueSegments = useMemo(() =>
     ["All", ...new Set(categories.map(c => c.SegmentName).filter(Boolean))],
     [categories]);
@@ -498,7 +512,7 @@ export default function CategoryMasterPage() {
     filterSegment === "All" ? categories : categories.filter(c => c.SegmentName === filterSegment),
     [categories, filterSegment]);
 
-  // ── Process modal ──────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ Process modal Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const activeContent = processModalContentId
     ? form.contents.find(c => c.ContentID === processModalContentId)
     : null;
@@ -562,13 +576,12 @@ export default function CategoryMasterPage() {
     );
   };
 
-  // ── FORM VIEW ──────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ FORM VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   if (view === "form") {
     const tabs = [
       { key: "detail" as const, label: "Category Detail" },
       { key: "content" as const, label: "Content Allocation" },
       { key: "coa" as const, label: "COA Parameters" },
-      { key: "dryweight" as const, label: "Dry Weight (GSM)" },
       { key: "ply" as const, label: "Ply Configuration" },
     ];
 
@@ -624,7 +637,7 @@ export default function CategoryMasterPage() {
               ) : (
 
                 <>
-                  {/* ── DETAIL TAB ── */}
+                  {/* Ã¢"â‚¬Ã¢"â‚¬ DETAIL TAB Ã¢"â‚¬Ã¢"â‚¬ */}
                   {activeTab === "detail" && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div>
@@ -633,29 +646,9 @@ export default function CategoryMasterPage() {
                           <div className="md:col-span-2">
                             <Field label="Category Name" required>
                               <input type="text" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
-                                placeholder="e.g. Gravure - Solvent Base 2 Layer" className={ic(submitAttempted && !form.CategoryName.trim())} />
+                                placeholder="e.g. Gravure - Solvent Base 2 Ply" className={ic(submitAttempted && !form.CategoryName.trim())} />
                             </Field>
                           </div>
-                          <Field label="Orientation">
-                            <select value={form.Orientation} onChange={e => f("Orientation", e.target.value)} className={inputCls}>
-                              <option value="">Select...</option>
-                              {ORIENTATIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                          </Field>
-                          <Field label="Layer">
-                            <select value={form.Layer} onChange={e => f("Layer", e.target.value)} className={inputCls}>
-                              <option value="">Select...</option>
-                              {LAYERS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
-                          </Field>
-                          <Field label="Segment">
-                            <select value={form.SegmentID} onChange={e => f("SegmentID", e.target.value)} className={inputCls}>
-                              <option value="">Select Segment...</option>
-                              {segments.map(s => (
-                                <option key={s.SegmentID} value={String(s.SegmentID)}>{s.SegmentName}</option>
-                              ))}
-                            </select>
-                          </Field>
                           <div className="md:col-span-3">
                             <Field label="Remark">
                               <textarea value={form.Remark} onChange={e => f("Remark", e.target.value)} rows={2}
@@ -666,13 +659,13 @@ export default function CategoryMasterPage() {
                       </div>
                       <div className="flex justify-end pt-4 border-t border-gray-100">
                         <button onClick={() => setActiveTab("content")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">
-                          Content Allocation →
+                          Content Allocation Ã¢â€ '
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* ── CONTENT ALLOCATION TAB ── */}
+                  {/* Ã¢"â‚¬Ã¢"â‚¬ CONTENT ALLOCATION TAB Ã¢"â‚¬Ã¢"â‚¬ */}
                   {activeTab === "content" && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center justify-between">
@@ -745,13 +738,13 @@ export default function CategoryMasterPage() {
                         </div>
                       )}
                       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Detail</button>
-                        <button onClick={() => setActiveTab("coa")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">COA Parameters →</button>
+                        <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Ã¢â€ Â Detail</button>
+                        <button onClick={() => setActiveTab("coa")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">COA Parameters Ã¢â€ '</button>
                       </div>
                     </div>
                   )}
 
-                  {/* ── COA PARAMETERS TAB ── */}
+                  {/* Ã¢"â‚¬Ã¢"â‚¬ COA PARAMETERS TAB Ã¢"â‚¬Ã¢"â‚¬ */}
                   {activeTab === "coa" && (
                     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <SectionTitle title="COA Parameter Allocation" />
@@ -766,7 +759,6 @@ export default function CategoryMasterPage() {
                           ["Field Unit", "SpecificationFieldUnit"],
                           ["Result Data Type", "ResultDataFieldType"],
                           ["Default Value", "Defaults"],
-                          ["Show In", "ShowIn"],
                         ] as const).map(([label, key]) => (
                           <div key={key}>
                             <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">{label}</label>
@@ -774,6 +766,15 @@ export default function CategoryMasterPage() {
                               onChange={e => setCoaDraft(p => ({ ...p, [key]: e.target.value }))} placeholder={label.replace(" *", "")} />
                           </div>
                         ))}
+                        <div>
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Show In</label>
+                          <label className="flex items-center gap-2 h-[38px] cursor-pointer">
+                            <input type="checkbox" checked={coaDraft.ShowIn}
+                              onChange={e => setCoaDraft(p => ({ ...p, ShowIn: e.target.checked }))}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
+                            <span className="text-xs text-gray-600">Show In Report</span>
+                          </label>
+                        </div>
                         <div className="flex items-end">
                           <button onClick={() => {
                             if (!coaDraft.TestParameterName.trim()) return;
@@ -798,14 +799,14 @@ export default function CategoryMasterPage() {
                             {form.coaRows.map(row => (
                               <div key={row.id} className="grid hover:bg-gray-50 text-xs"
                                 style={{ gridTemplateColumns: "1.4fr 1fr 1fr 1fr 0.7fr 1fr 0.7fr 0.7fr 48px" }}>
-                                <div className="px-3 py-3 font-medium text-gray-700 truncate">{row.TestParameterName || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.Specification || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldDataFromTable || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldValue || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldUnit || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.ResultDataFieldType || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.Defaults || "—"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.ShowIn || "—"}</div>
+                                <div className="px-3 py-3 font-medium text-gray-700 truncate">{row.TestParameterName || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Specification || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldDataFromTable || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldValue || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldUnit || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.ResultDataFieldType || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Defaults || "â€”"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.ShowIn ? "Yes" : "No"}</div>
                                 <div className="px-3 py-3 flex justify-center">
                                   <button onClick={() => f("coaRows", form.coaRows.filter(r => r.id !== row.id))}
                                     className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50">
@@ -822,96 +823,13 @@ export default function CategoryMasterPage() {
                       </div>
 
                       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("content")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Content</button>
-                        <button onClick={() => setActiveTab("dryweight")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Dry Weight →</button>
+                        <button onClick={() => setActiveTab("content")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Ã¢â€ Â Content</button>
+                        <button onClick={() => setActiveTab("ply")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Ply Configuration â†’</button>
                       </div>
                     </div>
                   )}
 
-                  {/* ── DRY WEIGHT TAB ── */}
-                  {activeTab === "dryweight" && (
-                    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      <SectionTitle title="Dry GSM Layer Setting (RotoGSMContributionSetting)" />
-
-                      {/* Input */}
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-6 gap-2 text-xs">
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Particular</label>
-                          <input className={inputCls + " text-xs"} placeholder="e.g. Ink" value={dryDraft.Particular}
-                            onChange={e => setDryDraft(p => ({ ...p, Particular: e.target.value }))} />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">GSM</label>
-                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.GSM}
-                            onChange={e => setDryDraft(p => ({ ...p, GSM: Number(e.target.value) }))} />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min</label>
-                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.MinimumValue}
-                            onChange={e => setDryDraft(p => ({ ...p, MinimumValue: Number(e.target.value) }))} />
-                        </div>
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Max</label>
-                          <input className={inputCls + " text-xs"} type="number" placeholder="0" value={dryDraft.MaximumValue}
-                            onChange={e => setDryDraft(p => ({ ...p, MaximumValue: Number(e.target.value) }))} />
-                        </div>
-                        <div className="flex items-end pb-1">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" checked={dryDraft.IsEditableField}
-                              onChange={e => setDryDraft(p => ({ ...p, IsEditableField: e.target.checked }))}
-                              className="w-4 h-4 text-blue-600" />
-                            <span className="text-xs text-gray-600">Editable</span>
-                          </label>
-                        </div>
-                        <div className="flex items-end">
-                          <button onClick={() => {
-                            if (!dryDraft.Particular.trim()) return;
-                            f("dryRows", [...form.dryRows, { id: uid(), ...dryDraft }]);
-                            setDryDraft(blankdry());
-                          }} className="w-full px-3 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700">
-                            + Add
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Table */}
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="grid grid-cols-6 bg-blue-700 text-white text-xs font-semibold">
-                          {["Particular", "GSM", "Min", "Max", "Editable", "Action"].map(h => (
-                            <div key={h} className="px-4 py-3">{h}</div>
-                          ))}
-                        </div>
-                        <div className="divide-y divide-gray-100 bg-white min-h-[80px]">
-                          {form.dryRows.map(row => (
-                            <div key={row.id} className="grid grid-cols-6 text-sm hover:bg-gray-50">
-                              <div className="px-4 py-3 font-medium text-gray-700">{row.Particular}</div>
-                              <div className="px-4 py-3 text-gray-600">{row.GSM}</div>
-                              <div className="px-4 py-3 text-gray-600">{row.MinimumValue}</div>
-                              <div className="px-4 py-3 text-gray-600">{row.MaximumValue}</div>
-                              <div className="px-4 py-3">
-                                {row.IsEditableField ? <Check size={15} className="text-blue-600" /> : <span className="text-gray-400">—</span>}
-                              </div>
-                              <div className="px-4 py-3">
-                                <button onClick={() => f("dryRows", form.dryRows.filter(r => r.id !== row.id))}
-                                  className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50">
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          {form.dryRows.length === 0 && (
-                            <div className="text-center text-xs text-gray-400 py-8">No rows. Use form above to add.</div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← COA</button>
-                        <button onClick={() => setActiveTab("ply")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Ply Configuration →</button>
-                      </div>
-                    </div>
-                  )}
-                  {/* ── PLY CONFIGURATION TAB ── */}
+                  {/* Ã¢"â‚¬Ã¢"â‚¬ PLY CONFIGURATION TAB Ã¢"â‚¬Ã¢"â‚¬ */}
                   {activeTab === "ply" && (() => {
                     const maxPly = layerToPlyCount(form.Layer);
                     const plyNumbers = Array.from({ length: maxPly }, (_, i) => i + 1);
@@ -919,12 +837,25 @@ export default function CategoryMasterPage() {
                       <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="flex items-center justify-between">
                           <SectionTitle title="Ply Configuration" />
-                          <span className="text-xs text-gray-400">Max Plies: <strong className="text-blue-600">{maxPly}</strong> (based on Layer: {form.Layer || "not set"})</span>
+                          <span className="text-xs text-gray-400">Max Plies: <strong className="text-blue-600">{maxPly}</strong> (based on Ply: {form.Layer || "not set"})</span>
+                        </div>
+
+                        {/* Ply (Layer) Selection */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-2">
+                          <div>
+                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+                              Ply <span className="text-red-500">*</span>
+                            </label>
+                            <select value={form.Layer} onChange={e => f("Layer", e.target.value)} className={inputCls}>
+                              <option value="">Select Ply...</option>
+                              {LAYERS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          </div>
                         </div>
 
                         {/* Draft input */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
-                          <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Add Consumable Row</p>
+                          <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Add Consumable Layer</p>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {/* Ply Number */}
                             <div>
@@ -938,22 +869,39 @@ export default function CategoryMasterPage() {
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Group *</label>
                               <select
-                                className={inputCls + " text-xs"}
+                                className={(plyDraftErr.ItemGroupID ? ic(true) : inputCls) + " text-xs"}
                                 value={plyDraft.ItemGroupID}
                                 onChange={e => {
                                   const id = e.target.value;
                                   const grp = itemGroupsFull.find(g => String(g.ItemGroupID) === id);
                                   const name = grp?.ItemGroupName ?? "";
                                   setPlyDraft(p => ({ ...p, ItemGroupID: id, ItemGroupName: name, ItemSubGroupName: "" }));
+                                  setPlyDraftErr(p => ({ ...p, ItemGroupID: false }));
+                                  setItemSubGroups([]);
                                   if (id) {
-                                    const filtered = allSubGroupsFull
-                                      .filter(s => s.UnderSubGroupID === id && s.ItemSubGroupName)
-                                      .map(s => s.ItemSubGroupName);
-                                    setItemSubGroups(filtered);
-                                  } else setItemSubGroups([]);
+                                    fetch(`${BASE}/getitemsubgroupsforply/${id}`, { headers: authHeaders() })
+                                      .then(r => r.text())
+                                      .then(text => {
+                                        const raw = unwrap(text);
+                                        if (Array.isArray(raw) && raw.length > 0) {
+                                          setItemSubGroups(raw.map((s: any) => String(s.ItemSubGroupName ?? "")).filter(Boolean));
+                                        } else {
+                                          const fallback = allSubGroupsFull
+                                            .filter(s => String(s.UnderSubGroupID) === String(id) && s.ItemSubGroupName)
+                                            .map(s => s.ItemSubGroupName);
+                                          setItemSubGroups(fallback);
+                                        }
+                                      })
+                                      .catch(() => {
+                                        const fallback = allSubGroupsFull
+                                          .filter(s => String(s.UnderSubGroupID) === String(id) && s.ItemSubGroupName)
+                                          .map(s => s.ItemSubGroupName);
+                                        setItemSubGroups(fallback);
+                                      });
+                                  }
                                 }}
                               >
-                                <option value="">— Select Group —</option>
+                                <option value="">â€” Select Group â€”</option>
                                 {itemGroupsFull.map(g => (
                                   <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
                                 ))}
@@ -963,28 +911,28 @@ export default function CategoryMasterPage() {
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Sub Group *</label>
                               <select
-                                className={inputCls + " text-xs"}
+                                className={(plyDraftErr.ItemSubGroupName ? ic(true) : inputCls) + " text-xs"}
                                 value={plyDraft.ItemSubGroupName}
-                                onChange={e => setPlyDraft(p => ({ ...p, ItemSubGroupName: e.target.value }))}
+                                onChange={e => { setPlyDraft(p => ({ ...p, ItemSubGroupName: e.target.value })); setPlyDraftErr(p => ({ ...p, ItemSubGroupName: false })); }}
                                 disabled={!plyDraft.ItemGroupID}
                               >
-                                <option value="">— Select Sub Group —</option>
+                                <option value="">â€” Select Sub Group â€”</option>
                                 {itemSubGroups.map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             </div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Field Display Name</label>
-                              <input className={inputCls + " text-xs"} placeholder="e.g. Ink Wet Weight"
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Field Display Name *</label>
+                              <input className={(plyDraftErr.FieldDisplayName ? ic(true) : inputCls) + " text-xs"} placeholder="e.g. Ink Wet Weight"
                                 value={plyDraft.FieldDisplayName}
-                                onChange={e => setPlyDraft(p => ({ ...p, FieldDisplayName: e.target.value }))} />
+                                onChange={e => { setPlyDraft(p => ({ ...p, FieldDisplayName: e.target.value })); setPlyDraftErr(p => ({ ...p, FieldDisplayName: false })); }} />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default GSM</label>
-                              <input className={inputCls + " text-xs"} type="number" placeholder="0.00"
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default Dry GSM *</label>
+                              <input className={(plyDraftErr.DefaultGSM ? ic(true) : inputCls) + " text-xs"} type="number" placeholder="0.00"
                                 value={plyDraft.DefaultGSM}
-                                onChange={e => setPlyDraft(p => ({ ...p, DefaultGSM: Number(e.target.value) }))} />
+                                onChange={e => { setPlyDraft(p => ({ ...p, DefaultGSM: Number(e.target.value) })); setPlyDraftErr(p => ({ ...p, DefaultGSM: false })); }} />
                             </div>
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min Value</label>
@@ -1008,13 +956,19 @@ export default function CategoryMasterPage() {
                             </div>
                             <button
                               onClick={() => {
-                                if (!plyDraft.ItemGroupName || !plyDraft.ItemSubGroupName) return;
+                                const errs: Record<string, boolean> = {};
+                                if (!plyDraft.ItemGroupID) errs.ItemGroupID = true;
+                                if (!plyDraft.ItemSubGroupName) errs.ItemSubGroupName = true;
+                                if (!plyDraft.FieldDisplayName.trim()) errs.FieldDisplayName = true;
+                                if (!plyDraft.DefaultGSM || plyDraft.DefaultGSM <= 0) errs.DefaultGSM = true;
+                                if (Object.keys(errs).length > 0) { setPlyDraftErr(errs); return; }
+                                setPlyDraftErr({});
                                 f("plyRows", [...form.plyRows, { id: uid(), ...plyDraft }]);
                                 setPlyDraft(blankply());
                                 setItemSubGroups([]);
                               }}
                               className="px-5 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 flex items-center gap-1.5 whitespace-nowrap h-[38px]">
-                              <Plus size={13} /> Add Row
+                              <Plus size={13} /> + Add Layer
                             </button>
                           </div>
                         </div>
@@ -1026,13 +980,13 @@ export default function CategoryMasterPage() {
                           return (
                             <div key={plyNum} className="border border-gray-200 rounded-lg overflow-hidden">
                               <div className="bg-blue-700 px-4 py-2 text-white text-xs font-bold uppercase tracking-widest">
-                                Ply {plyNum} — Consumables
+                                Ply {plyNum} â€” Consumables
                               </div>
                               <div className="overflow-x-auto">
                                 <div className="min-w-[820px]">
                                   <div className="grid bg-gray-100 text-gray-600 text-[10px] font-bold uppercase tracking-wider"
                                     style={{ gridTemplateColumns: "1.2fr 1.2fr 1.4fr 0.8fr 0.6fr 0.6fr 1.2fr 44px" }}>
-                                    {["Item Group", "Item Sub Group", "Display Name", "Default GSM", "Min", "Max", "Share % Formula", ""].map(h => (
+                                    {["Item Group", "Item Sub Group", "Display Name", "Default Dry GSM", "Min", "Max", "Share % Formula", ""].map(h => (
                                       <div key={h} className="px-3 py-2">{h}</div>
                                     ))}
                                   </div>
@@ -1044,11 +998,11 @@ export default function CategoryMasterPage() {
                                           <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-semibold">{row.ItemGroupName}</span>
                                         </div>
                                         <div className="px-3 py-2.5 text-gray-700 font-medium">{row.ItemSubGroupName}</div>
-                                        <div className="px-3 py-2.5 text-gray-600">{row.FieldDisplayName || "—"}</div>
+                                        <div className="px-3 py-2.5 text-gray-600">{row.FieldDisplayName || "â€”"}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-600 font-mono">{row.DefaultGSM}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MinimumValue}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MaximumValue}</div>
-                                        <div className="px-3 py-2.5 text-gray-500 truncate">{row.SharePercentageFormula || "—"}</div>
+                                        <div className="px-3 py-2.5 text-gray-500 truncate">{row.SharePercentageFormula || "â€”"}</div>
                                         <div className="px-2 py-2.5 flex justify-center">
                                           <button onClick={() => f("plyRows", form.plyRows.filter(r => r.id !== row.id))}
                                             className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50">
@@ -1071,7 +1025,7 @@ export default function CategoryMasterPage() {
                         )}
 
                         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                          <button onClick={() => setActiveTab("dryweight")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Dry Weight</button>
+                          <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">â† COA Parameters</button>
                           <button onClick={saveCategory} disabled={saving}
                             className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -1091,7 +1045,7 @@ export default function CategoryMasterPage() {
     );
   }
 
-  // ── LIST VIEW ──────────────────────────────────────────────────────────────────
+  // Ã¢"â‚¬Ã¢"â‚¬ LIST VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const columns: Column<CategoryRow>[] = [
     { key: "CategoryID", header: "ID", sortable: true },
     { key: "CategoryName", header: "Category Name", sortable: true },
@@ -1099,11 +1053,10 @@ export default function CategoryMasterPage() {
       key: "SegmentName", header: "Segment",
       render: r => r.SegmentName
         ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.SegmentName}</span>
-        : <span className="text-gray-400">—</span>,
+        : <span className="text-gray-400">â€”</span>,
     },
-    { key: "Orientation", header: "Orientation", render: r => r.Orientation || <span className="text-gray-400">—</span> },
-    { key: "Layer", header: "Layer", render: r => r.Layer || <span className="text-gray-400">—</span> },
-    { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">—</span> },
+    { key: "Layer", header: "Ply", render: r => r.Layer || <span className="text-gray-400">â€”</span> },
+    { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">â€”</span> },
   ];
 
   return (
