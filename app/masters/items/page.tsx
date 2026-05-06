@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
 // ── Shared UI components (must be outside main component to avoid focus loss) ──
 const SectionTitle = ({ title }: { title: string }) => (
@@ -265,7 +265,7 @@ export default function ItemMasterPage() {
   // Sub Group 3 = TypeSpecification / TypeSpacification (spelling varies across groups)
   const subGroup3Field = useMemo(() => formFields.find(f => /typesp[ae]cification/i.test(f.FieldName ?? "")), [formFields]);
   // Supplier = Manufecturer / Manufacturer
-  const supplierField  = useMemo(() => formFields.find(f => /manufect?urer/i.test(f.FieldName ?? "")), [formFields]);
+  const supplierField = useMemo(() => formFields.find(f => /manufect?urer/i.test(f.FieldName ?? "")), [formFields]);
 
   // Resolved field names — used when reading/writing formValues
   const sg2FieldName = subGroup2Field?.FieldName ?? "Quality";
@@ -294,11 +294,11 @@ export default function ItemMasterPage() {
   const [itemNameFormula, setItemNameFormula] = useState<string[]>([]);
 
   // Generic cascading sub-group state (used for any group with ItemSubGroupID in formFields)
-  const [sgSubGroupOpts, setSgSubGroupOpts] = useState<{id: string; name: string; displayName: string; subGroupPrefix?: string}[]>([]);
-  const [sgTypeOpts, setSgTypeOpts] = useState<{type: string; prefix: string}[]>([]);
-  const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{spec: string; prefix: string}[]>([]);
-  const [sgSupplierOpts, setSgSupplierOpts] = useState<{id: string; name: string}[]>([]);
-  const [sgUnitOpts, setSgUnitOpts] = useState<{id: string; name: string}[]>([]);
+  const [sgSubGroupOpts, setSgSubGroupOpts] = useState<{ id: string; name: string; displayName: string; subGroupPrefix?: string }[]>([]);
+  const [sgTypeOpts, setSgTypeOpts] = useState<{ type: string; prefix: string }[]>([]);
+  const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{ spec: string; prefix: string }[]>([]);
+  const [sgSupplierOpts, setSgSupplierOpts] = useState<{ id: string; name: string }[]>([]);
+  const [sgUnitOpts, setSgUnitOpts] = useState<{ id: string; name: string }[]>([]);
   const [sgSubGroupName, setSgSubGroupName] = useState("");
   const [sgSubGroupDisplayName, setSgSubGroupDisplayName] = useState("");
   const [sgSubGroupPrefix, setSgSubGroupPrefix] = useState("");
@@ -395,7 +395,7 @@ export default function ItemMasterPage() {
     if (editPrefetchDone.current) return;
     if (!hasCascadeFields || !sgTypeOpts.length) return;
     const existingType = String(formValues[sg2FieldName] ?? "");
-    const existingID   = String(formValues["ItemSubGroupID"] ?? "");
+    const existingID = String(formValues["ItemSubGroupID"] ?? "");
     if (!existingType) return;
     const found = sgTypeOpts.find(o => o.type === existingType);
     if (found) setSgTypePrefix(found.prefix);
@@ -427,8 +427,8 @@ export default function ItemMasterPage() {
           const result = unwrap(text);
           setGridData(Array.isArray(result)
             ? result
-                .filter((r: any, i: number, arr: any[]) => arr.findIndex((x: any) => String(x.ItemID) === String(r.ItemID)) === i)
-                .map((r: any) => ({ ...r, id: String(r.ItemID) }))
+              .filter((r: any, i: number, arr: any[]) => arr.findIndex((x: any) => String(x.ItemID) === String(r.ItemID)) === i)
+              .map((r: any) => ({ ...r, id: String(r.ItemID) }))
             : []);
         } catch { setGridData([]); }
       })
@@ -617,7 +617,7 @@ export default function ItemMasterPage() {
 
   // Fix 4: Unified group detection — form and grid now use the same regex (was .includes() in grid)
   const isFilmGroup = /film|reel|bopp|poly|laminate/i.test(formGroupName);
-  const isInkGroup  = /ink/i.test(formGroupName);
+  const isInkGroup = /ink/i.test(formGroupName);
 
   // True when selected group is a consumable category — must be defined before sgItemName/sgDisplayName
   const isConsumableGroup = useMemo(() => {
@@ -634,7 +634,7 @@ export default function ItemMasterPage() {
     const sv = (k: string) => String(formValues[k] ?? "").trim();
     const skip = (v: string) => !v || v === "0";
     const typeSpec = sv(sg3FieldName);
-    const sgType   = sv(sg2FieldName);
+    const sgType = sv(sg2FieldName);
 
     if (isFilmGroup) {
       const parts: string[] = [];
@@ -775,14 +775,14 @@ export default function ItemMasterPage() {
             description: r.DisplayName
           }));
           if (newOpts.length === 1 && formValues["ProductHSNID"] !== newOpts[0].value) {
-            setFormValues(p => ({...p, ProductHSNID: newOpts[0].value, ProductHSNName: newOpts[0].description}));
+            setFormValues(p => ({ ...p, ProductHSNID: newOpts[0].value, ProductHSNName: newOpts[0].description }));
           }
           setSelectOpts(prev => ({ ...prev, "ProductHSNID": newOpts, "ProductHSNName": [] }));
         } else {
           setSelectOpts(prev => ({ ...prev, "ProductHSNID": [], "ProductHSNName": [] }));
-          setFormValues(p => ({...p, ProductHSNID: "", ProductHSNName: ""}));
+          setFormValues(p => ({ ...p, ProductHSNID: "", ProductHSNName: "" }));
         }
-      } catch {}
+      } catch { }
     };
 
     if (formFields.length > 0) loadFilteredHSN();
@@ -824,7 +824,7 @@ export default function ItemMasterPage() {
 
       Object.keys(masterRecord).forEach(key => {
         const v = masterRecord[key];
-        if (v === true  || v === "true")  masterRecord[key] = 1;
+        if (v === true || v === "true") masterRecord[key] = 1;
         else if (v === false || v === "false") masterRecord[key] = 0;
       });
 
@@ -895,8 +895,8 @@ export default function ItemMasterPage() {
     }
 
     const subGroupID = String(rawLower["itemsubgroupid"] ?? "").trim();
-    const quality    = String(rawLower["quality"] ?? rawLower["itemtype"] ?? "").trim();
-    const typeSpec   = String(rawLower["typespecification"] ?? rawLower["typespacification"] ?? "").trim();
+    const quality = String(rawLower["quality"] ?? rawLower["itemtype"] ?? "").trim();
+    const typeSpec = String(rawLower["typespecification"] ?? rawLower["typespacification"] ?? "").trim();
 
     if (gid && subGroupID) {
       try {
@@ -936,8 +936,8 @@ export default function ItemMasterPage() {
       try {
         const [subGroupsText, suppliersText, unitsText] = await Promise.all([
           fetch(`${BASE_URL}/api/itemmasterShrink/film-subgroups/${gid}`, { headers: authHeaders() }).then(r => r.text()),
-          fetch(`${BASE_URL}/api/itemmasterShrink/suppliers`,             { headers: authHeaders() }).then(r => r.text()),
-          fetch(`${BASE_URL}/api/itemmasterShrink/units`,                 { headers: authHeaders() }).then(r => r.text()),
+          fetch(`${BASE_URL}/api/itemmasterShrink/suppliers`, { headers: authHeaders() }).then(r => r.text()),
+          fetch(`${BASE_URL}/api/itemmasterShrink/units`, { headers: authHeaders() }).then(r => r.text()),
         ]);
 
         const rawSG = unwrap(subGroupsText);
@@ -1015,7 +1015,7 @@ export default function ItemMasterPage() {
       .then(() => {
         if (activeGroupID) loadGridForGroup(activeGroupID);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const onGroupPillClick = (grp: { ItemGroupID: string; ItemGroupName: string; ItemGroupPrefix: string; ItemGroupCategory: string } | null) => {
@@ -1025,7 +1025,7 @@ export default function ItemMasterPage() {
   };
 
   const activeGroupName = allGroups.find(g => g.ItemGroupID === activeGroupID)?.ItemGroupName ?? "";
-  const isInkGridGroup  = /ink/i.test(activeGroupName);
+  const isInkGridGroup = /ink/i.test(activeGroupName);
   const isFilmGridGroup = /film|reel|bopp|poly|laminate/i.test(activeGroupName);
 
   // Live grid columns — uses real backend field names
@@ -1044,11 +1044,10 @@ export default function ItemMasterPage() {
       key: "ISItemActive",
       header: "Status",
       render: (r: any) => (
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-          String(r.ISItemActive).toLowerCase() === "true"
-            ? "bg-green-100 text-green-700"
-            : "bg-gray-100 text-gray-500"
-        }`}>
+        <span className={`px-2 py-1 text-xs font-medium rounded-full ${String(r.ISItemActive).toLowerCase() === "true"
+          ? "bg-green-100 text-green-700"
+          : "bg-gray-100 text-gray-500"
+          }`}>
           {String(r.ISItemActive).toLowerCase() === "true" ? "Active" : "Inactive"}
         </span>
       ),
@@ -1180,9 +1179,9 @@ export default function ItemMasterPage() {
                   {hasCascadeFields && (() => {
                     const sgid = String(formValues["ItemSubGroupID"] ?? "");
                     const hasSupplier = !!supplierField && isFieldVisible(supplierField);
-                    const puField  = formFields.find(f => f.FieldName === "PurchaseUnit");
-                    const euField  = formFields.find(f => f.FieldName === "EstimationUnit");
-                    const suField  = formFields.find(f => f.FieldName === "StockUnit");
+                    const puField = formFields.find(f => f.FieldName === "PurchaseUnit");
+                    const euField = formFields.find(f => f.FieldName === "EstimationUnit");
+                    const suField = formFields.find(f => f.FieldName === "StockUnit");
                     const hasUnits = !!(puField || euField || suField);
                     return (
                       <div>
@@ -1422,11 +1421,10 @@ export default function ItemMasterPage() {
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Group</span>
           <button
             onClick={() => onGroupPillClick(null)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              !activeGroupID
-                ? "bg-blue-50 text-blue-700 border-blue-300"
-                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-            }`}
+            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${!activeGroupID
+              ? "bg-blue-50 text-blue-700 border-blue-300"
+              : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+              }`}
           >
             All Groups
           </button>
@@ -1437,11 +1435,10 @@ export default function ItemMasterPage() {
             };
             const rmGroups = allGroups.filter(g => !isCon(g));
             const conGroups = allGroups.filter(g => isCon(g));
-            const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-              activeGroupID === id
-                ? "bg-blue-50 text-blue-700 border-blue-300"
-                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-            }`;
+            const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeGroupID === id
+              ? "bg-blue-50 text-blue-700 border-blue-300"
+              : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+              }`;
             return (
               <>
                 {rmGroups.map(grp => (

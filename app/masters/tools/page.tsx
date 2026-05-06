@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/toolmaster`;
 
 function unwrap(v: any): any {

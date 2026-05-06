@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
 import {
@@ -10,7 +10,7 @@ import { authHeaders } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
 // ─── Config ──────────────────────────────────────────────────
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
 async function apiFetch(url: string): Promise<any> {
   const res = await fetch(url, { headers: authHeaders() });

@@ -4,7 +4,7 @@ import { authHeaders } from "@/lib/auth";
 // Current pattern from other masters: /api/[moduleName]Shrink/[action]
 // Example: /api/categorymasterShrink/getcategory
 // Update BASE below when you know the correct controller name.
-const BASE = "https://api.indusanalytics.co.in/api/fieldmasterShrink";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in") + "/api/fieldmasterShrink";
 
 export type FieldValueRow = {
   id:         string;

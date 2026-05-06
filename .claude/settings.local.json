@@ -36,7 +36,20 @@
       "Bash(cmd /c \"del /F /Q \"\"d:\\\\AJ shrink new code\\\\New updated code\\\\.next\\\\dev\\\\lock\"\"\")",
       "Bash(cmd /c \"netstat -ano | findstr :3000\")",
       "Bash(cmd /c \"wmic process where ProcessId=6920 get Name,CommandLine 2>&1\")",
-      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Remove-Item -Force -Recurse ''D:\\\\AJ shrink new code\\\\New updated code\\\\.next\\\\dev'' -ErrorAction SilentlyContinue; Write-Host ''Done''\")"
+      "Bash(powershell -Command \"Get-Process -Name node -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; Remove-Item -Force -Recurse ''D:\\\\AJ shrink new code\\\\New updated code\\\\.next\\\\dev'' -ErrorAction SilentlyContinue; Write-Host ''Done''\")",
+      "Read(//d//**)",
+      "Bash(python -c \"import pptx; print\\('pptx ok'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python create_pouch_ppt.py)",
+      "Bash(python create_pouch_ppt_v2.py)",
+      "Bash(cmd /c \"cd /d \\\\\"d:\\\\AJ shrink new code\\\\New updated code\\\\\" && npx tsc --noEmit 2>&1\")",
+      "Bash(cmd /c \"cd /d \\\\\"d:\\\\AJ shrink new code\\\\New updated code\\\\\" && npx tsc --noEmit\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(cat vercel.json)",
+      "Bash(ls .vercel)",
+      "Bash(pip show *)",
+      "Bash(python generate_docs.py)",
+      "Bash(python generate_module_docs.py)"
     ],
     "additionalDirectories": [
       "D:\\AJ shrink new code\\backend"

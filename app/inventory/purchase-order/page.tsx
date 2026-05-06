@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Plus, Pencil, Trash2, X, Search, Check, List,
@@ -7,7 +7,7 @@ import {
 import { authHeaders, getSession } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
 const TRANSPORT_MODES = ["Road", "Rail", "Air", "Sea", "Courier"];
 const CALCU_ON = ["Value", "Qty", "Weight", "Fixed"];

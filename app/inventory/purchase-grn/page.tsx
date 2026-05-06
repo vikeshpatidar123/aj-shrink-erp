@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Plus, X, Scan, Printer, CheckCircle2,
@@ -11,7 +11,7 @@ import { authHeaders, getSession } from "@/lib/auth";
 import { inputCls, labelCls } from "@/lib/styles";
 
 // ─── Config ──────────────────────────────────────────────────
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
 
 async function apiFetch(url: string): Promise<any> {

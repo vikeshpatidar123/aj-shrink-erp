@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Pencil, Trash2, Check, Loader2, List, Key, Shield,
@@ -8,7 +8,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermaster`;
 const AUTH_BASE = `${BASE_URL}/api/userauthentication`;
 

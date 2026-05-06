@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Plus, X, Search, Check, List, ChevronRight, RefreshCw, Trash2, Download } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = "https://api.indusanalytics.co.in";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

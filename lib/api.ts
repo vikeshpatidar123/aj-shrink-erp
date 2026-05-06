@@ -4,7 +4,7 @@
 
 import { authHeaders } from "@/lib/auth";
 
-const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://indusanalytics.co.in").replace(/\/$/, "");
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
 
 // The .NET controllers return Ok(JsonConvert.SerializeObject(data.Message))
 // which wraps the JSON in an extra string layer — double-parse to get the object.

@@ -21,7 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Login always uses the production server (has the company auth table + UserMaster)
-const LOGIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
+const LOGIN_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://api.indusanalytics.co.in";
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -180,6 +180,7 @@ export function isLoggedIn(): boolean {
 // reads this Basic Auth header and validates ApiCompanyUserName:ApiCompanyPassword.
 
 export function authHeaders(): Record<string, string> {
+  if (typeof window === "undefined") return { "Content-Type": "application/json" };
   return {
     "Content-Type": "application/json",
     Authorization: `Basic ${localStorage.getItem("basicAuth") || ""}`,
