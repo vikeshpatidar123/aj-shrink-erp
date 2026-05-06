@@ -2638,6 +2638,11 @@ export type GravureWorkOrder = {
   wastagePct?: number;
   plannedDate: string; specialInstructions: string;
   status: "Open" | "In Progress" | "Completed" | "On Hold";
+  // Preparation data
+  filmReqs?: any[];
+  colorShades?: any[];
+  materialAllocs?: any[];
+  cylinderAllocs?: any[];
 };
 
 export type GravureItemIssueItem = {

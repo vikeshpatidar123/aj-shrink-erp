@@ -15,8 +15,8 @@ import { apiGet, apiPost } from "@/lib/api";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
-import Button   from "@/components/ui/Button";
-import Modal    from "@/components/ui/Modal";
+import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 
@@ -55,40 +55,42 @@ type DeliveryRow = {
   jobName: string;
   scheduleQty: number;
   deliveryDate: string;
+  consigneeId: string;
   consignee: string;
+  transporterId: string;
   transporter: string;
 };
 
 // ─── Constants ────────────────────────────────────────────────
-const CURRENCIES  = ["INR", "USD", "EUR"];
+const CURRENCIES = ["INR", "USD", "EUR"];
 const SALES_TYPES = ["Local", "Inter-State", "Export"];
 const SALES_LEDGERS = ledgers.filter(l => l.ledgerType === "Sales A/C").map(l => l.name);
 const SALES_PERSONS = employees.filter(e => e.status === "Active").map(e => e.name);
-const RATE_TYPES  = ["UnitCost", "PerMeter", "PerKg", "PerNos"];
-const JOB_TYPES   = ["New", "Repeat", "Revision"];
-const REFERENCES  = ["Art Work Approved", "Sample Approved", "Existing Job", "New Development"];
-const PRIORITIES  = ["High", "Normal", "Low"];
-const DIVISIONS   = ["Gravure"];
+const RATE_TYPES = ["UnitCost", "PerMeter", "PerKg", "PerNos"];
+const JOB_TYPES = ["New", "Repeat", "Revision"];
+const REFERENCES = ["Art Work Approved", "Sample Approved", "Existing Job", "New Development"];
+const PRIORITIES = ["High", "Normal", "Low"];
+const DIVISIONS = ["Gravure"];
 
 const STATUS_COLORS: Record<string, string> = {
-  Confirmed:       "bg-blue-50 text-blue-700 border-blue-200",
+  Confirmed: "bg-blue-50 text-blue-700 border-blue-200",
   "In Production": "bg-amber-50 text-amber-700 border-amber-200",
-  Ready:           "bg-purple-50 text-purple-700 border-purple-200",
-  Dispatched:      "bg-green-50 text-green-700 border-green-200",
-  Hold:            "bg-orange-50 text-orange-700 border-orange-300",
+  Ready: "bg-purple-50 text-purple-700 border-purple-200",
+  Dispatched: "bg-green-50 text-green-700 border-green-200",
+  Hold: "bg-orange-50 text-orange-700 border-orange-300",
 };
 
 type AttachmentMeta = { id: string; name: string; size: number; fileType: string };
 
 // ─── Compute derived amounts for a line ──────────────────────
 function computeLine(l: OBLine): OBLine {
-  const base     = l.orderQty * l.rate;
-  const discAmt  = parseFloat(((base * l.discPct) / 100).toFixed(2));
-  const amount   = parseFloat((base - discAmt).toFixed(2));
-  const igsAmt   = l.gstPct > 0 ? parseFloat(((amount * l.igstPct) / 100).toFixed(2)) : 0;
-  const cgstAmt  = l.gstPct > 0 ? parseFloat(((amount * l.cgstPct) / 100).toFixed(2)) : 0;
-  const sgstAmt  = l.gstPct > 0 ? parseFloat(((amount * l.sgstPct) / 100).toFixed(2)) : 0;
-  const ovhAmt   = parseFloat(((amount * l.overheadPctLine) / 100).toFixed(2));
+  const base = l.orderQty * l.rate;
+  const discAmt = parseFloat(((base * l.discPct) / 100).toFixed(2));
+  const amount = parseFloat((base - discAmt).toFixed(2));
+  const igsAmt = l.gstPct > 0 ? parseFloat(((amount * l.igstPct) / 100).toFixed(2)) : 0;
+  const cgstAmt = l.gstPct > 0 ? parseFloat(((amount * l.cgstPct) / 100).toFixed(2)) : 0;
+  const sgstAmt = l.gstPct > 0 ? parseFloat(((amount * l.sgstPct) / 100).toFixed(2)) : 0;
+  const ovhAmt = parseFloat(((amount * l.overheadPctLine) / 100).toFixed(2));
   const netAmount = parseFloat((amount + ovhAmt).toFixed(2));
   return { ...l, discAmt, amount, cgstAmt, sgstAmt, igstAmt: igsAmt, overheadAmtLine: ovhAmt, netAmount };
 }
@@ -129,7 +131,8 @@ const blankDelivery = (): DeliveryRow => ({
   id: Math.random().toString(36).slice(2),
   pmCode: "", quoteNo: "", jobName: "",
   scheduleQty: 0, deliveryDate: "",
-  consignee: "", transporter: "",
+  consigneeId: "", consignee: "",
+  transporterId: "", transporter: "",
 });
 
 type FormState = Omit<GravureOrder, "id" | "orderNo"> & {
@@ -137,12 +140,16 @@ type FormState = Omit<GravureOrder, "id" | "orderNo"> & {
   deliverySchedule: DeliveryRow[];
   orderPrefix: string;
   attachments: AttachmentMeta[];
+  salesPersonId: string;
+  salesLedgerId: string;
 };
 
 const blankForm = (): FormState => ({
   date: new Date().toISOString().slice(0, 10),
   customerId: "", customerName: "",
-  salesPerson: "", salesType: "Local", salesLedger: "",
+  salesPerson: "", salesPersonId: "",
+  salesType: "Local",
+  salesLedger: "", salesLedgerId: "",
   poNo: "", poDate: "",
   directDispatch: false,
   orderLines: [],
@@ -196,18 +203,18 @@ export default function GravureOrdersPage() {
 
   const [data, setData] = useState<GravureOrder[]>([]);
   const [loadingList, setLoadingList] = useState(true);
-  const [formOpen,   setFormOpen]  = useState(false);
-  const [editing,    setEditing]   = useState<GravureOrder | null>(null);
-  const [form,       setForm]      = useState<FormState>(blankForm());
-  const [deleteId,   setDelId]     = useState<string | null>(null);
-  const [viewRow,    setViewRow]   = useState<GravureOrder | null>(null);
-  const [showList,   setShowList]  = useState(false);
-  const [apiCustomers, setApiCustomers] = useState<{id: string; name: string}[]>([]);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<GravureOrder | null>(null);
+  const [form, setForm] = useState<FormState>(blankForm());
+  const [deleteId, setDelId] = useState<string | null>(null);
+  const [viewRow, setViewRow] = useState<GravureOrder | null>(null);
+  const [showList, setShowList] = useState(false);
+  const [apiCustomers, setApiCustomers] = useState<{ id: string; name: string }[]>([]);
   const [apiSalesLedgers, setApiSalesLedgers] = useState<string[]>([]);
   const [apiSalesPersons, setApiSalesPersons] = useState<string[]>([]);
-  const [apiConsignees, setApiConsignees] = useState<{id: string; name: string}[]>([]);
-  const [apiTransporters, setApiTransporters] = useState<{id: string; name: string}[]>([]);
-  const [apiHsnList, setApiHsnList] = useState<{id: string; hsnCode: string; description: string}[]>([]);
+  const [apiConsignees, setApiConsignees] = useState<{ id: string; name: string }[]>([]);
+  const [apiTransporters, setApiTransporters] = useState<{ id: string; name: string }[]>([]);
+  const [apiHsnList, setApiHsnList] = useState<{ id: string; hsnCode: string; description: string }[]>([]);
   const [saving, setSaving] = useState(false);
 
   const mapApiLines = (raw: any): GravureOrderLine[] => {
@@ -218,33 +225,33 @@ export default function GravureOrdersPage() {
       try { arr = JSON.parse(raw); } catch { arr = []; }
     }
     return arr.map((l: any, i: number) => ({
-      id:                 String(l.id                  ?? l.OrderBookingDetailsID ?? i),
-      lineNo:             Number(l.lineNo              ?? i + 1),
-      sourceType:         (l.sourceType                ?? "Direct")          as GravureOrderLine["sourceType"],
-      estimationId:       String(l.estimationId        ?? ""),
-      estimationNo:       String(l.estimationNo        ?? ""),
-      catalogId:          String(l.catalogId           ?? ""),
-      catalogNo:          String(l.catalogNo           ?? ""),
-      productCode:        String(l.productCode         ?? ""),
-      productName:        String(l.productName         ?? ""),
-      categoryId:         String(l.categoryId          ?? ""),
-      categoryName:       String(l.categoryName        ?? ""),
-      substrate:          String(l.substrate           ?? ""),
-      jobWidth:           Number(l.jobWidth            ?? 0),
-      jobHeight:          Number(l.jobHeight           ?? 0),
-      noOfColors:         Number(l.noOfColors          ?? 0),
-      printType:          (l.printType                 ?? "Surface Print")   as GravureOrderLine["printType"],
-      cylinderStatus:     (l.cylinderStatus            ?? "New")             as GravureOrderLine["cylinderStatus"],
-      cylinderCount:      Number(l.cylinderCount       ?? 0),
-      filmType:           String(l.filmType            ?? ""),
+      id: String(l.id ?? l.OrderBookingDetailsID ?? i),
+      lineNo: Number(l.lineNo ?? i + 1),
+      sourceType: (l.sourceType ?? "Direct") as GravureOrderLine["sourceType"],
+      estimationId: String(l.estimationId ?? ""),
+      estimationNo: String(l.estimationNo ?? ""),
+      catalogId: String(l.catalogId ?? ""),
+      catalogNo: String(l.catalogNo ?? ""),
+      productCode: String(l.productCode ?? ""),
+      productName: String(l.productName ?? ""),
+      categoryId: String(l.categoryId ?? ""),
+      categoryName: String(l.categoryName ?? ""),
+      substrate: String(l.substrate ?? ""),
+      jobWidth: Number(l.jobWidth ?? 0),
+      jobHeight: Number(l.jobHeight ?? 0),
+      noOfColors: Number(l.noOfColors ?? 0),
+      printType: (l.printType ?? "Surface Print") as GravureOrderLine["printType"],
+      cylinderStatus: (l.cylinderStatus ?? "New") as GravureOrderLine["cylinderStatus"],
+      cylinderCount: Number(l.cylinderCount ?? 0),
+      filmType: String(l.filmType ?? ""),
       laminationRequired: false,
-      orderQty:           Number(l.orderQty            ?? 0),
-      unit:               String(l.unit               ?? "Kg"),
-      rate:               Number(l.rate               ?? 0),
-      currency:           "INR",
-      amount:             Number(l.amount             ?? 0),
-      deliveryDate:       String(l.deliveryDate       ?? l.expectedDeliveryDate ?? ""),
-      remarks:            String(l.remarks            ?? ""),
+      orderQty: Number(l.orderQty ?? 0),
+      unit: String(l.unit ?? "Kg"),
+      rate: Number(l.rate ?? 0),
+      currency: "INR",
+      amount: Number(l.amount ?? 0),
+      deliveryDate: String(l.deliveryDate ?? l.expectedDeliveryDate ?? ""),
+      remarks: String(l.remarks ?? ""),
     }));
   };
 
@@ -253,52 +260,56 @@ export default function GravureOrdersPage() {
     apiGet<any>("api/gravureOrderBookingShrink/getorders").then(res => {
       const rows: GravureOrder[] = (Array.isArray(res) ? res : []).map((r: any) => {
         const orderLines = mapApiLines(r.linesJSON ?? r.lines ?? []);
-        const firstLine  = orderLines[0];
+        const firstLine = orderLines[0];
         return {
-          id:             String(r.OrderBookingID  ?? ""),
-          orderNo:        String(r.SalesOrderNo    ?? ""),
-          date:           String(r.OrderBookingDate ?? ""),
-          customerId:     String(r.LedgerID        ?? ""),
-          customerName:   String(r.CustomerName    ?? ""),
-          salesPerson:    String(r.SalesPerson     ?? ""),
-          salesType:      String(r.SalesType       ?? "Local"),
-          salesLedger:    String(r.SalesLedger     ?? ""),
-          poNo:           String(r.PONo            ?? ""),
-          poDate:         String(r.PODate          ?? ""),
-          directDispatch: Number(r.DirectDispatch  ?? 0) === 1,
-          totalAmount:    Number(r.TotalAmount     ?? 0),
-          advancePaid:    Number(r.AdvancePaid     ?? 0),
-          remarks:        String(r.Remark          ?? ""),
-          status:         (r.Status               ?? "Confirmed") as GravureOrder["status"],
+          id: String(r.OrderBookingID ?? ""),
+          orderNo: String(r.SalesOrderNo ?? ""),
+          date: String(r.OrderBookingDate ?? ""),
+          customerId: String(r.LedgerID ?? ""),
+          customerName: String(r.CustomerName ?? ""),
+          salesPerson: String(r.SalesPerson ?? ""),
+          salesType: String(r.SalesType ?? "Local"),
+          salesLedger: String(r.SalesLedger ?? ""),
+          poNo: String(r.PONo ?? ""),
+          poDate: String(r.PODate ?? ""),
+          directDispatch: Number(r.DirectDispatch ?? 0) === 1,
+          totalAmount: Number(r.TotalAmount ?? 0),
+          advancePaid: Number(r.AdvancePaid ?? 0),
+          remarks: String(r.Remark ?? ""),
+          status: (r.Status ?? "Confirmed") as GravureOrder["status"],
           orderLines,
           // legacy fields
-          sourceType:     "Direct" as const,
+          sourceType: "Direct" as const,
           enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
-          jobName:    firstLine?.productName   ?? "",
-          substrate:  firstLine?.substrate     ?? "",
-          structure:  "", categoryId: "", categoryName: "", content: "",
-          jobWidth:   firstLine?.jobWidth      ?? 0,
-          jobHeight:  firstLine?.jobHeight     ?? 0,
+          jobName: firstLine?.productName ?? "",
+          substrate: firstLine?.substrate ?? "",
+          structure: "", categoryId: "", categoryName: "", content: "",
+          jobWidth: firstLine?.jobWidth ?? 0,
+          jobHeight: firstLine?.jobHeight ?? 0,
           width: 0,
-          noOfColors: firstLine?.noOfColors    ?? 0,
-          printType:  "Surface Print" as const,
-          quantity:   firstLine?.orderQty      ?? 0,
-          unit:       firstLine?.unit          ?? "Kg",
+          noOfColors: firstLine?.noOfColors ?? 0,
+          printType: "Surface Print" as const,
+          quantity: firstLine?.orderQty ?? 0,
+          unit: firstLine?.unit ?? "Kg",
           deliveryDate: firstLine?.deliveryDate ?? "",
           cylinderSet: "", perMeterRate: firstLine?.rate ?? 0,
           machineId: "", machineName: "", secondaryLayers: [], processes: [],
           overheadPct: 0, profitPct: 0, attachments: [],
-        };
+          // carry delivery JSON for openEdit
+          deliveryJSON: r.deliveryJSON ?? "[]",
+          salesEmployeeId: String(r.SalesEmployeeID ?? ""),
+          salesLedgerId: String(r.SalesLedgerID ?? ""),
+        } as any;
       });
       setData(rows);
-    }).catch(() => {}).finally(() => setLoadingList(false));
+    }).catch(() => { }).finally(() => setLoadingList(false));
   };
 
   useEffect(() => {
     loadOrders();
     apiGet<any>("api/gravureOrderBookingShrink/getdropdowns").then(res => {
       if (res?.customers) {
-        const apiList: {id: string; name: string}[] = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }));
+        const apiList: { id: string; name: string }[] = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }));
         // Merge: keep any pre-injected customer that's not already in the API list
         setApiCustomers(prev => {
           const ids = new Set(apiList.map(c => c.id));
@@ -306,12 +317,12 @@ export default function GravureOrdersPage() {
           return [...extras, ...apiList];
         });
       }
-      if (res?.salesLedgers)  setApiSalesLedgers(res.salesLedgers.map((l: any) => String(l.name ?? l)));
-      if (res?.salesPersons)  setApiSalesPersons(res.salesPersons.map((p: any) => String(p.name ?? p)));
-      if (res?.consignees)    setApiConsignees(res.consignees.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") })));
-      if (res?.transporters)  setApiTransporters(res.transporters.map((t: any) => ({ id: String(t.id ?? ""), name: String(t.name ?? "") })));
-      if (res?.hsnList)       setApiHsnList(res.hsnList.map((h: any) => ({ id: String(h.id ?? ""), hsnCode: String(h.hsnCode ?? ""), description: String(h.description ?? "") })));
-    }).catch(() => {});
+      if (res?.salesLedgers) setApiSalesLedgers(res.salesLedgers.map((l: any) => ({ id: String(l.id ?? ""), name: String(l.name ?? l) })) as any);
+      if (res?.salesPersons) setApiSalesPersons(res.salesPersons.map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? p) })) as any);
+      if (res?.consignees) setApiConsignees(res.consignees.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") })));
+      if (res?.transporters) setApiTransporters(res.transporters.map((t: any) => ({ id: String(t.id ?? ""), name: String(t.name ?? "") })));
+      if (res?.hsnList) setApiHsnList(res.hsnList.map((h: any) => ({ id: String(h.id ?? ""), hsnCode: String(h.hsnCode ?? ""), description: String(h.description ?? "") })));
+    }).catch(() => { });
 
     const raw = localStorage.getItem("ajsw_order_from_catalog");
     if (raw) {
@@ -331,33 +342,33 @@ export default function GravureOrdersPage() {
           ...blankLine(),
           lineNo: 1,
           sourceType: "Catalog",
-          catalogId:    cat.catalogId    || "",
-          catalogNo:    cat.catalogNo    || "",
-          productCode:  cat.catalogNo    || "",
-          productName:  cat.productName  || "",
-          categoryId:   cat.categoryId   || "",
+          catalogId: cat.catalogId || "",
+          catalogNo: cat.catalogNo || "",
+          productCode: cat.catalogNo || "",
+          productName: cat.productName || "",
+          categoryId: cat.categoryId || "",
           categoryName: cat.categoryName || "",
-          substrate:    cat.substrate    || "",
-          jobWidth:     cat.jobWidth     || 0,
-          jobHeight:    cat.jobHeight    || 0,
-          noOfColors:   cat.noOfColors   || 6,
-          orderQty:     cat.standardQty  || 0,
-          unit:         cat.standardUnit || "Kg",
-          minQuotedQty: cat.standardQty  || 0,
+          substrate: cat.substrate || "",
+          jobWidth: cat.jobWidth || 0,
+          jobHeight: cat.jobHeight || 0,
+          noOfColors: cat.noOfColors || 6,
+          orderQty: cat.standardQty || 0,
+          unit: cat.standardUnit || "Kg",
+          minQuotedQty: cat.standardQty || 0,
           approvedCost: cat.perMeterRate || 0,
-          rate:         cat.perMeterRate || 0,
+          rate: cat.perMeterRate || 0,
           cylinderStatus: "Existing",
           division: "Gravure", jobType: "Repeat",
         });
         setForm(p => ({
           ...blankForm(),
-          customerId:   cat.customerId   || "",
+          customerId: cat.customerId || "",
           customerName: cat.customerName || "",
           date: p.date,
           obLines: [prefillLine],
         }));
         setFormOpen(true);
-      } catch {}
+      } catch { }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [printOrder, setPrintOrder] = useState<GravureOrder | null>(null);
@@ -419,8 +430,8 @@ export default function GravureOrdersPage() {
 
   // ── Computed totals ─────────────────────────────────────────
   const totalOrderQty = useMemo(() => form.obLines.reduce((s, l) => s + l.orderQty, 0), [form.obLines]);
-  const totalAmount   = useMemo(() => form.obLines.reduce((s, l) => s + l.amount, 0), [form.obLines]);
-  const netAmount     = useMemo(() => form.obLines.reduce((s, l) => s + l.netAmount, 0), [form.obLines]);
+  const totalAmount = useMemo(() => form.obLines.reduce((s, l) => s + l.amount, 0), [form.obLines]);
+  const netAmount = useMemo(() => form.obLines.reduce((s, l) => s + l.netAmount, 0), [form.obLines]);
 
   // ── Line helpers ────────────────────────────────────────────
   const updateLine = (idx: number, line: OBLine) =>
@@ -491,9 +502,9 @@ export default function GravureOrdersPage() {
     const row: DeliveryRow = {
       ...dlvInput,
       id: Math.random().toString(36).slice(2),
-      pmCode:  dlvInput.pmCode  || singleLine?.productCode  || "",
+      pmCode: dlvInput.pmCode || singleLine?.productCode || "",
       quoteNo: dlvInput.quoteNo || singleLine?.estimationNo || singleLine?.catalogNo || "",
-      jobName: dlvInput.jobName || singleLine?.productName  || "",
+      jobName: dlvInput.jobName || singleLine?.productName || "",
     };
     f("deliverySchedule", [...form.deliverySchedule, row]);
     setDlvInput(blankDelivery());
@@ -508,65 +519,90 @@ export default function GravureOrdersPage() {
 
   const openEdit = (row: GravureOrder) => {
     setEditing(row);
-    const obLines: OBLine[] = (row.orderLines || []).map((l, i) => computeLine({
+    const obLines: OBLine[] = (row.orderLines || []).map((l: any, i) => computeLine({
       ...blankLine(),
-      id:                  l.id || String(i),
-      lineNo:              l.lineNo || i + 1,
-      sourceType:          l.sourceType    || "Direct",
-      estimationId:        l.estimationId  || "",
-      estimationNo:        l.estimationNo  || "",
-      catalogId:           l.catalogId     || "",
-      catalogNo:           l.catalogNo     || "",
-      productCode:         l.productCode   || l.catalogNo || "",
-      productName:         l.productName   || "",
-      categoryId:          l.categoryId    || "",
-      categoryName:        l.categoryName  || "",
-      substrate:           l.substrate     || "",
-      jobWidth:            l.jobWidth      || 0,
-      jobHeight:           l.jobHeight     || 0,
-      noOfColors:          l.noOfColors    || 0,
-      printType:           l.printType     || "Surface Print",
-      cylinderStatus:      l.cylinderStatus|| "Existing",
-      cylinderCount:       l.cylinderCount || 0,
-      orderQty:            l.orderQty      || 0,
-      unit:                l.unit          || "Kg",
-      rate:                l.rate          || 0,
-      currency:            "INR",
-      amount:              l.amount        || 0,
-      approvedCost:        l.rate          || 0,
-      rateType:            "UnitCost",
-      discPct: 0, gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 18,
-      overheadPctLine: 0,
-      division: "Gravure",
-      jobType:             "Repeat",
-      jobReference:        "Art Work Approved",
-      jobPriority:         "Normal",
-      prePressRemark:      "",
-      productRemark:       "",
-      expectedDeliveryDate:l.deliveryDate  || "",
-      finalDeliveryDate:   "",
-      deliveryDate:        l.deliveryDate  || "",
-      remarks:             l.remarks       || "",
+      id: l.id || String(i),
+      lineNo: l.lineNo || i + 1,
+      sourceType: l.sourceType || "Direct",
+      estimationId: l.estimationId || "",
+      estimationNo: l.estimationNo || "",
+      catalogId: l.catalogId || "",
+      catalogNo: l.catalogNo || "",
+      productCode: l.productCode || l.catalogNo || "",
+      productName: l.productName || "",
+      categoryId: l.categoryId || "",
+      categoryName: l.categoryName || "",
+      substrate: l.substrate || "",
+      jobWidth: l.jobWidth || 0,
+      jobHeight: l.jobHeight || 0,
+      noOfColors: l.noOfColors || 0,
+      printType: l.printType || "Surface Print",
+      cylinderStatus: l.cylinderStatus || "Existing",
+      cylinderCount: l.cylinderCount || 0,
+      orderQty: l.orderQty || 0,
+      unit: l.unit || "Kg",
+      rate: l.rate || 0,
+      currency: "INR",
+      amount: l.amount || 0,
+      approvedCost: l.approvedCost || l.rate || 0,
+      rateType: l.rateType || "UnitCost",
+      discPct: l.discPct || 0,
+      gstPct: l.gstPct || 0,
+      cgstPct: l.cgstPct || 0,
+      sgstPct: l.sgstPct || 0,
+      igstPct: l.igstPct || 0,
+      cgstAmt: l.cgstAmt || 0,
+      sgstAmt: l.sgstAmt || 0,
+      igstAmt: l.igstAmt || 0,
+      overheadPctLine: l.overheadPctLine || 0,
+      netAmount: l.netAmount || 0,
+      division: l.division || "Gravure",
+      jobType: l.jobType || "Repeat",
+      jobReference: l.jobReference || "Art Work Approved",
+      jobPriority: l.jobPriority || "Normal",
+      prePressRemark: l.prePressRemark || "",
+      productRemark: l.productRemark || "",
+      expectedDeliveryDate: l.expectedDeliveryDate || l.deliveryDate || "",
+      finalDeliveryDate: l.finalDeliveryDate || "",
+      deliveryDate: l.deliveryDate || "",
+      remarks: l.remarks || "",
     }));
     setForm({
       ...blankForm(),
-      date:          row.date          || new Date().toISOString().slice(0, 10),
-      customerId:    row.customerId    || "",
-      customerName:  row.customerName  || "",
-      salesPerson:   row.salesPerson   || "",
-      salesType:     row.salesType     || "Local",
-      salesLedger:   row.salesLedger   || "",
-      poNo:          row.poNo          || "",
-      poDate:        row.poDate        || "",
-      directDispatch:row.directDispatch|| false,
-      totalAmount:   row.totalAmount   || 0,
-      advancePaid:   row.advancePaid   || 0,
-      remarks:       row.remarks       || "",
-      status:        row.status        || "Confirmed",
-      orderPrefix:   (row.orderNo || "").split(/\d/)[0] || "GRV",
-      obLines:       obLines.length ? obLines : [blankLine()],
-      deliverySchedule: [],
-      attachments:   row.attachments   || [],
+      date: row.date || new Date().toISOString().slice(0, 10),
+      customerId: row.customerId || "",
+      customerName: row.customerName || "",
+      salesPerson: row.salesPerson || "",
+      salesPersonId: (row as any).salesEmployeeId || "",
+      salesType: row.salesType || "Local",
+      salesLedger: row.salesLedger || "",
+      salesLedgerId: (row as any).salesLedgerId || "",
+      poNo: row.poNo || "",
+      poDate: row.poDate || "",
+      directDispatch: row.directDispatch || false,
+      totalAmount: row.totalAmount || 0,
+      advancePaid: row.advancePaid || 0,
+      remarks: row.remarks || "",
+      status: row.status || "Confirmed",
+      orderPrefix: (row.orderNo || "").split(/\d/)[0] || "GRV",
+      obLines: obLines.length ? obLines : [blankLine()],
+      deliverySchedule: (() => {
+        const raw = (row as any).deliveryJSON || (row as any).deliverySchedule || [];
+        let arr: any[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
+        return arr.map((d: any) => ({
+          id: String(d.id ?? Math.random().toString(36).slice(2)),
+          pmCode: String(d.pmCode ?? d.ProductMasterCode ?? ""),
+          quoteNo: String(d.quoteNo ?? d.OrderBookingNo ?? ""),
+          jobName: String(d.jobName ?? d.JobName ?? ""),
+          scheduleQty: Number(d.scheduleQty ?? d.ScheduleQuantity ?? 0),
+          deliveryDate: String(d.deliveryDate ?? ""),
+          consigneeId: String(d.consigneeId ?? d.ConsigneeID ?? ""),
+          consignee: String(d.consignee ?? d.ConsigneeName ?? ""),
+          transporterId: String(d.transporterId ?? d.TransporterID ?? ""),
+          transporter: String(d.transporter ?? d.TransporterName ?? ""),
+        } as DeliveryRow));
+      })(),
+      attachments: row.attachments || [],
       // legacy
       orderLines: row.orderLines || [],
       sourceType: "Direct", enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
@@ -586,75 +622,77 @@ export default function GravureOrdersPage() {
     if (form.obLines.every(l => !l.productName)) { alert("Add at least one product line."); return; }
 
     const lines = form.obLines.map((l, i) => ({
-      lineNo:       i + 1,
-      sourceType:   l.sourceType,
-      catalogId:    l.catalogId    || "",
-      catalogNo:    l.catalogNo    || "",
+      lineNo: i + 1,
+      sourceType: l.sourceType,
+      catalogId: l.catalogId || "",
+      catalogNo: l.catalogNo || "",
       estimationId: l.estimationId || "",
       estimationNo: l.estimationNo || "",
-      productCode:  l.productCode  || l.catalogNo || "",
-      productName:  l.productName  || "",
-      categoryId:   l.categoryId   || "",
+      productCode: l.productCode || l.catalogNo || "",
+      productName: l.productName || "",
+      categoryId: l.categoryId || "",
       categoryName: l.categoryName || "",
-      substrate:    l.substrate    || "",
-      jobWidth:     l.jobWidth,
-      jobHeight:    l.jobHeight,
-      noOfColors:   l.noOfColors,
-      printType:    l.printType    || "Surface Print",
+      substrate: l.substrate || "",
+      jobWidth: l.jobWidth,
+      jobHeight: l.jobHeight,
+      noOfColors: l.noOfColors,
+      printType: l.printType || "Surface Print",
       cylinderStatus: l.cylinderStatus || "New",
-      cylinderCount:  l.cylinderCount  || 0,
-      orderQty:     l.orderQty,
-      unit:         l.unit         || "Kg",
-      rate:         l.rate,
-      amount:       l.amount,
-      discPct:      l.discPct      || 0,
-      discAmt:      l.discAmt      || 0,
-      gstPct:       l.gstPct       || 0,
-      cgstPct:      l.cgstPct      || 0,
-      sgstPct:      l.sgstPct      || 0,
-      igstPct:      l.igstPct      || 0,
-      cgstAmt:      l.cgstAmt      || 0,
-      sgstAmt:      l.sgstAmt      || 0,
-      igstAmt:      l.igstAmt      || 0,
+      cylinderCount: l.cylinderCount || 0,
+      orderQty: l.orderQty,
+      unit: l.unit || "Kg",
+      rate: l.rate,
+      amount: l.amount,
+      discPct: l.discPct || 0,
+      discAmt: l.discAmt || 0,
+      gstPct: l.gstPct || 0,
+      cgstPct: l.cgstPct || 0,
+      sgstPct: l.sgstPct || 0,
+      igstPct: l.igstPct || 0,
+      cgstAmt: l.cgstAmt || 0,
+      sgstAmt: l.sgstAmt || 0,
+      igstAmt: l.igstAmt || 0,
       deliveryDate: l.expectedDeliveryDate || l.deliveryDate || "",
-      jobType:      l.jobType      || "New",
-      jobPriority:  l.jobPriority  || "Normal",
-      division:     l.division     || "Gravure",
-      remarks:      l.remarks      || "",
+      jobType: l.jobType || "New",
+      jobPriority: l.jobPriority || "Normal",
+      division: l.division || "Gravure",
+      remarks: l.remarks || "",
     }));
 
     const delivery = form.deliverySchedule.map((d, i) => ({
-      lineNo:       i + 1,
+      lineNo: i + 1,
       deliveryDate: d.deliveryDate,
-      scheduleQty:  d.scheduleQty,
-      jobName:      d.jobName      || "",
-      pmCode:       d.pmCode       || "",
-      consignee:    d.consignee    || "",
-      transporter:  d.transporter  || "",
+      scheduleQty: d.scheduleQty,
+      jobName: d.jobName || "",
+      pmCode: d.pmCode || "",
+      consigneeId: d.consigneeId || "",
+      consignee: d.consignee || "",
+      transporterId: d.transporterId || "",
+      transporter: d.transporter || "",
     }));
 
     const apiPayload = {
-      FlagEdit:        !!editing,
-      OrderBookingID:  editing ? (editing.id || 0) : 0,
-      Prefix:          form.orderPrefix || "GRV",
+      FlagEdit: !!editing,
+      OrderBookingID: editing ? (editing.id || 0) : 0,
+      Prefix: form.orderPrefix || "GRV",
       Header: {
-        LedgerID:         form.customerId,
+        LedgerID: form.customerId,
         OrderBookingDate: form.date,
-        SalesType:        form.salesType || "Local",
-        PONo:             form.poNo      || "",
-        PODate:           form.poDate    || "",
-        SalesLedger:      form.salesLedger || "",
-        SalesPerson:      form.salesPerson  || "",
-        TotalAmount:      totalAmount,
-        AdvancePaid:      form.advancePaid  || 0,
-        DirectDispatch:   form.directDispatch ? 1 : 0,
-        Remarks:          form.remarks       || "",
-        Status:           form.status        || "Confirmed",
+        SalesType: form.salesType || "Local",
+        PONo: form.poNo || "",
+        PODate: form.poDate || "",
+        SalesLedgerID: (form as any).salesLedgerId || "",
+        SalesEmployeeID: (form as any).salesPersonId || "",
+        TotalAmount: totalAmount,
+        AdvancePaid: form.advancePaid || 0,
+        DirectDispatch: form.directDispatch ? 1 : 0,
+        Remarks: form.remarks || "",
+        Status: form.status || "Confirmed",
       },
-      Lines:           lines,
-      DeliverySchedule:delivery,
-      OneTimeCharges:  [],
-      BatchDetails:    [],
+      Lines: lines,
+      DeliverySchedule: delivery,
+      OneTimeCharges: [],
+      BatchDetails: [],
     };
 
     setSaving(true);
@@ -682,9 +720,9 @@ export default function GravureOrdersPage() {
 
   // ── List columns ─────────────────────────────────────────────
   const columns: Column<GravureOrder>[] = [
-    { key: "orderNo",      header: "Order No",   sortable: true },
-    { key: "date",         header: "Date",        sortable: true },
-    { key: "customerName", header: "Customer",    sortable: true },
+    { key: "orderNo", header: "Order No", sortable: true },
+    { key: "date", header: "Date", sortable: true },
+    { key: "customerName", header: "Customer", sortable: true },
     {
       key: "orderLines", header: "Products",
       render: r => (
@@ -698,10 +736,10 @@ export default function GravureOrdersPage() {
         </div>
       ),
     },
-    { key: "poNo",         header: "PO No",       render: r => <span className="text-xs font-mono text-gray-500">{r.poNo || "—"}</span> },
-    { key: "salesPerson",  header: "Sales Person", render: r => <span className="text-sm">{r.salesPerson || "—"}</span> },
-    { key: "totalAmount",  header: "Amount (₹)",  render: r => <span className="font-semibold">₹{r.totalAmount.toLocaleString()}</span> },
-    { key: "status",       header: "Status",       render: r => statusBadge(r.status), sortable: true },
+    { key: "poNo", header: "PO No", render: r => <span className="text-xs font-mono text-gray-500">{r.poNo || "—"}</span> },
+    { key: "salesPerson", header: "Sales Person", render: r => <span className="text-sm">{r.salesPerson || "—"}</span> },
+    { key: "totalAmount", header: "Amount (₹)", render: r => <span className="font-semibold">₹{r.totalAmount.toLocaleString()}</span> },
+    { key: "status", header: "Status", render: r => statusBadge(r.status), sortable: true },
   ];
 
   // ════════════════════════════════════════════════════════════
@@ -786,6 +824,30 @@ export default function GravureOrdersPage() {
                   {apiCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Person</label>
+                <select value={(form as any).salesPersonId || ""}
+                  onChange={e => {
+                    const p = apiSalesPersons.find((x: any) => x.id === e.target.value) as any;
+                    setForm(prev => ({ ...prev, salesPersonId: e.target.value, salesPerson: p?.name || "" } as any));
+                  }}
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  <option value="">-- Select --</option>
+                  {(apiSalesPersons as any[]).map((p: any) => <option key={p.id ?? p} value={p.id ?? p}>{p.name ?? p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Ledger</label>
+                <select value={(form as any).salesLedgerId || ""}
+                  onChange={e => {
+                    const l = (apiSalesLedgers as any[]).find((x: any) => (x.id ?? x) === e.target.value) as any;
+                    setForm(prev => ({ ...prev, salesLedgerId: e.target.value, salesLedger: l?.name ?? l ?? "" } as any));
+                  }}
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
+                  <option value="">-- Select --</option>
+                  {(apiSalesLedgers as any[]).map((l: any) => <option key={l.id ?? l} value={l.id ?? l}>{l.name ?? l}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Row 3: Direct Dispatch + status */}
@@ -849,12 +911,10 @@ export default function GravureOrdersPage() {
                       const isAdded = addedIds.has(row.id);
                       return (
                         <tr key={row.id}
-                          className={`border-t border-amber-100 transition-colors ${
-                            isAdded ? "bg-green-50" : i % 2 === 0 ? "bg-white hover:bg-amber-50/60" : "bg-amber-50/30 hover:bg-amber-50/60"
-                          }`}>
+                          className={`border-t border-amber-100 transition-colors ${isAdded ? "bg-green-50" : i % 2 === 0 ? "bg-white hover:bg-amber-50/60" : "bg-amber-50/30 hover:bg-amber-50/60"
+                            }`}>
                           <td className="px-3 py-2">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                              row.type === "Estimation" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${row.type === "Estimation" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
                               {row.type === "Estimation" ? <Calculator size={9} /> : <BookMarked size={9} />}
                               {row.type}
                             </span>
@@ -949,7 +1009,7 @@ export default function GravureOrdersPage() {
                     const odd = idx % 2 === 0;
                     const srcCls = l.sourceType === "Estimation" ? "border-l-4 border-l-blue-400"
                       : l.sourceType === "Catalog" ? "border-l-4 border-l-purple-400"
-                      : "";
+                        : "";
                     return (
                       <tr key={l.id} className={`${odd ? "bg-white" : "bg-gray-50/60"} hover:bg-teal-50/30 ${srcCls}`}>
                         <td className={`px-2 py-1 sticky left-0 z-10 font-bold text-gray-400 ${odd ? "bg-white" : "bg-gray-50"}`}>{idx + 1}</td>
@@ -982,7 +1042,7 @@ export default function GravureOrdersPage() {
                         {/* Unit */}
                         <td className="px-1 py-0.5">
                           <CS value={l.unit} onChange={v => updateLine(idx, { ...l, unit: v })}
-                            options={["Kg","Pcs","Nos"].map(u => ({ value: u, label: u }))} />
+                            options={["Kg", "Pcs", "Nos"].map(u => ({ value: u, label: u }))} />
                         </td>
                         {/* Rate Type */}
                         <td className="px-1 py-0.5">
@@ -1148,18 +1208,24 @@ export default function GravureOrdersPage() {
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">Consignee</label>
-                <select value={dlvInput.consignee} onChange={e => setDlvInput(p => ({ ...p, consignee: e.target.value }))}
+                <select value={dlvInput.consigneeId} onChange={e => {
+                  const c = apiConsignees.find(x => x.id === e.target.value);
+                  setDlvInput(p => ({ ...p, consigneeId: e.target.value, consignee: c?.name || "" }));
+                }}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
                   <option value="">-- Select Consignee --</option>
-                  {apiConsignees.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  {apiConsignees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">Transporter</label>
-                <select value={dlvInput.transporter} onChange={e => setDlvInput(p => ({ ...p, transporter: e.target.value }))}
+                <select value={dlvInput.transporterId} onChange={e => {
+                  const t = apiTransporters.find(x => x.id === e.target.value);
+                  setDlvInput(p => ({ ...p, transporterId: e.target.value, transporter: t?.name || "" }));
+                }}
                   className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
                   <option value="">-- Select Transporter --</option>
-                  {apiTransporters.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                  {apiTransporters.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </div>
               <div className="flex items-end">
@@ -1250,9 +1316,8 @@ export default function GravureOrdersPage() {
                     const sizeKB = (att.size / 1024).toFixed(1);
                     return (
                       <div key={att.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                        <div className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${
-                          isImage ? "bg-blue-100 text-blue-700" : isPdf ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
-                        }`}>
+                        <div className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${isImage ? "bg-blue-100 text-blue-700" : isPdf ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
+                          }`}>
                           {isImage ? "IMG" : isPdf ? "PDF" : "FILE"}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1372,8 +1437,8 @@ export default function GravureOrdersPage() {
         {loadingList && (
           <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
             Loading orders…
           </div>
@@ -1405,12 +1470,12 @@ export default function GravureOrdersPage() {
               <button
                 onClick={() => {
                   sessionStorage.setItem("createPWOFromOrder", JSON.stringify({
-                    orderId:      row.id,
-                    orderNo:      row.orderNo,
-                    customerId:   row.customerId,
+                    orderId: row.id,
+                    orderNo: row.orderNo,
+                    customerId: row.customerId,
                     customerName: row.customerName,
-                    salesType:    row.salesType ?? "",
-                    lines:        row.orderLines ?? [],
+                    salesType: row.salesType ?? "",
+                    lines: row.orderLines ?? [],
                   }));
                   router.push("/gravure/workorder");
                 }}
@@ -1455,12 +1520,12 @@ export default function GravureOrdersPage() {
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Order Header</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {([
-                  ["Customer",     viewRow.customerName],
-                  ["Order Date",   viewRow.date],
+                  ["Customer", viewRow.customerName],
+                  ["Order Date", viewRow.date],
                   ["Sales Person", viewRow.salesPerson || "—"],
-                  ["Sales Type",   viewRow.salesType   || "—"],
-                  ["PO No",        viewRow.poNo        || "—"],
-                  ["PO Date",      viewRow.poDate      || "—"],
+                  ["Sales Type", viewRow.salesType || "—"],
+                  ["PO No", viewRow.poNo || "—"],
+                  ["PO Date", viewRow.poDate || "—"],
                 ] as [string, string][]).map(([k, v]) => (
                   <div key={k}>
                     <p className="text-[10px] text-gray-400 uppercase font-semibold">{k}</p>
@@ -1477,9 +1542,8 @@ export default function GravureOrdersPage() {
                   <div className="col-span-2 sm:col-span-4">
                     <span className="text-xs font-bold text-gray-400">#{i + 1}</span>
                     <span className="ml-2 font-semibold text-gray-800">{line.productName}</span>
-                    <span className={`ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                      line.sourceType === "Estimation" ? "bg-blue-50 text-blue-700" :
-                      line.sourceType === "Catalog" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                    <span className={`ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full ${line.sourceType === "Estimation" ? "bg-blue-50 text-blue-700" :
+                        line.sourceType === "Catalog" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
                       {line.sourceType}
                     </span>
                   </div>
@@ -1488,7 +1552,7 @@ export default function GravureOrdersPage() {
                     ["Qty", `${line.orderQty.toLocaleString()} ${line.unit}`],
                     ["Rate", `₹${line.rate}`],
                     ["Amount", `₹${line.amount.toLocaleString()}`],
-                  ] as [string,string][]).map(([k,v]) => (
+                  ] as [string, string][]).map(([k, v]) => (
                     <div key={k}>
                       <p className="text-[10px] text-gray-400">{k}</p>
                       <p className="font-semibold text-gray-800">{v}</p>
@@ -1684,10 +1748,10 @@ export default function GravureOrdersPage() {
                   {/* ── ORDER IDENTITY STRIP ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0", border: "2px solid #0f766e", marginBottom: "8px" }}>
                     {[
-                      ["Order No",    o.orderNo],
-                      ["Order Date",  o.date],
-                      ["Status",      o.status],
-                      ["PO No",       o.poNo || "—"],
+                      ["Order No", o.orderNo],
+                      ["Order Date", o.date],
+                      ["Status", o.status],
+                      ["PO No", o.poNo || "—"],
                     ].map(([k, v]) => (
                       <div key={k} style={{ padding: "5px 8px", borderRight: "1px solid #99f6e4" }}>
                         <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
@@ -1699,10 +1763,10 @@ export default function GravureOrdersPage() {
                   {/* ── CUSTOMER INFO ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", marginBottom: "8px" }}>
                     {[
-                      ["Customer Name",  o.customerName],
-                      ["Sales Person",   o.salesPerson   || "—"],
-                      ["Sales Type",     o.salesType     || "—"],
-                      ["PO Date",        o.poDate        || "—"],
+                      ["Customer Name", o.customerName],
+                      ["Sales Person", o.salesPerson || "—"],
+                      ["Sales Type", o.salesType || "—"],
+                      ["PO Date", o.poDate || "—"],
                     ].map(([k, v]) => (
                       <div key={k} style={{ border: "1px solid #d1d5db", borderRadius: "4px", padding: "5px 8px", background: "#f0fdfa" }}>
                         <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
@@ -1756,9 +1820,9 @@ export default function GravureOrdersPage() {
                   {/* ── FINANCIAL SUMMARY ── */}
                   <div style={{ marginBottom: "8px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
                     {[
-                      { label: "Order Total",   val: S(o.totalAmount),  bg: "#f0fdfa", border: "#0f766e", color: "#0f766e" },
-                      { label: "Advance Paid",  val: S(o.advancePaid),  bg: "#f0fdf4", border: "#16a34a", color: "#16a34a" },
-                      { label: "Balance Due",   val: S(balance),        bg: balance > 0 ? "#fef2f2" : "#f0fdf4", border: balance > 0 ? "#dc2626" : "#16a34a", color: balance > 0 ? "#dc2626" : "#16a34a" },
+                      { label: "Order Total", val: S(o.totalAmount), bg: "#f0fdfa", border: "#0f766e", color: "#0f766e" },
+                      { label: "Advance Paid", val: S(o.advancePaid), bg: "#f0fdf4", border: "#16a34a", color: "#16a34a" },
+                      { label: "Balance Due", val: S(balance), bg: balance > 0 ? "#fef2f2" : "#f0fdf4", border: balance > 0 ? "#dc2626" : "#16a34a", color: balance > 0 ? "#dc2626" : "#16a34a" },
                     ].map(s => (
                       <div key={s.label} style={{ border: `2px solid ${s.border}`, borderRadius: "4px", padding: "8px 12px", background: s.bg, textAlign: "center" }}>
                         <div style={{ fontSize: "7pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{s.label}</div>
@@ -1868,7 +1932,7 @@ export default function GravureOrdersPage() {
             <Button variant="secondary" onClick={() => setDelId(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => {
               apiPost("api/gravureOrderBookingShrink/deleteorder", { OrderBookingID: deleteId })
-                .catch(() => {})
+                .catch(() => { })
                 .finally(() => { setDelId(null); loadOrders(); });
             }}>Delete</Button>
           </div>

@@ -44,6 +44,7 @@ type ApiCatalogRow = {
   GrvPlanRepeatUPS: number;
   GrvPlanTotalPieces: number;
   GrvSavedPlanJSON?: string;
+  ContentSizeValues?: string;
 };
 
 function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
@@ -119,7 +120,7 @@ function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
     sourceWorkOrderId: String(r.SourceWorkOrderID ?? ""),
     sourceWorkOrderNo: r.SourceWorkOrderNo ?? "",
     savedPlanId: String(r.SavedPlanID ?? ""),
-    savedPlan: tryParse(r.GrvSavedPlanJSON),
+    savedPlan: tryParse(r.ContentSizeValues) ?? tryParse(r.GrvSavedPlanJSON),
     savedColorShades: tryParse(r.SavedColorShadesJSON),
     savedCylAllocs: tryParse(r.SavedCylAllocsJSON),
     standardQty: Number(r.StandardQty ?? 0),
@@ -145,6 +146,7 @@ function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
         consumableItems: Array.isArray(l.consumableItems)
           ? l.consumableItems.map((c: any) => ({
               ...c,
+              consumableId: String(c.consumableId ?? c.ConsumableID ?? `${l.layerNo}-${c.itemId ?? Math.random()}`),
               itemId: String(c.itemId ?? ""),  // same fix for consumable item IDs
               // normalize: backend saves as dryGSM/solidPercentage, UI reads as gsm/solidPct
               gsm:      c.gsm      ?? c.dryGSM            ?? 0,

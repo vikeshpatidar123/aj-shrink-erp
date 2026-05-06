@@ -1,4 +1,4 @@
-// API client for AJ Shrink ERP — local backend at http://localhost:57214
+// API client for AJ Shrink ERP
 // Uses Basic Auth + custom headers set up in lib/auth.ts (authHeaders function).
 // The [Validate] filter on every backend controller reads these headers.
 

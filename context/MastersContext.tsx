@@ -1,6 +1,7 @@
 "use client";
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { apiGet } from "@/lib/api";
+import { isLoggedIn } from "@/lib/auth";
 
 export type ApiCustomer = { LedgerID: string; CustomerName: string };
 export type ApiMachine  = { MachineID: string; MachineName: string; MachineCode: string; DepartmentName: string; MinRollWidth: number; MaxRollWidth: number; MinCircumference: number; MaxCircumference: number; Colors: number; Speed: number };
@@ -37,31 +38,40 @@ export function MastersProvider({ children }: { children: ReactNode }) {
   const [vendorLedgers,  setVendorLedgers]  = useState<ApiVendor[]>([]);
   const [cylinderMaster, setCylinderMaster] = useState<ApiCylinder[]>([]);
   const [loading,        setLoading]        = useState(false);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const refresh = useCallback(async () => {
+    // Only fetch if running in browser and user is logged in
+    if (typeof window === "undefined") return;
+    if (!isLoggedIn()) return;
+
     setLoading(true);
     try {
       const data = await apiGet<any>("api/productcataloggravureShrink/getdropdowndata");
-      console.log("[MastersContext] getdropdowndata response:", data);
       if (data && typeof data === "object") {
-        if (Array.isArray(data.customers))     { setCustomers(data.customers);     console.log("[Masters] customers:", data.customers.length); }
-        if (Array.isArray(data.machines))      { setMachines(data.machines);       console.log("[Masters] machines:", data.machines.length); }
-        if (Array.isArray(data.processes))     { setProcesses(data.processes);     console.log("[Masters] processes:", data.processes.length); }
-        if (Array.isArray(data.filmItems))     { setFilmItems(data.filmItems);     console.log("[Masters] filmItems:", data.filmItems.length); }
-        if (Array.isArray(data.inkItems))      { setInkItems(data.inkItems);       console.log("[Masters] inkItems:", data.inkItems.length); }
-        if (Array.isArray(data.vendorLedgers))  { setVendorLedgers(data.vendorLedgers);   console.log("[Masters] vendorLedgers:", data.vendorLedgers.length); }
-        if (Array.isArray(data.cylinderMaster)) { setCylinderMaster(data.cylinderMaster); console.log("[Masters] cylinderMaster:", data.cylinderMaster.length); }
-        if (Array.isArray(data._errors) && data._errors.length > 0)
-          console.warn("[Masters] partial errors:", data._errors);
+        if (Array.isArray(data.customers))      setCustomers(data.customers);
+        if (Array.isArray(data.machines))       setMachines(data.machines);
+        if (Array.isArray(data.processes))      setProcesses(data.processes);
+        if (Array.isArray(data.filmItems))      setFilmItems(data.filmItems);
+        if (Array.isArray(data.inkItems))       setInkItems(data.inkItems);
+        if (Array.isArray(data.vendorLedgers))  setVendorLedgers(data.vendorLedgers);
+        if (Array.isArray(data.cylinderMaster)) setCylinderMaster(data.cylinderMaster);
       }
-    } catch (e: any) {
-      console.error("[MastersContext] getdropdowndata FAILED:", e?.message ?? e);
+    } catch {
+      // Silently retry after 10 seconds — server may not be ready yet
+      if (retryRef.current) clearTimeout(retryRef.current);
+      retryRef.current = setTimeout(() => {
+        if (isLoggedIn()) refresh();
+      }, 10000);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    refresh();
+    return () => { if (retryRef.current) clearTimeout(retryRef.current); };
+  }, [refresh]);
 
   return (
     <MastersCtx.Provider value={{ customers, machines, processes, filmItems, inkItems, vendorLedgers, cylinderMaster, loading, refresh }}>
