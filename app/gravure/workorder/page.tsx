@@ -328,81 +328,57 @@ export default function GravureWorkOrderPage() {
     } catch { /* ignore */ }
   }, []);
 
-  // ── When catalog loads, apply full pre-fill from pending order ──
+  // ── When pendingPWOOrder is set, fetch all catalog data directly from API ──
   useEffect(() => {
-    if (!pendingPWOOrder || catalog.length === 0) return;
+    if (!pendingPWOOrder) return;
     const src = pendingPWOOrder;
     const lines: any[] = Array.isArray(src.lines) ? src.lines : [];
-    const line = lines[0]; // use first line for WO pre-fill
+    const line = lines[0];
     if (!line) { setPendingPWOOrder(null); return; }
 
-    // Find the catalog item by catalogId
-    const catItem = line.catalogId
-      ? catalog.find(c => String(c.id) === String(line.catalogId))
-      : undefined;
+    apiGet<any>(`api/gravureWorkOrderShrink/getpwoinitdata/${line.id}`)
+      .then(cat => {
+        if (!cat) return;
 
-    setForm(f => ({
-      ...f,
-      sourceOrderType: "Catalog",
-      orderId: String(src.orderId ?? ""),
-      orderNo: String(src.orderNo ?? ""),
-      customerId: String(src.customerId ?? ""),
-      customerName: String(src.customerName ?? ""),
-      salesType: String(src.salesType ?? ""),
-      // From order line
-      jobName: String(line.productName ?? catItem?.productName ?? ""),
-      categoryId: String(line.categoryId ?? catItem?.categoryId ?? ""),
-      categoryName: String(line.categoryName ?? catItem?.categoryName ?? ""),
-      substrate: String(line.substrate ?? catItem?.substrate ?? ""),
-      jobWidth: Number(line.jobWidth ?? catItem?.jobWidth ?? 0),
-      jobHeight: Number(line.jobHeight ?? catItem?.jobHeight ?? 0),
-      noOfColors: Number(line.noOfColors ?? catItem?.noOfColors ?? 0),
-      frontColors: Number(line.frontColors ?? catItem?.frontColors ?? 0),
-      backColors: Number(line.backColors ?? catItem?.backColors ?? 0),
-      printType: (line.printType ?? catItem?.printType ?? "Surface Print") as any,
-      quantity: Number(line.orderQty ?? 0),
-      unit: String(line.unit ?? catItem?.standardUnit ?? "Meter"),
-      productMasterID: Number(line.catalogId ?? catItem?.id ?? 0),
-      productMasterCode: String(line.catalogNo ?? catItem?.catalogNo ?? ""),
-      // From catalog item (full details)
-      ...(catItem ? {
-        structure: (catItem as any).structure || "",
-        content: catItem.content || "",
-        trimmingSize: catItem.trimmingSize || 0,
-        machineId: catItem.machineId || "",
-        machineName: catItem.machineName || "",
-        // actualWidth drives allPlans — must come from catalog
-        actualWidth: catItem.actualWidth || catItem.jobWidth || 0,
-        actualHeight: catItem.actualHeight || catItem.jobHeight || 0,
-        // these seal/shrink fields feed the lane-width & effective-repeat calcs in allPlans
-        widthShrinkage: catItem.widthShrinkage || 0,
-        gusset: catItem.gusset || 0,
-        topSeal: catItem.topSeal || 0,
-        bottomSeal: catItem.bottomSeal || 0,
-        sideSeal: catItem.sideSeal || 0,
-        centerSealWidth: catItem.centerSealWidth || 0,
-        sideGusset: catItem.sideGusset || 0,
-        transparentArea: catItem.transparentArea || 0,
-        seamingArea: catItem.seamingArea || 0,
-        structureType: (catItem as any).structureType || (catItem as any).structure || "",
-        cylinderCostPerColor: catItem.cylinderCostPerColor || 0,
-        overheadPct: catItem.overheadPct || 0,
-        profitPct: catItem.profitPct || 0,
-        perMeterRate: catItem.perMeterRate || 0,
-        secondaryLayers: (() => {
-          const raw = catItem.secondaryLayers || [];
-          const seen = new Set<number>();
-          return raw.filter(l => { if (seen.has(l.layerNo)) return false; seen.add(l.layerNo); return true; })
-            .map(l => {
-              const sg = l.itemSubGroup ? FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup) : null;
-              return { ...l, density: (l.density && l.density > 0) ? l.density : (sg?.density ?? 0), gsm: l.gsm || 0 };
-            });
-        })(),
-        processes: (catItem.processes || []).map((p: any) => {
-          const pid = String(p.processId ?? p.id ?? "").trim();
-          const pname = String(p.processName ?? p.name ?? "").trim();
-          const pm = ROTO_PROCESSES.find(x => x.id === pid)
-            || ROTO_PROCESSES.find(x => x.name === pname);
+        // Map secondaryLayers from layersJSON
+        const rawLayers: any[] = Array.isArray(cat.layersJSON) ? cat.layersJSON : [];
+        const seenLayers = new Set<number>();
+        const secondaryLayers = rawLayers
+          .filter(l => { if (seenLayers.has(Number(l.layerNo))) return false; seenLayers.add(Number(l.layerNo)); return true; })
+          .map((l: any) => {
+            const sg = (l.storedSubGroup || l.itemSubGroup)
+              ? FILM_SUBGROUPS.find(s => s.subGroup === (l.storedSubGroup || l.itemSubGroup))
+              : null;
+            return {
+              layerNo: Number(l.layerNo ?? 0),
+              plyType: String(l.plyType ?? ""),
+              itemId: String(l.itemId ?? ""),
+              itemName: String(l.itemName ?? ""),
+              itemSubGroup: String(l.storedSubGroup || l.itemSubGroup || ""),
+              gsm: Number(l.gsm ?? 0),
+              thickness: 0,
+              density: (Number(l.filmDensity) > 0) ? Number(l.filmDensity) : (sg?.density ?? 0),
+              rate: Number(l.rate ?? 0),
+              consumableItems: Array.isArray(l.consumableItems)
+                ? l.consumableItems.map((c: any) => ({
+                    ...c,
+                    consumableId: String(c.consumableId ?? `${l.layerNo}-${c.itemId ?? Math.random()}`),
+                    itemId: String(c.itemId ?? ""),
+                    itemGroup: c.itemGroup ?? c.consumableType ?? c.itemGroupName ?? "",
+                    itemSubGroup: c.itemSubGroup ?? c.itemSubGroupName ?? "",
+                    gsm: c.gsm ?? c.dryGSM ?? 0,
+                    solidPct: (c.solidPct > 0 ? c.solidPct : (c.solidPercentage > 0 ? c.solidPercentage : 40)),
+                  }))
+                : [],
+            };
+          });
+
+        // Map processes from processesJSON
+        const rawProcs: any[] = Array.isArray(cat.processesJSON) ? cat.processesJSON : [];
+        const processes = rawProcs.map((p: any) => {
+          const pid = String(p.processId ?? "").trim();
+          const pname = String(p.processName ?? "").trim();
+          const pm = ROTO_PROCESSES.find(x => x.id === pid) || ROTO_PROCESSES.find(x => x.name === pname);
           return {
             processId: pm?.id ?? pid,
             processName: (pm?.name ?? pname) || pid,
@@ -412,40 +388,119 @@ export default function GravureWorkOrderPage() {
             setupCharge: pm?.makeSetupCharges ? parseFloat(pm.setupChargeAmount || "0") || 0 : Number(p.setupCharge ?? 0),
             amount: Number(p.amount ?? 0),
           };
-        }),
-        selectedPlanId: catItem.savedPlanId || (catItem.savedPlan as any)?.planId || (catItem as any).selectedPlanId || "",
-      } as any : {}),
-    }));
+        });
 
-    // Auto-apply the saved plan if catalog item has one
-    if (catItem?.savedPlanId || (catItem?.savedPlan as any)?.planId) {
-      setIsPlanApplied(true);
-      setShowPlan(false);
-      // Store full saved plan for planId reconciliation (CP- → WO- prefix fix)
-      catalogSavedPlanRef.current = catItem.savedPlan || null;
-    }
+        // Map colorShades from colorShadesJSON
+        const rawShades: any[] = Array.isArray(cat.colorShadesJSON) ? cat.colorShadesJSON : [];
+        setColorShades(rawShades.map((s: any) => ({
+          colorNo: Number(s.colorNo ?? 0),
+          colorName: String(s.colorName ?? ""),
+          inkType: (s.inkType || "Spot") as ColorShade["inkType"],
+          pantoneRef: String(s.pantoneRef ?? ""),
+          labL: String(s.labL ?? ""),
+          labA: String(s.labA ?? ""),
+          labB: String(s.labB ?? ""),
+          labLMeas: "",
+          labAMeas: "",
+          labBMeas: "",
+          deltaE: "--",
+          deltaETol: "",
+          shadeCardRef: "",
+          status: "Pending" as ColorShade["status"],
+          remarks: String(s.remarks ?? ""),
+        })));
 
-    // Restore dimValues from catalog item
-    if (catItem) {
-      setDimValues({
-        width: catItem.jobWidth || undefined,
-        height: catItem.jobHeight || undefined,
-        widthShrinkage: (catItem as any).widthShrinkage || undefined,
-        topSeal: (catItem as any).topSeal || undefined,
-        bottomSeal: (catItem as any).bottomSeal || undefined,
-        sideSeal: (catItem as any).sideSeal || undefined,
-        gusset: (catItem as any).gusset || undefined,
-        sideGusset: (catItem as any).sideGusset || undefined,
-        centerSealWidth: (catItem as any).centerSealWidth || undefined,
-        seamingArea: (catItem as any).seamingArea || undefined,
-        transparentArea: (catItem as any).transparentArea || undefined,
-        layflatWidth: catItem.jobWidth || undefined,
-        cutHeight: catItem.jobHeight || undefined,
-      });
-    }
+        // Map cylinderAllocs from cylAllocsJSON
+        const rawCyls: any[] = Array.isArray(cat.cylAllocsJSON) ? cat.cylAllocsJSON : [];
+        setCylinderAllocs(rawCyls.map((c: any) => ({
+          colorNo: Number(c.colorNo ?? 0),
+          colorName: String(c.colorName ?? ""),
+          cylinderNo: String(c.cylinderNo ?? ""),
+          circumference: String(c.circumference ?? ""),
+          cylinderType: (c.cylinderType || "New") as CylinderAlloc["cylinderType"],
+          status: (c.status || "Pending") as CylinderAlloc["status"],
+          remarks: String(c.remarks ?? ""),
+        })));
 
-    setPendingPWOOrder(null); // clear after applying
-  }, [catalog, pendingPWOOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+        // Store saved plan for planId reconciliation (CP- → WO- prefix fix)
+        try {
+          catalogSavedPlanRef.current = JSON.parse(cat.contentSizeValues || cat.savedPlanJSON || "null");
+        } catch {
+          catalogSavedPlanRef.current = null;
+        }
+
+        setForm(f => ({
+          ...f,
+          sourceOrderType: "Catalog",
+          orderId: String(src.orderId ?? ""),
+          orderNo: String(src.orderNo ?? ""),
+          customerId: String(src.customerId ?? ""),
+          customerName: String(src.customerName ?? ""),
+          salesType: String(cat.salesType || src.salesType || ""),
+          jobName: String(cat.productName || line.productName || ""),
+          categoryId: String(cat.categoryId || ""),
+          categoryName: String(cat.categoryName || ""),
+          substrate: String(cat.substrate || ""),
+          jobWidth: Number(cat.jobWidth || 0),
+          jobHeight: Number(cat.jobHeight || 0),
+          noOfColors: Number(cat.noOfColors || 0),
+          frontColors: Number(cat.frontColors || 0),
+          backColors: Number(cat.backColors || 0),
+          printType: (cat.printType || "Surface Print") as any,
+          quantity: Number(cat.orderQty || line.orderQty || 0),
+          unit: String(cat.unit || "Meter"),
+          productMasterID: Number(cat.productMasterID || 0),
+          productMasterCode: String(cat.catalogNo || ""),
+          structure: String(cat.structureType || ""),
+          structureType: String(cat.structureType || ""),
+          content: String(cat.content || ""),
+          trimmingSize: Number(cat.trimmingSize || 0),
+          machineId: String(cat.machineId || ""),
+          machineName: String(cat.machineName || ""),
+          actualWidth: Number(cat.actualWidth || cat.jobWidth || 0),
+          actualHeight: Number(cat.actualHeight || cat.jobHeight || 0),
+          widthShrinkage: Number(cat.widthShrinkage || 0),
+          gusset: Number(cat.gusset || 0),
+          topSeal: Number(cat.topSeal || 0),
+          bottomSeal: Number(cat.bottomSeal || 0),
+          sideSeal: Number(cat.sideSeal || 0),
+          centerSealWidth: Number(cat.centerSealWidth || 0),
+          sideGusset: Number(cat.sideGusset || 0),
+          transparentArea: Number(cat.transparentArea || 0),
+          seamingArea: Number(cat.seamingArea || 0),
+          cylinderCostPerColor: Number(cat.cylinderCostPerColor || 0),
+          overheadPct: Number(cat.overheadPct || 0),
+          profitPct: Number(cat.profitPct || 0),
+          perMeterRate: Number(cat.perMeterRate || 0),
+          secondaryLayers,
+          processes,
+          selectedPlanId: String(cat.savedPlanId || ""),
+        }));
+
+        if (cat.savedPlanId) {
+          setIsPlanApplied(true);
+          setShowPlan(false);
+        }
+
+        setDimValues({
+          width: Number(cat.jobWidth) || undefined,
+          height: Number(cat.jobHeight) || undefined,
+          widthShrinkage: Number(cat.widthShrinkage) || undefined,
+          topSeal: Number(cat.topSeal) || undefined,
+          bottomSeal: Number(cat.bottomSeal) || undefined,
+          sideSeal: Number(cat.sideSeal) || undefined,
+          gusset: Number(cat.gusset) || undefined,
+          sideGusset: Number(cat.sideGusset) || undefined,
+          centerSealWidth: Number(cat.centerSealWidth) || undefined,
+          seamingArea: Number(cat.seamingArea) || undefined,
+          transparentArea: Number(cat.transparentArea) || undefined,
+          layflatWidth: Number(cat.jobWidth) || undefined,
+          cutHeight: Number(cat.jobHeight) || undefined,
+        });
+      })
+      .catch(() => { /* basic form info was already set from sessionStorage */ })
+      .finally(() => setPendingPWOOrder(null));
+  }, [pendingPWOOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Helper: map API row → GravureWorkOrder shape
   function mapApiToWO(r: any): GravureWorkOrder {
