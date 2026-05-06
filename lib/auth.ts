@@ -12,7 +12,7 @@
 //   POST /api/Login/UserLogin
 //   Header: Authorization: Basic base64(ApiCompanyUserName:ApiCompanyPassword)  ← same
 //   Body:   { UserName, Password }  ← from UserMaster table (password encrypted server-side)
-//   Returns: { UserID, UserName, CompanyID, FYear, DBType, ProductionUnits[] }
+//   Returns: { UserID, UserName, CompanyID, FYear, DBType, ProductionUnits[], DefaultProductionUnitID }
 //
 // ALL API CALLS (e.g. Item Master):
 //   Header: Authorization: Basic base64(ApiCompanyUserName:ApiCompanyPassword)
@@ -39,7 +39,7 @@ export interface UserSession {
   dbType: string;
   basicAuth: string;               // base64(ApiCompanyUserName:ApiCompanyPassword)
   productionUnits: { ProductionUnitID: string; ProductionUnitName: string }[];
-  productionUnitID: string;        // first/active production unit ID
+  productionUnitID: string;        // UserMaster.ProductionUnitID for logged-in user
 }
 
 // ── Step 1: Company Login ─────────────────────────────────────────────────────
@@ -125,7 +125,7 @@ export async function loginUser(
       dbType: data.DBType ?? "MSSQL",
       basicAuth,
       productionUnits,
-      productionUnitID: String(productionUnits[0]?.ProductionUnitID ?? ""),
+      productionUnitID: String(data.DefaultProductionUnitID ?? data.ProductionUnitID ?? ""),
     };
 
     saveSession(session);
