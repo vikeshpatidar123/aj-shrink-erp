@@ -452,7 +452,7 @@ export default function GravureWorkOrderPage() {
           productMasterID: Number(cat.productMasterID || 0),
           productMasterCode: String(cat.catalogNo || ""),
           structure: String(cat.structureType || ""),
-          structureType: String(cat.structureType || ""),
+          structureType: String(cat.structureType || "") as any,
           content: String(cat.content || ""),
           trimmingSize: Number(cat.trimmingSize || 0),
           machineId: String(cat.machineId || ""),
