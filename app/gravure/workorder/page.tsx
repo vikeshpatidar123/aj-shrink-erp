@@ -472,10 +472,10 @@ export default function GravureWorkOrderPage() {
           overheadPct: Number(cat.overheadPct || 0),
           profitPct: Number(cat.profitPct || 0),
           perMeterRate: Number(cat.perMeterRate || 0),
-          secondaryLayers,
+          secondaryLayers: secondaryLayers as any,
           processes,
           selectedPlanId: String(cat.savedPlanId || ""),
-        }));
+        } as any));
 
         if (cat.savedPlanId) {
           setIsPlanApplied(true);
