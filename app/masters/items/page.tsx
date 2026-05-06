@@ -294,13 +294,14 @@ export default function ItemMasterPage() {
   const [itemNameFormula, setItemNameFormula] = useState<string[]>([]);
 
   // Generic cascading sub-group state (used for any group with ItemSubGroupID in formFields)
-  const [sgSubGroupOpts, setSgSubGroupOpts] = useState<{id: string; name: string; displayName: string}[]>([]);
+  const [sgSubGroupOpts, setSgSubGroupOpts] = useState<{id: string; name: string; displayName: string; subGroupPrefix?: string}[]>([]);
   const [sgTypeOpts, setSgTypeOpts] = useState<{type: string; prefix: string}[]>([]);
   const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{spec: string; prefix: string}[]>([]);
   const [sgSupplierOpts, setSgSupplierOpts] = useState<{id: string; name: string}[]>([]);
   const [sgUnitOpts, setSgUnitOpts] = useState<{id: string; name: string}[]>([]);
   const [sgSubGroupName, setSgSubGroupName] = useState("");
   const [sgSubGroupDisplayName, setSgSubGroupDisplayName] = useState("");
+  const [sgSubGroupPrefix, setSgSubGroupPrefix] = useState("");
   const [sgTypePrefix, setSgTypePrefix] = useState("");
   const [sgSpecPrefix, setSgSpecPrefix] = useState("");
 
@@ -332,7 +333,7 @@ export default function ItemMasterPage() {
         const d = new Date(raw).toISOString().split("T")[0];
         return d >= fromDate && d <= toDate;
       } catch {
-        return true; // unparseable date → show row
+        return true;
       }
     });
   }, [gridData, fromDate, toDate]);
@@ -356,7 +357,7 @@ export default function ItemMasterPage() {
     fetch(`${BASE_URL}/api/itemmasterShrink/film-subgroups/${formGroupID}`, { headers: authHeaders() })
       .then(r => r.text()).then(text => {
         const raw = unwrap(text);
-        setSgSubGroupOpts(Array.isArray(raw) ? raw.map((r: any) => ({ id: String(r.ItemSubGroupID), name: String(r.ItemSubGroupName), displayName: String(r.ItemSubGroupDisplayName ?? r.ItemSubGroupName ?? "") })) : []);
+        setSgSubGroupOpts(Array.isArray(raw) ? raw.map((r: any) => ({ id: String(r.ItemSubGroupID), name: String(r.ItemSubGroupName), displayName: String(r.ItemSubGroupDisplayName ?? r.ItemSubGroupName ?? ""), subGroupPrefix: String(r.SubGroupPrefix ?? "") })) : []);
       }).catch(() => setSgSubGroupOpts([]));
     fetch(`${BASE_URL}/api/itemmasterShrink/suppliers`, { headers: authHeaders() })
       .then(r => r.text()).then(text => {
@@ -381,7 +382,11 @@ export default function ItemMasterPage() {
     const existingID = String(formValues["ItemSubGroupID"] ?? "");
     if (!existingID) return;
     const found = sgSubGroupOpts.find(o => o.id === existingID);
-    if (found && !sgSubGroupName) { setSgSubGroupName(found.name); setSgSubGroupDisplayName(found.displayName); }
+    if (found && !sgSubGroupName) {
+      setSgSubGroupName(found.name);
+      setSgSubGroupDisplayName(found.displayName);
+      if (found.subGroupPrefix) setSgSubGroupPrefix(found.subGroupPrefix);
+    }
     if (!sgTypeOpts.length) loadSgTypes(formGroupID, existingID);
   }, [sgSubGroupOpts]);
 
@@ -389,7 +394,6 @@ export default function ItemMasterPage() {
   useEffect(() => {
     if (editPrefetchDone.current) return;
     if (!hasCascadeFields || !sgTypeOpts.length) return;
-    // sg2FieldName is dynamic (Quality for Film, ItemType for Ink, etc.)
     const existingType = String(formValues[sg2FieldName] ?? "");
     const existingID   = String(formValues["ItemSubGroupID"] ?? "");
     if (!existingType) return;
@@ -437,7 +441,6 @@ export default function ItemMasterPage() {
     setFormLoading(true);
     setFormError("");
     try {
-      // Fetch fields + ItemNameFormula in parallel
       const [fieldsRes, formulaRes] = await Promise.all([
         fetch(`${BASE_URL}/api/itemmasterShrink/getmasterfields/${groupID}`, { headers: authHeaders() }),
         fetch(`${BASE_URL}/api/itemmasterShrink/grid-column-hide/${groupID}`, { headers: authHeaders() }),
@@ -452,7 +455,6 @@ export default function ItemMasterPage() {
         return;
       }
 
-      // Extract ItemNameFormula — comma-separated field names e.g. "Type,GroupName,GSM,ItemSize"
       try {
         const formulaRaw = await formulaRes.text();
         const formulaData = unwrap(formulaRaw);
@@ -460,7 +462,6 @@ export default function ItemMasterPage() {
         setItemNameFormula(formula ? formula.split(",").map((s: string) => s.trim()).filter(Boolean) : []);
       } catch { setItemNameFormula([]); }
 
-      // Deduplicate fields by FieldName (backend config sometimes returns the same field twice)
       const seenFields = new Set<string>();
       const uniqueFields = fields.filter((f: any) => {
         const key = (f.FieldName ?? "").toLowerCase();
@@ -468,78 +469,58 @@ export default function ItemMasterPage() {
         seenFields.add(key);
         return true;
       });
-      // Sort by FieldDrawSequence (DB-defined order) — IsDisplay/IsActive filtering happens at render
       uniqueFields.sort((a: any, b: any) => (Number(a.FieldDrawSequence) || 999) - (Number(b.FieldDrawSequence) || 999));
       const hsnIdIdx = uniqueFields.findIndex(f => (f.FieldName || "").toLowerCase() === "producthsnid");
       const hsnNameIdx = uniqueFields.findIndex(f => (f.FieldName || "").toLowerCase() === "producthsnname");
 
       setFormFields(uniqueFields);
 
-      // Fix 3: Resolve typeSpec field name locally — can't use the component-level useMemo inside a useCallback
       const tsFieldName = uniqueFields.find((f: any) => /typesp[ae]cification/i.test(f.FieldName ?? ""))?.FieldName ?? "TypeSpecification";
 
-      // Initialize values: prefill > FieldDefaultValue > ""
-      // DB often stores "false"/"null" as FieldDefaultValue for numeric/empty fields — show blank instead
       const defaults: Record<string, any> = { ISItemActive: "true" };
-      
-      // Build a lowercased map of prefill keys for case-insensitive lookup
+
       const prefillLower: Record<string, any> = {};
       if (prefill) {
         Object.keys(prefill).forEach(k => {
           const lowerKey = k.toLowerCase();
           prefillLower[lowerKey] = prefill[k];
-          // Legacy typo fallback: if DB sends typespacification, map it to typespecification too
           if (lowerKey === "typespacification") prefillLower["typespecification"] = prefill[k];
           if (lowerKey === "typespecification") prefillLower["typespacification"] = prefill[k];
         });
       }
-      
-      console.log("=== [DEBUG] loadFormFields prefillLower mapped keys ===", Object.keys(prefillLower));
 
       uniqueFields.forEach((f: any) => {
         let dv = prefillLower[(f.FieldName || "").toLowerCase()] ?? f.FieldDefaultValue ?? "";
         if (typeof dv === "string") dv = dv.trim();
         if (f.FieldType === "checkbox" || f.FieldDataType === "bit") {
-          // Normalize bit/checkbox defaults to actual booleans to avoid sending string "false" to .NET
           dv = (dv === true || dv === "true" || dv === 1 || dv === "1");
         } else if (dv === "false" || dv === "null" || dv === null) {
           dv = "";
         }
         defaults[f.FieldName] = dv;
       });
-      
-      // Fix: If Quality was deleted from CostingFieldMaster, forcefully extract it from DB row
-      // so the hardcoded Cascade Dropdowns still get their prefilled string
+
       if (!defaults["Quality"]) {
         let q = prefillLower["quality"] ?? "";
         if (typeof q === "string") q = q.trim();
         defaults["Quality"] = q;
       }
-      
-      console.log("=== [DEBUG] loadFormFields generated form defaults ===", defaults);
-      // NOTE: setFormValues(defaults) is called AFTER opts are built so HSN auto-fill can use opts
 
-      // Load selectbox options
       const sbFields = uniqueFields.filter((f: any) => f.FieldType === "selectbox");
       const opts: Record<string, SelectOpt[]> = {};
 
       for (const f of sbFields) {
-        // ── Priority 1: static defaults (SelectBoxDefault) — no API call needed ─
         if (f.SelectBoxDefault && f.SelectBoxDefault !== "null") {
           const staticOpts = f.SelectBoxDefault
             .split(/[,;|]/)
             .map((x: string) => x.trim())
             .filter(Boolean);
           if (staticOpts.length > 0) {
-            // Static options: value === label (1-col equivalent)
             opts[f.FieldName] = staticOpts.map((s: string) => ({ value: s, label: s }));
             continue;
           }
         }
 
-        // ── Priority 2: DB query via selectboxload ──────────────────────────────
-        // Guard: skip if no FieldID or no SelectBoxQueryDB (backend returns "" for null query → early-return bug)
-        // Guard 2: Skip ProductHSNID to prevent race condition with dynamic filtered-hsn fetch overriding it.
         if (!f.ItemGroupFieldID || !f.SelectBoxQueryDB || f.SelectBoxQueryDB === "null") continue;
         if ((f.FieldName || "").toLowerCase() === "producthsnid") continue;
 
@@ -555,17 +536,12 @@ export default function ItemMasterPage() {
           if (sbData && typeof sbData === "object") {
             const tableKey = "tbl_" + f.FieldName;
             const rows: any[] = sbData[tableKey] ?? [];
-
-            // Backend always appends 1 metadata row at end — strip it if we have more than 1 row
             const dataRows = rows.length > 1 ? rows.slice(0, -1) : rows;
 
             if (dataRows.length > 0) {
               const cols = Object.keys(dataRows[0]);
               const is3col = cols.length >= 3;
               const is2col = cols.length >= 2;
-              // 3-col: col[0]=ID, col[1]=code/name (shown), col[2]=description (auto-fill)
-              // 2-col: col[0]=ID, col[1]=display name
-              // 1-col: col[0] is both value and label
               opts[f.FieldName] = dataRows
                 .map((r: any) => ({
                   value: String(r[cols[0]] ?? ""),
@@ -575,10 +551,9 @@ export default function ItemMasterPage() {
                 .filter(o => o.value !== "");
             }
           }
-        } catch { /* silent — field renders as empty select */ }
+        } catch { /* silent */ }
       }
 
-      // Fix 1: HSN auto-fill on edit — uses resolveHsnPair() instead of the former inline duplicate block
       if (prefill) {
         uniqueFields.forEach((f: any) => {
           if (f.FieldType !== "selectbox") return;
@@ -591,7 +566,6 @@ export default function ItemMasterPage() {
         });
       }
 
-      // Fix 3: Carry forward typeSpec value using the resolved field name — handles both spellings in one line
       if (prefill?.[tsFieldName] !== undefined) {
         defaults[tsFieldName] = prefill[tsFieldName] ?? "";
       }
@@ -599,11 +573,9 @@ export default function ItemMasterPage() {
         defaults["ItemDisplayName"] = prefill["ItemDisplayName"] ?? "";
       }
 
-      // Hard-lock the HSN Name select options so they don't display descriptions like "Film".
-      // It should ONLY display the auto-filled value.
       if (hsnNameIdx !== -1) {
         const hn = uniqueFields[hsnNameIdx].FieldName;
-        opts[hn] = []; 
+        opts[hn] = [];
       }
 
       setSelectOpts(opts);
@@ -647,13 +619,22 @@ export default function ItemMasterPage() {
   const isFilmGroup = /film|reel|bopp|poly|laminate/i.test(formGroupName);
   const isInkGroup  = /ink/i.test(formGroupName);
 
+  // True when selected group is a consumable category — must be defined before sgItemName/sgDisplayName
+  const isConsumableGroup = useMemo(() => {
+    const grp = allGroups.find(g => String(g.ItemGroupID) === String(formGroupID));
+    if (!grp) return false;
+    const cat = (grp.ItemGroupCategory || "").toLowerCase().trim();
+    const name = (grp.ItemGroupName || "").toLowerCase().trim();
+    return cat === "consumable" || cat === "consumables" || cat === "other material" || /other[\s-]*material/i.test(name);
+  }, [formGroupID, allGroups]);
+
   const sgItemName = useMemo(() => {
     if (!hasCascadeFields) return "";
 
     const sv = (k: string) => String(formValues[k] ?? "").trim();
     const skip = (v: string) => !v || v === "0";
     const typeSpec = sv(sg3FieldName);
-    const sgType   = sv(sg2FieldName); // dynamic: Quality (Film) or ItemType (Ink/other)
+    const sgType   = sv(sg2FieldName);
 
     if (isFilmGroup) {
       const parts: string[] = [];
@@ -663,9 +644,9 @@ export default function ItemMasterPage() {
       const density = sv("Density");
       if (!skip(density)) parts.push(`${density} D`);
       const sizeW = sv("SizeW"), thick = sv("Thickness");
-      if (sizeW && thick) parts.push(`${sizeW} MM X ${thick} \u00b5`);
+      if (sizeW && thick) parts.push(`${sizeW} MM X ${thick} µ`);
       else if (sizeW) parts.push(`${sizeW} MM`);
-      else if (thick) parts.push(`${thick} \u00b5`);
+      else if (thick) parts.push(`${thick} µ`);
       return parts.join("/");
     }
 
@@ -678,11 +659,21 @@ export default function ItemMasterPage() {
       return parts.join("/");
     }
 
+    if (isConsumableGroup) {
+      const parts: string[] = [];
+      if (!skip(sgSubGroupName)) parts.push(sgSubGroupName);
+      if (!skip(sgType)) parts.push(sgType);
+      if (!skip(typeSpec)) parts.push(typeSpec);
+      const sizeW = sv("SizeW");
+      if (!skip(sizeW)) parts.push(`${sizeW} MM`);
+      return parts.join("/");
+    }
+
     const sizeW = sv("SizeW"), thick = sv("Thickness");
     const sizeThickness = sizeW && thick ? `${sizeW}X${thick}` : sizeW || thick;
     const rawParts = [sgType, sgSubGroupName, formGroupName, typeSpec, sizeThickness || null, sv("Density")];
     return rawParts.filter(v => v && v !== "0").map(v => String(v).trim()).join("/");
-  }, [hasCascadeFields, isFilmGroup, isInkGroup, formValues, sgSubGroupName, formGroupName, sg2FieldName, sg3FieldName]);
+  }, [hasCascadeFields, isFilmGroup, isInkGroup, isConsumableGroup, formValues, sgSubGroupName, formGroupName, sg2FieldName, sg3FieldName]);
 
   const sgDisplayName = useMemo(() => {
     if (!hasCascadeFields) return "";
@@ -698,9 +689,9 @@ export default function ItemMasterPage() {
       const density = sv("Density");
       if (!skip(density)) parts.push(`${density}D`);
       const sizeW = sv("SizeW"), thick = sv("Thickness");
-      if (sizeW && thick) parts.push(`${sizeW}MM X ${thick}\u00b5`);
+      if (sizeW && thick) parts.push(`${sizeW}MM X ${thick}µ`);
       else if (sizeW) parts.push(`${sizeW}MM`);
-      else if (thick) parts.push(`${thick}\u00b5`);
+      else if (thick) parts.push(`${thick}µ`);
       return parts.join("/");
     }
 
@@ -713,26 +704,45 @@ export default function ItemMasterPage() {
       return parts.join("/");
     }
 
-    const sizeW = sv("SizeW"), thick = sv("Thickness");
-    const sizeThickness = sizeW && thick ? `${sizeW}X${thick}` : sizeW || thick;
-    const rawParts = [sgTypePrefix, sgSubGroupName, formGroupName, sgSpecPrefix, sizeThickness || null, sv("Density")];
-    return rawParts.filter(v => v && v !== "0").map(v => String(v).trim()).join("/");
-  }, [hasCascadeFields, isFilmGroup, isInkGroup, formValues, sgSubGroupName, sgSubGroupDisplayName, formGroupName, sgTypePrefix, sgSpecPrefix]);
+    if (isConsumableGroup) {
+      const parts: string[] = [];
+      if (!skip(sgSubGroupDisplayName)) parts.push(sgSubGroupDisplayName);
+      if (!skip(sgTypePrefix)) parts.push(sgTypePrefix);
+      if (!skip(sgSpecPrefix)) parts.push(sgSpecPrefix);
+      return parts.join("/");
+    }
 
-  // ItemDescription preview: CategoryAbbr-ItemGroupPrefix-???? (number assigned by backend on save)
+    // Default: show prefixes only; if no prefix exists fall back to full item name
+    const prefixParts = [sgTypePrefix, sgSpecPrefix].filter(v => v && v !== "0").map(v => String(v).trim());
+    return prefixParts.length > 0 ? prefixParts.join("/") : sgItemName;
+  }, [hasCascadeFields, isFilmGroup, isInkGroup, isConsumableGroup, formValues, sgSubGroupName, sgSubGroupDisplayName, formGroupName, sgTypePrefix, sgSpecPrefix, sgItemName]);
+
+  // ItemDescription preview: CategoryAbbr-Prefix-???? (number assigned by backend on save)
+  // For consumables, prefix comes from the selected SubGroup (e.g. SL for Sleeve)
   const itemDescPreview = useMemo(() => {
     const grp = allGroups.find(g => String(g.ItemGroupID) === String(formGroupID));
     if (!grp) return "";
-    const prefix = grp.ItemGroupPrefix || formGroupName.substring(0, 2).toUpperCase();
     const cat_raw = (grp.ItemGroupCategory || "").toLowerCase().trim();
+    const name_raw = (grp.ItemGroupName || "").toLowerCase().trim();
     let cat = "RM";
-    if (cat_raw === "raw material")       cat = "RM";
-    else if (cat_raw === "consumables")   cat = "CON";
-    else if (cat_raw === "finish goods" || cat_raw === "finished goods") cat = "FG";
-    else if (cat_raw === "capital goods") cat = "CG";
-    else if (cat_raw)                     cat = cat_raw.substring(0, 2).toUpperCase();
+    let prefix = grp.ItemGroupPrefix || formGroupName.substring(0, 2).toUpperCase();
+    if (cat_raw === "raw material") {
+      cat = "RM";
+    } else if (cat_raw === "consumable" || cat_raw === "consumables") {
+      cat = "CON";
+      prefix = sgSubGroupPrefix || "???";
+    } else if (cat_raw === "other material" || /other[\s-]*material/i.test(name_raw)) {
+      cat = "CON";
+      prefix = sgSubGroupPrefix || "???";
+    } else if (cat_raw === "finish goods" || cat_raw === "finished goods") {
+      cat = "FG";
+    } else if (cat_raw === "capital goods") {
+      cat = "CG";
+    } else if (cat_raw) {
+      cat = cat_raw.substring(0, 2).toUpperCase();
+    }
     return `${cat}-${prefix}-????`;
-  }, [formGroupID, allGroups, formGroupName]);
+  }, [formGroupID, allGroups, formGroupName, sgSubGroupPrefix]);
 
   const lastHsnPayload = useRef<string>("");
 
@@ -744,51 +754,43 @@ export default function ItemMasterPage() {
       const sg1 = Number(formValues[subGroup1Field?.FieldName ?? "ItemSubGroupID"]) || 0;
       const type = formValues[sg2FieldName] || "";
       const spec = formValues[sg3FieldName] || "";
-      
+
       try {
         const payload = { ItemGroupID: gID, ItemSubGroupID: sg1, SubGroupType: type, TypeSpecification: spec };
         const payloadStr = JSON.stringify(payload);
         if (lastHsnPayload.current === payloadStr) return;
         lastHsnPayload.current = payloadStr;
 
-        console.log("=== [DEBUG] Calling filtered-hsn API with:", payload);
         const res = await fetch(`${BASE_URL}/api/itemmasterShrink/filtered-hsn`, {
           method: "POST", headers: { ...authHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
         const text = await res.text();
-        console.log("=== [DEBUG] filtered-hsn raw response:", text);
         const raw = unwrap(text);
-        console.log("=== [DEBUG] filtered-hsn unwrapped:", raw);
         const dataRows = Array.isArray(raw) ? raw : [];
         if (dataRows.length > 0) {
-            const newOpts = dataRows.map((r: any) => ({
-                value: String(r.ProductHSNID),
-                label: r.ProductHSNCode,
-                description: r.DisplayName
-            }));
-            
-            // If only 1 option available, auto-select it
-            if (newOpts.length === 1 && formValues["ProductHSNID"] !== newOpts[0].value) {
-               setFormValues(p => ({...p, ProductHSNID: newOpts[0].value, ProductHSNName: newOpts[0].description}));
-            }
-            
-            setSelectOpts(prev => ({ ...prev, "ProductHSNID": newOpts, "ProductHSNName": [] }));
+          const newOpts = dataRows.map((r: any) => ({
+            value: String(r.ProductHSNID),
+            label: r.ProductHSNCode,
+            description: r.DisplayName
+          }));
+          if (newOpts.length === 1 && formValues["ProductHSNID"] !== newOpts[0].value) {
+            setFormValues(p => ({...p, ProductHSNID: newOpts[0].value, ProductHSNName: newOpts[0].description}));
+          }
+          setSelectOpts(prev => ({ ...prev, "ProductHSNID": newOpts, "ProductHSNName": [] }));
         } else {
-            setSelectOpts(prev => ({ ...prev, "ProductHSNID": [], "ProductHSNName": [] }));
-            setFormValues(p => ({...p, ProductHSNID: "", ProductHSNName: ""}));
+          setSelectOpts(prev => ({ ...prev, "ProductHSNID": [], "ProductHSNName": [] }));
+          setFormValues(p => ({...p, ProductHSNID: "", ProductHSNName: ""}));
         }
       } catch {}
     };
-    
-    // Only run if we actually have fields
+
     if (formFields.length > 0) loadFilteredHSN();
   }, [formGroupID, formValues[subGroup1Field?.FieldName ?? "ItemSubGroupID"], formValues[sg2FieldName], formValues[sg3FieldName], hasCascadeFields, formFields.length]);
 
   // Save item to backend
   const saveItem = async () => {
     setSubmitAttempted(true);
-    // Validate required fields — only for visible fields (IsDisplay=true)
     const missing = formFields.find(f => isFieldVisible(f) && f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
     if (missing) { setFormError((missing.FieldDisplayName || missing.FieldName) + " is required."); return; }
     setFormSaving(true);
@@ -804,43 +806,22 @@ export default function ItemMasterPage() {
         ...(hasCascadeFields ? { ItemDisplayName: sgDisplayName } : {}),
       };
 
-      // Sanitize field values before sending to backend
-      // DB columns can be bigint/real/int — "false"/"null"/"" strings cause type conversion errors
       formFields.forEach((f: any) => {
         const v = masterRecord[f.FieldName];
 
         if (f.FieldType === "checkbox" || f.FieldDataType === "bit") {
-          // Bit/checkbox columns: send integer 0 or 1 (NOT boolean, NOT string).
-          // JSON.NET DataTable deserializer throws "String was not recognized as a valid Boolean"
-          // for string "false"/"true" in certain Newtonsoft versions.
-          // SQL Server backend wraps DataTable values in single quotes ('False', 'True') which
-          // SQL Server rejects for bit columns — but '0' and '1' ARE accepted.
-          // Sending integer 0/1 avoids both problems.
           const checked = v === true || v === "true" || v === 1 || v === "1";
           masterRecord[f.FieldName] = checked ? 1 : 0;
-
         } else if (f.FieldType === "number" || String(f.FieldName).endsWith("ID")) {
-          // Strictly numeric DB columns — send number or null, never a string
           const n = Number(v);
           masterRecord[f.FieldName] = (v !== "" && v !== null && v !== undefined && !isNaN(n)) ? n : null;
-
         } else {
-          // text / selectbox / textarea / datebox
-          // "false", "null", "" are never valid real-column values — convert to null
-          // so SQL Server doesn't try to cast the string "false" → real and fail
           if (v === "false" || v === "null" || v === null || v === undefined || v === "") {
             masterRecord[f.FieldName] = null;
           }
-          // otherwise keep the string as-is (valid for varchar columns)
         }
       });
 
-      // Safety net: any boolean or string-boolean still in masterRecord must become
-      // integer 0/1 before sending. This covers fields NOT in formFields (e.g. ISItemActive
-      // when ItemGroupFieldMaster for this group doesn't define it), which bypass the loop above.
-      // MUST use integers — NOT JS booleans — because the .NET SQL generator wraps ALL
-      // DataTable cell values in single quotes: 'True'/'False' are REJECTED by SQL Server
-      // bit columns, but '0'/'1' are ACCEPTED.
       Object.keys(masterRecord).forEach(key => {
         const v = masterRecord[key];
         if (v === true  || v === "true")  masterRecord[key] = 1;
@@ -858,7 +839,6 @@ export default function ItemMasterPage() {
       if (isEdit) {
         payload.ItemID = editing.ItemID ?? editing.id;
         payload.UnderGroupID = formGroupID;
-        // Also pass CostingDataItemDetailMaster as empty array (backend may need it)
         payload.CostingDataItemDetailMaster = [];
       }
 
@@ -869,9 +849,8 @@ export default function ItemMasterPage() {
         body: JSON.stringify(payload),
       });
 
-      const text = (await res.text()).replace(/^"|"$/g, ""); // unwrap surrounding quotes if any
+      const text = (await res.text()).replace(/^"|"$/g, "");
       if (res.ok && !text.toLowerCase().includes("fail") && !text.toLowerCase().includes("error")) {
-        // Go back to list and auto-select the saved item's group so it appears in grid
         setActiveGroupID(formGroupID);
         setView("list");
         loadGridForGroup(formGroupID);
@@ -887,11 +866,12 @@ export default function ItemMasterPage() {
   const resetSgState = () => {
     setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
     setSgSupplierOpts([]); setSgUnitOpts([]);
-    setSgSubGroupName(""); setSgSubGroupDisplayName(""); setSgTypePrefix(""); setSgSpecPrefix("");
+    setSgSubGroupName(""); setSgSubGroupDisplayName(""); setSgSubGroupPrefix("");
+    setSgTypePrefix(""); setSgSpecPrefix("");
   };
 
   const openAdd = () => {
-    editPrefetchDone.current = false; // Fix 5: ensure cascade effects run normally in add mode
+    editPrefetchDone.current = false;
     setEditing(null);
     setFormStep("select-group");
     setFormGroupID("");
@@ -904,12 +884,9 @@ export default function ItemMasterPage() {
     setView("form");
   };
 
-  // Fix 4: Cascade prefetch extracted from openEdit() into its own async function.
-  // Reduces openEdit() from 100+ lines to ~30 and makes the prefetch independently readable.
   // Fix 2: All cascade values (subgroup names, type prefix, spec prefix) are set directly here —
   // edit mode no longer relies on useEffect chain to populate these from saved values.
   const prefetchCascadeForEdit = async (gid: string, fullRow: any) => {
-    // Build a lowercased map for safe extraction
     const rawLower: Record<string, any> = {};
     if (fullRow) {
       Object.keys(fullRow).forEach(k => {
@@ -918,31 +895,23 @@ export default function ItemMasterPage() {
     }
 
     const subGroupID = String(rawLower["itemsubgroupid"] ?? "").trim();
-    // sg2 field can be Quality (Film groups) or ItemType (Ink groups) — check both
     const quality    = String(rawLower["quality"] ?? rawLower["itemtype"] ?? "").trim();
-    // Checks both spellings to match whichever the database uses
     const typeSpec   = String(rawLower["typespecification"] ?? rawLower["typespacification"] ?? "").trim();
 
-    console.log(`=== [DEBUG] prefetchCascadeForEdit | gid: ${gid}, subGroupID: ${subGroupID}, quality: ${quality}, typeSpec: ${typeSpec} ===`);
-
     if (gid && subGroupID) {
-      // Step 1: Load types and set prefix immediately
       try {
         const typesText = await fetch(`${BASE_URL}/api/itemmasterShrink/film-types/${gid}/${subGroupID}`, { headers: authHeaders() }).then(r => r.text());
         const rawTypes = unwrap(typesText);
-        console.log("=== [DEBUG] prefetch cascade: Film Types response ===", rawTypes);
         if (Array.isArray(rawTypes)) {
           const typeOpts = rawTypes.map((r: any) => ({ type: String(r.SubGroupType).trim(), prefix: String(r.SubGroupTypePrefix ?? "").trim() })).filter(o => o.type);
           setSgTypeOpts(typeOpts);
-          console.log("=== [DEBUG] prefetch cascade: Filtered Type Opts ===", typeOpts);
           if (quality) {
             const found = typeOpts.find(o => o.type === quality);
-            if (found) setSgTypePrefix(found.prefix); 
+            if (found) setSgTypePrefix(found.prefix);
           }
         }
       } catch { /* non-fatal */ }
 
-      // Step 2: Load type-specs and set spec prefix immediately
       if (quality) {
         try {
           const specsText = await fetch(`${BASE_URL}/api/itemmasterShrink/film-type-specs`, {
@@ -963,7 +932,6 @@ export default function ItemMasterPage() {
       }
     }
 
-    // Step 3: Load subgroups, suppliers, units and set display names immediately
     if (gid) {
       try {
         const [subGroupsText, suppliersText, unitsText] = await Promise.all([
@@ -978,11 +946,16 @@ export default function ItemMasterPage() {
             id: String(r.ItemSubGroupID),
             name: String(r.ItemSubGroupName),
             displayName: String(r.ItemSubGroupDisplayName ?? r.ItemSubGroupName ?? ""),
+            subGroupPrefix: String(r.SubGroupPrefix ?? ""),
           }));
           setSgSubGroupOpts(sgOpts);
           if (subGroupID) {
             const found = sgOpts.find(o => o.id === subGroupID);
-            if (found) { setSgSubGroupName(found.name); setSgSubGroupDisplayName(found.displayName); } // Fix 2
+            if (found) {
+              setSgSubGroupName(found.name);
+              setSgSubGroupDisplayName(found.displayName);
+              if (found.subGroupPrefix) setSgSubGroupPrefix(found.subGroupPrefix);
+            }
           }
         }
 
@@ -996,11 +969,10 @@ export default function ItemMasterPage() {
   };
 
   const openEdit = async (row: any) => {
-    editPrefetchDone.current = false; // Fix 5: reset flag before prefetch begins
+    editPrefetchDone.current = false;
     setEditing(row);
     setFormError("");
     const gid = String(row.ItemGroupID ?? activeGroupID ?? "");
-    // allGroups stores ItemGroupID as number from API; compare as string to avoid 5 !== "5" mismatch
     const gname = allGroups.find(g => String(g.ItemGroupID) === gid)?.ItemGroupName ?? "";
     setFormGroupID(gid);
     setFormGroupName(gname);
@@ -1012,28 +984,23 @@ export default function ItemMasterPage() {
 
     if (!gid) { setFormStep("select-group"); return; }
 
-    // Fetch full ItemMaster row (all DB columns) before loading form fields
     const itemID = String(row.ItemID ?? row.id ?? "");
     let fullRow = row;
     if (itemID) {
       try {
         const res = await fetch(`${BASE_URL}/api/itemmasterShrink/item-for-edit/${itemID}`, { headers: authHeaders() });
         const text = await res.text();
-        console.log("=== [DEBUG] ItemForEdit Raw API Response ===", text);
         const parsed = unwrap(text);
-        console.log("=== [DEBUG] ItemForEdit Unwrapped ===", parsed);
         if (Array.isArray(parsed) && parsed.length > 0) {
           fullRow = { ...row, ...parsed[0] };
         } else if (parsed && typeof parsed === "object") {
           fullRow = { ...row, ...parsed };
         }
-        console.log("=== [DEBUG] Final fullRow to populate form ===", fullRow);
       } catch { /* fallback to grid row */ }
     }
 
-    // Fix 4+5: Run cascade prefetch; set flag AFTER completion so useEffects see it and skip
     await prefetchCascadeForEdit(gid, fullRow);
-    editPrefetchDone.current = true; // Fix 5: useEffects will now skip cascade loading
+    editPrefetchDone.current = true;
 
     loadFormFields(gid, gname, fullRow);
   };
@@ -1051,16 +1018,13 @@ export default function ItemMasterPage() {
       .catch(() => {});
   };
 
-  // Group pill click (list view)
   const onGroupPillClick = (grp: { ItemGroupID: string; ItemGroupName: string; ItemGroupPrefix: string; ItemGroupCategory: string } | null) => {
     if (!grp) { setActiveGroupID(""); setGridData([]); return; }
     setActiveGroupID(grp.ItemGroupID);
     loadGridForGroup(grp.ItemGroupID);
   };
 
-  // Derive group name for column logic from backend data
   const activeGroupName = allGroups.find(g => g.ItemGroupID === activeGroupID)?.ItemGroupName ?? "";
-  // Fix 4: Unified to same regex as form-level isFilmGroup/isInkGroup — was using .includes() here before
   const isInkGridGroup  = /ink/i.test(activeGroupName);
   const isFilmGridGroup = /film|reel|bopp|poly|laminate/i.test(activeGroupName);
 
@@ -1074,7 +1038,7 @@ export default function ItemMasterPage() {
     ] : []),
     ...(isFilmGridGroup ? [
       { key: "WebWidth", header: "Width (mm)" },
-      { key: "Thickness", header: "Thickness (\u00b5)" },
+      { key: "Thickness", header: "Thickness (µ)" },
     ] : []),
     {
       key: "ISItemActive",
@@ -1147,19 +1111,43 @@ export default function ItemMasterPage() {
               <div className="text-sm text-gray-400">No groups found. Make sure you are logged in.</div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {allGroups.map(grp => (
-                  <button
-                    key={grp.ItemGroupID}
-                    onClick={() => {
-                      setFormGroupID(String(grp.ItemGroupID));
-                      setFormGroupName(grp.ItemGroupName);
-                      loadFormFields(String(grp.ItemGroupID), grp.ItemGroupName);
-                    }}
-                    className="px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all text-left"
-                  >
-                    {grp.ItemGroupName}
-                  </button>
-                ))}
+                {(() => {
+                  const isCon = (g: typeof allGroups[0]) => {
+                    const cat = (g.ItemGroupCategory || "").toLowerCase();
+                    return cat === "consumable" || cat === "consumables";
+                  };
+                  const rmGroups = allGroups.filter(g => !isCon(g));
+                  const conGroups = allGroups.filter(g => isCon(g));
+                  const grpBtn = (grp: typeof allGroups[0]) => (
+                    <button
+                      key={grp.ItemGroupID}
+                      onClick={() => {
+                        setFormGroupID(String(grp.ItemGroupID));
+                        setFormGroupName(grp.ItemGroupName);
+                        loadFormFields(String(grp.ItemGroupID), grp.ItemGroupName);
+                      }}
+                      className="px-4 py-3 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-all text-left"
+                    >
+                      {grp.ItemGroupName}
+                    </button>
+                  );
+                  return (
+                    <>
+                      {rmGroups.length > 0 && (
+                        <div className="col-span-2 md:col-span-3">
+                          <p className="text-xs font-bold text-blue-600 uppercase tracking-widest mb-1">Raw Material</p>
+                        </div>
+                      )}
+                      {rmGroups.map(grpBtn)}
+                      {conGroups.length > 0 && (
+                        <div className="col-span-2 md:col-span-3 mt-2">
+                          <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">Consumables</p>
+                        </div>
+                      )}
+                      {conGroups.map(grpBtn)}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -1191,7 +1179,6 @@ export default function ItemMasterPage() {
                   {/* CASCADING SECTION: shown for any group whose DB config includes ItemSubGroupID */}
                   {hasCascadeFields && (() => {
                     const sgid = String(formValues["ItemSubGroupID"] ?? "");
-                    // Detect supplier + unit fields from DB metadata (not hard-coded)
                     const hasSupplier = !!supplierField && isFieldVisible(supplierField);
                     const puField  = formFields.find(f => f.FieldName === "PurchaseUnit");
                     const euField  = formFields.find(f => f.FieldName === "EstimationUnit");
@@ -1209,6 +1196,7 @@ export default function ItemMasterPage() {
                               const sgOpt = sgSubGroupOpts.find(o => o.id === id);
                               setSgSubGroupName(sgOpt?.name ?? "");
                               setSgSubGroupDisplayName(sgOpt?.displayName ?? "");
+                              setSgSubGroupPrefix(sgOpt?.subGroupPrefix ?? "");
                               setFormValues(v => ({ ...v, ItemSubGroupID: id, [sg2FieldName]: "", [sg3FieldName]: "" }));
                               loadSgTypes(formGroupID, id);
                             }} className={INPUT_CLS}>
@@ -1328,7 +1316,6 @@ export default function ItemMasterPage() {
                     <div>
                       <SectionTitle title="Item Details" />
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* Fix 4: isFieldVisible() replaces the inline 4-condition check */}
                         {formFields
                           .filter(f => isFieldVisible(f))
                           .map(field => (
@@ -1338,7 +1325,6 @@ export default function ItemMasterPage() {
                               value={formValues[field.FieldName] ?? ""}
                               options={selectOpts[field.FieldName] ?? []}
                               onChange={(v: any) => {
-                                // Fix 1: resolveHsnPair() replaces the former inline duplicate HSN block
                                 const updates: Record<string, any> = { [field.FieldName]: v };
                                 const pair = resolveHsnPair(field.FieldName, String(v), selectOpts[field.FieldName] ?? []);
                                 if (pair && formFields.find((ff: any) => ff.FieldName === pair.nameKey)) {
@@ -1355,22 +1341,23 @@ export default function ItemMasterPage() {
 
                   {/* Cascade groups: Item Name + Item Display Name live preview */}
                   {hasCascadeFields && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Name</label>
-                        <div className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white min-h-[38px]">
-                          {sgItemName || <span className="text-gray-400">Fill in the fields above...</span>}
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Name</label>
+                          <div className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white min-h-[38px]">
+                            {sgItemName || <span className="text-gray-400">Fill in the fields above...</span>}
+                          </div>
                         </div>
-                      </div>
-                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Display Name</label>
-                        <div className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white min-h-[38px]">
-                          {sgDisplayName || <span className="text-gray-400">Fill in the fields above...</span>}
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Display Name</label>
+                          <div className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white min-h-[38px]">
+                            {sgDisplayName || <span className="text-gray-400">Fill in the fields above...</span>}
+                          </div>
                         </div>
                       </div>
                     </div>
                   )}
-
 
                   {/* Active Item toggle */}
                   <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
@@ -1443,33 +1430,50 @@ export default function ItemMasterPage() {
           >
             All Groups
           </button>
-          {allGroups.map(grp => (
-            <button
-              key={grp.ItemGroupID}
-              onClick={() => onGroupPillClick(grp)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
-                activeGroupID === grp.ItemGroupID
-                  ? "bg-blue-50 text-blue-700 border-blue-300"
-                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-              }`}
-            >
-              {grp.ItemGroupName}
-            </button>
-          ))}
+          {(() => {
+            const isCon = (g: typeof allGroups[0]) => {
+              const cat = (g.ItemGroupCategory || "").toLowerCase();
+              return cat === "consumable" || cat === "consumables";
+            };
+            const rmGroups = allGroups.filter(g => !isCon(g));
+            const conGroups = allGroups.filter(g => isCon(g));
+            const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+              activeGroupID === id
+                ? "bg-blue-50 text-blue-700 border-blue-300"
+                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+            }`;
+            return (
+              <>
+                {rmGroups.map(grp => (
+                  <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
+                    {grp.ItemGroupName}
+                  </button>
+                ))}
+                {conGroups.length > 0 && (
+                  <>
+                    <span className="text-xs font-semibold text-orange-500 uppercase tracking-wider ml-1 border-l border-gray-200 pl-2">Consumables</span>
+                    {conGroups.map(grp => (
+                      <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
+                        {grp.ItemGroupName}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       </div>
 
       {/* Grid Panel */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
 
-        {/* No group selected */}
         {!showGrid && (
           <div className="text-center py-14 text-gray-400 text-sm">
             Select a group above to load live data
           </div>
         )}
 
-        {/* Loading spinner */}
         {showGrid && gridLoading && (
           <div className="flex items-center justify-center py-14 gap-2 text-blue-600 text-sm">
             <Loader2 size={18} className="animate-spin" />
