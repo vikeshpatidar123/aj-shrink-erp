@@ -24,13 +24,13 @@ import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
-import Button   from "@/components/ui/Button";
-import Modal    from "@/components/ui/Modal";
+import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Sleeve tools stay as local dummy data (no DB master) ─────
 const AVAILABLE_TOOL_IDS = new Set(toolInventory.filter(ti => ti.status === "Available").map(ti => ti.toolId));
-const SLEEVE_TOOLS       = allTools.filter(t => t.toolType === "Sleeve" && AVAILABLE_TOOL_IDS.has(t.id)).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
+const SLEEVE_TOOLS = allTools.filter(t => t.toolType === "Sleeve" && AVAILABLE_TOOL_IDS.has(t.id)).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
 
 // ─── Section Header ───────────────────────────────────────────
 const SH = ({ label }: { label: string }) => (
@@ -50,26 +50,26 @@ export default function ProductCatalogPage() {
   const { categories } = useCategories();
   const { catalog, loading: catalogLoading, error: catalogError, refresh: refreshCatalog, saveCatalogItem, deleteCatalogItem, updateCatalogStatus } = useProductCatalog();
   const { machines: apiMachines, processes: apiProcesses, customers: apiCustomers,
-          filmItems: apiFilmItems, inkItems: apiInkItems, vendorLedgers: apiVendors,
-          cylinderMaster: apiCylinders } = useMasters();
+    filmItems: apiFilmItems, inkItems: apiInkItems, vendorLedgers: apiVendors,
+    cylinderMaster: apiCylinders } = useMasters();
   const { showToast } = useToast();
 
   // ── Cylinder tools from API (ToolMaster) ─────────────────────
   const CYLINDER_TOOLS = useMemo(() =>
     apiCylinders
       .map(c => ({
-        id:           String(c.CylinderID),
-        code:         c.CylinderCode,
-        name:         c.CylinderName,
-        printWidth:   String(c.PrintWidth),
+        id: String(c.CylinderID),
+        code: c.CylinderCode,
+        name: c.CylinderName,
+        printWidth: String(c.PrintWidth),
         repeatLength: String(c.Circumference),
-        repeatUPS:    c.RepeatUPS,
+        repeatUPS: c.RepeatUPS,
         cylinderType: c.CylinderType,
-        status:       c.CylinderStatus,
-        toolType:     "Cylinder" as const,
+        status: c.CylinderStatus,
+        toolType: "Cylinder" as const,
       }))
       .sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth)),
-  [apiCylinders]);
+    [apiCylinders]);
 
   const CYLINDER_TOOLS_ALL = CYLINDER_TOOLS;
 
@@ -85,52 +85,52 @@ export default function ProductCatalogPage() {
 
   const customers = useMemo(() =>
     dedupe(apiCustomers.map(c => ({ id: String(c.LedgerID), name: c.CustomerName } as any))),
-  [apiCustomers]);
+    [apiCustomers]);
 
   const PRINT_MACHINES = useMemo(() =>
     dedupe(apiMachines.map(m => ({
       id: String(m.MachineID), name: m.MachineName, department: "Printing",
-      maxWebWidth:     m.MaxRollWidth,
-      minWebWidth:     m.MinRollWidth,
+      maxWebWidth: m.MaxRollWidth,
+      minWebWidth: m.MinRollWidth,
       repeatLengthMin: m.MinCircumference,
       repeatLengthMax: m.MaxCircumference,
       ...m,
     } as any))),
-  [apiMachines]);
+    [apiMachines]);
 
   const ROTO_PROCESSES = useMemo(() =>
     dedupe(apiProcesses.map(p => ({
       id: String(p.ProcessID), name: p.ProcessName, displayName: p.DisplayProcessName,
       module: "Rotogravure",
-      chargeUnit:        p.TypeofCharges,
-      rate:              p.Rate,
-      makeSetupCharges:  Number(p.SetupCharges) > 0,
+      chargeUnit: p.TypeofCharges,
+      rate: p.Rate,
+      makeSetupCharges: Number(p.SetupCharges) > 0,
       setupChargeAmount: String(p.SetupCharges ?? 0),
       ...p,
     } as any))),
-  [apiProcesses]);
+    [apiProcesses]);
 
   const FILM_ITEMS = useMemo(() =>
     dedupe(apiFilmItems.map(i => ({
-      id:          String(i.ItemID),
-      name:        i.ItemDisplayName || i.ItemName,
-      fullName:    i.ItemName,
-      group:       "Film",
-      subGroup:    i.ItemSubGroupName,
-      density:     String(i.Density),
-      thickness:   String(i.Thickness),
+      id: String(i.ItemID),
+      name: i.ItemDisplayName || i.ItemName,
+      fullName: i.ItemName,
+      group: "Film",
+      subGroup: i.ItemSubGroupName,
+      density: String(i.Density),
+      thickness: String(i.Thickness),
       estimationRate: "0",
-      active:      true,
+      active: true,
       ...i,
     } as any))),
-  [apiFilmItems]);
+    [apiFilmItems]);
 
   // Normalize DB group names to canonical mixed-case so UI comparisons
   // like ci.itemGroup === "Ink" always work regardless of DB casing (INK, ink, Ink).
   const normalizeInkGroup = (g: string): string => {
     const u = g.toUpperCase();
-    if (u.includes("INK"))      return "Ink";
-    if (u.includes("SOLVENT"))  return "Solvent";
+    if (u.includes("INK")) return "Ink";
+    if (u.includes("SOLVENT")) return "Solvent";
     if (u.includes("ADHESIVE")) return "Adhesive";
     if (u.includes("HARDNER") || u.includes("HARDENER")) return "Hardner";
     return g;
@@ -138,20 +138,20 @@ export default function ProductCatalogPage() {
 
   const INK_ITEMS = useMemo(() =>
     dedupe(apiInkItems.map(i => ({
-      id:       String(i.ItemID),
-      name:     i.ItemName + (i.InkColour ? "/" + i.InkColour : ""),
-      group:    normalizeInkGroup(i.ItemGroupName),
+      id: String(i.ItemID),
+      name: i.ItemName + (i.InkColour ? "/" + i.InkColour : ""),
+      group: normalizeInkGroup(i.ItemGroupName),
       subGroup: i.ItemSubGroupName,
-      active:   true, ...i,
+      active: true, ...i,
     } as any))),
-  [apiInkItems]);
+    [apiInkItems]);
 
   const VENDOR_LEDGERS = useMemo(() =>
     dedupe(apiVendors.map(l => ({
       id: String(l.LedgerID), name: l.LedgerName,
       ledgerType: "Vendor", status: "Active", ...l,
     } as any))),
-  [apiVendors]);
+    [apiVendors]);
 
   const FILM_SUBGROUPS = useMemo(() =>
     Array.from(
@@ -160,7 +160,7 @@ export default function ProductCatalogPage() {
       FILM_ITEMS.filter((i: any) => i.subGroup === subGroup).forEach((i: any) => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
       return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
     }),
-  [FILM_ITEMS]);
+    [FILM_ITEMS]);
 
   // Merged items list (film + ink from API)
   const items = useMemo(() => [...FILM_ITEMS, ...INK_ITEMS], [FILM_ITEMS, INK_ITEMS]);
@@ -169,14 +169,14 @@ export default function ProductCatalogPage() {
 
   const [catalogTab, setCatalogTab] = useState<"pending" | "processed">("processed");
   const [viewPlanRow, setViewPlanRow] = useState<GravureProductCatalog | null>(null);
-  const [deleteId,    setDeleteId]   = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   // ── Create Catalog state ──────────────────────────────────
-  const [createOpen,  setCreateOpen]  = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [sourceOrder, setSourceOrder] = useState<GravureOrder | null>(null);
-  const [sourceWO,    setSourceWO]    = useState<GravureWorkOrder | null>(null);
-  const [editName,   setEditName]   = useState("");
-  const [editRate,   setEditRate]   = useState(0);
+  const [sourceWO, setSourceWO] = useState<GravureWorkOrder | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editRate, setEditRate] = useState(0);
   const [editRemark, setEditRemark] = useState("");
 
   // ── Dimension diagram state ───────────────────────────────
@@ -184,36 +184,36 @@ export default function ProductCatalogPage() {
   const patchDim = (patch: DimValues) => setDimValues(p => ({ ...p, ...patch }));
 
   // ── Replan / Edit state ───────────────────────────────────
-  const [replanOpen,    setReplanOpen]    = useState(false);
-  const [replanForm,    setReplanForm]    = useState<GravureProductCatalog | null>(null);
-  const [replanTab,     setReplanTab]     = useState<"info" | "planning" | "material">("info");
-  const [isNewCatalog,  setIsNewCatalog]  = useState(false);
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [replanForm, setReplanForm] = useState<GravureProductCatalog | null>(null);
+  const [replanTab, setReplanTab] = useState<"info" | "planning" | "material">("info");
+  const [isNewCatalog, setIsNewCatalog] = useState(false);
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
-  type ColorShade      = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
-  type MaterialAlloc   = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
-  type CylinderAlloc   = { colorNo: number; colorName: string; cylinderNo: string; circumference: string; printWidth: string; repeatUPS: number; cylinderType: "New" | "Existing" | "Rechromed" | "Repeat"; status: "Pending" | "Available" | "In Use" | "Under Chrome" | "Ordered"; remarks: string; createdInMaster?: boolean; repeatUse?: boolean; cylinderMasterID?: string; };
-;
-  const [catalogFilmReqs,   setCatalogFilmReqs]   = useState<FilmRequisition[]>([]);
-  const [catalogColorShades,setCatalogColorShades] = useState<ColorShade[]>([]);
-  const [catalogMatAllocs,  setCatalogMatAllocs]   = useState<MaterialAlloc[]>([]);
-  const [catalogCylAllocs,  setCatalogCylAllocs]   = useState<CylinderAlloc[]>([]);
-  const [catalogPrepTab,    setCatalogPrepTab]     = useState<"shade" | "tool">("shade");
-  const [replanShowPlan,      setReplanShowPlan]      = useState(false);
+  type ColorShade = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
+  type MaterialAlloc = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
+  type CylinderAlloc = { colorNo: number; colorName: string; cylinderNo: string; circumference: string; printWidth: string; repeatUPS: number; cylinderType: "New" | "Existing" | "Rechromed" | "Repeat"; status: "Pending" | "Available" | "In Use" | "Under Chrome" | "Ordered"; remarks: string; createdInMaster?: boolean; repeatUse?: boolean; cylinderMasterID?: string; };
+  ;
+  const [catalogFilmReqs, setCatalogFilmReqs] = useState<FilmRequisition[]>([]);
+  const [catalogColorShades, setCatalogColorShades] = useState<ColorShade[]>([]);
+  const [catalogMatAllocs, setCatalogMatAllocs] = useState<MaterialAlloc[]>([]);
+  const [catalogCylAllocs, setCatalogCylAllocs] = useState<CylinderAlloc[]>([]);
+  const [catalogPrepTab, setCatalogPrepTab] = useState<"shade" | "tool">("shade");
+  const [replanShowPlan, setReplanShowPlan] = useState(false);
   const [replanIsPlanApplied, setReplanIsPlanApplied] = useState(false);
-  const [replanPlanSearch,    setReplanPlanSearch]    = useState("");
-  const [replanPlanSort,      setReplanPlanSort]      = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
-  const [replanSelPlanId,     setReplanSelPlanId]     = useState("");
-  const [upsPreviewPlan,      setUpsPreviewPlan]      = useState<any>(null);
-  const [cylGuideOpen,        setCylGuideOpen]        = useState(false);
-  const [previewAttachment,   setPreviewAttachment]   = useState<{ name: string; url: string; mimeType: string } | null>(null);
-  const [printRow,            setPrintRow]            = useState<GravureProductCatalog | null>(null);
+  const [replanPlanSearch, setReplanPlanSearch] = useState("");
+  const [replanPlanSort, setReplanPlanSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
+  const [replanSelPlanId, setReplanSelPlanId] = useState("");
+  const [upsPreviewPlan, setUpsPreviewPlan] = useState<any>(null);
+  const [cylGuideOpen, setCylGuideOpen] = useState(false);
+  const [previewAttachment, setPreviewAttachment] = useState<{ name: string; url: string; mimeType: string } | null>(null);
+  const [printRow, setPrintRow] = useState<GravureProductCatalog | null>(null);
 
   // ── Plan grid column filters (Excel-style) ────────────────
-  const [planColFilters,   setPlanColFilters]   = useState<Record<string, Set<string>>>({});
-  const [planFilterOpen,   setPlanFilterOpen]   = useState<string | null>(null);
+  const [planColFilters, setPlanColFilters] = useState<Record<string, Set<string>>>({});
+  const [planFilterOpen, setPlanFilterOpen] = useState<string | null>(null);
   const [planFilterSearch, setPlanFilterSearch] = useState<Record<string, string>>({});
-  const [planFilterDraft,  setPlanFilterDraft]  = useState<Record<string, Set<string>>>({});
+  const [planFilterDraft, setPlanFilterDraft] = useState<Record<string, Set<string>>>({});
 
   const openPlanFilter = (key: string) => {
     setPlanFilterDraft(d => ({ ...d, [key]: new Set(planColFilters[key] ?? []) }));
@@ -284,12 +284,12 @@ export default function ProductCatalogPage() {
   // Needed because DB names may differ from the internal keys used by the dimension diagram
   const normalizeContentType = (content: string): string => {
     const c = (content || "").toLowerCase();
-    if (c.includes("wrap around"))                                        return "Wrap Around Labels";
+    if (c.includes("wrap around")) return "Wrap Around Labels";
     if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
-    if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";
-    if (c.includes("shrink label"))                                        return "Shrink Labels";
-    if (c.includes("cut") && c.includes("stack"))                         return "Cut & Stack Labels";
-    if (c.includes("in-mould") || c.includes("in mould"))                 return "In-Mould Labels";
+    if (c.includes("sleeve") && c.includes("stretch")) return "Sleeve — Stretch";
+    if (c.includes("shrink label")) return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack")) return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould")) return "In-Mould Labels";
     return content;
   };
 
@@ -403,8 +403,8 @@ export default function ProductCatalogPage() {
 
   const replanCost = useMemo(() => {
     if (!replanForm) return null;
-    const qty    = replanForm.standardQty || 0;
-    const sType  = (replanForm as any).structureType || "Label";
+    const qty = replanForm.standardQty || 0;
+    const sType = (replanForm as any).structureType || "Label";
     // Material film width:
     //   Sleeve → film is the flat tube = jobWidth (layflat). Material area = qty × layflat.
     //   Pouch  → film width = jobWidth as entered (user enters the full film/pouch width).
@@ -412,14 +412,14 @@ export default function ProductCatalogPage() {
     const filmWidthMm = sType === "Label" ? (replanForm.actualWidth || replanForm.jobWidth || 0) : (replanForm.jobWidth || 0);
     const widthM = filmWidthMm / 1000;
     const areaM2 = qty * widthM;
-    const WASTE  = 0.03;
+    const WASTE = 0.03;
     let filmCost = 0, consumableCost = 0;
     const materialRows: CatalogMatRow[] = [];
 
     replanForm.secondaryLayers.forEach(l => {
       const reqMtr = qty; const reqSQM = areaM2;
       if ((l.itemId || l.itemSubGroup) && l.gsm > 0) {
-        const fi   = l.itemId ? FILM_ITEMS.find((x: any) => x.id === l.itemId) : FILM_ITEMS.find((x: any) => x.subGroup === l.itemSubGroup);
+        const fi = l.itemId ? FILM_ITEMS.find((x: any) => x.id === l.itemId) : FILM_ITEMS.find((x: any) => x.subGroup === l.itemSubGroup);
         const rate = l.filmRate !== undefined ? l.filmRate : (parseFloat((fi as any)?.estimationRate || "0") || 0);
         const reqWt = (l.gsm / 1000) * reqSQM;
         const wasteMtr = reqMtr * WASTE; const wasteSQM = reqSQM * WASTE; const wasteWt = reqWt * WASTE;
@@ -447,11 +447,11 @@ export default function ProductCatalogPage() {
 
     const cylinderCost = (replanForm.noOfColors || 0) * (replanForm.cylinderCostPerColor || 0);
     const materialCost = filmCost + consumableCost;
-    const subtotal     = materialCost + processCost + cylinderCost;
-    const overhead     = subtotal * ((replanForm.overheadPct || 0) / 100);
-    const profit       = (subtotal + overhead) * ((replanForm.profitPct || 0) / 100);
-    const total        = subtotal + overhead + profit;
-    const perMeter     = qty > 0 ? total / qty : 0;
+    const subtotal = materialCost + processCost + cylinderCost;
+    const overhead = subtotal * ((replanForm.overheadPct || 0) / 100);
+    const profit = (subtotal + overhead) * ((replanForm.profitPct || 0) / 100);
+    const total = subtotal + overhead + profit;
+    const perMeter = qty > 0 ? total / qty : 0;
     return { filmCost, consumableCost, materialCost, processCost, cylinderCost, overhead, profit, total, perMeter, materialRows };
   }, [replanForm]);
 
@@ -470,18 +470,18 @@ export default function ProductCatalogPage() {
     const machineMinFilm = parseFloat((machine as any).minWebWidth) || 0;
     const machineMinCirc = parseFloat((machine as any).repeatLengthMin) || 0;
     const machineMaxCirc = parseFloat((machine as any).repeatLengthMax) || 9999;
-    const shrink    = replanForm.widthShrinkage || 0;
-    const trim      = replanForm.trimmingSize || 0;
-    const sType     = (replanForm as any).structureType || "Label";
-    const content   = (replanForm as any).content || "";
-    const gusset    = (replanForm as any).gusset || 0;
-    const topSeal   = (replanForm as any).topSeal    || 0;
-    const bottomSeal= (replanForm as any).bottomSeal || 0;
-    const sideSeal  = (replanForm as any).sideSeal   || 0;
-    const ctrSeal   = (replanForm as any).centerSealWidth || 0;
-    const sideGusset= (replanForm as any).sideGusset || 0;
-    const jobW      = replanForm.jobWidth  || 0;
-    const jobH      = replanForm.jobHeight || 0;
+    const shrink = replanForm.widthShrinkage || 0;
+    const trim = replanForm.trimmingSize || 0;
+    const sType = (replanForm as any).structureType || "Label";
+    const content = (replanForm as any).content || "";
+    const gusset = (replanForm as any).gusset || 0;
+    const topSeal = (replanForm as any).topSeal || 0;
+    const bottomSeal = (replanForm as any).bottomSeal || 0;
+    const sideSeal = (replanForm as any).sideSeal || 0;
+    const ctrSeal = (replanForm as any).centerSealWidth || 0;
+    const sideGusset = (replanForm as any).sideGusset || 0;
+    const jobW = replanForm.jobWidth || 0;
+    const jobH = replanForm.jobHeight || 0;
 
     // ── Lane width (film width per UPS lane) ──
     //    Sleeve            → layflat×2 + transparentArea + seamingArea
@@ -492,7 +492,7 @@ export default function ProductCatalogPage() {
     //    3D / Flat Bottom  → W + 2×sideGusset
     //    Label / other     → actualWidth as-is
     const sleeveTransp = sType === "Sleeve" ? ((replanForm as any).transparentArea || 0) : 0;
-    const sleeveSeam   = sType === "Sleeve" ? ((replanForm as any).seamingArea   || 0) : 0;
+    const sleeveSeam = sType === "Sleeve" ? ((replanForm as any).seamingArea || 0) : 0;
     let laneWidth: number;
     if (sType === "Sleeve") {
       laneWidth = jobW * 2 + sleeveTransp + sleeveSeam;
@@ -515,7 +515,7 @@ export default function ProductCatalogPage() {
     //    Both Side Gusset  → H + topSeal + bottomSeal
     //    3D / Flat Bottom  → H + topSeal + gusset/2
     //    Label             → jobHeight + shrink
-    const designCirc      = jobW * 2 + sleeveSeam + sleeveTransp;  // Sleeve width direction only
+    const designCirc = jobW * 2 + sleeveSeam + sleeveTransp;  // Sleeve width direction only
     const sleeveCutLength = sType === "Sleeve" ? jobH + shrink : 0;
     let effectiveRepeat: number;
     if (sType === "Sleeve") {
@@ -563,7 +563,7 @@ export default function ProductCatalogPage() {
         const filmWidth = printingWidth + 2 * trim;
         if (filmWidth > sleeveWidthVal) return [];
         if (filmWidth < machineMinFilm) return [];
-        const req    = filmWidth + 100;
+        const req = filmWidth + 100;
         const minCyl = req < sleeveWidthVal ? req : sleeveWidthVal + 100;
         // Only keep real cylinders whose circumference is an exact multiple of effectiveRepeat
         const validCylinders = CYLINDER_TOOLS.filter(t => {
@@ -592,7 +592,7 @@ export default function ProductCatalogPage() {
         const cylList = validCylinders.length > 0
           ? validCylinders.map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || "450", isSpecial: false, isSpecialSleeve: false }))
           : specialCylinders;
-        const sideWaste  = parseFloat((2 * trim).toFixed(1));
+        const sideWaste = parseFloat((2 * trim).toFixed(1));
         const deadMargin = parseFloat((sleeveWidthVal - filmWidth).toFixed(1));
         const totalWaste = parseFloat((sideWaste + deadMargin).toFixed(1));
         return cylList.flatMap(cylinder => {
@@ -601,11 +601,11 @@ export default function ProductCatalogPage() {
           if (cylWidthV < sleeveWidthVal + 100) return [];
           // Cylinder width must be within machine width limits
           if (cylWidthV < machineMinFilm || cylWidthV > machineMaxFilm) return [];
-          const cylCirc   = parseFloat(cylinder.repeatLength) || 450;
+          const cylCirc = parseFloat(cylinder.repeatLength) || 450;
           const repeatUPS = calcRepeatUPS(cylCirc);
-          const totalUPS  = acUps * repeatUPS;
-          const reqRMT    = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
-          const totalRMT  = Math.ceil(reqRMT * 1.01);
+          const totalUPS = acUps * repeatUPS;
+          const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
+          const totalRMT = Math.ceil(reqRMT * 1.01);
           return [{
             planId: `CP-${machine.id}-${sleeve.id}-UPS${acUps}-${cylinder.id}`,
             machineName: machine.name,
@@ -627,7 +627,7 @@ export default function ProductCatalogPage() {
       const cylWidthVal = parseFloat(cylinder.printWidth);
       // Cylinder width must be within machine width limits
       if (cylWidthVal < machineMinFilm || cylWidthVal > machineMaxFilm) return [];
-      const maxAcUps    = Math.floor(cylWidthVal / laneWidth);
+      const maxAcUps = Math.floor(cylWidthVal / laneWidth);
       if (maxAcUps === 0) return [];
       return Array.from({ length: maxAcUps }, (_, i) => {
         const acUps = i + 1;
@@ -644,15 +644,15 @@ export default function ProductCatalogPage() {
         });
         if (realSleeveExists) return [];
         if (cylWidthVal < filmWidth + 100) return [];
-        const sideWaste  = parseFloat((2 * trim).toFixed(1));
+        const sideWaste = parseFloat((2 * trim).toFixed(1));
         const deadMargin = 0;
         const totalWaste = sideWaste;
-        const cylCirc    = parseFloat(cylinder.repeatLength || "450") || 450;
+        const cylCirc = parseFloat(cylinder.repeatLength || "450") || 450;
         if (!isValidCircumference(cylCirc)) return [];
-        const repeatUPS  = calcRepeatUPS(cylCirc);
-        const totalUPS   = acUps * repeatUPS;
-        const reqRMT     = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
-        const totalRMT   = Math.ceil(reqRMT * 1.01);
+        const repeatUPS = calcRepeatUPS(cylCirc);
+        const totalUPS = acUps * repeatUPS;
+        const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
+        const totalRMT = Math.ceil(reqRMT * 1.01);
         return [{
           planId: `CP-${machine.id}-SPLSLV-UPS${acUps}-${cylinder.id}`,
           machineName: machine.name,
@@ -708,7 +708,7 @@ export default function ProductCatalogPage() {
           const deadMargin = parseFloat((machineMaxFilm - filmWidth).toFixed(1));
 
           for (const cyl of cylList) {
-            const reqRMT  = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / (acUps * repeatCount)) : 1;
+            const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / (acUps * repeatCount)) : 1;
             const totalRMT = Math.ceil(reqRMT * 1.01);
             plans.push({
               planId: `SLEEVE-${machine.id}-R${repeatCount}-${acUps}UPS-${cyl.id}`,
@@ -733,19 +733,19 @@ export default function ProductCatalogPage() {
     // Repeat = fixed from artwork. Cylinder circ must be exact multiple of effectiveRepeat (= repeatLength + shrinkage).
     // repeatUPS = cylCirc / effectiveRepeat. totalUPS = (acrossUPS × verticalUPS) × repeatUPS.
     const loopMPS = sType === "MultiPackShrink" ? (() => {
-      const mpRepeatLength  = (replanForm as any).repeatLength   || 0;
-      const mpRepeatShrink  = (replanForm as any).repeatShrinkage || 0;
-      const mpEffRepeat     = mpRepeatLength + mpRepeatShrink;   // what is actually printed on cylinder per track
+      const mpRepeatLength = (replanForm as any).repeatLength || 0;
+      const mpRepeatShrink = (replanForm as any).repeatShrinkage || 0;
+      const mpEffRepeat = mpRepeatLength + mpRepeatShrink;   // what is actually printed on cylinder per track
       // Derive UPS from pack dimensions (same formula as UI)
-      const mpPackW   = (replanForm as any).packWidth  || 0;
-      const mpPackH   = (replanForm as any).packHeight || 0;
-      const mpHMargin = (replanForm as any).hMargin    || 0;
-      const mpVMargin = (replanForm as any).vMargin    || 0;
-      const unitW     = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
-      const unitH     = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
-      const mpAcrossUPS  = unitW > 0 ? Math.floor(jobW / unitW)          : ((replanForm as any).acrossUPS  || 1);
-      const mpVerticalUPS= unitH > 0 ? Math.floor(mpEffRepeat / unitH)   : ((replanForm as any).verticalUPS || 1);
-      const mpTotalUPS   = mpAcrossUPS * mpVerticalUPS;
+      const mpPackW = (replanForm as any).packWidth || 0;
+      const mpPackH = (replanForm as any).packHeight || 0;
+      const mpHMargin = (replanForm as any).hMargin || 0;
+      const mpVMargin = (replanForm as any).vMargin || 0;
+      const unitW = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
+      const unitH = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
+      const mpAcrossUPS = unitW > 0 ? Math.floor(jobW / unitW) : ((replanForm as any).acrossUPS || 1);
+      const mpVerticalUPS = unitH > 0 ? Math.floor(mpEffRepeat / unitH) : ((replanForm as any).verticalUPS || 1);
+      const mpTotalUPS = mpAcrossUPS * mpVerticalUPS;
       if (mpEffRepeat <= 0 || jobW <= 0) return [];
       const filmWidth = jobW;
       if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return [];
@@ -756,7 +756,7 @@ export default function ProductCatalogPage() {
         if (circ < machineMinCirc) continue;
         if (circ > machineMaxCirc) break;
         const repeatUPS = mult;
-        const totalUPS  = mpTotalUPS * repeatUPS;
+        const totalUPS = mpTotalUPS * repeatUPS;
         const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
           const cylCirc = parseFloat(t.repeatLength || "0") || 0;
           return Math.abs(cylCirc - circ) < 1;
@@ -769,7 +769,7 @@ export default function ProductCatalogPage() {
         };
         const cylList = realCyls.length > 0 ? realCyls : [specialCyl];
         for (const cyl of cylList) {
-          const reqRMT  = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
+          const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
           const totalRMT = Math.ceil(reqRMT * 1.01);
           plans.push({
             planId: `MPS-${machine.id}-R${mult}-${cyl.id}`,
@@ -795,10 +795,10 @@ export default function ProductCatalogPage() {
 
     if (rawPlans.length === 0) return rawPlans;
     const sorted = [...rawPlans].sort((a, b) =>
-      a.totalWaste  !== b.totalWaste  ? a.totalWaste  - b.totalWaste  :
-      a.deadMargin  !== b.deadMargin  ? a.deadMargin  - b.deadMargin  :
-      a.sideWaste   !== b.sideWaste   ? a.sideWaste   - b.sideWaste   :
-      b.acUps       !== a.acUps       ? b.acUps        - a.acUps       : 0
+      a.totalWaste !== b.totalWaste ? a.totalWaste - b.totalWaste :
+        a.deadMargin !== b.deadMargin ? a.deadMargin - b.deadMargin :
+          a.sideWaste !== b.sideWaste ? a.sideWaste - b.sideWaste :
+            b.acUps !== a.acUps ? b.acUps - a.acUps : 0
     );
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
   }, [replanForm?.machineId, replanForm?.actualWidth, replanForm?.jobWidth, replanForm?.jobHeight, replanForm?.trimmingSize, replanForm?.widthShrinkage, replanForm?.standardQty, (replanForm as any)?.structureType, (replanForm as any)?.content, (replanForm as any)?.gusset, (replanForm as any)?.sealSize, (replanForm as any)?.seamingArea, (replanForm as any)?.transparentArea, (replanForm as any)?.topSeal, (replanForm as any)?.bottomSeal, (replanForm as any)?.sideSeal, (replanForm as any)?.centerSealWidth, (replanForm as any)?.sideGusset, (replanForm as any)?.repeatLength, (replanForm as any)?.acrossUPS, (replanForm as any)?.verticalUPS, (replanForm as any)?.packWidth, (replanForm as any)?.packHeight, (replanForm as any)?.hMargin, (replanForm as any)?.vMargin]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -876,9 +876,9 @@ export default function ProductCatalogPage() {
             const fi = items.find((x: any) => x.id === l.itemId);
             if (fi) return {
               ...l,
-              density:     parseFloat((fi as any).density)   || 0,
-              thickness:   parseFloat((fi as any).thickness) || 0,
-              itemSubGroup:(fi as any).subGroup || l.itemSubGroup,
+              density: parseFloat((fi as any).density) || 0,
+              thickness: parseFloat((fi as any).thickness) || 0,
+              itemSubGroup: (fi as any).subGroup || l.itemSubGroup,
             };
           }
           return l;
@@ -918,29 +918,29 @@ export default function ProductCatalogPage() {
         const matchedId = rawId
           ? rawId
           : (INK_ITEMS.find((x: any) =>
-              x.name === cs.itemName ||
-              x.ItemName === cs.itemName ||
-              x.name === cs.colorName ||
-              x.colour === cs.colorName
-            )?.id ?? "");
+            x.name === cs.itemName ||
+            x.ItemName === cs.itemName ||
+            x.name === cs.colorName ||
+            x.colour === cs.colorName
+          )?.id ?? "");
         return {
           ...cs,
-          inkType:   cs.colorType ?? cs.inkType ?? "Spot",
+          inkType: cs.colorType ?? cs.inkType ?? "Spot",
           inkItemId: matchedId,
         };
       }));
     } else {
       const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
-        "Red":     { l: "41.0",  a: "54.2",  b: "38.1"  },
-        "Yellow":  { l: "89.3",  a: "-6.1",  b: "80.4"  },
-        "Blue":    { l: "25.1",  a: "23.4",  b: "-52.8" },
-        "Black":   { l: "16.0",  a: "0.1",   b: "0.0"   },
-        "White":   { l: "95.2",  a: "-1.0",  b: "2.3"   },
-        "Green":   { l: "46.3",  a: "-50.2", b: "30.1"  },
-        "Cyan":    { l: "60.1",  a: "-38.2", b: "-31.4" },
-        "Magenta": { l: "48.2",  a: "72.1",  b: "-10.3" },
-        "Orange":  { l: "65.4",  a: "43.1",  b: "65.2"  },
-        "Violet":  { l: "30.2",  a: "40.1",  b: "-42.3" },
+        "Red": { l: "41.0", a: "54.2", b: "38.1" },
+        "Yellow": { l: "89.3", a: "-6.1", b: "80.4" },
+        "Blue": { l: "25.1", a: "23.4", b: "-52.8" },
+        "Black": { l: "16.0", a: "0.1", b: "0.0" },
+        "White": { l: "95.2", a: "-1.0", b: "2.3" },
+        "Green": { l: "46.3", a: "-50.2", b: "30.1" },
+        "Cyan": { l: "60.1", a: "-38.2", b: "-31.4" },
+        "Magenta": { l: "48.2", a: "72.1", b: "-10.3" },
+        "Orange": { l: "65.4", a: "43.1", b: "65.2" },
+        "Violet": { l: "30.2", a: "40.1", b: "-42.3" },
       };
       const seen = new Set<string>();
       const plyInks: { itemId: string; itemName: string; colour: string; pantoneNo: string }[] = [];
@@ -950,25 +950,25 @@ export default function ProductCatalogPage() {
             seen.add(ci.itemId);
             const master = items.find(it => it.id === ci.itemId);
             plyInks.push({
-              itemId:    ci.itemId,
-              itemName:  ci.itemName || master?.name || "",
-              colour:    master?.colour || "",
+              itemId: ci.itemId,
+              itemName: ci.itemName || master?.name || "",
+              colour: master?.colour || "",
               pantoneNo: master?.pantoneNo || "",
             });
           }
         });
       });
       setCatalogColorShades(Array.from({ length: n }, (_, i) => {
-        const ink    = plyInks[i];
-        const lab    = ink ? (COLOR_LAB[ink.colour] ?? { l: "0", a: "0", b: "0" }) : { l: "0", a: "0", b: "0" };
-        const PROCESS_COLOURS = new Set(["Cyan","Magenta","Yellow","Black"]);
+        const ink = plyInks[i];
+        const lab = ink ? (COLOR_LAB[ink.colour] ?? { l: "0", a: "0", b: "0" }) : { l: "0", a: "0", b: "0" };
+        const PROCESS_COLOURS = new Set(["Cyan", "Magenta", "Yellow", "Black"]);
         const autoType: "Spot" | "Process" | "Special" = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
         return {
-          colorNo:      i + 1,
-          colorName:    ink ? (ink.colour || ink.itemName || `Color ${i + 1}`) : `Color ${i + 1}`,
-          inkType:      ink ? autoType : "Spot" as const,
-          pantoneRef:   ink?.pantoneNo ?? "",
-          labL: lab.l,  labA: lab.a,  labB: lab.b,
+          colorNo: i + 1,
+          colorName: ink ? (ink.colour || ink.itemName || `Color ${i + 1}`) : `Color ${i + 1}`,
+          inkType: ink ? autoType : "Spot" as const,
+          pantoneRef: ink?.pantoneNo ?? "",
+          labL: lab.l, labA: lab.a, labB: lab.b,
           actualL: "", actualA: "", actualB: "",
           deltaE: "1.0",
           shadeCardRef: "",
@@ -999,10 +999,10 @@ export default function ProductCatalogPage() {
     if (rf.savedCylAllocs && Array.isArray(rf.savedCylAllocs) && (rf.savedCylAllocs as any[]).length > 0) {
       setCatalogCylAllocs(rf.savedCylAllocs as any[]);
     } else {
-      const planCirc      = replanSelectedPlan ? String(replanSelectedPlan.cylCirc)  : "";
+      const planCirc = replanSelectedPlan ? String(replanSelectedPlan.cylCirc) : "";
       const planRepeatUPS = replanSelectedPlan ? (replanSelectedPlan.repeatUPS as number) : 1;
-      const planCylCode   = replanSelectedPlan ? ((replanSelectedPlan as any).cylinderCode ?? "") : "";
-      const planCylWidth  = replanSelectedPlan ? String((replanSelectedPlan as any).cylinderWidthVal ?? "") : "";
+      const planCylCode = replanSelectedPlan ? ((replanSelectedPlan as any).cylinderCode ?? "") : "";
+      const planCylWidth = replanSelectedPlan ? String((replanSelectedPlan as any).cylinderWidthVal ?? "") : "";
       const isSpecialPlan = replanSelectedPlan ? !!(replanSelectedPlan as any).isSpecial : false;
       setCatalogCylAllocs(Array.from({ length: n }, (_, i) => ({
         colorNo: i + 1,
@@ -1038,32 +1038,32 @@ export default function ProductCatalogPage() {
     const uniqueLayers = hydratedLayers.filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx);
     setReplanForm({ ...row, secondaryLayers: uniqueLayers });
     setReplanTab("info");
-    setCatalogFilmReqs([]); 
+    setCatalogFilmReqs([]);
     setCatalogColorShades((row.savedColorShades || []).map((cs: any) => {
       const rawId = String(cs.inkItemId ?? cs.itemId ?? "");
       const matchedId = rawId
         ? rawId
         : (INK_ITEMS.find((x: any) =>
-            x.name === cs.itemName ||
-            x.ItemName === cs.itemName ||
-            x.name === cs.colorName ||
-            x.colour === cs.colorName
-          )?.id ?? "");
+          x.name === cs.itemName ||
+          x.ItemName === cs.itemName ||
+          x.name === cs.colorName ||
+          x.colour === cs.colorName
+        )?.id ?? "");
       return {
         ...cs,
-        inkType:   cs.colorType ?? cs.inkType ?? "Spot",
+        inkType: cs.colorType ?? cs.inkType ?? "Spot",
         inkItemId: matchedId,
       };
     }));
-    setCatalogMatAllocs([]); 
-    setCatalogCylAllocs(row.savedCylAllocs || []); 
+    setCatalogMatAllocs([]);
+    setCatalogCylAllocs(row.savedCylAllocs || []);
     setCatalogPrepTab("shade");
     setReplanSelPlanId(row.savedPlanId || "");
     setReplanShowPlan(false);
     setReplanIsPlanApplied(!!row.savedPlanId);
     setReplanPlanSearch("");
     setReplanPlanSort({ key: "", dir: "asc" });
-    const _base = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+    const _base = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
     setReplanAttachments((row.attachments ?? []).map((a) => ({
       id: String(a.id),
       name: a.name,
@@ -1118,35 +1118,35 @@ export default function ProductCatalogPage() {
       alert("All colors are marked as Repeat Use — nothing to create in master.");
       return;
     }
-    const sp    = replanSelectedPlan as any;
-    const circ  = sp ? String(sp.cylCirc ?? catalogCylAllocs[0]?.circumference ?? "") : String(catalogCylAllocs[0]?.circumference || replanForm.jobHeight || "");
-    const pw    = sp ? String(sp.cylinderWidthVal ?? catalogCylAllocs[0]?.printWidth ?? "") : String(catalogCylAllocs[0]?.printWidth || replanForm.jobWidth || "");
-    const rUPS  = sp ? (sp.repeatUPS as number) : (catalogCylAllocs[0]?.repeatUPS ?? 1);
+    const sp = replanSelectedPlan as any;
+    const circ = sp ? String(sp.cylCirc ?? catalogCylAllocs[0]?.circumference ?? "") : String(catalogCylAllocs[0]?.circumference || replanForm.jobHeight || "");
+    const pw = sp ? String(sp.cylinderWidthVal ?? catalogCylAllocs[0]?.printWidth ?? "") : String(catalogCylAllocs[0]?.printWidth || replanForm.jobWidth || "");
+    const rUPS = sp ? (sp.repeatUPS as number) : (catalogCylAllocs[0]?.repeatUPS ?? 1);
     // Only pass productMasterId if it's a real saved ID (GUID or numeric).
     // Draft IDs like "GPC001-DRAFT" must not reach the backend — ToolMaster.ProductMasterID is bigint.
     const savedId = replanForm.id || "";
     const isSavedId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedId) || /^\d+$/.test(savedId);
     const prefill = {
       productMasterId: isSavedId ? savedId : "",
-      productCode:     replanForm.catalogNo || replanForm.id || "",
-      productName:     replanForm.productName || "",
-      customerName:    replanForm.customerName || "",
-      categoryName:    replanForm.categoryName || "",
-      noOfColors:      nonRepeat.length,
-      jobWidth:        String(replanForm.jobWidth || ""),
-      jobHeight:       String(replanForm.jobHeight || ""),
-      circumference:   circ,
-      printWidth:      pw,
-      repeatUPS:       rUPS,
-      colors:          nonRepeat.map(c => c.colorName),
-      colorNos:        nonRepeat.map(c => c.colorNo),
-      totalUPS:        sp?.totalUPS,
-      filmSize:        sp?.filmSize ? String(sp.filmSize) : undefined,
-      totalWaste:      sp?.totalWaste ? String(sp.totalWaste) : undefined,
-      sleeveCode:      sp?.sleeveCode,
-      sleeveWidth:     sp?.sleeveWidth ? String(sp.sleeveWidth) : undefined,
-      acUps:           sp?.acrossUPS,
-      isSpecial:       !!(sp as any)?.isSpecial,
+      productCode: replanForm.catalogNo || replanForm.id || "",
+      productName: replanForm.productName || "",
+      customerName: replanForm.customerName || "",
+      categoryName: replanForm.categoryName || "",
+      noOfColors: nonRepeat.length,
+      jobWidth: String(replanForm.jobWidth || ""),
+      jobHeight: String(replanForm.jobHeight || ""),
+      circumference: circ,
+      printWidth: pw,
+      repeatUPS: rUPS,
+      colors: nonRepeat.map(c => c.colorName),
+      colorNos: nonRepeat.map(c => c.colorNo),
+      totalUPS: sp?.totalUPS,
+      filmSize: sp?.filmSize ? String(sp.filmSize) : undefined,
+      totalWaste: sp?.totalWaste ? String(sp.totalWaste) : undefined,
+      sleeveCode: sp?.sleeveCode,
+      sleeveWidth: sp?.sleeveWidth ? String(sp.sleeveWidth) : undefined,
+      acUps: sp?.acrossUPS,
+      isSpecial: !!(sp as any)?.isSpecial,
     };
     localStorage.setItem("ajsw_cylinder_prefill", JSON.stringify(prefill));
     window.open("/masters/tools/create-cylinders", "_blank");
@@ -1159,7 +1159,7 @@ export default function ProductCatalogPage() {
 
   const refreshFromCylinderMaster = async () => {
     if (!replanForm) return;
-    const pmID   = replanForm.id || "";
+    const pmID = replanForm.id || "";
     const pmCode = replanForm.catalogNo || "";
 
     // Need at least a numeric/GUID ID or a catalog code to query by
@@ -1179,13 +1179,13 @@ export default function ProductCatalogPage() {
         if (!row) return alloc;
         return {
           ...alloc,
-          cylinderNo:       row.CylinderCode || row.MasterCylinderCode || alloc.cylinderNo,
-          circumference:    row.Circumference ? String(row.Circumference) : alloc.circumference,
-          printWidth:       row.CylinderWidth ? String(row.CylinderWidth) : alloc.printWidth,
-          repeatUPS:        row.RepeatUPS     ?? alloc.repeatUPS,
-          status:           (row.CylinderStatus || alloc.status) as typeof alloc.status,
+          cylinderNo: row.CylinderCode || row.MasterCylinderCode || alloc.cylinderNo,
+          circumference: row.Circumference ? String(row.Circumference) : alloc.circumference,
+          printWidth: row.CylinderWidth ? String(row.CylinderWidth) : alloc.printWidth,
+          repeatUPS: row.RepeatUPS ?? alloc.repeatUPS,
+          status: (row.CylinderStatus || alloc.status) as typeof alloc.status,
           cylinderMasterID: row.CylinderMasterID || alloc.cylinderMasterID || "",
-          createdInMaster:  !!(row.CylinderMasterID),
+          createdInMaster: !!(row.CylinderMasterID),
         };
       }));
     } catch (e: any) {
@@ -1238,29 +1238,29 @@ export default function ProductCatalogPage() {
 
     // Save cylinder allocations to DB if we have a real ID and any allocs
     if (catalogCylAllocs.length > 0) {
-      const cn    = updated.catalogNo || "";
+      const cn = updated.catalogNo || "";
       const mCode = cn.match(/(\d+)$/);
       const pCode = mCode ? `P${mCode[1].padStart(4, "0")}` : cn;
-      const sp    = replanSelectedPlan as any;
+      const sp = replanSelectedPlan as any;
       try {
         await apiPost("api/productcataloggravureShrink/savecylinderallocation", {
           ProductMasterID: productMasterID,
           Allocations: catalogCylAllocs.map((ca, i) => ({
-            isRepeat:          ca.repeatUse ?? false,
-            productCode:       pCode,
-            colorName:         catalogColorShades[i]?.colorName || ca.colorName,
-            cylinderCode:      ca.cylinderNo,
-            cylinderWidth:     parseFloat(ca.printWidth) || 0,
-            circumference:     parseFloat(ca.circumference) || 0,
-            repeatUPS:         ca.repeatUPS,
-            cylinderType:      ca.cylinderType,
-            cylinderStatus:    ca.status,
-            remarks:           ca.remarks,
-            cylinderMasterID:  ca.cylinderMasterID || "",
-            planCylinderCode:  sp?.cylinderCode   || "",
-            planCircumference: sp?.cylCirc         || 0,
-            planRepeatUPS:     sp?.repeatUPS       || 0,
-            planPrintWidth:    sp?.cylinderWidthVal || 0,
+            isRepeat: ca.repeatUse ?? false,
+            productCode: pCode,
+            colorName: catalogColorShades[i]?.colorName || ca.colorName,
+            cylinderCode: ca.cylinderNo,
+            cylinderWidth: parseFloat(ca.printWidth) || 0,
+            circumference: parseFloat(ca.circumference) || 0,
+            repeatUPS: ca.repeatUPS,
+            cylinderType: ca.cylinderType,
+            cylinderStatus: ca.status,
+            remarks: ca.remarks,
+            cylinderMasterID: ca.cylinderMasterID || "",
+            planCylinderCode: sp?.cylinderCode || "",
+            planCircumference: sp?.cylCirc || 0,
+            planRepeatUPS: sp?.repeatUPS || 0,
+            planPrintWidth: sp?.cylinderWidthVal || 0,
           })),
         });
       } catch (e: any) {
@@ -1316,43 +1316,43 @@ export default function ProductCatalogPage() {
 
   // ── Open Create — opens full 3-tab modal directly ─────────
   const openCreate = async (order: GravureOrder) => {
-    const wo   = workOrders.find(w => w.orderId === order.id) || null;
+    const wo = workOrders.find(w => w.orderId === order.id) || null;
     const line = order.orderLines?.[0];
-    const n    = catalog.length + 1;
+    const n = catalog.length + 1;
     const catalogNo = await fetchNextCatalogNo();
     const draft: GravureProductCatalog = {
-      id:          `GPC${String(n).padStart(3, "0")}-DRAFT`,
+      id: `GPC${String(n).padStart(3, "0")}-DRAFT`,
       catalogNo,
       createdDate: new Date().toISOString().slice(0, 10),
-      productName:  wo?.jobName || line?.productName || order.jobName || "",
-      customerId:   order.customerId,
+      productName: wo?.jobName || line?.productName || order.jobName || "",
+      customerId: order.customerId,
       customerName: order.customerName,
       categoryId: "", categoryName: "", content: "",
-      jobWidth:    wo?.jobWidth  || line?.jobWidth  || order.jobWidth  || 0,
-      jobHeight:   wo?.jobHeight || line?.jobHeight || order.jobHeight || 0,
-      actualWidth:  wo?.actualWidth  || 0,
+      jobWidth: wo?.jobWidth || line?.jobWidth || order.jobWidth || 0,
+      jobHeight: wo?.jobHeight || line?.jobHeight || order.jobHeight || 0,
+      actualWidth: wo?.actualWidth || 0,
       actualHeight: wo?.actualHeight || 0,
-      noOfColors:  wo?.noOfColors  || line?.noOfColors  || order.noOfColors  || 0,
-      printType:   (wo?.printType  || line?.printType  || order.printType   || "Surface Print") as GravureProductCatalog["printType"],
-      substrate:   wo?.substrate   || line?.substrate  || order.substrate   || "",
+      noOfColors: wo?.noOfColors || line?.noOfColors || order.noOfColors || 0,
+      printType: (wo?.printType || line?.printType || order.printType || "Surface Print") as GravureProductCatalog["printType"],
+      substrate: wo?.substrate || line?.substrate || order.substrate || "",
       secondaryLayers: [...(wo?.secondaryLayers || order.secondaryLayers || [])],
-      processes:       [...(wo?.processes       || order.processes       || [])],
-      machineId:   wo?.machineId   || "",
+      processes: [...(wo?.processes || order.processes || [])],
+      machineId: wo?.machineId || "",
       machineName: wo?.machineName || "",
       cylinderCostPerColor: wo?.cylinderCostPerColor || 3500,
       overheadPct: wo?.overheadPct || 12,
-      profitPct:   wo?.profitPct   || 15,
+      profitPct: wo?.profitPct || 15,
       perMeterRate: wo?.perMeterRate || line?.rate || order.perMeterRate || 0,
-      standardQty:  wo?.quantity   || line?.orderQty || order.quantity || 0,
-      standardUnit: wo?.unit       || line?.unit     || order.unit     || "Meter",
+      standardQty: wo?.quantity || line?.orderQty || order.quantity || 0,
+      standardUnit: wo?.unit || line?.unit || order.unit || "Meter",
       sourceEstimationId: "", sourceEstimationNo: "",
-      sourceOrderId:   order.id,
-      sourceOrderNo:   order.orderNo,
-      sourceWorkOrderId:  wo?.id         || "",
-      sourceWorkOrderNo:  wo?.workOrderNo || "",
+      sourceOrderId: order.id,
+      sourceOrderNo: order.orderNo,
+      sourceWorkOrderId: wo?.id || "",
+      sourceWorkOrderNo: wo?.workOrderNo || "",
       trimmingSize: wo?.trimmingSize,
-      frontColors:  wo?.frontColors,
-      backColors:   wo?.backColors,
+      frontColors: wo?.frontColors,
+      backColors: wo?.backColors,
       status: "Active",
       isActive: true,
       isActiveReason: "",
@@ -1371,12 +1371,12 @@ export default function ProductCatalogPage() {
     const n = catalog.length + 1;
     const catalogNo = await fetchNextCatalogNo();
     const draft: GravureProductCatalog = {
-      id:          `GPC${String(n).padStart(3, "0")}-DRAFT`,
+      id: `GPC${String(n).padStart(3, "0")}-DRAFT`,
       catalogNo,
       createdDate: new Date().toISOString().slice(0, 10),
-      productName:  "",
-      customerId:   "", customerName: "",
-      categoryId:   "", categoryName: "", content: "",
+      productName: "",
+      customerId: "", customerName: "",
+      categoryId: "", categoryName: "", content: "",
       jobWidth: 0, jobHeight: 0,
       actualWidth: 0, actualHeight: 0,
       noOfColors: 0,
@@ -1408,42 +1408,42 @@ export default function ProductCatalogPage() {
   // ── Save Catalog ──────────────────────────────────────────
   const saveCatalog = () => {
     if (!sourceOrder || !editName.trim()) return;
-    const wo   = sourceWO;
+    const wo = sourceWO;
     const line = sourceOrder.orderLines?.[0];
-    const n    = catalog.length + 1;
+    const n = catalog.length + 1;
     const item: GravureProductCatalog = {
-      id:          `GPC${String(n).padStart(3, "0")}`,
-      catalogNo:   `GRV-CAT-${String(n).padStart(3, "0")}`,
+      id: `GPC${String(n).padStart(3, "0")}`,
+      catalogNo: `GRV-CAT-${String(n).padStart(3, "0")}`,
       createdDate: new Date().toISOString().slice(0, 10),
-      productName:  editName,
-      customerId:   sourceOrder.customerId,
+      productName: editName,
+      customerId: sourceOrder.customerId,
       customerName: sourceOrder.customerName,
       categoryId: "", categoryName: "", content: "",
-      jobWidth:    wo?.jobWidth  || line?.jobWidth  || sourceOrder.jobWidth  || 0,
-      jobHeight:   wo?.jobHeight || line?.jobHeight || sourceOrder.jobHeight || 0,
-      actualWidth:  wo?.actualWidth  || 0,
+      jobWidth: wo?.jobWidth || line?.jobWidth || sourceOrder.jobWidth || 0,
+      jobHeight: wo?.jobHeight || line?.jobHeight || sourceOrder.jobHeight || 0,
+      actualWidth: wo?.actualWidth || 0,
       actualHeight: wo?.actualHeight || 0,
-      noOfColors:  wo?.noOfColors  || line?.noOfColors  || sourceOrder.noOfColors  || 0,
-      printType:   (wo?.printType  || line?.printType  || sourceOrder.printType   || "Surface Print") as GravureProductCatalog["printType"],
-      substrate:   wo?.substrate   || line?.substrate  || sourceOrder.substrate   || "",
-      secondaryLayers:      [...(wo?.secondaryLayers      || sourceOrder.secondaryLayers      || [])],
-      processes:            [...(wo?.processes            || sourceOrder.processes            || [])],
-      machineId:   wo?.machineId   || "",
+      noOfColors: wo?.noOfColors || line?.noOfColors || sourceOrder.noOfColors || 0,
+      printType: (wo?.printType || line?.printType || sourceOrder.printType || "Surface Print") as GravureProductCatalog["printType"],
+      substrate: wo?.substrate || line?.substrate || sourceOrder.substrate || "",
+      secondaryLayers: [...(wo?.secondaryLayers || sourceOrder.secondaryLayers || [])],
+      processes: [...(wo?.processes || sourceOrder.processes || [])],
+      machineId: wo?.machineId || "",
       machineName: wo?.machineName || "",
       cylinderCostPerColor: wo?.cylinderCostPerColor || 3500,
       overheadPct: wo?.overheadPct || 12,
-      profitPct:   wo?.profitPct   || 15,
+      profitPct: wo?.profitPct || 15,
       perMeterRate: editRate,
-      standardQty:  wo?.quantity   || line?.orderQty || sourceOrder.quantity || 0,
-      standardUnit: wo?.unit       || line?.unit     || sourceOrder.unit     || "Meter",
+      standardQty: wo?.quantity || line?.orderQty || sourceOrder.quantity || 0,
+      standardUnit: wo?.unit || line?.unit || sourceOrder.unit || "Meter",
       sourceEstimationId: "", sourceEstimationNo: "",
-      sourceOrderId:   sourceOrder.id,
-      sourceOrderNo:   sourceOrder.orderNo,
-      sourceWorkOrderId:  wo?.id         || "",
-      sourceWorkOrderNo:  wo?.workOrderNo || "",
+      sourceOrderId: sourceOrder.id,
+      sourceOrderNo: sourceOrder.orderNo,
+      sourceWorkOrderId: wo?.id || "",
+      sourceWorkOrderNo: wo?.workOrderNo || "",
       trimmingSize: wo?.trimmingSize,
-      frontColors:  wo?.frontColors,
-      backColors:   wo?.backColors,
+      frontColors: wo?.frontColors,
+      backColors: wo?.backColors,
       status: "Active",
       isActive: true,
       isActiveReason: "",
@@ -1475,31 +1475,35 @@ export default function ProductCatalogPage() {
 
   // ── Stats badge for ply structure ──
   const PLY_BADGE_CLS: Record<string, string> = {
-    Film:       "bg-sky-100 text-sky-700 border-sky-200",
-    Printing:   "bg-indigo-100 text-indigo-700 border-indigo-200",
+    Film: "bg-sky-100 text-sky-700 border-sky-200",
+    Printing: "bg-indigo-100 text-indigo-700 border-indigo-200",
     Lamination: "bg-orange-100 text-orange-700 border-orange-200",
-    Coating:    "bg-green-100 text-green-700 border-green-200",
+    Coating: "bg-green-100 text-green-700 border-green-200",
   };
 
   // ── Processed table columns ───────────────────────────────
   const processedCols: Column<GravureProductCatalog>[] = [
-    { key: "catalogNo",    header: "CATALOG NUMBER", sortable: true },
-    { key: "createdDate",  header: "DATE", sortable: true, render: r => <span className="text-xs text-gray-600 whitespace-nowrap">{r.createdDate || "—"}</span> },
-    { key: "productName",  header: "PRODUCT NAME",   sortable: true },
-    { key: "customerName", header: "CUSTOMER",       sortable: true },
-    { key: "machineName",  header: "MACHINE", render: r => <span className="text-xs text-gray-600 font-medium">{r.machineName || "—"}</span> },
-    { key: "noOfColors", header: "COLORS",
-      render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
-    { key: "status", header: "STATUS", sortable: true, render: r => (
-      <button onClick={() => openStatusToggle(r)} className="hover:scale-105 transition-transform active:scale-95 group relative">
-        {statusBadge(r.status)}
-        {r.isActiveReason && (
-          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] px-2 py-1 bg-gray-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-            {r.isActiveReason}
-          </div>
-        )}
-      </button>
-    )},
+    { key: "catalogNo", header: "CATALOG NUMBER", sortable: true },
+    { key: "createdDate", header: "DATE", sortable: true, render: r => <span className="text-xs text-gray-600 whitespace-nowrap">{r.createdDate || "—"}</span> },
+    { key: "productName", header: "PRODUCT NAME", sortable: true },
+    { key: "customerName", header: "CUSTOMER", sortable: true },
+    { key: "machineName", header: "MACHINE", render: r => <span className="text-xs text-gray-600 font-medium">{r.machineName || "—"}</span> },
+    {
+      key: "noOfColors", header: "COLORS",
+      render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span>
+    },
+    {
+      key: "status", header: "STATUS", sortable: true, render: r => (
+        <button onClick={() => openStatusToggle(r)} className="hover:scale-105 transition-transform active:scale-95 group relative">
+          {statusBadge(r.status)}
+          {r.isActiveReason && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] px-2 py-1 bg-gray-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              {r.isActiveReason}
+            </div>
+          )}
+        </button>
+      )
+    },
   ];
 
   const stats = { pending: pendingOrders.length, processed: processedCatalog.length };
@@ -1530,7 +1534,7 @@ export default function ProductCatalogPage() {
       {/* ── Tabs ── */}
       <div className="flex bg-gray-100 p-1 rounded-xl gap-1 w-fit">
         {([
-          { key: "pending",   label: "Pending",   Icon: Clock,        count: stats.pending   },
+          { key: "pending", label: "Pending", Icon: Clock, count: stats.pending },
           { key: "processed", label: "Processed", Icon: CheckCircle2, count: stats.processed },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setCatalogTab(t.key)}
@@ -1558,7 +1562,7 @@ export default function ProductCatalogPage() {
           ) : (
             <div className="divide-y divide-gray-100">
               {pendingOrders.map(order => {
-                const wo   = workOrders.find(w => w.orderId === order.id);
+                const wo = workOrders.find(w => w.orderId === order.id);
                 const line = order.orderLines?.[0];
                 return (
                   <div key={order.id}
@@ -1660,18 +1664,18 @@ export default function ProductCatalogPage() {
                   <Button variant="ghost" size="sm" icon={<ArrowRight size={13} />}
                     onClick={() => {
                       localStorage.setItem("ajsw_order_from_catalog", JSON.stringify({
-                        catalogId:    row.id,
-                        catalogNo:    row.catalogNo,
-                        customerId:   row.customerId,
+                        catalogId: row.id,
+                        catalogNo: row.catalogNo,
+                        customerId: row.customerId,
                         customerName: row.customerName,
-                        productName:  row.productName,
-                        categoryId:   row.categoryId,
+                        productName: row.productName,
+                        categoryId: row.categoryId,
                         categoryName: row.categoryName,
-                        substrate:    (row as any).substrate || "",
-                        jobWidth:     row.jobWidth,
-                        jobHeight:    row.jobHeight,
-                        noOfColors:   row.noOfColors,
-                        standardQty:  row.standardQty,
+                        substrate: (row as any).substrate || "",
+                        jobWidth: row.jobWidth,
+                        jobHeight: row.jobHeight,
+                        noOfColors: row.noOfColors,
+                        standardQty: row.standardQty,
                         standardUnit: row.standardUnit,
                         perMeterRate: row.perMeterRate,
                       }));
@@ -1747,10 +1751,10 @@ export default function ProductCatalogPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    <Pill label="Substrate"  value={sourceOrder.orderLines?.[0]?.substrate || sourceOrder.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
+                    <Pill label="Substrate" value={sourceOrder.orderLines?.[0]?.substrate || sourceOrder.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
                     <Pill label="Print Type" value={sourceOrder.orderLines?.[0]?.printType || sourceOrder.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
-                    <Pill label="Colors"     value={`${sourceOrder.noOfColors || 0} Colors`} cls="bg-blue-50 text-blue-700 border-blue-200" />
-                    <Pill label="Job Width"  value={`${sourceOrder.jobWidth || 0} mm`} />
+                    <Pill label="Colors" value={`${sourceOrder.noOfColors || 0} Colors`} cls="bg-blue-50 text-blue-700 border-blue-200" />
+                    <Pill label="Job Width" value={`${sourceOrder.jobWidth || 0} mm`} />
                   </div>
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
                     No Work Order found — catalog will use basic order data. You can Replan after saving.
@@ -1806,7 +1810,7 @@ export default function ProductCatalogPage() {
               <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>MACHINE</p>
               <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.machineName || "—"}</p>
             </div>
-            
+
             {/* Dynamic Ply Information in Header */}
             {replanForm.secondaryLayers?.length > 0 && (
               <div className="flex-1 min-w-[220px]">
@@ -1815,12 +1819,11 @@ export default function ProductCatalogPage() {
                   {replanForm.secondaryLayers.map((l, i) => (
                     <div key={i} className="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-100 rounded-lg shadow-sm">
                       <span className="text-[9px] font-black text-purple-600">P{l.layerNo}</span>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                        l.plyType === "Printing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
-                        l.plyType === "Lamination" ? "bg-teal-50 text-teal-700 border-teal-200" :
-                        l.plyType === "Coating" ? "bg-amber-50 text-amber-700 border-amber-200" : 
-                        "bg-blue-50 text-blue-700 border-blue-200"
-                      }`}>{l.plyType || "Film"}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${l.plyType === "Printing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" :
+                          l.plyType === "Lamination" ? "bg-teal-50 text-teal-700 border-teal-200" :
+                            l.plyType === "Coating" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                              "bg-blue-50 text-blue-700 border-blue-200"
+                        }`}>{l.plyType || "Film"}</span>
                       {l.itemSubGroup && <span className="text-[9px] text-gray-600 font-medium">{l.itemSubGroup}</span>}
                     </div>
                   ))}
@@ -1832,9 +1835,9 @@ export default function ProductCatalogPage() {
           {/* Modal Tabs */}
           <div className="flex overflow-x-auto bg-gray-100 p-1 rounded-xl gap-1 mb-4">
             {([
-              { key: "info",     label: "① Basic Info"        },
-              { key: "planning", label: "② Planning"          },
-              { key: "material", label: "③ Production Prep"   },
+              { key: "info", label: "① Basic Info" },
+              { key: "planning", label: "② Planning" },
+              { key: "material", label: "③ Production Prep" },
             ] as const).map(t => (
               <button key={t.key} onClick={() => setReplanTab(t.key)}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all whitespace-nowrap ${replanTab === t.key ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
@@ -2043,11 +2046,10 @@ export default function ProductCatalogPage() {
                           {(["Meter", "KG"] as const).map(u => (
                             <button key={u} type="button"
                               onClick={() => rf("rollUnit" as any, u)}
-                              className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${
-                                ((replanForm as any).rollUnit ?? "Meter") === u
+                              className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-all ${((replanForm as any).rollUnit ?? "Meter") === u
                                   ? "bg-teal-600 text-white border-teal-600 shadow-sm"
                                   : "bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:text-teal-700"
-                              }`}>
+                                }`}>
                               {u}
                             </button>
                           ))}
@@ -2097,11 +2099,11 @@ export default function ProductCatalogPage() {
                           onDragOver={e => e.preventDefault()}
                           onDrop={e => { e.preventDefault(); addAttachments(e.dataTransfer.files); }}>
                           {replanAttachments.map((att, attIdx) => {
-                            const isImg  = att.mimeType.startsWith("image/");
-                            const ext    = att.name.split(".").pop()?.toUpperCase() ?? "FILE";
+                            const isImg = att.mimeType.startsWith("image/");
+                            const ext = att.name.split(".").pop()?.toUpperCase() ?? "FILE";
                             const sizeKb = (att.size / 1024).toFixed(0);
                             const isMaster = attIdx === 0;
-                            const label  = att.label ?? (isMaster ? "Master File" : "");
+                            const label = att.label ?? (isMaster ? "Master File" : "");
                             const badgeColor = isMaster
                               ? "bg-amber-400 text-white border-amber-500"
                               : "bg-indigo-100 text-indigo-700 border-indigo-300";
@@ -2226,10 +2228,10 @@ export default function ProductCatalogPage() {
                                 Repeat = {(replanForm as any).repeatLength || "—"} mm
                               </div>
                               {(() => {
-                                const pw = (replanForm as any).packWidth  || 0;
+                                const pw = (replanForm as any).packWidth || 0;
                                 const ph = (replanForm as any).packHeight || 0;
-                                const hm = (replanForm as any).hMargin    || 0;
-                                const vm = (replanForm as any).vMargin    || 0;
+                                const hm = (replanForm as any).hMargin || 0;
+                                const vm = (replanForm as any).vMargin || 0;
                                 const rl = (replanForm as any).repeatLength || 0;
                                 const fw = replanForm.jobWidth || 0;
                                 const uW = pw > 0 && hm > 0 ? pw + 2 * hm : 0;
@@ -2261,7 +2263,7 @@ export default function ProductCatalogPage() {
                               {(() => {
                                 const lf = replanForm.jobWidth || 0;
                                 const sh = replanForm.widthShrinkage || 0;
-                                const sa = (replanForm as any).seamingArea     || 0;
+                                const sa = (replanForm as any).seamingArea || 0;
                                 const ta = (replanForm as any).transparentArea || 0;
                                 const dc = lf * 2 + sa + ta; // width direction only
                                 const parts: string[] = [`${lf}×2`];
@@ -2301,20 +2303,20 @@ export default function ProductCatalogPage() {
                             colClasses={sTypeGlobal === "Sleeve" ? "grid-cols-2" : undefined}
                             onChange={patch => {
                               patchDim(patch);
-                              if ("width"        in patch && patch.width        !== undefined) { rf("jobWidth",  patch.width); rf("actualWidth", patch.width); }
-                              if ("layflatWidth"  in patch && patch.layflatWidth !== undefined) { rf("jobWidth",  patch.layflatWidth); rf("actualWidth", patch.layflatWidth); }
-                              if ("height"       in patch && patch.height       !== undefined) rf("jobHeight", patch.height);
-                              if ("cutHeight"    in patch && patch.cutHeight    !== undefined) rf("jobHeight", patch.cutHeight);
+                              if ("width" in patch && patch.width !== undefined) { rf("jobWidth", patch.width); rf("actualWidth", patch.width); }
+                              if ("layflatWidth" in patch && patch.layflatWidth !== undefined) { rf("jobWidth", patch.layflatWidth); rf("actualWidth", patch.layflatWidth); }
+                              if ("height" in patch && patch.height !== undefined) rf("jobHeight", patch.height);
+                              if ("cutHeight" in patch && patch.cutHeight !== undefined) rf("jobHeight", patch.cutHeight);
                               // Sync gusset, sealWidth, seamingArea, transparentArea into replanForm
-                              if ("gusset"          in patch && patch.gusset          !== undefined) rf("gusset"          as any, patch.gusset);
-                              if ("sealWidth"       in patch && patch.sealWidth       !== undefined) rf("sealSize"        as any, patch.sealWidth);
-                              if ("seamingArea"     in patch && patch.seamingArea     !== undefined) rf("seamingArea"     as any, patch.seamingArea);
+                              if ("gusset" in patch && patch.gusset !== undefined) rf("gusset" as any, patch.gusset);
+                              if ("sealWidth" in patch && patch.sealWidth !== undefined) rf("sealSize" as any, patch.sealWidth);
+                              if ("seamingArea" in patch && patch.seamingArea !== undefined) rf("seamingArea" as any, patch.seamingArea);
                               if ("transparentArea" in patch && patch.transparentArea !== undefined) rf("transparentArea" as any, patch.transparentArea);
-                              if ("topSeal"         in patch && patch.topSeal         !== undefined) rf("topSeal"         as any, patch.topSeal);
-                              if ("bottomSeal"      in patch && patch.bottomSeal      !== undefined) rf("bottomSeal"      as any, patch.bottomSeal);
-                              if ("sideSeal"        in patch && patch.sideSeal        !== undefined) rf("sideSeal"        as any, patch.sideSeal);
+                              if ("topSeal" in patch && patch.topSeal !== undefined) rf("topSeal" as any, patch.topSeal);
+                              if ("bottomSeal" in patch && patch.bottomSeal !== undefined) rf("bottomSeal" as any, patch.bottomSeal);
+                              if ("sideSeal" in patch && patch.sideSeal !== undefined) rf("sideSeal" as any, patch.sideSeal);
                               if ("centerSealWidth" in patch && patch.centerSealWidth !== undefined) rf("centerSealWidth" as any, patch.centerSealWidth);
-                              if ("sideGusset"      in patch && patch.sideGusset      !== undefined) rf("sideGusset"      as any, patch.sideGusset);
+                              if ("sideGusset" in patch && patch.sideGusset !== undefined) rf("sideGusset" as any, patch.sideGusset);
                             }}
                           />
                         </div>
@@ -2341,7 +2343,7 @@ export default function ProductCatalogPage() {
                                     {(() => {
                                       const lf = replanForm.jobWidth || 0;
                                       const sh = replanForm.widthShrinkage || 0;
-                                      const sa = (replanForm as any).seamingArea     || 0;
+                                      const sa = (replanForm as any).seamingArea || 0;
                                       const ta = (replanForm as any).transparentArea || 0;
                                       const dc = lf * 2 + sa + ta; // width direction only
                                       const parts: string[] = [`${lf}×2`];
@@ -2390,83 +2392,91 @@ export default function ProductCatalogPage() {
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Printed ACROSS the Roll</p>
                           <div className="grid grid-cols-4 gap-2 mb-3">
                             {([
-                              { n: 1, label: "Outside · Across\nTop off first",
+                              {
+                                n: 1, label: "Outside · Across\nTop off first",
                                 svg: (
                                   <svg width="84" height="72" viewBox="0 0 84 72">
                                     {/* paper label - flat, coming off roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
+                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
                                     {/* bottom line = underline */}
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
+                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
                                     {/* normal text */}
                                     <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
                                     <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
                                     <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
                                     {/* roll circle - side view, on right */}
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
+                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
                                     {/* paper tangent lines connecting to roll */}
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* TOP off first — bold arrow UP-RIGHT */}
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,0 26,4 30,12" fill="#111"/>
+                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="34,0 26,4 30,12" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 2, label: "Inside · Across\nTop off first",
+                                )
+                              },
+                              {
+                                n: 2, label: "Inside · Across\nTop off first",
                                 svg: (
                                   <svg width="84" height="72" viewBox="0 0 84 72">
                                     {/* Inside: roll on RIGHT, text UPSIDE DOWN */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
                                     <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
                                     <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
                                     <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
                                     {/* roll circle on right */}
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* TOP off first — arrow UP-RIGHT */}
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,0 26,4 30,12" fill="#111"/>
+                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="34,0 26,4 30,12" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 3, label: "Outside · Across\nBottom off first",
+                                )
+                              },
+                              {
+                                n: 3, label: "Outside · Across\nBottom off first",
                                 svg: (
                                   <svg width="84" height="72" viewBox="0 0 84 72">
                                     {/* Outside, text normal, BOTTOM arrow, roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
                                     <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
                                     <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
                                     <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* BOTTOM off first — arrow DOWN-RIGHT */}
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,64 24,60 30,52" fill="#111"/>
+                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="34,64 24,60 30,52" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 4, label: "Inside · Across\nBottom off first",
+                                )
+                              },
+                              {
+                                n: 4, label: "Inside · Across\nBottom off first",
                                 svg: (
                                   <svg width="84" height="72" viewBox="0 0 84 72">
                                     {/* Inside, text UPSIDE DOWN, BOTTOM arrow, roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
                                     <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
                                     <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
                                     <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* BOTTOM off first — arrow DOWN-RIGHT */}
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,64 24,60 30,52" fill="#111"/>
+                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="34,64 24,60 30,52" fill="#111" />
                                   </svg>
-                                )},
+                                )
+                              },
                             ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
@@ -2483,75 +2493,83 @@ export default function ProductCatalogPage() {
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 mt-1">Printed WITH the Roll</p>
                           <div className="grid grid-cols-4 gap-2">
                             {([
-                              { n: 5, label: "Outside · With Roll\nRight off first",
+                              {
+                                n: 5, label: "Outside · With Roll\nRight off first",
                                 svg: (
                                   <svg width="84" height="80" viewBox="0 0 84 80">
                                     {/* Vertical paper coming off roll at bottom-right. Outside: text -90° (reads bottom→top, right side off first) */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
                                     <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
                                     <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
                                     {/* roll circle at bottom-right */}
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* RIGHT off first — bold arrow pointing RIGHT */}
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="66,20 56,20 60,28" fill="#111"/>
+                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="66,20 56,20 60,28" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 6, label: "Inside · With Roll\nRight off first",
+                                )
+                              },
+                              {
+                                n: 6, label: "Inside · With Roll\nRight off first",
                                 svg: (
                                   <svg width="84" height="80" viewBox="0 0 84 80">
                                     {/* Inside: text +90° (upside-down, reads top→bottom), right side off first */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
                                     <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
                                     <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* RIGHT off first arrow */}
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="66,20 56,20 60,28" fill="#111"/>
+                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="66,20 56,20 60,28" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 7, label: "Outside · With Roll\nLeft off first",
+                                )
+                              },
+                              {
+                                n: 7, label: "Outside · With Roll\nLeft off first",
                                 svg: (
                                   <svg width="84" height="80" viewBox="0 0 84 80">
                                     {/* Outside: text +90°, LEFT side off first, roll at bottom-right */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
                                     <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
                                     <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* LEFT off first — arrow pointing LEFT */}
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="0,20 10,18 8,28" fill="#111"/>
+                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="0,20 10,18 8,28" fill="#111" />
                                   </svg>
-                                )},
-                              { n: 8, label: "Inside · With Roll\nLeft off first",
+                                )
+                              },
+                              {
+                                n: 8, label: "Inside · With Roll\nLeft off first",
                                 svg: (
                                   <svg width="84" height="80" viewBox="0 0 84 80">
                                     {/* Inside: text -90° (upside-down), LEFT side off first */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
+                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
+                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
                                     <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
                                     <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
+                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
+                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
+                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
+                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
                                     {/* LEFT off first — arrow pointing LEFT */}
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="0,20 10,18 8,28" fill="#111"/>
+                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2" />
+                                    <polygon points="0,20 10,18 8,28" fill="#111" />
                                   </svg>
-                                )},
+                                )
+                              },
                             ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
@@ -2567,7 +2585,7 @@ export default function ProductCatalogPage() {
                           </div>
                           {(replanForm as any).unwindDirection > 0 && (
                             <p className="mt-1.5 text-[10px] text-orange-600 font-semibold flex items-center gap-1">
-                              <Check size={10}/> Direction #{(replanForm as any).unwindDirection} selected — {[
+                              <Check size={10} /> Direction #{(replanForm as any).unwindDirection} selected — {[
                                 "#1 Outside · Across · Top off first",
                                 "#2 Inside · Across · Top off first",
                                 "#3 Outside · Across · Bottom off first",
@@ -2588,28 +2606,28 @@ export default function ProductCatalogPage() {
 
                 {/* ── LDPE Multi-Pack Shrink Film — fields (only when this content type is selected) ── */}
                 {sTypeGlobal === "MultiPackShrink" && (() => {
-                  const mpRepeat   = (replanForm as any).repeatLength || 0;
-                  const mpFilmW    = replanForm.jobWidth || 0;
-                  const mpPackW    = (replanForm as any).packWidth    || 0;
-                  const mpPackH    = (replanForm as any).packHeight   || 0;
-                  const mpHMargin  = (replanForm as any).hMargin      || 0;
-                  const mpVMargin  = (replanForm as any).vMargin      || 0;
+                  const mpRepeat = (replanForm as any).repeatLength || 0;
+                  const mpFilmW = replanForm.jobWidth || 0;
+                  const mpPackW = (replanForm as any).packWidth || 0;
+                  const mpPackH = (replanForm as any).packHeight || 0;
+                  const mpHMargin = (replanForm as any).hMargin || 0;
+                  const mpVMargin = (replanForm as any).vMargin || 0;
                   // Auto-calculate UPS from dimensions
-                  const unitW      = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
-                  const unitH      = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
-                  const mpAcross   = unitW > 0 ? Math.floor(mpFilmW / unitW) : 0;
+                  const unitW = mpPackW > 0 && mpHMargin > 0 ? mpPackW + 2 * mpHMargin : 0;
+                  const unitH = mpPackH > 0 && mpVMargin > 0 ? mpPackH + 2 * mpVMargin : 0;
+                  const mpAcross = unitW > 0 ? Math.floor(mpFilmW / unitW) : 0;
                   const mpVertical = unitH > 0 ? Math.floor(mpRepeat / unitH) : 0;
-                  const mpTotal    = mpAcross * mpVertical;
+                  const mpTotal = mpAcross * mpVertical;
                   // Sync computed UPS back to form so planning loop can read them
                   if (mpAcross > 0 && (replanForm as any).acrossUPS !== mpAcross)
                     rf("acrossUPS" as any, mpAcross);
                   if (mpVertical > 0 && (replanForm as any).verticalUPS !== mpVertical)
                     rf("verticalUPS" as any, mpVertical);
                   // Repeat breakdown
-                  const mpPrinted  = (replanForm as any).printedLength || 0;
-                  const mpEyeMark  = (replanForm as any).eyeMarkLength ?? 3;
-                  const mpGap      = (replanForm as any).gapLength     || 0;
-                  const repeatSum  = mpPrinted + mpEyeMark + mpGap;
+                  const mpPrinted = (replanForm as any).printedLength || 0;
+                  const mpEyeMark = (replanForm as any).eyeMarkLength ?? 3;
+                  const mpGap = (replanForm as any).gapLength || 0;
+                  const repeatSum = mpPrinted + mpEyeMark + mpGap;
                   const repeatValid = mpRepeat > 0 && mpPrinted > 0 && Math.abs(repeatSum - mpRepeat) < 0.1;
                   return (
                     <div className="border border-emerald-200 rounded-2xl overflow-hidden">
@@ -2814,11 +2832,11 @@ export default function ProductCatalogPage() {
                     const selMachine = replanForm.machineId ? PRINT_MACHINES.find(m => m.id === replanForm.machineId) : null;
                     if (!selMachine) return null;
                     const minW = parseFloat((selMachine as any).minWebWidth) || 0;
-                    const maxW    = parseFloat((selMachine as any).maxWebWidth) || 0;
+                    const maxW = parseFloat((selMachine as any).maxWebWidth) || 0;
                     const minCirc = parseFloat((selMachine as any).repeatLengthMin) || 0;
                     const maxCirc = parseFloat((selMachine as any).repeatLengthMax) || 0;
-                    const colors  = (selMachine as any).Colors ?? (selMachine as any).noOfColors ?? "";
-                    const speed   = (selMachine as any).Speed  ?? (selMachine as any).speedMax   ?? "";
+                    const colors = (selMachine as any).Colors ?? (selMachine as any).noOfColors ?? "";
+                    const speed = (selMachine as any).Speed ?? (selMachine as any).speedMax ?? "";
                     return (
                       <div className="flex flex-wrap items-center gap-2 mt-2 p-2.5 rounded-xl border border-blue-200 bg-blue-50">
                         <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Machine Specs:</span>
@@ -2828,7 +2846,7 @@ export default function ProductCatalogPage() {
                           {minW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Min Width: <strong>{minW} mm</strong></span>}
                           {maxW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Max Width: <strong>{maxW} mm</strong></span>}
                           {colors && <span className="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-300 text-indigo-700">Colors: <strong>{colors}</strong></span>}
-                          {speed  && <span className="px-2 py-0.5 rounded-full bg-green-100 border border-green-300 text-green-700">Speed: <strong>{speed} m/min</strong></span>}
+                          {speed && <span className="px-2 py-0.5 rounded-full bg-green-100 border border-green-300 text-green-700">Speed: <strong>{speed} m/min</strong></span>}
                         </span>
                       </div>
                     );
@@ -2960,18 +2978,18 @@ export default function ProductCatalogPage() {
                                         const fi = FILM_ITEMS.find((x: any) => x.id === e.target.value);
                                         if (!fi) return;
                                         const thickness = parseFloat((fi as any).thickness) || 0;
-                                        const density   = parseFloat((fi as any).density)   || 0;
-                                        const gsm       = parseFloat((thickness * density).toFixed(3));
+                                        const density = parseFloat((fi as any).density) || 0;
+                                        const gsm = parseFloat((thickness * density).toFixed(3));
                                         const layers = [...replanForm.secondaryLayers];
                                         layers[index] = {
                                           ...l,
-                                          itemId:      (fi as any).id,
-                                          itemName:    (fi as any).name,
-                                          itemSubGroup:(fi as any).subGroup,
+                                          itemId: (fi as any).id,
+                                          itemName: (fi as any).name,
+                                          itemSubGroup: (fi as any).subGroup,
                                           density,
                                           thickness,
                                           gsm,
-                                          filmRate:    parseFloat((fi as any).estimationRate || "0"),
+                                          filmRate: parseFloat((fi as any).estimationRate || "0"),
                                         };
                                         rf("secondaryLayers", layers);
                                       }}>
@@ -3009,190 +3027,190 @@ export default function ProductCatalogPage() {
                                       groupSerials.push(groupCounter[g]);
                                     });
                                     return (l.consumableItems || []).map((ci, ciIdx) => {
-                                    // Build groups/subgroups from actual API data so names always match DB values
-                                    const CONSUMABLE_GROUPS = Array.from(new Set(
-                                      items.filter((it: any) => it.group !== "Film" && it.active).map((it: any) => it.group as string)
-                                    )).sort();
-                                    const subGroups = ci.itemGroup
-                                      ? Array.from(new Set(
+                                      // Build groups/subgroups from actual API data so names always match DB values
+                                      const CONSUMABLE_GROUPS = Array.from(new Set(
+                                        items.filter((it: any) => it.group !== "Film" && it.active).map((it: any) => it.group as string)
+                                      )).sort();
+                                      const subGroups = ci.itemGroup
+                                        ? Array.from(new Set(
                                           items
                                             .filter((it: any) => it.group === ci.itemGroup && it.active && it.subGroup)
                                             .map((it: any) => it.subGroup as string)
                                         )).sort()
-                                      : [];
-                                    const filteredItems = items.filter(it =>
-                                      it.group === ci.itemGroup && it.active &&
-                                      (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup)
-                                    );
-                                    const ciLabel = ci.itemGroup || "Consumable";
-                                    const ciSerial = groupSerials[ciIdx] ?? 1;
-                                    return (
-                                      <div key={ci.consumableId ? `${ci.consumableId}-${ciIdx}` : `cons-${ciIdx}`} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <span className="text-[10px] font-bold text-teal-700 uppercase">
-                                            {`${ciLabel} ${ciSerial}`}
-                                          </span>
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              onClick={() => clonePlyConsumable(index, ciIdx)}
-                                              title="Clone this consumable"
-                                              className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">
-                                              <Copy size={11} /> Clone
-                                            </button>
-                                            <button onClick={() => removePlyConsumable(index, ciIdx)}
-                                              className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
-                                              <X size={12} />
-                                            </button>
+                                        : [];
+                                      const filteredItems = items.filter(it =>
+                                        it.group === ci.itemGroup && it.active &&
+                                        (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup)
+                                      );
+                                      const ciLabel = ci.itemGroup || "Consumable";
+                                      const ciSerial = groupSerials[ciIdx] ?? 1;
+                                      return (
+                                        <div key={ci.consumableId ? `${ci.consumableId}-${ciIdx}` : `cons-${ciIdx}`} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
+                                          <div className="flex items-center justify-between mb-2">
+                                            <span className="text-[10px] font-bold text-teal-700 uppercase">
+                                              {`${ciLabel} ${ciSerial}`}
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                onClick={() => clonePlyConsumable(index, ciIdx)}
+                                                title="Clone this consumable"
+                                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">
+                                                <Copy size={11} /> Clone
+                                              </button>
+                                              <button onClick={() => removePlyConsumable(index, ciIdx)}
+                                                className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                                                <X size={12} />
+                                              </button>
+                                            </div>
                                           </div>
+                                          {(() => {
+                                            // find adhesive in same ply for hardener calc
+                                            const adhesiveCI = (l.consumableItems || []).find(x => x.itemGroup === "Adhesive");
+                                            const adhesiveGSM = adhesiveCI?.gsm ?? 0;
+                                            const adhesiveOH = adhesiveCI?.ohPct ?? 0;
+                                            const hardenerGSM = ci.itemGroup === "Hardner" && (ci.ncoPct ?? 0) > 0
+                                              ? parseFloat(((adhesiveGSM * adhesiveOH) / (ci.ncoPct!)).toFixed(3))
+                                              : null;
+
+                                            const colCount =
+                                              ci.itemGroup === "Ink" ? 6 :
+                                                ci.itemGroup === "Adhesive" ? 5 :
+                                                  ci.itemGroup === "Hardner" ? 5 : 4;
+
+                                            return (
+                                              <div className={`grid grid-cols-2 gap-2 sm:grid-cols-${colCount}`}>
+                                                {/* Item Group */}
+                                                <div>
+                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
+                                                  <select
+                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                    value={ci.itemGroup}
+                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}>
+                                                    <option value="">-- Group --</option>
+                                                    {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                                                  </select>
+                                                </div>
+                                                {/* Sub Group */}
+                                                <div>
+                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
+                                                  <select
+                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                    value={ci.itemSubGroup}
+                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
+                                                    disabled={!ci.itemGroup}>
+                                                    <option value="">-- Sub Group --</option>
+                                                    {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+                                                  </select>
+                                                </div>
+                                                {/* Item Master */}
+                                                <div>
+                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
+                                                  <select
+                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                    value={ci.itemId}
+                                                    onChange={e => {
+                                                      const it = filteredItems.find(x => x.id === e.target.value);
+                                                      updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "" });
+                                                    }}
+                                                    disabled={!ci.itemGroup}>
+                                                    <option value="">-- Select Item --</option>
+                                                    {filteredItems.map(it => (
+                                                      <option key={it.id} value={it.id}>{it.name}</option>
+                                                    ))}
+                                                  </select>
+                                                </div>
+
+                                                {/* ── INK ── */}
+                                                {ci.itemGroup === "Ink" && (<>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Dry Ink GSM</label>
+                                                    <input type="number" step="any" min={0}
+                                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                                      value={ci.gsm || ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { gsm: parseFloat(e.target.value) || 0 })} />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
+                                                    <input type="number" step={1} min={1} max={100}
+                                                      className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
+                                                      value={ci.solidPct ?? 40}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { solidPct: Number(e.target.value) || 40 })}
+                                                      placeholder="40" />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-purple-600 uppercase block mb-1">Liquid GSM</label>
+                                                    <div className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
+                                                      {ci.gsm > 0 ? (ci.gsm / ((ci.solidPct ?? 40) / 100)).toFixed(2) : "—"}
+                                                    </div>
+                                                  </div>
+                                                </>)}
+
+                                                {/* ── SOLVENT ── */}
+                                                {ci.itemGroup === "Solvent" && (
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ratio (%)</label>
+                                                    <input type="number" step={0.1} min={0} max={100}
+                                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                                      value={ci.gsm || ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
+                                                      placeholder="e.g. 30" />
+                                                  </div>
+                                                )}
+
+                                                {/* ── ADHESIVE ── */}
+                                                {ci.itemGroup === "Adhesive" && (<>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Adhesive GSM</label>
+                                                    <input type="number" step={0.1} min={0}
+                                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                                      value={ci.gsm || ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
+                                                      placeholder="e.g. 4.5" />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-orange-600 uppercase block mb-1">OH %</label>
+                                                    <input type="number" step={0.1} min={0}
+                                                      className="w-full text-xs border border-orange-200 rounded-lg px-2 py-1.5 bg-orange-50 outline-none focus:ring-2 focus:ring-orange-400 font-mono"
+                                                      value={ci.ohPct ?? ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { ohPct: Number(e.target.value) })}
+                                                      placeholder="e.g. 2.5" />
+                                                  </div>
+                                                </>)}
+
+                                                {/* ── HARDNER ── */}
+                                                {ci.itemGroup === "Hardner" && (<>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-rose-600 uppercase block mb-1">NCO %</label>
+                                                    <input type="number" step={0.1} min={0}
+                                                      className="w-full text-xs border border-rose-200 rounded-lg px-2 py-1.5 bg-rose-50 outline-none focus:ring-2 focus:ring-rose-400 font-mono"
+                                                      value={ci.ncoPct ?? ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { ncoPct: Number(e.target.value) })}
+                                                      placeholder="e.g. 12.5" />
+                                                  </div>
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-teal-600 uppercase block mb-1">Hardener GSM (Auto)</label>
+                                                    <div className="w-full text-xs border border-teal-200 rounded-lg px-2 py-1.5 bg-teal-50 font-mono font-bold text-teal-700 min-h-[30px]">
+                                                      {hardenerGSM !== null ? hardenerGSM : <span className="text-gray-400 font-normal">Set Adhesive GSM + OH% + NCO%</span>}
+                                                    </div>
+                                                  </div>
+                                                </>)}
+
+                                                {/* ── OTHER (no group or unrecognised) ── */}
+                                                {!["Ink", "Solvent", "Adhesive", "Hardner"].includes(ci.itemGroup) && (
+                                                  <div>
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">GSM</label>
+                                                    <input type="number" step={0.1} min={0}
+                                                      className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                                      value={ci.gsm || ""}
+                                                      onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
-                                        {(() => {
-                                          // find adhesive in same ply for hardener calc
-                                          const adhesiveCI = (l.consumableItems || []).find(x => x.itemGroup === "Adhesive");
-                                          const adhesiveGSM = adhesiveCI?.gsm ?? 0;
-                                          const adhesiveOH  = adhesiveCI?.ohPct ?? 0;
-                                          const hardenerGSM = ci.itemGroup === "Hardner" && (ci.ncoPct ?? 0) > 0
-                                            ? parseFloat(((adhesiveGSM * adhesiveOH) / (ci.ncoPct!)).toFixed(3))
-                                            : null;
-
-                                          const colCount =
-                                            ci.itemGroup === "Ink"     ? 6 :
-                                            ci.itemGroup === "Adhesive"? 5 :
-                                            ci.itemGroup === "Hardner" ? 5 : 4;
-
-                                          return (
-                                          <div className={`grid grid-cols-2 gap-2 sm:grid-cols-${colCount}`}>
-                                            {/* Item Group */}
-                                            <div>
-                                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                              <select
-                                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                                value={ci.itemGroup}
-                                                onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}>
-                                                <option value="">-- Group --</option>
-                                                {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                              </select>
-                                            </div>
-                                            {/* Sub Group */}
-                                            <div>
-                                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                              <select
-                                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                                value={ci.itemSubGroup}
-                                                onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                                disabled={!ci.itemGroup}>
-                                                <option value="">-- Sub Group --</option>
-                                                {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                              </select>
-                                            </div>
-                                            {/* Item Master */}
-                                            <div>
-                                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                              <select
-                                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                                value={ci.itemId}
-                                                onChange={e => {
-                                                  const it = filteredItems.find(x => x.id === e.target.value);
-                                                  updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "" });
-                                                }}
-                                                disabled={!ci.itemGroup}>
-                                                <option value="">-- Select Item --</option>
-                                                {filteredItems.map(it => (
-                                                  <option key={it.id} value={it.id}>{it.name}</option>
-                                                ))}
-                                              </select>
-                                            </div>
-
-                                            {/* ── INK ── */}
-                                            {ci.itemGroup === "Ink" && (<>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Dry Ink GSM</label>
-                                                <input type="number" step="any" min={0}
-                                                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
-                                                  value={ci.gsm || ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: parseFloat(e.target.value) || 0 })} />
-                                              </div>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
-                                                <input type="number" step={1} min={1} max={100}
-                                                  className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
-                                                  value={ci.solidPct ?? 40}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { solidPct: Number(e.target.value) || 40 })}
-                                                  placeholder="40" />
-                                              </div>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-purple-600 uppercase block mb-1">Liquid GSM</label>
-                                                <div className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
-                                                  {ci.gsm > 0 ? (ci.gsm / ((ci.solidPct ?? 40) / 100)).toFixed(2) : "—"}
-                                                </div>
-                                              </div>
-                                            </>)}
-
-                                            {/* ── SOLVENT ── */}
-                                            {ci.itemGroup === "Solvent" && (
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ratio (%)</label>
-                                                <input type="number" step={0.1} min={0} max={100}
-                                                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
-                                                  value={ci.gsm || ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
-                                                  placeholder="e.g. 30" />
-                                              </div>
-                                            )}
-
-                                            {/* ── ADHESIVE ── */}
-                                            {ci.itemGroup === "Adhesive" && (<>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Adhesive GSM</label>
-                                                <input type="number" step={0.1} min={0}
-                                                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
-                                                  value={ci.gsm || ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
-                                                  placeholder="e.g. 4.5" />
-                                              </div>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-orange-600 uppercase block mb-1">OH %</label>
-                                                <input type="number" step={0.1} min={0}
-                                                  className="w-full text-xs border border-orange-200 rounded-lg px-2 py-1.5 bg-orange-50 outline-none focus:ring-2 focus:ring-orange-400 font-mono"
-                                                  value={ci.ohPct ?? ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { ohPct: Number(e.target.value) })}
-                                                  placeholder="e.g. 2.5" />
-                                              </div>
-                                            </>)}
-
-                                            {/* ── HARDNER ── */}
-                                            {ci.itemGroup === "Hardner" && (<>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-rose-600 uppercase block mb-1">NCO %</label>
-                                                <input type="number" step={0.1} min={0}
-                                                  className="w-full text-xs border border-rose-200 rounded-lg px-2 py-1.5 bg-rose-50 outline-none focus:ring-2 focus:ring-rose-400 font-mono"
-                                                  value={ci.ncoPct ?? ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { ncoPct: Number(e.target.value) })}
-                                                  placeholder="e.g. 12.5" />
-                                              </div>
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-teal-600 uppercase block mb-1">Hardener GSM (Auto)</label>
-                                                <div className="w-full text-xs border border-teal-200 rounded-lg px-2 py-1.5 bg-teal-50 font-mono font-bold text-teal-700 min-h-[30px]">
-                                                  {hardenerGSM !== null ? hardenerGSM : <span className="text-gray-400 font-normal">Set Adhesive GSM + OH% + NCO%</span>}
-                                                </div>
-                                              </div>
-                                            </>)}
-
-                                            {/* ── OTHER (no group or unrecognised) ── */}
-                                            {!["Ink","Solvent","Adhesive","Hardner"].includes(ci.itemGroup) && (
-                                              <div>
-                                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">GSM</label>
-                                                <input type="number" step={0.1} min={0}
-                                                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
-                                                  value={ci.gsm || ""}
-                                                  onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
-                                              </div>
-                                            )}
-                                          </div>
-                                          );
-                                        })()}
-                                      </div>
-                                    );
-                                  });
+                                      );
+                                    });
                                   })()}
 
                                   {(l.consumableItems || []).length === 0 && (
@@ -3212,16 +3230,16 @@ export default function ProductCatalogPage() {
                                 const totalDryGSM = inks.reduce((sum, ci) => sum + (parseFloat(String(ci.gsm)) || 0), 0);
                                 const avgSolid = inks.length > 0
                                   ? inks.reduce((sum, ci) => {
-                                      const itm = items.find(x => x.id === ci.itemId);
-                                      return sum + ((itm as any)?.solidPct ?? 35);
-                                    }, 0) / inks.length
+                                    const itm = items.find(x => x.id === ci.itemId);
+                                    return sum + ((itm as any)?.solidPct ?? 35);
+                                  }, 0) / inks.length
                                   : 0;
                                 const GROUP_COLOR: Record<string, string> = {
-                                  Ink:      "bg-blue-100 text-blue-700 border-blue-200",
-                                  Solvent:  "bg-teal-100 text-teal-700 border-teal-200",
+                                  Ink: "bg-blue-100 text-blue-700 border-blue-200",
+                                  Solvent: "bg-teal-100 text-teal-700 border-teal-200",
                                   Adhesive: "bg-violet-100 text-violet-700 border-violet-200",
                                   Hardener: "bg-orange-100 text-orange-700 border-orange-200",
-                                  Other:    "bg-gray-100 text-gray-600 border-gray-200",
+                                  Other: "bg-gray-100 text-gray-600 border-gray-200",
                                 };
                                 return (
                                   <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
@@ -3311,14 +3329,14 @@ export default function ProductCatalogPage() {
                           <div>
                             <p className="text-white font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
                             <p className="text-indigo-200 text-[10px] mt-0.5">
-                            {replanForm.machineName} · {replanVisiblePlans.length}/{replanAllPlans.length} plans
-                            {Object.keys(planColFilters).length > 0 && (
-                              <button onClick={() => setPlanColFilters({})}
-                                className="ml-2 px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] font-bold rounded-full hover:bg-yellow-300">
-                                ✕ {Object.keys(planColFilters).length} filter{Object.keys(planColFilters).length > 1 ? "s" : ""} active
-                              </button>
-                            )}
-                          </p>
+                              {replanForm.machineName} · {replanVisiblePlans.length}/{replanAllPlans.length} plans
+                              {Object.keys(planColFilters).length > 0 && (
+                                <button onClick={() => setPlanColFilters({})}
+                                  className="ml-2 px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] font-bold rounded-full hover:bg-yellow-300">
+                                  ✕ {Object.keys(planColFilters).length} filter{Object.keys(planColFilters).length > 1 ? "s" : ""} active
+                                </button>
+                              )}
+                            </p>
                           </div>
                           <input value={replanPlanSearch} onChange={e => setReplanPlanSearch(e.target.value)} placeholder="Search plans..."
                             className="bg-indigo-700 text-white placeholder-indigo-300 text-xs rounded-lg px-3 py-1.5 border border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-400 w-36" />
@@ -3333,28 +3351,28 @@ export default function ProductCatalogPage() {
                                 <th className="p-2 border border-slate-700 text-center">Select</th>
                                 <th className="p-2 border border-slate-700 text-center">Layout</th>
                                 {[
-                                  { key: "machineName",      label: "Machine" },
-                                  { key: "acUps",            label: "AC UPS" },
-                                  { key: "printingWidth",    label: "Printing W (mm)" },
-                                  { key: "sleeveCode",       label: "Sleeve" },
-                                  { key: "sleeveWidthVal",   label: "Sleeve W (mm)" },
-                                  { key: "sideWaste",        label: "Side Waste (mm)" },
-                                  { key: "filmSize",         label: "Film Size (mm)" },
-                                  { key: "deadMargin",       label: "Dead Margin (mm)" },
-                                  { key: "totalWaste",       label: "Total Waste (mm)" },
-                                  { key: "cylinderCode",     label: "Cylinder" },
+                                  { key: "machineName", label: "Machine" },
+                                  { key: "acUps", label: "AC UPS" },
+                                  { key: "printingWidth", label: "Printing W (mm)" },
+                                  { key: "sleeveCode", label: "Sleeve" },
+                                  { key: "sleeveWidthVal", label: "Sleeve W (mm)" },
+                                  { key: "sideWaste", label: "Side Waste (mm)" },
+                                  { key: "filmSize", label: "Film Size (mm)" },
+                                  { key: "deadMargin", label: "Dead Margin (mm)" },
+                                  { key: "totalWaste", label: "Total Waste (mm)" },
+                                  { key: "cylinderCode", label: "Cylinder" },
                                   { key: "cylinderWidthVal", label: "Cyl W (mm)" },
-                                  { key: "cylExtra",         label: "Cyl Extra (mm)" },
-                                  { key: "cylCirc",          label: "Cyl. Circ (mm)" },
-                                  { key: "repeatUPS",        label: "Repeat UPS" },
-                                  { key: "totalUPS",         label: "Total Pieces" },
+                                  { key: "cylExtra", label: "Cyl Extra (mm)" },
+                                  { key: "cylCirc", label: "Cyl. Circ (mm)" },
+                                  { key: "repeatUPS", label: "Repeat UPS" },
+                                  { key: "totalUPS", label: "Total Pieces" },
                                 ].map(col => {
                                   const isFiltered = !!(planColFilters[col.key]?.size);
-                                  const isOpen     = planFilterOpen === col.key;
+                                  const isOpen = planFilterOpen === col.key;
                                   const uniqueVals = Array.from(new Set(replanAllPlans.map(r => String((r as any)[col.key] ?? "")))).sort((a, b) => isNaN(+a) ? a.localeCompare(b) : +a - +b);
-                                  const fSearch    = planFilterSearch[col.key] ?? "";
-                                  const visVals    = fSearch ? uniqueVals.filter(v => v.toLowerCase().includes(fSearch.toLowerCase())) : uniqueVals;
-                                  const draft      = planFilterDraft[col.key] ?? new Set<string>();
+                                  const fSearch = planFilterSearch[col.key] ?? "";
+                                  const visVals = fSearch ? uniqueVals.filter(v => v.toLowerCase().includes(fSearch.toLowerCase())) : uniqueVals;
+                                  const draft = planFilterDraft[col.key] ?? new Set<string>();
                                   return (
                                     <th key={col.key} className="p-0 border border-slate-700 text-center relative">
                                       {/* Header row: sort + filter icon */}
@@ -3449,7 +3467,7 @@ export default function ProductCatalogPage() {
                                     <td className="p-2 border border-gray-100 text-center font-mono">{p.printingWidth}</td>
                                     <td className="p-2 border border-gray-100">
                                       <span className={`font-semibold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-600"}`}>{p.sleeveCode}</span>
-                                      <br/>
+                                      <br />
                                       <span className={`text-[9px] ${p.isSpecialSleeve ? "text-rose-500" : "text-gray-400"}`}>{p.sleeveName}</span>
                                     </td>
                                     <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-700"}`}>{p.sleeveWidthVal}</td>
@@ -3473,7 +3491,7 @@ export default function ProductCatalogPage() {
                                     </td>
                                     <td className={`p-2 border border-gray-100 text-center font-bold ${p.deadMargin < 0 ? "text-red-600" : "text-orange-600"}`}>{p.deadMargin}</td>
                                     <td className={`p-2 border border-gray-100 text-center font-bold ${p.isBest ? "text-green-700" : p.totalWaste > 300 ? "text-red-600" : "text-amber-600"}`}>{p.totalWaste}</td>
-                                    <td className="p-2 border border-gray-100"><span className={`font-semibold ${p.isSpecial ? "text-amber-600" : "text-violet-600"}`}>{p.cylinderCode}</span><br/><span className={`text-[9px] ${p.isSpecial ? "text-amber-500" : "text-gray-400"}`}>{p.cylinderName}</span></td>
+                                    <td className="p-2 border border-gray-100"><span className={`font-semibold ${p.isSpecial ? "text-amber-600" : "text-violet-600"}`}>{p.cylinderCode}</span><br /><span className={`text-[9px] ${p.isSpecial ? "text-amber-500" : "text-gray-400"}`}>{p.cylinderName}</span></td>
                                     <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecial ? "text-amber-600" : "text-violet-700"}`}>{p.cylinderWidthVal}</td>
                                     <td className="p-2 border border-gray-100 text-center font-bold">
                                       {(() => {
@@ -3506,9 +3524,9 @@ export default function ProductCatalogPage() {
                                 const maxC = parseFloat((machine as any)?.repeatLengthMax) || 9999;
                                 const maxF = parseFloat((machine as any)?.maxWebWidth) || 0;
                                 const minF = parseFloat((machine as any)?.minWebWidth) || 0;
-                                const sh   = replanForm.widthShrinkage || 0;
-                                const jW   = replanForm.jobWidth || 0;
-                                const jH   = replanForm.jobHeight || 0;
+                                const sh = replanForm.widthShrinkage || 0;
+                                const jW = replanForm.jobWidth || 0;
+                                const jH = replanForm.jobHeight || 0;
 
                                 let reason = "";
                                 let tip = "";
@@ -3518,26 +3536,26 @@ export default function ProductCatalogPage() {
                                   if (mpRL <= 0) reason = "Enter Repeat Length in the Info tab to generate plans.";
                                   else if (jW <= 0) reason = "Enter Job Width (film width) in the Info tab.";
                                   else if (jW < minF || jW > maxF) reason = `Film width (${jW}mm) is ${jW < minF ? `below machine min ${minF}mm` : `above machine max ${maxF}mm`}.`;
-                                  else if (mpRL * maxN < minC) reason = `Repeat = ${mpRL}mm. Even ${maxN}× = ${mpRL*maxN}mm is below machine min ${minC}mm.`;
+                                  else if (mpRL * maxN < minC) reason = `Repeat = ${mpRL}mm. Even ${maxN}× = ${mpRL * maxN}mm is below machine min ${minC}mm.`;
                                   else reason = "No cylinders found. Special order cylinders should appear — check machine limits.";
                                   if (mpRL > 0 && maxN >= 1)
-                                    tip = `Cylinder circ must be exact multiple of Repeat ${mpRL}mm. Valid: ${Array.from({length: Math.min(3, maxN)}, (_,i) => `${(i+1)*mpRL}mm`).join(", ")}${maxN > 3 ? "…" : ""}.`;
+                                    tip = `Cylinder circ must be exact multiple of Repeat ${mpRL}mm. Valid: ${Array.from({ length: Math.min(3, maxN) }, (_, i) => `${(i + 1) * mpRL}mm`).join(", ")}${maxN > 3 ? "…" : ""}.`;
                                 } else if (sT === "Sleeve") {
                                   const dc = jW * 2 + sh;
                                   const maxN = dc > 0 ? Math.floor(maxC / dc) : 0;
                                   const minN = dc > 0 ? Math.ceil(minC / dc) : 0;
                                   if (dc <= 0) reason = "Enter Layflat Width to generate plans.";
-                                  else if (dc * maxN < minC) reason = `Design Circ = ${dc}mm. Even ${maxN}× repeat = ${dc*maxN}mm is below machine min ${minC}mm. Use a larger Layflat.`;
+                                  else if (dc * maxN < minC) reason = `Design Circ = ${dc}mm. Even ${maxN}× repeat = ${dc * maxN}mm is below machine min ${minC}mm. Use a larger Layflat.`;
                                   else if (jW > maxF) reason = `Layflat ${jW}mm exceeds machine max film width ${maxF}mm.`;
                                   else if (jW < minF) reason = `Film width (${jW}mm) is below machine minimum ${minF}mm.`;
                                   else reason = "No plans generated. Check machine selection and limits.";
                                   if (dc > 0 && minN >= 1 && minN <= maxN)
-                                    tip = `Machine min circ = ${minC}mm → min repeat count = ${minN}× (cylinder = ${dc}×${minN} = ${dc*minN}mm). Plans with ${minN}× to ${maxN}× repeat should appear.`;
+                                    tip = `Machine min circ = ${minC}mm → min repeat count = ${minN}× (cylinder = ${dc}×${minN} = ${dc * minN}mm). Plans with ${minN}× to ${maxN}× repeat should appear.`;
                                 } else {
                                   const gus = (replanForm as any).gusset || 0;
                                   const seal = (replanForm as any).sealSize || 0;
                                   const effRep = jH + seal + (gus > 0 ? gus / 2 : 0) + sh;
-                                  if (effRep > 0 && effRep < minC) reason = `Effective Repeat = ${effRep}mm (H${jH}${seal > 0 ? `+Seal${seal}` : ""}${gus > 0 ? `+Gusset/2=${gus/2}` : ""}${sh > 0 ? `+Shrink${sh}` : ""}) is below machine minimum ${minC}mm.`;
+                                  if (effRep > 0 && effRep < minC) reason = `Effective Repeat = ${effRep}mm (H${jH}${seal > 0 ? `+Seal${seal}` : ""}${gus > 0 ? `+Gusset/2=${gus / 2}` : ""}${sh > 0 ? `+Shrink${sh}` : ""}) is below machine minimum ${minC}mm.`;
                                   else if (effRep > maxC) reason = `Effective Repeat = ${effRep}mm exceeds machine maximum ${maxC}mm.`;
                                   else if ((replanForm.actualWidth || jW) > maxF) reason = `Job width exceeds machine max film width ${maxF}mm.`;
                                   else reason = "No sleeve/cylinder in stock fits this job. Only special orders should appear — check if filters are active.";
@@ -3576,197 +3594,197 @@ export default function ProductCatalogPage() {
                           const pieceArea = (replanForm.jobWidth / 1000) * ((replanForm.jobHeight || 0) / 1000);
                           const fmt = (v: number) => v > 0 ? v.toFixed(4) : "—";
                           return (
-                          <>
-                        <p className="text-xs font-bold text-indigo-900">
-                          Ply / Layer Calculation &nbsp;·&nbsp; Job: {replanForm.jobWidth}mm × {replanForm.jobHeight || 0}mm &nbsp;·&nbsp; Area/Piece: {pieceArea.toFixed(4)} m²
-                        </p>
-                        <div className="border-2 border-indigo-50 rounded-2xl overflow-hidden shadow-lg">
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-[10px] border-collapse">
-                              <thead className="bg-indigo-700 text-white uppercase tracking-wider font-bold">
-                                <tr>
-                                  {["Ply","Type","Item / Material","GSM / Ratio","Info","Coverage %","Dry Wt/Piece (g)","Liq Wt/Piece (g)","Total Wt/Piece (g)"].map(h => (
-                                    <th key={h} className="p-2 border border-indigo-600/30 text-center whitespace-nowrap">{h}</th>
-                                  ))}
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {replanForm.secondaryLayers.flatMap((l, idx) => {
-                                  // film weight per piece (g)
-                                  const filmDryG  = l.gsm > 0 ? parseFloat((l.gsm * pieceArea).toFixed(4)) : 0;
-
-                                  // total liquid ink weight per piece (g) in this ply — for solvent ratio
-                                  const totalLiqInkG = (l.consumableItems || [])
-                                    .filter(ci => ci.itemGroup === "Ink")
-                                    .reduce((s, ci) => {
-                                      const solid  = ci.solidPct ?? 40;
-                                      const dryG   = (ci.gsm || 0) * pieceArea;
-                                      return s + (solid > 0 ? dryG / (solid / 100) : 0);
-                                    }, 0);
-
-                                  const adhItem = (l.consumableItems || []).find(ci => ci.itemGroup === "Adhesive");
-
-                                  const plyBadgeCls = l.plyType === "Printing"
-                                    ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                                    : l.plyType === "Lamination"
-                                    ? "bg-teal-50 text-teal-700 border-teal-200"
-                                    : l.plyType === "Coating"
-                                    ? "bg-amber-50 text-amber-700 border-amber-200"
-                                    : "bg-blue-50 text-blue-700 border-blue-200";
-
-                                  const groupBadgeCls: Record<string,string> = {
-                                    "Ink":      "bg-rose-50 text-rose-700 border-rose-200",
-                                    "Solvent":  "bg-cyan-50 text-cyan-700 border-cyan-200",
-                                    "Adhesive": "bg-amber-50 text-amber-700 border-amber-200",
-                                    "Hardner":  "bg-purple-50 text-purple-700 border-purple-200",
-                                  };
-
-                                  // ── Film row ──
-                                  const filmRow = (
-                                    <tr key={`film-${l.id ?? idx}`} className="hover:bg-indigo-50/30">
-                                      <td className="p-2 border border-gray-200 text-center font-black text-indigo-900 bg-indigo-50/50 align-middle"
-                                        rowSpan={1 + (l.consumableItems || []).length}>
-                                        {idx + 1}
-                                      </td>
-                                      <td className="p-2 border border-gray-100 text-center">
-                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${plyBadgeCls}`}>{l.plyType || "Film"}</span>
-                                      </td>
-                                      <td className="p-2 border border-gray-100 font-semibold text-gray-700 min-w-[130px]">{l.itemSubGroup || "—"}</td>
-                                      <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{l.gsm > 0 ? `${l.gsm} GSM` : "—"}</td>
-                                      <td className="p-2 border border-gray-100 text-center text-gray-500">{l.thickness ? `${l.thickness} μ` : "—"}</td>
-                                      <td className="p-2 border border-gray-100 text-center text-gray-300">—</td>
-                                      <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">{fmt(filmDryG)}</td>
-                                      <td className="p-2 border border-gray-100 text-center text-gray-300">—</td>
-                                      <td className="p-2 border border-gray-100 text-center font-black text-gray-900 bg-gray-50">{fmt(filmDryG)}</td>
-                                    </tr>
-                                  );
-
-                                  // ── Consumable sub-rows ──
-                                  const ciRows = (l.consumableItems || []).map((ci, ciIdx) => {
-                                    let gsmRatio = "—", infoCell = "—";
-                                    let dryG = 0, liqG: number | null = null;
-
-                                    if (ci.itemGroup === "Ink") {
-                                      const dryGSM = ci.gsm || 0;
-                                      const solid  = ci.solidPct ?? 40;
-                                      const liqGSM = solid > 0 ? dryGSM / (solid / 100) : 0;
-                                      const covFactor = (ci.coveragePct ?? 100) / 100;
-                                      gsmRatio = `${dryGSM} GSM`;
-                                      infoCell = `${solid}% Solid`;
-                                      dryG = parseFloat((dryGSM * pieceArea * covFactor).toFixed(4));
-                                      liqG = parseFloat((liqGSM * pieceArea * covFactor).toFixed(4));
-                                    } else if (ci.itemGroup === "Solvent") {
-                                      const ratio = ci.gsm || 0;
-                                      gsmRatio = `${ratio} %`;
-                                      infoCell = "of Liq. Ink";
-                                      dryG = parseFloat((totalLiqInkG * ratio / 100).toFixed(4));
-                                    } else if (ci.itemGroup === "Adhesive") {
-                                      gsmRatio = `${ci.gsm || 0} GSM`;
-                                      infoCell = `OH ${ci.ohPct ?? 0}%`;
-                                      dryG = parseFloat(((ci.gsm || 0) * pieceArea).toFixed(4));
-                                    } else if (ci.itemGroup === "Hardner") {
-                                      const adhGSM = adhItem?.gsm ?? 0;
-                                      const ohPct  = adhItem?.ohPct ?? 0;
-                                      const ncoPct = ci.ncoPct ?? 0;
-                                      const autoGSM = ncoPct > 0 ? parseFloat(((adhGSM * ohPct) / ncoPct).toFixed(3)) : 0;
-                                      gsmRatio = `${autoGSM} GSM`;
-                                      infoCell = `NCO ${ncoPct}%`;
-                                      dryG = parseFloat((autoGSM * pieceArea).toFixed(4));
-                                    }
-
-                                    return (
-                                      <tr key={`ci-${l.id ?? idx}-${ciIdx}`} className="bg-slate-50/60 hover:bg-slate-100/60">
-                                        <td className="p-2 border border-gray-100 text-center">
-                                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${groupBadgeCls[ci.itemGroup] || "bg-gray-100 text-gray-600 border-gray-300"}`}>{ci.itemGroup}</span>
-                                        </td>
-                                        <td className="p-2 border border-gray-100 text-gray-500 italic pl-4">{ci.itemName || ci.itemSubGroup || ci.fieldDisplayName || "—"}</td>
-                                        <td className="p-2 border border-gray-100 text-center font-bold text-indigo-600">{gsmRatio}</td>
-                                        <td className="p-2 border border-gray-100 text-center text-[9px] text-gray-500">{infoCell}</td>
-                                        <td className="p-2 border border-gray-100 text-center font-mono text-violet-600">
-                                          {ci.itemGroup === "Ink" ? `${ci.coveragePct ?? 100}%` : "—"}
-                                        </td>
-                                        <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">{fmt(dryG)}</td>
-                                        <td className="p-2 border border-gray-100 text-center font-mono text-teal-600">{liqG != null ? fmt(liqG) : "—"}</td>
-                                        <td className="p-2 border border-gray-100 text-center font-black text-gray-800 bg-gray-50">{fmt(dryG)}</td>
+                            <>
+                              <p className="text-xs font-bold text-indigo-900">
+                                Ply / Layer Calculation &nbsp;·&nbsp; Job: {replanForm.jobWidth}mm × {replanForm.jobHeight || 0}mm &nbsp;·&nbsp; Area/Piece: {pieceArea.toFixed(4)} m²
+                              </p>
+                              <div className="border-2 border-indigo-50 rounded-2xl overflow-hidden shadow-lg">
+                                <div className="overflow-x-auto">
+                                  <table className="min-w-full text-[10px] border-collapse">
+                                    <thead className="bg-indigo-700 text-white uppercase tracking-wider font-bold">
+                                      <tr>
+                                        {["Ply", "Type", "Item / Material", "GSM / Ratio", "Info", "Coverage %", "Dry Wt/Piece (g)", "Liq Wt/Piece (g)", "Total Wt/Piece (g)"].map(h => (
+                                          <th key={h} className="p-2 border border-indigo-600/30 text-center whitespace-nowrap">{h}</th>
+                                        ))}
                                       </tr>
-                                    );
-                                  });
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                      {replanForm.secondaryLayers.flatMap((l, idx) => {
+                                        // film weight per piece (g)
+                                        const filmDryG = l.gsm > 0 ? parseFloat((l.gsm * pieceArea).toFixed(4)) : 0;
 
-                                  return [filmRow, ...ciRows];
-                                })}
-                              </tbody>
-                              <tfoot className="bg-slate-50 border-t-2 border-indigo-200">
-                                {/* Row 1 — Total Ink GSM (All Plies) — unchanged */}
-                                <tr className="bg-rose-50/60">
-                                  <td colSpan={8} className="p-2 text-right text-rose-700 uppercase text-[10px] font-bold tracking-wider">Total Ink GSM (all plies)</td>
-                                  <td className="p-2 text-center bg-rose-100 text-rose-800 text-xs font-black">
-                                    {replanForm.secondaryLayers.reduce((sum, l) =>
-                                      sum + (l.consumableItems || []).filter(ci2 => ci2.itemGroup === "Ink").reduce((s, ci2) => s + (ci2.gsm || 0), 0)
-                                    , 0).toFixed(2)} GSM
-                                  </td>
-                                </tr>
-                                {/* Row 2 — Total Consumables GSM (Ink + Adhesive + Solvent + Hardner etc.) */}
-                                {(() => {
-                                  const adhMap: Record<string, { gsm: number; ohPct: number }> = {};
-                                  replanForm.secondaryLayers.forEach(l => {
-                                    const adh = (l.consumableItems || []).find(ci2 => ci2.itemGroup === "Adhesive");
-                                    if (adh) adhMap[l.id] = { gsm: adh.gsm || 0, ohPct: adh.ohPct ?? 0 };
-                                  });
-                                  const totalLiqInkByLayer: Record<string, number> = {};
-                                  replanForm.secondaryLayers.forEach(l => {
-                                    totalLiqInkByLayer[l.id] = (l.consumableItems || [])
-                                      .filter(ci2 => ci2.itemGroup === "Ink")
-                                      .reduce((s, ci2) => {
-                                        const solid = ci2.solidPct ?? 40;
-                                        const dryGSM = (ci2.gsm || 0) * ((ci2.coveragePct ?? 100) / 100);
-                                        return s + (solid > 0 ? dryGSM / (solid / 100) : 0);
-                                      }, 0);
-                                  });
-                                  const totalConsumablesGSM = replanForm.secondaryLayers.reduce((sum, l) =>
-                                    sum + (l.consumableItems || []).reduce((s, ci2) => {
-                                      if (ci2.itemGroup === "Ink")      return s + (ci2.gsm || 0) * ((ci2.coveragePct ?? 100) / 100);
-                                      if (ci2.itemGroup === "Solvent")  return s + totalLiqInkByLayer[l.id] * (ci2.gsm || 0) / 100;
-                                      if (ci2.itemGroup === "Adhesive") return s + (ci2.gsm || 0);
-                                      if (ci2.itemGroup === "Hardner") {
-                                        const aGSM = adhMap[l.id]?.gsm ?? 0;
-                                        const ohP  = adhMap[l.id]?.ohPct ?? 0;
-                                        const nco  = ci2.ncoPct ?? 0;
-                                        return s + (nco > 0 ? (aGSM * ohP) / nco : 0);
-                                      }
-                                      return s + (ci2.gsm || 0);
-                                    }, 0)
-                                  , 0);
-                                  const totalFilmGSM = replanForm.secondaryLayers.reduce((sum, l) => sum + (l.gsm > 0 ? l.gsm : 0), 0);
-                                  return (
-                                    <>
-                                      <tr className="bg-violet-50/60">
-                                        <td colSpan={8} className="p-2 text-right text-violet-700 uppercase text-[10px] font-bold tracking-wider">Total Consumables GSM</td>
-                                        <td className="p-2 text-center bg-violet-100 text-violet-800 text-xs font-black">
-                                          {totalConsumablesGSM.toFixed(2)} GSM
+                                        // total liquid ink weight per piece (g) in this ply — for solvent ratio
+                                        const totalLiqInkG = (l.consumableItems || [])
+                                          .filter(ci => ci.itemGroup === "Ink")
+                                          .reduce((s, ci) => {
+                                            const solid = ci.solidPct ?? 40;
+                                            const dryG = (ci.gsm || 0) * pieceArea;
+                                            return s + (solid > 0 ? dryG / (solid / 100) : 0);
+                                          }, 0);
+
+                                        const adhItem = (l.consumableItems || []).find(ci => ci.itemGroup === "Adhesive");
+
+                                        const plyBadgeCls = l.plyType === "Printing"
+                                          ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                                          : l.plyType === "Lamination"
+                                            ? "bg-teal-50 text-teal-700 border-teal-200"
+                                            : l.plyType === "Coating"
+                                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                                              : "bg-blue-50 text-blue-700 border-blue-200";
+
+                                        const groupBadgeCls: Record<string, string> = {
+                                          "Ink": "bg-rose-50 text-rose-700 border-rose-200",
+                                          "Solvent": "bg-cyan-50 text-cyan-700 border-cyan-200",
+                                          "Adhesive": "bg-amber-50 text-amber-700 border-amber-200",
+                                          "Hardner": "bg-purple-50 text-purple-700 border-purple-200",
+                                        };
+
+                                        // ── Film row ──
+                                        const filmRow = (
+                                          <tr key={`film-${l.id ?? idx}`} className="hover:bg-indigo-50/30">
+                                            <td className="p-2 border border-gray-200 text-center font-black text-indigo-900 bg-indigo-50/50 align-middle"
+                                              rowSpan={1 + (l.consumableItems || []).length}>
+                                              {idx + 1}
+                                            </td>
+                                            <td className="p-2 border border-gray-100 text-center">
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${plyBadgeCls}`}>{l.plyType || "Film"}</span>
+                                            </td>
+                                            <td className="p-2 border border-gray-100 font-semibold text-gray-700 min-w-[130px]">{l.itemSubGroup || "—"}</td>
+                                            <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{l.gsm > 0 ? `${l.gsm} GSM` : "—"}</td>
+                                            <td className="p-2 border border-gray-100 text-center text-gray-500">{l.thickness ? `${l.thickness} μ` : "—"}</td>
+                                            <td className="p-2 border border-gray-100 text-center text-gray-300">—</td>
+                                            <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">{fmt(filmDryG)}</td>
+                                            <td className="p-2 border border-gray-100 text-center text-gray-300">—</td>
+                                            <td className="p-2 border border-gray-100 text-center font-black text-gray-900 bg-gray-50">{fmt(filmDryG)}</td>
+                                          </tr>
+                                        );
+
+                                        // ── Consumable sub-rows ──
+                                        const ciRows = (l.consumableItems || []).map((ci, ciIdx) => {
+                                          let gsmRatio = "—", infoCell = "—";
+                                          let dryG = 0, liqG: number | null = null;
+
+                                          if (ci.itemGroup === "Ink") {
+                                            const dryGSM = ci.gsm || 0;
+                                            const solid = ci.solidPct ?? 40;
+                                            const liqGSM = solid > 0 ? dryGSM / (solid / 100) : 0;
+                                            const covFactor = (ci.coveragePct ?? 100) / 100;
+                                            gsmRatio = `${dryGSM} GSM`;
+                                            infoCell = `${solid}% Solid`;
+                                            dryG = parseFloat((dryGSM * pieceArea * covFactor).toFixed(4));
+                                            liqG = parseFloat((liqGSM * pieceArea * covFactor).toFixed(4));
+                                          } else if (ci.itemGroup === "Solvent") {
+                                            const ratio = ci.gsm || 0;
+                                            gsmRatio = `${ratio} %`;
+                                            infoCell = "of Liq. Ink";
+                                            dryG = parseFloat((totalLiqInkG * ratio / 100).toFixed(4));
+                                          } else if (ci.itemGroup === "Adhesive") {
+                                            gsmRatio = `${ci.gsm || 0} GSM`;
+                                            infoCell = `OH ${ci.ohPct ?? 0}%`;
+                                            dryG = parseFloat(((ci.gsm || 0) * pieceArea).toFixed(4));
+                                          } else if (ci.itemGroup === "Hardner") {
+                                            const adhGSM = adhItem?.gsm ?? 0;
+                                            const ohPct = adhItem?.ohPct ?? 0;
+                                            const ncoPct = ci.ncoPct ?? 0;
+                                            const autoGSM = ncoPct > 0 ? parseFloat(((adhGSM * ohPct) / ncoPct).toFixed(3)) : 0;
+                                            gsmRatio = `${autoGSM} GSM`;
+                                            infoCell = `NCO ${ncoPct}%`;
+                                            dryG = parseFloat((autoGSM * pieceArea).toFixed(4));
+                                          }
+
+                                          return (
+                                            <tr key={`ci-${l.id ?? idx}-${ciIdx}`} className="bg-slate-50/60 hover:bg-slate-100/60">
+                                              <td className="p-2 border border-gray-100 text-center">
+                                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${groupBadgeCls[ci.itemGroup] || "bg-gray-100 text-gray-600 border-gray-300"}`}>{ci.itemGroup}</span>
+                                              </td>
+                                              <td className="p-2 border border-gray-100 text-gray-500 italic pl-4">{ci.itemName || ci.itemSubGroup || ci.fieldDisplayName || "—"}</td>
+                                              <td className="p-2 border border-gray-100 text-center font-bold text-indigo-600">{gsmRatio}</td>
+                                              <td className="p-2 border border-gray-100 text-center text-[9px] text-gray-500">{infoCell}</td>
+                                              <td className="p-2 border border-gray-100 text-center font-mono text-violet-600">
+                                                {ci.itemGroup === "Ink" ? `${ci.coveragePct ?? 100}%` : "—"}
+                                              </td>
+                                              <td className="p-2 border border-gray-100 text-center font-bold text-blue-600">{fmt(dryG)}</td>
+                                              <td className="p-2 border border-gray-100 text-center font-mono text-teal-600">{liqG != null ? fmt(liqG) : "—"}</td>
+                                              <td className="p-2 border border-gray-100 text-center font-black text-gray-800 bg-gray-50">{fmt(dryG)}</td>
+                                            </tr>
+                                          );
+                                        });
+
+                                        return [filmRow, ...ciRows];
+                                      })}
+                                    </tbody>
+                                    <tfoot className="bg-slate-50 border-t-2 border-indigo-200">
+                                      {/* Row 1 — Total Ink GSM (All Plies) — unchanged */}
+                                      <tr className="bg-rose-50/60">
+                                        <td colSpan={8} className="p-2 text-right text-rose-700 uppercase text-[10px] font-bold tracking-wider">Total Ink GSM (all plies)</td>
+                                        <td className="p-2 text-center bg-rose-100 text-rose-800 text-xs font-black">
+                                          {replanForm.secondaryLayers.reduce((sum, l) =>
+                                            sum + (l.consumableItems || []).filter(ci2 => ci2.itemGroup === "Ink").reduce((s, ci2) => s + (ci2.gsm || 0), 0)
+                                            , 0).toFixed(2)} GSM
                                         </td>
                                       </tr>
-                                      {/* Row 3 — Total Film GSM */}
-                                      <tr className="bg-blue-50/60">
-                                        <td colSpan={8} className="p-2 text-right text-blue-700 uppercase text-[10px] font-bold tracking-wider">Total Film GSM</td>
-                                        <td className="p-2 text-center bg-blue-100 text-blue-800 text-xs font-black">
-                                          {totalFilmGSM.toFixed(2)} GSM
-                                        </td>
-                                      </tr>
-                                      {/* Row 4 — Total Per Piece GSM = Film + Consumables */}
-                                      <tr className="bg-indigo-50">
-                                        <td colSpan={8} className="p-3 text-right text-indigo-900 uppercase text-[10px] font-black tracking-wider">Total Per Piece GSM</td>
-                                        <td className="p-3 text-center bg-indigo-200 text-indigo-900 text-xs font-black">
-                                          {(totalFilmGSM + totalConsumablesGSM).toFixed(2)} GSM
-                                        </td>
-                                      </tr>
-                                    </>
-                                  );
-                                })()}
-                              </tfoot>
-                            </table>
-                          </div>
-                        </div>
-                          </>
+                                      {/* Row 2 — Total Consumables GSM (Ink + Adhesive + Solvent + Hardner etc.) */}
+                                      {(() => {
+                                        const adhMap: Record<string, { gsm: number; ohPct: number }> = {};
+                                        replanForm.secondaryLayers.forEach(l => {
+                                          const adh = (l.consumableItems || []).find(ci2 => ci2.itemGroup === "Adhesive");
+                                          if (adh) adhMap[l.id] = { gsm: adh.gsm || 0, ohPct: adh.ohPct ?? 0 };
+                                        });
+                                        const totalLiqInkByLayer: Record<string, number> = {};
+                                        replanForm.secondaryLayers.forEach(l => {
+                                          totalLiqInkByLayer[l.id] = (l.consumableItems || [])
+                                            .filter(ci2 => ci2.itemGroup === "Ink")
+                                            .reduce((s, ci2) => {
+                                              const solid = ci2.solidPct ?? 40;
+                                              const dryGSM = (ci2.gsm || 0) * ((ci2.coveragePct ?? 100) / 100);
+                                              return s + (solid > 0 ? dryGSM / (solid / 100) : 0);
+                                            }, 0);
+                                        });
+                                        const totalConsumablesGSM = replanForm.secondaryLayers.reduce((sum, l) =>
+                                          sum + (l.consumableItems || []).reduce((s, ci2) => {
+                                            if (ci2.itemGroup === "Ink") return s + (ci2.gsm || 0) * ((ci2.coveragePct ?? 100) / 100);
+                                            if (ci2.itemGroup === "Solvent") return s + totalLiqInkByLayer[l.id] * (ci2.gsm || 0) / 100;
+                                            if (ci2.itemGroup === "Adhesive") return s + (ci2.gsm || 0);
+                                            if (ci2.itemGroup === "Hardner") {
+                                              const aGSM = adhMap[l.id]?.gsm ?? 0;
+                                              const ohP = adhMap[l.id]?.ohPct ?? 0;
+                                              const nco = ci2.ncoPct ?? 0;
+                                              return s + (nco > 0 ? (aGSM * ohP) / nco : 0);
+                                            }
+                                            return s + (ci2.gsm || 0);
+                                          }, 0)
+                                          , 0);
+                                        const totalFilmGSM = replanForm.secondaryLayers.reduce((sum, l) => sum + (l.gsm > 0 ? l.gsm : 0), 0);
+                                        return (
+                                          <>
+                                            <tr className="bg-violet-50/60">
+                                              <td colSpan={8} className="p-2 text-right text-violet-700 uppercase text-[10px] font-bold tracking-wider">Total Consumables GSM</td>
+                                              <td className="p-2 text-center bg-violet-100 text-violet-800 text-xs font-black">
+                                                {totalConsumablesGSM.toFixed(2)} GSM
+                                              </td>
+                                            </tr>
+                                            {/* Row 3 — Total Film GSM */}
+                                            <tr className="bg-blue-50/60">
+                                              <td colSpan={8} className="p-2 text-right text-blue-700 uppercase text-[10px] font-bold tracking-wider">Total Film GSM</td>
+                                              <td className="p-2 text-center bg-blue-100 text-blue-800 text-xs font-black">
+                                                {totalFilmGSM.toFixed(2)} GSM
+                                              </td>
+                                            </tr>
+                                            {/* Row 4 — Total Per Piece GSM = Film + Consumables */}
+                                            <tr className="bg-indigo-50">
+                                              <td colSpan={8} className="p-3 text-right text-indigo-900 uppercase text-[10px] font-black tracking-wider">Total Per Piece GSM</td>
+                                              <td className="p-3 text-center bg-indigo-200 text-indigo-900 text-xs font-black">
+                                                {(totalFilmGSM + totalConsumablesGSM).toFixed(2)} GSM
+                                              </td>
+                                            </tr>
+                                          </>
+                                        );
+                                      })()}
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              </div>
+                            </>
                           );
                         })()}
                       </div>
@@ -3788,23 +3806,23 @@ export default function ProductCatalogPage() {
                 {/* Sub-tab bar */}
                 <div className="flex overflow-x-auto bg-gray-100 p-1 rounded-xl gap-1">
                   {([
-                    { key: "shade",    label: "Color Shade & LAB"   },
-                    { key: "tool",     label: "Cylinder Master"     },
+                    { key: "shade", label: "Color Shade & LAB" },
+                    { key: "tool", label: "Cylinder Master" },
                   ] as const).map(t => (
                     <button key={t.key} onClick={() => {
                       setCatalogPrepTab(t.key);
                       if (t.key === "tool" && replanSelectedPlan) {
-                        const planCirc  = String(replanSelectedPlan.cylCirc);
+                        const planCirc = String(replanSelectedPlan.cylCirc);
                         const planWidth = String((replanSelectedPlan as any).cylinderWidthVal ?? "");
-                        const planRUPS  = replanSelectedPlan.repeatUPS as number;
+                        const planRUPS = replanSelectedPlan.repeatUPS as number;
                         const isSpecial = !!(replanSelectedPlan as any).isSpecial;
                         setCatalogCylAllocs(p => p.map((c, ci) => ({
                           ...c,
                           circumference: planCirc,
-                          printWidth:    planWidth,
-                          repeatUPS:     planRUPS,
-                          cylinderNo:    c.cylinderNo || (isSpecial ? `SPL-C${String(ci + 1).padStart(2, "0")}` : `${(replanSelectedPlan as any).cylinderCode || "CYL"}-C${String(ci + 1).padStart(2, "0")}`),
-                          cylinderType:  c.cylinderType === "Existing" && isSpecial ? "New" : c.cylinderType,
+                          printWidth: planWidth,
+                          repeatUPS: planRUPS,
+                          cylinderNo: c.cylinderNo || (isSpecial ? `SPL-C${String(ci + 1).padStart(2, "0")}` : `${(replanSelectedPlan as any).cylinderCode || "CYL"}-C${String(ci + 1).padStart(2, "0")}`),
+                          cylinderType: c.cylinderType === "Existing" && isSpecial ? "New" : c.cylinderType,
                         })));
                       }
                     }}
@@ -3845,59 +3863,59 @@ export default function ProductCatalogPage() {
                             // ── ΔE CIE76 calculation ──
                             const sL = parseFloat(cs.labL); const sA = parseFloat(cs.labA); const sB = parseFloat(cs.labB);
                             const aL = parseFloat(cs.actualL); const aA = parseFloat(cs.actualA); const aB = parseFloat(cs.actualB);
-                            const hasStd    = !isNaN(sL) && !isNaN(sA) && !isNaN(sB);
+                            const hasStd = !isNaN(sL) && !isNaN(sA) && !isNaN(sB);
                             const hasActual = !isNaN(aL) && !isNaN(aA) && !isNaN(aB);
-                            const calcDE    = hasStd && hasActual
+                            const calcDE = hasStd && hasActual
                               ? parseFloat(Math.sqrt((sL - aL) ** 2 + (sA - aA) ** 2 + (sB - aB) ** 2).toFixed(2))
                               : null;
-                            const tol    = parseFloat(cs.deltaE) || 1.0;
-                            const pass   = calcDE !== null ? calcDE <= tol : null;
+                            const tol = parseFloat(cs.deltaE) || 1.0;
+                            const pass = calcDE !== null ? calcDE <= tol : null;
                             return (
-                            <tr key={i} className={`hover:bg-purple-50/20 ${pass === false ? "bg-red-50/30" : pass === true ? "bg-green-50/20" : ""}`}>
-                              <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
-                              <td className="px-2 py-1.5 min-w-[160px]">
-                                <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={String((cs as any).inkItemId ?? "")}
-                                  onChange={e => {
-                                    const ink = INK_ITEMS.find(x => x.id === e.target.value);
-                                    const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
-                                      "Red":     { l: "41.0",  a: "54.2",  b: "38.1"  },
-                                      "Yellow":  { l: "89.3",  a: "-6.1",  b: "80.4"  },
-                                      "Blue":    { l: "25.1",  a: "23.4",  b: "-52.8" },
-                                      "Black":   { l: "16.0",  a: "0.1",   b: "0.0"   },
-                                      "White":   { l: "95.2",  a: "-1.0",  b: "2.3"   },
-                                      "Green":   { l: "46.3",  a: "-50.2", b: "30.1"  },
-                                      "Cyan":    { l: "60.1",  a: "-38.2", b: "-31.4" },
-                                      "Magenta": { l: "48.2",  a: "72.1",  b: "-10.3" },
-                                      "Orange":  { l: "65.4",  a: "43.1",  b: "65.2"  },
-                                      "Violet":  { l: "30.2",  a: "40.1",  b: "-42.3" },
-                                    };
-                                    const lab = ink?.colour ? (COLOR_LAB[ink.colour] ?? null) : null;
-                                    const PROCESS_COLOURS = new Set(["Cyan","Magenta","Yellow","Black"]);
-                                    const autoType: ColorShade["inkType"] = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
-                                    setCatalogColorShades(p => p.map((c, ci) => ci === i ? {
-                                      ...c,
-                                      inkItemId:  ink?.id ?? "",
-                                      itemName:   ink?.name ?? c.itemName ?? "",
-                                      colorName:  ink?.colour || ink?.name || c.colorName,
-                                      pantoneRef: ink?.pantoneNo || c.pantoneRef,
-                                      inkType:    ink ? autoType : c.inkType,
-                                      ...(lab ? { labL: lab.l, labA: lab.a, labB: lab.b } : {}),
-                                    } as any : c));
-                                  }}>
-                                  <option value="">-- Select Ink --</option>
-                                  {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
-                                </select>
-                              </td>
-                              <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
-                              <td className="px-2 py-1.5"><select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as ColorShade["inkType"] } : c))}><option value="Spot">Spot</option><option value="Process">Process</option><option value="Special">Special</option></select></td>
-                              <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
-                              {/* Standard LAB */}
-                              <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="L*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labL} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labL: e.target.value } : c))} /></td>
-                              <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="a*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labA} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labA: e.target.value } : c))} /></td>
-                              <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="b*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labB} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labB: e.target.value } : c))} /></td>
-                              <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
-                            </tr>
+                              <tr key={i} className={`hover:bg-purple-50/20 ${pass === false ? "bg-red-50/30" : pass === true ? "bg-green-50/20" : ""}`}>
+                                <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
+                                <td className="px-2 py-1.5 min-w-[160px]">
+                                  <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                    value={String((cs as any).inkItemId ?? "")}
+                                    onChange={e => {
+                                      const ink = INK_ITEMS.find(x => x.id === e.target.value);
+                                      const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
+                                        "Red": { l: "41.0", a: "54.2", b: "38.1" },
+                                        "Yellow": { l: "89.3", a: "-6.1", b: "80.4" },
+                                        "Blue": { l: "25.1", a: "23.4", b: "-52.8" },
+                                        "Black": { l: "16.0", a: "0.1", b: "0.0" },
+                                        "White": { l: "95.2", a: "-1.0", b: "2.3" },
+                                        "Green": { l: "46.3", a: "-50.2", b: "30.1" },
+                                        "Cyan": { l: "60.1", a: "-38.2", b: "-31.4" },
+                                        "Magenta": { l: "48.2", a: "72.1", b: "-10.3" },
+                                        "Orange": { l: "65.4", a: "43.1", b: "65.2" },
+                                        "Violet": { l: "30.2", a: "40.1", b: "-42.3" },
+                                      };
+                                      const lab = ink?.colour ? (COLOR_LAB[ink.colour] ?? null) : null;
+                                      const PROCESS_COLOURS = new Set(["Cyan", "Magenta", "Yellow", "Black"]);
+                                      const autoType: ColorShade["inkType"] = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
+                                      setCatalogColorShades(p => p.map((c, ci) => ci === i ? {
+                                        ...c,
+                                        inkItemId: ink?.id ?? "",
+                                        itemName: ink?.name ?? c.itemName ?? "",
+                                        colorName: ink?.colour || ink?.name || c.colorName,
+                                        pantoneRef: ink?.pantoneNo || c.pantoneRef,
+                                        inkType: ink ? autoType : c.inkType,
+                                        ...(lab ? { labL: lab.l, labA: lab.a, labB: lab.b } : {}),
+                                      } as any : c));
+                                    }}>
+                                    <option value="">-- Select Ink --</option>
+                                    {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
+                                <td className="px-2 py-1.5"><select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as ColorShade["inkType"] } : c))}><option value="Spot">Spot</option><option value="Process">Process</option><option value="Special">Special</option></select></td>
+                                <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
+                                {/* Standard LAB */}
+                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="L*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labL} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labL: e.target.value } : c))} /></td>
+                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="a*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labA} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labA: e.target.value } : c))} /></td>
+                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="b*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labB} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labB: e.target.value } : c))} /></td>
+                                <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
+                              </tr>
                             );
                           })}
                           {catalogColorShades.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-400 text-xs">No colors. Set No. of Colors in Basic Info tab first.</td></tr>}
@@ -3965,97 +3983,97 @@ export default function ProductCatalogPage() {
                         <tbody className="divide-y divide-gray-100">
                           {catalogCylAllocs.map((ca, i) => {
                             const cn = replanForm?.catalogNo || "";
-                            const m  = cn.match(/(\d+)$/);
+                            const m = cn.match(/(\d+)$/);
                             const pCode = m ? `P${m[1].padStart(4, "0")}` : cn || "—";
                             return (
-                            <tr key={i} className={`hover:bg-amber-50/20 ${ca.repeatUse ? "bg-gray-50 opacity-60" : ca.createdInMaster ? "bg-green-50/30" : ""}`}>
-                              <td className="px-2 py-1.5 text-center font-black text-amber-700">{ca.colorNo}</td>
-                              {/* Repeat Use checkbox */}
-                              <td className="px-2 py-1.5 text-center">
-                                <label className="flex flex-col items-center gap-0.5 cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={!!ca.repeatUse}
-                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, repeatUse: e.target.checked } : c))}
-                                    className="w-4 h-4 accent-orange-500 cursor-pointer"
-                                  />
-                                  {ca.repeatUse && <span className="text-[9px] text-orange-600 font-bold leading-none">Skip</span>}
-                                </label>
-                              </td>
-                              {/* Product Code */}
-                              <td className="px-2 py-1.5 text-center">
-                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold font-mono whitespace-nowrap">{pCode}</span>
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <div className="px-2 py-1 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg min-w-[80px] flex items-center gap-1.5">
-                                  {catalogColorShades[i]?.colorName || ca.colorName}
-                                </div>
-                              </td>
-                              {/* Cylinder Code */}
-                              <td className="px-2 py-1.5">
-                                <input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                                  placeholder="e.g. CYL-001"
-                                  value={ca.cylinderNo}
-                                  onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderNo: e.target.value } : c))} />
-                              </td>
-                              {/* Cylinder Width (Print Width) — edit propagates to all rows */}
-                              <td className="px-2 py-1.5">
-                                <input type="number" className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 text-center"
-                                  value={ca.printWidth}
-                                  onChange={e => setCatalogCylAllocs(p => p.map(c => ({ ...c, printWidth: e.target.value })))} />
-                              </td>
-                              {/* Circumference — edit propagates to all rows */}
-                              <td className="px-2 py-1.5">
-                                <input type="number" className="w-20 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 text-center bg-indigo-50/40"
-                                  value={ca.circumference}
-                                  onChange={e => setCatalogCylAllocs(p => p.map(c => ({ ...c, circumference: e.target.value })))} />
-                              </td>
-                              {/* Repeat UPS */}
-                              <td className="px-2 py-1.5 text-center">
-                                <span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[10px] font-bold">{ca.repeatUPS}×</span>
-                              </td>
-                              {/* Type */}
-                              <td className="px-2 py-1.5">
-                                <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
-                                  value={ca.cylinderType}
-                                  onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as CylinderAlloc["cylinderType"] } : c))}>
-                                  <option value="New">New</option>
-                                  <option value="Existing">Existing</option>
-                                  <option value="Repeat">Repeat Cylinder</option>
-                                  <option value="Rechromed">Rechromed</option>
-                                </select>
-                              </td>
-                              {/* Status */}
-                              <td className="px-2 py-1.5">
-                                <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
-                                  value={ca.status}
-                                  onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as CylinderAlloc["status"] } : c))}>
-                                  <option value="Pending">Pending</option>
-                                  <option value="Ordered">Ordered</option>
-                                  <option value="Available">Available</option>
-                                  <option value="In Use">In Use</option>
-                                  <option value="Under Chrome">Under Chrome</option>
-                                </select>
-                              </td>
-                              {/* Remarks */}
-                              <td className="px-2 py-1.5">
-                                <input placeholder="Notes…" className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400"
-                                  value={ca.remarks}
-                                  onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} />
-                              </td>
-                              {/* Create in Master — single cylinder shared by all colors */}
-                              <td className="px-2 py-1.5 text-center">
-                                {catalogCylAllocs[0]?.createdInMaster
-                                  ? <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 border border-green-300 rounded-full text-[10px] font-bold whitespace-nowrap"><Check size={10}/> Created</span>
-                                  : <button
+                              <tr key={i} className={`hover:bg-amber-50/20 ${ca.repeatUse ? "bg-gray-50 opacity-60" : ca.createdInMaster ? "bg-green-50/30" : ""}`}>
+                                <td className="px-2 py-1.5 text-center font-black text-amber-700">{ca.colorNo}</td>
+                                {/* Repeat Use checkbox */}
+                                <td className="px-2 py-1.5 text-center">
+                                  <label className="flex flex-col items-center gap-0.5 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={!!ca.repeatUse}
+                                      onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, repeatUse: e.target.checked } : c))}
+                                      className="w-4 h-4 accent-orange-500 cursor-pointer"
+                                    />
+                                    {ca.repeatUse && <span className="text-[9px] text-orange-600 font-bold leading-none">Skip</span>}
+                                  </label>
+                                </td>
+                                {/* Product Code */}
+                                <td className="px-2 py-1.5 text-center">
+                                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold font-mono whitespace-nowrap">{pCode}</span>
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <div className="px-2 py-1 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg min-w-[80px] flex items-center gap-1.5">
+                                    {catalogColorShades[i]?.colorName || ca.colorName}
+                                  </div>
+                                </td>
+                                {/* Cylinder Code */}
+                                <td className="px-2 py-1.5">
+                                  <input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                                    placeholder="e.g. CYL-001"
+                                    value={ca.cylinderNo}
+                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderNo: e.target.value } : c))} />
+                                </td>
+                                {/* Cylinder Width (Print Width) — edit propagates to all rows */}
+                                <td className="px-2 py-1.5">
+                                  <input type="number" className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 text-center"
+                                    value={ca.printWidth}
+                                    onChange={e => setCatalogCylAllocs(p => p.map(c => ({ ...c, printWidth: e.target.value })))} />
+                                </td>
+                                {/* Circumference — edit propagates to all rows */}
+                                <td className="px-2 py-1.5">
+                                  <input type="number" className="w-20 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 text-center bg-indigo-50/40"
+                                    value={ca.circumference}
+                                    onChange={e => setCatalogCylAllocs(p => p.map(c => ({ ...c, circumference: e.target.value })))} />
+                                </td>
+                                {/* Repeat UPS */}
+                                <td className="px-2 py-1.5 text-center">
+                                  <span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[10px] font-bold">{ca.repeatUPS}×</span>
+                                </td>
+                                {/* Type */}
+                                <td className="px-2 py-1.5">
+                                  <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                                    value={ca.cylinderType}
+                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as CylinderAlloc["cylinderType"] } : c))}>
+                                    <option value="New">New</option>
+                                    <option value="Existing">Existing</option>
+                                    <option value="Repeat">Repeat Cylinder</option>
+                                    <option value="Rechromed">Rechromed</option>
+                                  </select>
+                                </td>
+                                {/* Status */}
+                                <td className="px-2 py-1.5">
+                                  <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                                    value={ca.status}
+                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as CylinderAlloc["status"] } : c))}>
+                                    <option value="Pending">Pending</option>
+                                    <option value="Ordered">Ordered</option>
+                                    <option value="Available">Available</option>
+                                    <option value="In Use">In Use</option>
+                                    <option value="Under Chrome">Under Chrome</option>
+                                  </select>
+                                </td>
+                                {/* Remarks */}
+                                <td className="px-2 py-1.5">
+                                  <input placeholder="Notes…" className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400"
+                                    value={ca.remarks}
+                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} />
+                                </td>
+                                {/* Create in Master — single cylinder shared by all colors */}
+                                <td className="px-2 py-1.5 text-center">
+                                  {catalogCylAllocs[0]?.createdInMaster
+                                    ? <span className="flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 border border-green-300 rounded-full text-[10px] font-bold whitespace-nowrap"><Check size={10} /> Created</span>
+                                    : <button
                                       onClick={openCylinderMaster}
                                       className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold rounded-lg transition whitespace-nowrap">
                                       + Create
                                     </button>
-                                }
-                              </td>
-                            </tr>
-                          );
+                                  }
+                                </td>
+                              </tr>
+                            );
                           })}
                           {catalogCylAllocs.length === 0 && (
                             <tr><td colSpan={12} className="p-6 text-center text-gray-400 text-xs">No cylinders. Set No. of Colors in Basic Info tab first.</td></tr>
@@ -4092,23 +4110,23 @@ export default function ProductCatalogPage() {
       {/* ══ PRODUCT MASTER SHEET PRINT MODAL ════════════════════ */}
       {printRow && (() => {
         const r = printRow;
-        const trim     = r.trimmingSize || 0;
+        const trim = r.trimmingSize || 0;
         const cylWidth = r.actualWidth || r.jobWidth || 0;
-        const today    = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
         // Use saved plan data from the row
-        const savedPlan    = replanAllPlans.find(p => p.planId === r.savedPlanId) || null;
-        const colorShades  = (r.savedColorShades as any[]) || [];
-        const cylAllocs    = (r.savedCylAllocs   as any[]) || [];
+        const savedPlan = replanAllPlans.find(p => p.planId === r.savedPlanId) || null;
+        const colorShades = (r.savedColorShades as any[]) || [];
+        const cylAllocs = (r.savedCylAllocs as any[]) || [];
 
         // Derive plan values
-        const planFilmW    = savedPlan ? (savedPlan.filmSize ?? cylWidth) : cylWidth;
-        const planCylCirc  = savedPlan ? (savedPlan.cylCirc ?? r.jobHeight ?? 0) : (r.jobHeight ?? 0);
-        const planAcUPS    = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
-        const planRepUPS   = savedPlan ? ((savedPlan as any).repeatUPS ?? "—") : "—";
-        const planPieces   = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
-        const planSQM      = savedPlan ? (savedPlan.totalRMT * (r.jobWidth / 1000)).toFixed(2) : "—";
-        const planWastage  = savedPlan ? (savedPlan.wastage ?? 0) : 0;
+        const planFilmW = savedPlan ? (savedPlan.filmSize ?? cylWidth) : cylWidth;
+        const planCylCirc = savedPlan ? (savedPlan.cylCirc ?? r.jobHeight ?? 0) : (r.jobHeight ?? 0);
+        const planAcUPS = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
+        const planRepUPS = savedPlan ? ((savedPlan as any).repeatUPS ?? "—") : "—";
+        const planPieces = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
+        const planSQM = savedPlan ? (savedPlan.totalRMT * (r.jobWidth / 1000)).toFixed(2) : "—";
+        const planWastage = savedPlan ? (savedPlan.wastage ?? 0) : 0;
 
         const handlePrint = () => {
           const el = document.getElementById("pms-print-area");
@@ -4470,13 +4488,13 @@ export default function ProductCatalogPage() {
       {/* ══ CYLINDER CIRCUMFERENCE GUIDE MODAL ══════════════════ */}
       {cylGuideOpen && replanForm && (() => {
         const sTypeGuide = (replanForm as any).structureType || "Label";
-        const jobH    = replanForm.jobHeight || 0;
-        const jobW    = sTypeGuide === "Sleeve" ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
-        const shrink  = replanForm.widthShrinkage || 0;
-        const trim    = replanForm.trimmingSize   || 0;
+        const jobH = replanForm.jobHeight || 0;
+        const jobW = sTypeGuide === "Sleeve" ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
+        const shrink = replanForm.widthShrinkage || 0;
+        const trim = replanForm.trimmingSize || 0;
         // For Sleeve: shrink is circumferential — does NOT affect lane width
         // For Label/Pouch: shrink is on repeat length — does NOT affect lane width either
-        const laneW   = jobW;
+        const laneW = jobW;
         // Available sleeves from stock
         const stockSleeves = SLEEVE_TOOLS.map(s => parseFloat(s.printWidth)).filter(w => w > 0).sort((a, b) => a - b);
         // Circumference options: 1× to 8× jobHeight (practical range)
@@ -4499,10 +4517,10 @@ export default function ProductCatalogPage() {
               {/* Input summary */}
               <div className="flex flex-wrap gap-2 text-xs">
                 {[
-                  { l: "Job Height",  v: `${jobH} mm`,    cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                  { l: "Job Width",   v: `${jobW} mm`,    cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                  { l: "Lane Width",  v: `${laneW} mm`,   cls: "bg-purple-50 text-purple-700 border-purple-200" },
-                  { l: "Trimming",    v: trim > 0 ? `${trim}+${trim} mm` : "—", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+                  { l: "Job Height", v: `${jobH} mm`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+                  { l: "Job Width", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                  { l: "Lane Width", v: `${laneW} mm`, cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                  { l: "Trimming", v: trim > 0 ? `${trim}+${trim} mm` : "—", cls: "bg-orange-50 text-orange-700 border-orange-200" },
                 ].map(s => (
                   <div key={s.l} className={`px-2.5 py-1.5 rounded-lg border font-medium ${s.cls}`}>
                     <span className="opacity-60 text-[10px] uppercase tracking-wider block leading-none mb-0.5">{s.l}</span>
@@ -4519,11 +4537,11 @@ export default function ProductCatalogPage() {
                 <table className="min-w-full text-xs border-collapse">
                   <thead>
                     <tr className="bg-indigo-700 text-white">
-                      <th className="px-3 py-2.5 text-left whitespace-nowrap">Repeat UPS<br/><span className="text-indigo-300 font-normal text-[10px]">(around cylinder)</span></th>
-                      <th className="px-3 py-2.5 text-center whitespace-nowrap">Circumference<br/><span className="text-indigo-300 font-normal text-[10px]">= Repeat × {jobH}mm</span></th>
+                      <th className="px-3 py-2.5 text-left whitespace-nowrap">Repeat UPS<br /><span className="text-indigo-300 font-normal text-[10px]">(around cylinder)</span></th>
+                      <th className="px-3 py-2.5 text-center whitespace-nowrap">Circumference<br /><span className="text-indigo-300 font-normal text-[10px]">= Repeat × {jobH}mm</span></th>
                       {stockSleeves.map(sw => (
                         <th key={sw} className="px-3 py-2.5 text-center whitespace-nowrap border-l border-indigo-600">
-                          Sleeve {sw}mm<br/>
+                          Sleeve {sw}mm<br />
                           <span className="text-indigo-300 font-normal text-[10px]">AC UPS · Film · Total UPS</span>
                         </th>
                       ))}
@@ -4568,39 +4586,39 @@ export default function ProductCatalogPage() {
 
       {/* ══ UPS LAYOUT PREVIEW MODAL ═════════════════════════════ */}
       {upsPreviewPlan && replanForm && (() => {
-        const plan      = upsPreviewPlan as any;
+        const plan = upsPreviewPlan as any;
         const sTypePrev = (replanForm as any).structureType || "Label";
-        const isSleeve  = sTypePrev === "Sleeve";
-        const isMPS     = sTypePrev === "MultiPackShrink";
-        const jobW      = isSleeve ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
-        const shrink    = replanForm.widthShrinkage || 0;
+        const isSleeve = sTypePrev === "Sleeve";
+        const isMPS = sTypePrev === "MultiPackShrink";
+        const jobW = isSleeve ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
+        const shrink = replanForm.widthShrinkage || 0;
         const slvTransp = isSleeve ? ((replanForm as any).transparentArea || 0) : 0;
-        const slvSeam   = isSleeve ? ((replanForm as any).seamingArea   || 0) : 0;
+        const slvSeam = isSleeve ? ((replanForm as any).seamingArea || 0) : 0;
         // Sleeve on film: 1 AC UPS = layflat×2 + transparentArea + seamingArea
         const sleeveFilmWidth = isSleeve ? (jobW * 2 + slvTransp + slvSeam) : 0;
         // Trim applies to both sleeve and label/pouch
-        const trim      = replanForm.trimmingSize || 0;
-        const filmW      = plan.filmSize as number;
+        const trim = replanForm.trimmingSize || 0;
+        const filmW = plan.filmSize as number;
         // Always trust plan.acUps — planning engine already uses correct laneWidth
-        const acUps      = plan.acUps as number;
-        const contentPrev   = (replanForm as any).content || "";
-        const gussetPrev    = (replanForm as any).gusset      || 0;
-        const topSealPrev   = (replanForm as any).topSeal     || 0;
-        const btmSealPrev   = (replanForm as any).bottomSeal  || 0;
-        const sideSealPrev  = (replanForm as any).sideSeal    || 0;
-        const ctrSealPrev   = (replanForm as any).centerSealWidth || 0;
-        const sideGussetPrev= (replanForm as any).sideGusset  || 0;
+        const acUps = plan.acUps as number;
+        const contentPrev = (replanForm as any).content || "";
+        const gussetPrev = (replanForm as any).gusset || 0;
+        const topSealPrev = (replanForm as any).topSeal || 0;
+        const btmSealPrev = (replanForm as any).bottomSeal || 0;
+        const sideSealPrev = (replanForm as any).sideSeal || 0;
+        const ctrSealPrev = (replanForm as any).centerSealWidth || 0;
+        const sideGussetPrev = (replanForm as any).sideGusset || 0;
         // MultiPackShrink specific
-        const mpRepeatLen    = isMPS ? ((replanForm as any).repeatLength   || plan.cylCirc / plan.repeatUPS) : 0;
+        const mpRepeatLen = isMPS ? ((replanForm as any).repeatLength || plan.cylCirc / plan.repeatUPS) : 0;
         const mpRepeatShrink = isMPS ? (plan.mpRepeatShrink || (replanForm as any).repeatShrinkage || 0) : 0;
-        const mpEffRepeat    = isMPS ? (plan.mpEffRepeat || mpRepeatLen + mpRepeatShrink) : 0;
-        const mpAcrossUPS    = isMPS ? (plan.mpAcrossUPS  || acUps) : 0;
-        const mpVertUPS    = isMPS ? (plan.mpVerticalUPS || 1) : 0;
-        const mpPackW      = isMPS ? ((replanForm as any).packWidth  || 0) : 0;
-        const mpPackH      = isMPS ? ((replanForm as any).packHeight || 0) : 0;
-        const mpHMargin    = isMPS ? ((replanForm as any).hMargin      || 0) : 0;
-        const mpVMargin    = isMPS ? ((replanForm as any).vMargin      || 0) : 0;
-        const mpEyeMark    = isMPS ? ((replanForm as any).eyeMarkLength ?? 3) : 0;
+        const mpEffRepeat = isMPS ? (plan.mpEffRepeat || mpRepeatLen + mpRepeatShrink) : 0;
+        const mpAcrossUPS = isMPS ? (plan.mpAcrossUPS || acUps) : 0;
+        const mpVertUPS = isMPS ? (plan.mpVerticalUPS || 1) : 0;
+        const mpPackW = isMPS ? ((replanForm as any).packWidth || 0) : 0;
+        const mpPackH = isMPS ? ((replanForm as any).packHeight || 0) : 0;
+        const mpHMargin = isMPS ? ((replanForm as any).hMargin || 0) : 0;
+        const mpVMargin = isMPS ? ((replanForm as any).vMargin || 0) : 0;
+        const mpEyeMark = isMPS ? ((replanForm as any).eyeMarkLength ?? 3) : 0;
         // effRepeat = height of one repeat block in diagram
         // MultiPackShrink → repeatLength (= cylCirc / repeatUPS from plan)
         // Sleeve → cutting length per repeat = cylCirc / repeatUPS
@@ -4635,8 +4653,8 @@ export default function ProductCatalogPage() {
         }
         // pixel scaling: fit into ~640px canvas
         const CANVAS = 640;
-        const scale  = filmW > 0 ? CANVAS / filmW : 1;
-        const toW    = (mm: number) => Math.max(mm * scale, mm > 0 ? 2 : 0);
+        const scale = filmW > 0 ? CANVAS / filmW : 1;
+        const toW = (mm: number) => Math.max(mm * scale, mm > 0 ? 2 : 0);
         const sections: { label: string; mm: number; color: string; text: string }[] = [];
         if (trim > 0) sections.push({ label: `${trim}mm`, mm: trim, color: "#fed7aa", text: "#c2410c" });
         for (let i = 0; i < acUps; i++) {
@@ -4651,33 +4669,33 @@ export default function ProductCatalogPage() {
                 {(() => {
                   const dc = (replanForm.jobWidth * 2) + slvSeam + slvTransp; // design circ = width only
                   const baseStats = [
-                    { l: "Film Width",   v: `${filmW} mm`,         cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                    { l: "AC UPS",       v: String(acUps),          cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                    { l: "Film Width", v: `${filmW} mm`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+                    { l: "AC UPS", v: String(acUps), cls: "bg-purple-50 text-purple-700 border-purple-200" },
                   ];
-                  const cutLen   = replanForm.jobHeight || 0;
+                  const cutLen = replanForm.jobHeight || 0;
                   const cutWithShrink = cutLen + shrink;
                   const typeStats = isMPS ? [
-                    { l: "Pack Size",        v: mpPackW > 0 && mpPackH > 0 ? `${mpPackW}×${mpPackH} mm` : "—",                                                                                     cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                    { l: "Repeat Length",    v: mpRepeatShrink > 0 ? `${mpRepeatLen}+${mpRepeatShrink} = ${mpEffRepeat} mm` : `${mpRepeatLen} mm`,                                                  cls: "bg-teal-100 text-teal-800 border-teal-300" },
-                    { l: "Layout UPS",       v: `${mpAcrossUPS}AC × ${mpVertUPS}VT = ${mpAcrossUPS * mpVertUPS}`,                                                                                   cls: "bg-emerald-100 text-emerald-800 border-emerald-300" },
-                    { l: "Repeat UPS",       v: `${plan.repeatUPS}×`,                                                                                                                               cls: "bg-teal-50 text-teal-700 border-teal-200" },
-                    { l: "Cyl. Circ",        v: `${mpEffRepeat}×${plan.repeatUPS} = ${plan.cylCirc} mm`,                                                                                            cls: "bg-green-50 text-green-800 border-green-300" },
+                    { l: "Pack Size", v: mpPackW > 0 && mpPackH > 0 ? `${mpPackW}×${mpPackH} mm` : "—", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    { l: "Repeat Length", v: mpRepeatShrink > 0 ? `${mpRepeatLen}+${mpRepeatShrink} = ${mpEffRepeat} mm` : `${mpRepeatLen} mm`, cls: "bg-teal-100 text-teal-800 border-teal-300" },
+                    { l: "Layout UPS", v: `${mpAcrossUPS}AC × ${mpVertUPS}VT = ${mpAcrossUPS * mpVertUPS}`, cls: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+                    { l: "Repeat UPS", v: `${plan.repeatUPS}×`, cls: "bg-teal-50 text-teal-700 border-teal-200" },
+                    { l: "Cyl. Circ", v: `${mpEffRepeat}×${plan.repeatUPS} = ${plan.cylCirc} mm`, cls: "bg-green-50 text-green-800 border-green-300" },
                   ] : isSleeve ? [
-                    { l: "Layflat",       v: `${jobW} mm`,           cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                    { l: "Design Circ",   v: (() => { const p=[`${jobW}×2`]; if(slvTransp>0)p.push(`+${slvTransp}`); if(slvSeam>0)p.push(`+${slvSeam}`); return `${p.join("")} = ${dc} mm`; })(), cls: "bg-blue-100 text-blue-800 border-blue-300" },
-                    { l: "Cut Length",    v: shrink > 0 ? `${cutLen}+${shrink} = ${cutWithShrink} mm` : `${cutLen} mm`, cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
-                    { l: "Repeat Count",  v: `${plan.repeatUPS}×`,  cls: "bg-teal-50 text-teal-700 border-teal-200" },
-                    { l: "Cyl. Circ",     v: `${cutWithShrink}×${plan.repeatUPS} = ${plan.cylCirc} mm`, cls: "bg-emerald-50 text-emerald-800 border-emerald-300" },
+                    { l: "Layflat", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                    { l: "Design Circ", v: (() => { const p = [`${jobW}×2`]; if (slvTransp > 0) p.push(`+${slvTransp}`); if (slvSeam > 0) p.push(`+${slvSeam}`); return `${p.join("")} = ${dc} mm`; })(), cls: "bg-blue-100 text-blue-800 border-blue-300" },
+                    { l: "Cut Length", v: shrink > 0 ? `${cutLen}+${shrink} = ${cutWithShrink} mm` : `${cutLen} mm`, cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
+                    { l: "Repeat Count", v: `${plan.repeatUPS}×`, cls: "bg-teal-50 text-teal-700 border-teal-200" },
+                    { l: "Cyl. Circ", v: `${cutWithShrink}×${plan.repeatUPS} = ${plan.cylCirc} mm`, cls: "bg-emerald-50 text-emerald-800 border-emerald-300" },
                   ] : [
-                    { l: "Layflat",       v: `${jobW} mm`,           cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                    { l: "Repeat Shrink", v: shrink > 0 ? `+${shrink} mm` : "—",           cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
-                    { l: "Trimming",      v: trim > 0 ? `${trim}+${trim} mm` : "—",         cls: "bg-orange-50 text-orange-700 border-orange-200" },
-                    { l: "Repeat UPS",    v: String(plan.repeatUPS),                         cls: "bg-teal-50 text-teal-700 border-teal-200" },
-                    { l: "Cyl. Circ",     v: `${plan.cylCirc} mm`,                          cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    { l: "Layflat", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                    { l: "Repeat Shrink", v: shrink > 0 ? `+${shrink} mm` : "—", cls: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200" },
+                    { l: "Trimming", v: trim > 0 ? `${trim}+${trim} mm` : "—", cls: "bg-orange-50 text-orange-700 border-orange-200" },
+                    { l: "Repeat UPS", v: String(plan.repeatUPS), cls: "bg-teal-50 text-teal-700 border-teal-200" },
+                    { l: "Cyl. Circ", v: `${plan.cylCirc} mm`, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
                   ];
                   return [...baseStats, ...typeStats,
-                    { l: "Total Pieces", v: String(plan.totalUPS),  cls: "bg-green-50 text-green-700 border-green-200" },
-                    { l: "Cylinder",     v: plan.cylinderCode,      cls: "bg-violet-50 text-violet-700 border-violet-200" },
+                  { l: "Total Pieces", v: String(plan.totalUPS), cls: "bg-green-50 text-green-700 border-green-200" },
+                  { l: "Cylinder", v: plan.cylinderCode, cls: "bg-violet-50 text-violet-700 border-violet-200" },
                   ];
                 })().map(s => (
                   <div key={s.l} className={`px-2.5 py-1.5 rounded-lg border font-medium ${s.cls}`}>
@@ -4690,14 +4708,14 @@ export default function ProductCatalogPage() {
               {/* ── Combined 2D Layout Diagram ── */}
               {(() => {
                 const repeatUPS = plan.repeatUPS as number;
-                const cylCirc   = plan.cylCirc   as number;
-                const jobH      = isMPS ? mpRepeatLen : sTypePrev === "Sleeve" ? (replanForm.jobWidth * 2) : (replanForm.jobHeight || 0);
+                const cylCirc = plan.cylCirc as number;
+                const jobH = isMPS ? mpRepeatLen : sTypePrev === "Sleeve" ? (replanForm.jobWidth * 2) : (replanForm.jobHeight || 0);
 
                 // SVG canvas
                 const SVG_W = 730;   // extra 70px right for height arrow
                 const SVG_H = 430;   // extra top space for double arrows in sleeve
-                const RULER_LEFT  = isSleeve ? 50 : isMPS ? 44 : 36;  // MPS needs extra top space for hMargin|packW|hMargin annotation row
-                const RULER_BTM   = 22;
+                const RULER_LEFT = isSleeve ? 50 : isMPS ? 44 : 36;  // MPS needs extra top space for hMargin|packW|hMargin annotation row
+                const RULER_BTM = 22;
                 const drawW = 660 - RULER_LEFT;
                 const drawH = 360 - RULER_BTM;
 
@@ -4710,20 +4728,20 @@ export default function ProductCatalogPage() {
                 const sy = (mm: number) => mm * (drawH / cylCirc);
 
                 // column x positions
-                const trimPx   = sx(trim);
+                const trimPx = sx(trim);
                 // Lane pixel width: Sleeve = layflat×2+T+S, Pouch = diagLaneW (includes seals/gussets), Label = jobW
-                const lanePx   = isSleeve ? sx(sleeveFilmWidth) : sx(diagLaneW);
+                const lanePx = isSleeve ? sx(sleeveFilmWidth) : sx(diagLaneW);
                 const transpPx = sx(slvTransp);
-                const lfPx     = sx(jobW);          // one side (front or back)
-                const seamPx   = sx(slvSeam);
+                const lfPx = sx(jobW);          // one side (front or back)
+                const seamPx = sx(slvSeam);
 
                 // repeat row heights
-                const repPx  = sy(effRepeat);
+                const repPx = sy(effRepeat);
 
                 // colours
-                const C_TRIM  = "#fed7aa";
-                const C_LANE  = ["#dbeafe", "#bfdbfe"]; // alternating lane blues
-                const C_DASH  = "#6366f1";
+                const C_TRIM = "#fed7aa";
+                const C_LANE = ["#dbeafe", "#bfdbfe"]; // alternating lane blues
+                const C_DASH = "#6366f1";
                 const C_LABEL = "#1e40af";
 
                 return (
@@ -4738,14 +4756,14 @@ export default function ProductCatalogPage() {
                     <svg width={SVG_W} height={SVG_H} className="w-full" viewBox={`0 0 ${SVG_W} ${SVG_H}`}>
                       <defs>
                         <pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                          <line x1="0" y1="0" x2="0" y2="5" stroke="#f97316" strokeWidth="1.5" opacity="0.4"/>
+                          <line x1="0" y1="0" x2="0" y2="5" stroke="#f97316" strokeWidth="1.5" opacity="0.4" />
                         </pattern>
                         {/* Arrowhead markers for dimension lines */}
                         <marker id="dim-end" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
-                          <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#374151"/>
+                          <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#374151" />
                         </marker>
                         <marker id="dim-start" markerWidth="7" markerHeight="7" refX="1" refY="3.5" orient="auto-start-reverse">
-                          <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#374151"/>
+                          <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#374151" />
                         </marker>
                       </defs>
 
@@ -4769,14 +4787,14 @@ export default function ProductCatalogPage() {
                             // ── SLEEVE CELL: flat film layout ──
                             // 1 AC UPS on film = [TRANSPARENT | FRONT(lf) | BACK(lf) | SEAM]
                             // total lane = transpPx + lfPx + lfPx + seamPx = lanePx
-                            const lx        = laneStartX;
-                            const frontX    = lx + transpPx;
-                            const foldX     = frontX + lfPx;
-                            const seamX     = foldX + lfPx;
-                            const C_FRONT   = "#dbeafe";
-                            const C_BACK    = "#bfdbfe";
-                            const C_TRANSP  = "#f0f9ff";   // light cyan for transparent area
-                            const C_SEAM    = "#fef3c7";   // light amber for seaming area
+                            const lx = laneStartX;
+                            const frontX = lx + transpPx;
+                            const foldX = frontX + lfPx;
+                            const seamX = foldX + lfPx;
+                            const C_FRONT = "#dbeafe";
+                            const C_BACK = "#bfdbfe";
+                            const C_TRANSP = "#f0f9ff";   // light cyan for transparent area
+                            const C_SEAM = "#fef3c7";   // light amber for seaming area
 
                             cells.push(
                               <g key={`l-${ri}-${li}`}>
@@ -4896,9 +4914,9 @@ export default function ProductCatalogPage() {
                             const unitHPx = mpVertUPS > 0 ? repPx / mpVertUPS : repPx;
                             const packWPx = mpPackW > 0 && mpHMargin > 0 ? sx(mpPackW) : lanePx * 0.42;
                             const packHPx = mpPackH > 0 && mpVMargin > 0 ? sy(mpPackH) : unitHPx * 0.27;
-                            const mHPx    = (lanePx - packWPx) / 2;
-                            const mVPx    = (unitHPx - packHPx) / 2;
-                            const C_PACK  = ["#d1fae5", "#a7f3d0"];
+                            const mHPx = (lanePx - packWPx) / 2;
+                            const mVPx = (unitHPx - packHPx) / 2;
+                            const C_PACK = ["#d1fae5", "#a7f3d0"];
                             const grpCells: React.ReactNode[] = [];
                             for (let vi = 0; vi < mpVertUPS; vi++) {
                               const cellY = ry + vi * unitHPx;
@@ -4939,10 +4957,10 @@ export default function ProductCatalogPage() {
                               type HSeg = { x1: number; x2: number; label: string; color: string };
                               const hSegs: HSeg[] = mpHMargin > 0
                                 ? [
-                                    { x1: cx,                    x2: cx + mHPx,           label: `${mpHMargin}mm`, color: "#047857" },
-                                    { x1: cx + mHPx,             x2: cx + mHPx + packWPx, label: `${mpPackW}mm`,   color: "#065f46" },
-                                    { x1: cx + mHPx + packWPx,  x2: cx + lanePx,          label: `${mpHMargin}mm`, color: "#047857" },
-                                  ]
+                                  { x1: cx, x2: cx + mHPx, label: `${mpHMargin}mm`, color: "#047857" },
+                                  { x1: cx + mHPx, x2: cx + mHPx + packWPx, label: `${mpPackW}mm`, color: "#065f46" },
+                                  { x1: cx + mHPx + packWPx, x2: cx + lanePx, label: `${mpHMargin}mm`, color: "#047857" },
+                                ]
                                 : [{ x1: cx, x2: cx + lanePx, label: `${Math.round(diagLaneW)}mm`, color: "#065f46" }];
 
                               hSegs.forEach((seg, si) => {
@@ -4984,13 +5002,13 @@ export default function ProductCatalogPage() {
                               type VSeg = { y1: number; y2: number; label: string; color: string };
                               for (let vi = 0; vi < mpVertUPS; vi++) {
                                 const unitTopY = ry + vi * unitHPx;
-                                const pkTopY   = unitTopY + mVPx;
-                                const pkBotY   = pkTopY + packHPx;
+                                const pkTopY = unitTopY + mVPx;
+                                const pkBotY = pkTopY + packHPx;
                                 const unitBotY = unitTopY + unitHPx;
                                 const vSegs: VSeg[] = [
-                                  { y1: unitTopY, y2: pkTopY,    label: `${mpVMargin}mm`, color: "#047857" },
-                                  { y1: pkTopY,   y2: pkBotY,   label: `${mpPackH}mm`,   color: "#065f46" },
-                                  { y1: pkBotY,   y2: unitBotY, label: `${mpVMargin}mm`, color: "#047857" },
+                                  { y1: unitTopY, y2: pkTopY, label: `${mpVMargin}mm`, color: "#047857" },
+                                  { y1: pkTopY, y2: pkBotY, label: `${mpPackH}mm`, color: "#065f46" },
+                                  { y1: pkBotY, y2: unitBotY, label: `${mpVMargin}mm`, color: "#047857" },
                                 ];
                                 vSegs.forEach((seg, si) => {
                                   const midY = (seg.y1 + seg.y2) / 2;
@@ -5035,7 +5053,7 @@ export default function ProductCatalogPage() {
                                 {lanePx > 30 && repPx > 18 && (() => {
                                   const ax1 = laneStartX + 5;
                                   const ax2 = laneStartX + lanePx - 5;
-                                  const ay  = ry + repPx / 2;
+                                  const ay = ry + repPx / 2;
                                   return (
                                     <g>
                                       <line x1={ax1} y1={ay} x2={ax2} y2={ay}
@@ -5068,10 +5086,10 @@ export default function ProductCatalogPage() {
                         //   after last ri → bottom of diagram (end of last repeat)
                         // renderEM(yTop) draws one eye mark centred on the boundary line at yTop.
                         const renderEM = (yTop: number, key: string) => {
-                          const emH    = Math.max(sy(mpEyeMark), 4); // px height (min 4px visible)
-                          const emW    = Math.max(sx(14), 18);        // ~14mm wide solid patch
-                          const emX    = 0;                            // left film edge
-                          const emY    = yTop - emH / 2;              // centred on boundary
+                          const emH = Math.max(sy(mpEyeMark), 4); // px height (min 4px visible)
+                          const emW = Math.max(sx(14), 18);        // ~14mm wide solid patch
+                          const emX = 0;                            // left film edge
+                          const emY = yTop - emH / 2;              // centred on boundary
                           const labelX = emX + emW + 4;
                           return (
                             <g key={key}>
@@ -5160,7 +5178,7 @@ export default function ProductCatalogPage() {
                       {/* ── Bottom horizontal dimension arrow — Total Film Width ── */}
                       {(() => {
                         const arrowY = RULER_LEFT + repeatUPS * repPx + RULER_BTM + 14;
-                        const midX   = drawW / 2;
+                        const midX = drawW / 2;
                         return (
                           <g>
                             <line x1={0} y1={arrowY} x2={drawW} y2={arrowY}
@@ -5180,8 +5198,8 @@ export default function ProductCatalogPage() {
                       {/* ── Right vertical dimension arrow — Cylinder Circumference ── */}
                       {(() => {
                         const arrX = drawW + 34;
-                        const y1   = RULER_LEFT;
-                        const y2   = RULER_LEFT + repeatUPS * repPx;
+                        const y1 = RULER_LEFT;
+                        const y2 = RULER_LEFT + repeatUPS * repPx;
                         const midY = (y1 + y2) / 2;
                         return (
                           <g>
@@ -5208,19 +5226,21 @@ export default function ProductCatalogPage() {
                           ...(trim > 0 ? [{ color: "#fed7aa", border: "#f97316", label: `Trim both sides — ${trim}mm each` }] : []),
                           ...(slvTransp > 0 ? [{ color: "#f0f9ff", border: "#0ea5e9", label: `Transparent area — ${slvTransp}mm (left edge of sleeve)` }] : []),
                           { color: "#dbeafe", border: "#3b82f6", label: `FRONT face — ${jobW}mm (Layflat = single side width)` },
-                          { color: "#bfdbfe", border: "#3b82f6", label: `BACK face — ${jobW}mm. Total per sleeve = ${jobW}+${jobW} = ${jobW*2}mm (Design Circ without shrink)` },
+                          { color: "#bfdbfe", border: "#3b82f6", label: `BACK face — ${jobW}mm. Total per sleeve = ${jobW}+${jobW} = ${jobW * 2}mm (Design Circ without shrink)` },
                           ...(slvSeam > 0 ? [{ color: "#fef3c7", border: "#d97706", label: `Seaming area — ${slvSeam}mm (right edge of sleeve)` }] : []),
-                          { color: "white",   border: "#ef4444", label: `Cut line — vertical, at sleeve outer edges` },
-                          { color: "white",   border: "#7c3aed", label: `Fold line — vertical centre between FRONT & BACK (tube seam, width dir)` },
+                          { color: "white", border: "#ef4444", label: `Cut line — vertical, at sleeve outer edges` },
+                          { color: "white", border: "#7c3aed", label: `Fold line — vertical centre between FRONT & BACK (tube seam, width dir)` },
                         ] : [
                           isMPS
                             ? { color: "#d1fae5", border: "#059669", label: `Pack slot — ${Math.round(diagLaneW)}mm wide × ${effRepeat}mm repeat  (${mpAcrossUPS} Across × ${mpVertUPS} Vertical = ${mpAcrossUPS * mpVertUPS} packs per repeat)` }
                             : { color: "#dbeafe", border: "#6366f1", label: `Job cell — ${diagLaneW}mm wide × ${effRepeat}mm repeat length` },
                           ...(trim > 0 ? [{ color: C_TRIM, border: "#f97316", label: `Trim both sides (${trim}mm each)` }] : []),
                         ]),
-                        ...(shrink > 0 ? [{ color: "#fae8ff", border: "#a21caf", label: isSleeve
+                        ...(shrink > 0 ? [{
+                          color: "#fae8ff", border: "#a21caf", label: isSleeve
                             ? `Length Shrinkage +${shrink}mm per sleeve (cutting length direction)`
-                            : `Shrinkage +${shrink}mm on repeat length` }] : []),
+                            : `Shrinkage +${shrink}mm on repeat length`
+                        }] : []),
                       ].map(l => (
                         <div key={l.label} className="flex items-center gap-1.5">
                           <div className="w-4 h-4 rounded border-2 flex-shrink-0" style={{ background: l.color, borderColor: l.border }} />
@@ -5297,40 +5317,40 @@ export default function ProductCatalogPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100 bg-white">
                       {sTypePrev === "Sleeve" ? (() => {
-                        const cutLen   = replanForm.jobHeight || 0;
+                        const cutLen = replanForm.jobHeight || 0;
                         const slvCutWithShrink = cutLen + shrink;
-                        const rCount   = plan.repeatUPS as number;
-                        const cylC     = plan.cylCirc as number;
+                        const rCount = plan.repeatUPS as number;
+                        const cylC = plan.cylCirc as number;
                         return (
-                        <>
-                          <tr>
-                            <td className="px-3 py-1.5 text-gray-600">Cutting Length</td>
-                            <td className="px-3 py-1.5 font-mono font-bold text-indigo-700">{cutLen} mm</td>
-                            <td className="px-3 py-1.5 text-gray-400 text-[10px]">As entered — sleeve height after cutting</td>
-                          </tr>
-                          {shrink > 0 && (
+                          <>
                             <tr>
-                              <td className="px-3 py-1.5 text-gray-600">+ Length Shrinkage</td>
-                              <td className="px-3 py-1.5 font-mono font-bold text-fuchsia-600">+{shrink} mm</td>
-                              <td className="px-3 py-1.5 text-gray-400 text-[10px]">Added to cutting length before cylinder sizing</td>
+                              <td className="px-3 py-1.5 text-gray-600">Cutting Length</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-indigo-700">{cutLen} mm</td>
+                              <td className="px-3 py-1.5 text-gray-400 text-[10px]">As entered — sleeve height after cutting</td>
                             </tr>
-                          )}
-                          <tr className="bg-blue-50">
-                            <td className="px-3 py-1.5 font-bold text-blue-800">= Cylinder Repeat (per sleeve)</td>
-                            <td className="px-3 py-1.5 font-mono font-bold text-blue-700">{slvCutWithShrink} mm</td>
-                            <td className="px-3 py-1.5 text-blue-600 text-[10px]">{cutLen}{shrink > 0 ? `+${shrink}` : ""} = {slvCutWithShrink}mm per sleeve length</td>
-                          </tr>
-                          <tr>
-                            <td className="px-3 py-1.5 text-gray-600">× Repeat Count (N)</td>
-                            <td className="px-3 py-1.5 font-mono font-bold text-purple-700">× {rCount}</td>
-                            <td className="px-3 py-1.5 text-gray-400 text-[10px]">{rCount === 1 ? "1 sleeve per revolution" : `${rCount} sleeves per revolution`}</td>
-                          </tr>
-                          <tr className="bg-teal-50 border-t-2 border-teal-200">
-                            <td className="px-3 py-1.5 font-bold text-teal-800">= Cylinder Circumference</td>
-                            <td className="px-3 py-1.5 font-mono font-bold text-teal-700">{cylC} mm</td>
-                            <td className="px-3 py-1.5 text-teal-600 text-[10px]">{slvCutWithShrink}mm × {rCount} = {cylC}mm — {cylC} % {slvCutWithShrink} = {cylC % slvCutWithShrink === 0 ? "0 ✓" : `${cylC % slvCutWithShrink} ✗`}</td>
-                          </tr>
-                        </>
+                            {shrink > 0 && (
+                              <tr>
+                                <td className="px-3 py-1.5 text-gray-600">+ Length Shrinkage</td>
+                                <td className="px-3 py-1.5 font-mono font-bold text-fuchsia-600">+{shrink} mm</td>
+                                <td className="px-3 py-1.5 text-gray-400 text-[10px]">Added to cutting length before cylinder sizing</td>
+                              </tr>
+                            )}
+                            <tr className="bg-blue-50">
+                              <td className="px-3 py-1.5 font-bold text-blue-800">= Cylinder Repeat (per sleeve)</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-blue-700">{slvCutWithShrink} mm</td>
+                              <td className="px-3 py-1.5 text-blue-600 text-[10px]">{cutLen}{shrink > 0 ? `+${shrink}` : ""} = {slvCutWithShrink}mm per sleeve length</td>
+                            </tr>
+                            <tr>
+                              <td className="px-3 py-1.5 text-gray-600">× Repeat Count (N)</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-purple-700">× {rCount}</td>
+                              <td className="px-3 py-1.5 text-gray-400 text-[10px]">{rCount === 1 ? "1 sleeve per revolution" : `${rCount} sleeves per revolution`}</td>
+                            </tr>
+                            <tr className="bg-teal-50 border-t-2 border-teal-200">
+                              <td className="px-3 py-1.5 font-bold text-teal-800">= Cylinder Circumference</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-teal-700">{cylC} mm</td>
+                              <td className="px-3 py-1.5 text-teal-600 text-[10px]">{slvCutWithShrink}mm × {rCount} = {cylC}mm — {cylC} % {slvCutWithShrink} = {cylC % slvCutWithShrink === 0 ? "0 ✓" : `${cylC % slvCutWithShrink} ✗`}</td>
+                            </tr>
+                          </>
                         );
                       })() : (
                         <>
@@ -5419,7 +5439,7 @@ export default function ProductCatalogPage() {
             {(viewPlanRow as any).skuType && <span className="px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-full">{(viewPlanRow as any).skuType}</span>}
             {(viewPlanRow as any).bottleType && <span className="px-3 py-1 bg-sky-50 border border-sky-200 text-sky-700 rounded-full">{(viewPlanRow as any).bottleType}</span>}
             {(viewPlanRow as any).addressType && <span className="px-3 py-1 bg-sky-50 border border-sky-200 text-sky-700 rounded-full">{(viewPlanRow as any).addressType} Address</span>}
-            {(viewPlanRow as any).artworkName  && <span className="px-3 py-1 bg-violet-50 border border-violet-200 text-violet-700 rounded-full font-semibold">🎨 {(viewPlanRow as any).artworkName}</span>}
+            {(viewPlanRow as any).artworkName && <span className="px-3 py-1 bg-violet-50 border border-violet-200 text-violet-700 rounded-full font-semibold">🎨 {(viewPlanRow as any).artworkName}</span>}
             {(viewPlanRow as any).specialSpecs && <span className="px-3 py-1 bg-rose-50 border border-rose-200 text-rose-700 rounded-full font-semibold">★ {(viewPlanRow as any).specialSpecs}</span>}
           </div>
 
@@ -5433,30 +5453,30 @@ export default function ProductCatalogPage() {
             {viewPlanRow.secondaryLayers?.length > 0 || viewPlanRow.processes?.length > 0 ? (
               <PlanViewer hideRunningMeterCalc plan={{
                 title: "Product Catalog", refNo: viewPlanRow.catalogNo,
-                jobWidth:    viewPlanRow.jobWidth,
-                jobHeight:   viewPlanRow.jobHeight,
-                quantity:    viewPlanRow.standardQty || 1000,
-                unit:        viewPlanRow.standardUnit,
-                noOfColors:  viewPlanRow.noOfColors,
-                secondaryLayers:      viewPlanRow.secondaryLayers,
-                processes:            viewPlanRow.processes,
+                jobWidth: viewPlanRow.jobWidth,
+                jobHeight: viewPlanRow.jobHeight,
+                quantity: viewPlanRow.standardQty || 1000,
+                unit: viewPlanRow.standardUnit,
+                noOfColors: viewPlanRow.noOfColors,
+                secondaryLayers: viewPlanRow.secondaryLayers,
+                processes: viewPlanRow.processes,
                 cylinderCostPerColor: viewPlanRow.cylinderCostPerColor,
                 overheadPct: viewPlanRow.overheadPct,
-                profitPct:   viewPlanRow.profitPct,
+                profitPct: viewPlanRow.profitPct,
                 trimmingSize: viewPlanRow.trimmingSize,
-                frontColors:  viewPlanRow.frontColors,
-                backColors:   viewPlanRow.backColors,
+                frontColors: viewPlanRow.frontColors,
+                backColors: viewPlanRow.backColors,
               } satisfies PlanInput} />
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Pill label="Substrate"   value={viewPlanRow.substrate || "—"}    cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
-                  <Pill label="Print Type"  value={viewPlanRow.printType || "—"}    cls="bg-purple-50 text-purple-700 border-purple-200" />
-                  <Pill label="Colors"      value={`${viewPlanRow.noOfColors}C`}    cls="bg-blue-50 text-blue-700 border-blue-200" />
-                  <Pill label="Machine"     value={viewPlanRow.machineName || "—"}  cls="bg-teal-50 text-teal-700 border-teal-200" />
-                  <Pill label="Job Width"   value={`${viewPlanRow.jobWidth} mm`} />
-                  <Pill label="Job Height"  value={`${viewPlanRow.jobHeight} mm`} />
-                  <Pill label="Std Qty"     value={`${viewPlanRow.standardQty.toLocaleString()} ${viewPlanRow.standardUnit}`} />
+                  <Pill label="Substrate" value={viewPlanRow.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
+                  <Pill label="Print Type" value={viewPlanRow.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
+                  <Pill label="Colors" value={`${viewPlanRow.noOfColors}C`} cls="bg-blue-50 text-blue-700 border-blue-200" />
+                  <Pill label="Machine" value={viewPlanRow.machineName || "—"} cls="bg-teal-50 text-teal-700 border-teal-200" />
+                  <Pill label="Job Width" value={`${viewPlanRow.jobWidth} mm`} />
+                  <Pill label="Job Height" value={`${viewPlanRow.jobHeight} mm`} />
+                  <Pill label="Std Qty" value={`${viewPlanRow.standardQty.toLocaleString()} ${viewPlanRow.standardUnit}`} />
                 </div>
                 <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-xs text-gray-500 text-center">
                   No ply / process detail available. Use Replan to add full planning.
@@ -5474,18 +5494,18 @@ export default function ProductCatalogPage() {
               onClick={() => {
                 if (!viewPlanRow) return;
                 localStorage.setItem("ajsw_order_from_catalog", JSON.stringify({
-                  catalogId:    viewPlanRow.id,
-                  catalogNo:    viewPlanRow.catalogNo,
-                  customerId:   viewPlanRow.customerId,
+                  catalogId: viewPlanRow.id,
+                  catalogNo: viewPlanRow.catalogNo,
+                  customerId: viewPlanRow.customerId,
                   customerName: viewPlanRow.customerName,
-                  productName:  viewPlanRow.productName,
-                  categoryId:   viewPlanRow.categoryId,
+                  productName: viewPlanRow.productName,
+                  categoryId: viewPlanRow.categoryId,
                   categoryName: viewPlanRow.categoryName,
-                  substrate:    (viewPlanRow as any).substrate || "",
-                  jobWidth:     viewPlanRow.jobWidth,
-                  jobHeight:    viewPlanRow.jobHeight,
-                  noOfColors:   viewPlanRow.noOfColors,
-                  standardQty:  viewPlanRow.standardQty,
+                  substrate: (viewPlanRow as any).substrate || "",
+                  jobWidth: viewPlanRow.jobWidth,
+                  jobHeight: viewPlanRow.jobHeight,
+                  noOfColors: viewPlanRow.noOfColors,
+                  standardQty: viewPlanRow.standardQty,
                   standardUnit: viewPlanRow.standardUnit,
                   perMeterRate: viewPlanRow.perMeterRate,
                 }));
@@ -5529,7 +5549,7 @@ export default function ProductCatalogPage() {
 
       {/* ══ STATUS UPDATE MODAL ══════════════════════════════════ */}
       {statusModalOpen && selectedStatusRow && (
-        <Modal open={statusModalOpen} onClose={() => setStatusModalOpen(false)} 
+        <Modal open={statusModalOpen} onClose={() => setStatusModalOpen(false)}
           title={`${selectedStatusRow.isActive ? "Deactivate" : "Activate"} Product`} size="sm">
           <div className="space-y-4">
             <div className={`p-3 rounded-xl border flex gap-3 items-start ${selectedStatusRow.isActive ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
@@ -5544,18 +5564,18 @@ export default function ProductCatalogPage() {
               </div>
             </div>
 
-            <Textarea 
-              label="Reason / Remarks" 
-              placeholder="Enter reason for this status change..." 
-              value={statusReason} 
+            <Textarea
+              label="Reason / Remarks"
+              placeholder="Enter reason for this status change..."
+              value={statusReason}
               onChange={e => setStatusReason(e.target.value)}
               className="text-sm"
             />
 
             <div className="flex justify-end gap-3 mt-4">
               <Button variant="secondary" onClick={() => setStatusModalOpen(false)}>Cancel</Button>
-              <Button 
-                variant={selectedStatusRow.isActive ? "danger" : "primary"} 
+              <Button
+                variant={selectedStatusRow.isActive ? "danger" : "primary"}
                 onClick={handleStatusUpdate}
                 loading={statusUpdating}
               >

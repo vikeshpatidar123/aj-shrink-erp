@@ -14,7 +14,7 @@ function unwrap(v: any): any {
   return r;
 }
 
-// â"€â"€ Shared UI â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Shared UI ─────────────────────────────────────────────────────────────────
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -29,7 +29,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Types ──────────────────────────────────────────────────────────────────────
 type SubGroupRow = {
   id: string;
   ItemSubGroupUniqueID: string;
@@ -39,11 +39,14 @@ type SubGroupRow = {
   UnderSubGroupID: string;
   ItemSubGroupLevel: string;
   GroupName: string;
+  SubGroupPrefix?: string;
 };
 
 type UnderGroup = {
   ItemGroupID: string;
   ItemGroupName: string;
+  ItemGroupCategory: string;
+  ItemGroupPrefix: string;
 };
 
 type SubGroupSpec = {
@@ -61,15 +64,17 @@ type FormState = {
   ItemSubGroupName: string;
   ItemSubGroupDisplayName: string;
   UnderSubGroupID: string;
+  SubGroupPrefix: string;
 };
 
 const blank = (): FormState => ({
   ItemSubGroupName: "",
   ItemSubGroupDisplayName: "",
   UnderSubGroupID: "",
+  SubGroupPrefix: "",
 });
 
-// â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ── Page ───────────────────────────────────────────────────────────────────────
 export default function SubGroupPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<SubGroupRow[]>([]);
@@ -95,7 +100,7 @@ export default function SubGroupPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // â"€â"€ Loaders â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Loaders ───────────────────────────────────────────────────────────────────
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/group`, { headers: authHeaders() })
@@ -121,7 +126,7 @@ export default function SubGroupPage() {
   useEffect(() => {
     loadList();
     loadAllSpecs();
-    fetch(`${BASE_URL}/api/itemgroupmaster/list`, { headers: authHeaders() })
+    fetch(`${BASE_URL}/api/itemmasterShrink/items`, { headers: authHeaders() })
       .then(r => r.text())
       .then(text => {
         const raw = unwrap(text);
@@ -130,7 +135,7 @@ export default function SubGroupPage() {
       .catch(() => setUnderGroups([]));
   }, [loadList, loadAllSpecs]);
 
-  // â"€â"€ Open add â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Open add ──────────────────────────────────────────────────────────────────
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -141,7 +146,7 @@ export default function SubGroupPage() {
     setView("form");
   };
 
-  // â"€â"€ Open edit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Open edit ─────────────────────────────────────────────────────────────────
   const openEdit = (row: SubGroupRow) => {
     setEditing(row);
     setError("");
@@ -152,8 +157,8 @@ export default function SubGroupPage() {
       ItemSubGroupName: String(row.ItemSubGroupName ?? ""),
       ItemSubGroupDisplayName: String(row.ItemSubGroupDisplayName ?? ""),
       UnderSubGroupID: String(row.UnderSubGroupID ?? ""),
+      SubGroupPrefix: String(row.SubGroupPrefix ?? ""),
     });
-    // Load all existing specs for this sub group (for suggestions)
     setSpecLoading(true);
     fetch(`${BASE}/get-subgroup-specs/${row.ItemSubGroupUniqueID}`, { headers: authHeaders() })
       .then(r => r.text())
@@ -166,11 +171,12 @@ export default function SubGroupPage() {
     setView("form");
   };
 
-  // â"€â"€ Save â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Save ──────────────────────────────────────────────────────────────────────
   const saveGroup = async () => {
     setSubmitAttempted(true);
     if (!String(form.ItemSubGroupName ?? "").trim()) { setError("Sub Group Name is required."); return; }
     if (!String(form.ItemSubGroupDisplayName ?? "").trim()) { setError("Display Name is required."); return; }
+    if (selectedGroupIsConsumable && !String(form.SubGroupPrefix ?? "").trim()) { setError("Sub Group Prefix is required for consumable groups (e.g. SL for Sleeve, CY for Cylinder)."); return; }
     setSaving(true);
     setError("");
     try {
@@ -184,6 +190,7 @@ export default function SubGroupPage() {
               ItemSubGroupName: form.ItemSubGroupName,
               ItemSubGroupDisplayName: form.ItemSubGroupDisplayName,
               UnderSubGroupID: form.UnderSubGroupID || null,
+              SubGroupPrefix: form.SubGroupPrefix.trim().toUpperCase() || null,
             }],
             ItemSubGroupUniqueID: String(editing.ItemSubGroupUniqueID),
             ItemSubGroupLevel: String(editing.ItemSubGroupLevel ?? "1"),
@@ -199,6 +206,7 @@ export default function SubGroupPage() {
               ItemSubGroupName: form.ItemSubGroupName,
               ItemSubGroupDisplayName: form.ItemSubGroupDisplayName,
               UnderSubGroupID: form.UnderSubGroupID || null,
+              SubGroupPrefix: form.SubGroupPrefix.trim().toUpperCase() || null,
             }],
             GroupName: form.ItemSubGroupName,
             UnderGroupID: "",
@@ -209,11 +217,10 @@ export default function SubGroupPage() {
       const result = unwrap(await res.text());
       if (result === "Success") {
         loadList();
-        // Refresh under-groups dropdown too
-        fetch(`${BASE_URL}/api/itemgroupmaster/list`, { headers: authHeaders() })
+        fetch(`${BASE_URL}/api/itemmasterShrink/items`, { headers: authHeaders() })
           .then(r => r.text())
           .then(text => { const raw = unwrap(text); setUnderGroups(Array.isArray(raw) ? raw : []); })
-          .catch(() => {});
+          .catch(() => { });
         setView("list");
       } else if (result === "Exist") {
         setError("A sub group with this name already exists.");
@@ -226,7 +233,7 @@ export default function SubGroupPage() {
     setSaving(false);
   };
 
-  // â"€â"€ Save Specification â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Save Specification ────────────────────────────────────────────────────────
   const saveSpec = async () => {
     if (!editing) return;
     if (!specForm.SubGroupType.trim()) { setError("Sub Group 2 is required."); return; }
@@ -237,19 +244,17 @@ export default function SubGroupPage() {
     const typePrefixLower = specForm.SubGroupTypePrefix.trim().toLowerCase();
     const specPrefixLower = specForm.TypeSpacificationPrefix.trim().toLowerCase();
 
-    // Duplicate row check
     const isDuplicate = existingSpecs.some(s =>
       s.SubGroupType.trim().toLowerCase() === typeLower &&
       s.TypeSpecification.trim().toLowerCase() === specLower
     );
     if (isDuplicate) { setError("This Type and Specification combination already exists."); return; }
 
-    // New Sub Group Type entered — check its prefix is not already used by a different type name
     const typeIsNew = !existingSpecs.some(s => s.SubGroupType.trim().toLowerCase() === typeLower);
     if (typeIsNew && typePrefixLower) {
       const prefixConflict = existingSpecs.find(
         s => s.SubGroupTypePrefix.trim().toLowerCase() === typePrefixLower &&
-             s.SubGroupType.trim().toLowerCase() !== typeLower
+          s.SubGroupType.trim().toLowerCase() !== typeLower
       );
       if (prefixConflict) {
         setError(`Sub Group Type Prefix "${specForm.SubGroupTypePrefix.trim()}" is already used by "${prefixConflict.SubGroupType}". Use a different prefix.`);
@@ -257,12 +262,11 @@ export default function SubGroupPage() {
       }
     }
 
-    // New Type Specification entered — check its prefix is not already used by a different spec name
     const specIsNew = !existingSpecs.some(s => s.TypeSpecification.trim().toLowerCase() === specLower);
     if (specIsNew && specPrefixLower) {
       const specPrefixConflict = existingSpecs.find(
         s => s.TypeSpacificationPrefix.trim().toLowerCase() === specPrefixLower &&
-             s.TypeSpecification.trim().toLowerCase() !== specLower
+          s.TypeSpecification.trim().toLowerCase() !== specLower
       );
       if (specPrefixConflict) {
         setError(`Type Specification Prefix "${specForm.TypeSpacificationPrefix.trim()}" is already used by "${specPrefixConflict.TypeSpecification}". Use a different prefix.`);
@@ -287,13 +291,12 @@ export default function SubGroupPage() {
       });
       const result = unwrap(await res.text());
       if (result === "Success") {
-        // Reload specs for this sub group to refresh suggestions
         fetch(`${BASE}/get-subgroup-specs/${editing.ItemSubGroupUniqueID}`, { headers: authHeaders() })
           .then(r => r.text())
           .then(text => { const raw = unwrap(text); setExistingSpecs(Array.isArray(raw) ? raw : []); })
-          .catch(() => {});
+          .catch(() => { });
         loadAllSpecs();
-        loadList(); // refresh list to show updated level
+        loadList();
         setSpecForm({ SubGroupType: "", TypeSpecification: "", SubGroupTypePrefix: "", TypeSpacificationPrefix: "" });
         setError("");
       } else if (result === "Exist") {
@@ -307,7 +310,7 @@ export default function SubGroupPage() {
     setSpecSaving(false);
   };
 
-  // â"€â"€ Delete â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Delete ────────────────────────────────────────────────────────────────────
   const deleteGroup = async (row: SubGroupRow) => {
     if (!confirm("Delete this sub group and all its specifications?")) return;
     try {
@@ -327,7 +330,6 @@ export default function SubGroupPage() {
     }
   };
 
-  // ── Delete Specification (soft delete) ──
   const deleteSpec = async (spec: SubGroupSpec) => {
     if (!confirm("Delete this specification?")) return;
     try {
@@ -348,7 +350,7 @@ export default function SubGroupPage() {
     }
   };
 
-  // â"€â"€ Derived â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Derived ───────────────────────────────────────────────────────────────────
   const getGroupName = (r: SubGroupRow) => {
     const grp = underGroups.find(g => String(g.ItemGroupID) === String(r.UnderSubGroupID));
     return grp?.ItemGroupName || r.GroupName || "";
@@ -366,9 +368,7 @@ export default function SubGroupPage() {
     ["All", ...new Set(subGroupsInGroup.map(r => r.ItemSubGroupName).filter(Boolean))],
     [subGroupsInGroup]);
 
-  // Types available based on current group+subgroup selection
   const typesForSubGroup = useMemo(() => {
-    // Start from rows already filtered by group (and sub-group if selected)
     const baseRows = filterSubGroupName === "All" ? subGroupsInGroup : subGroupsInGroup.filter(r => r.ItemSubGroupName === filterSubGroupName);
     const ids = new Set(baseRows.map(r => String(r.ItemSubGroupUniqueID)));
     const types = allSpecs
@@ -389,7 +389,16 @@ export default function SubGroupPage() {
     return result;
   }, [data, filterGroup, filterSubGroupName, filterType, allSpecs, underGroups]);
 
-  // â"€â"€ FORM VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  const selectedGroupIsConsumable = useMemo(() => {
+    if (!form.UnderSubGroupID) return false;
+    const grp = underGroups.find(g => String(g.ItemGroupID) === String(form.UnderSubGroupID));
+    if (!grp) return false;
+    const cat = (grp.ItemGroupCategory || "").toLowerCase().trim();
+    const name = (grp.ItemGroupName || "").toLowerCase().trim();
+    return cat === "consumable" || cat === "consumables" || cat === "other material" || /other[\s-]*material/i.test(name);
+  }, [form.UnderSubGroupID, underGroups]);
+
+  // ── FORM VIEW ─────────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
@@ -454,20 +463,39 @@ export default function SubGroupPage() {
                       onChange={e => f("ItemSubGroupDisplayName", e.target.value)}
                       placeholder="e.g. PET Film (Plain / Treated)" className={ic(submitAttempted && !form.ItemSubGroupDisplayName.trim())} />
                   </Field>
-                  <div className="md:col-span-2">
-                    <Field label="Under Group (Parent)">
-                      <select value={form.UnderSubGroupID}
-                        onChange={e => f("UnderSubGroupID", e.target.value)}
-                        className={inputCls}>
-                        <option value="">— Select Group —</option>
-                        {underGroups.map(g => (
-                          <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>
-                            {g.ItemGroupName}
-                          </option>
-                        ))}
-                      </select>
+                  <Field label="Under Group (Parent)">
+                    <select value={form.UnderSubGroupID}
+                      onChange={e => { f("UnderSubGroupID", e.target.value); f("SubGroupPrefix", ""); }}
+                      className={inputCls}>
+                      <option value="">— Select Group —</option>
+                      {underGroups.map(g => (
+                        <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>
+                          {g.ItemGroupName}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  {selectedGroupIsConsumable && (
+                    <Field label="Sub Group Prefix" required>
+                      <div className="flex flex-col gap-1">
+                        <input
+                          type="text"
+                          value={form.SubGroupPrefix}
+                          onChange={e => f("SubGroupPrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                          placeholder="e.g. SL (Sleeve), CY (Cylinder)"
+                          maxLength={6}
+                          className={`${ic(submitAttempted && selectedGroupIsConsumable && !form.SubGroupPrefix.trim())} font-mono uppercase tracking-widest`}
+                        />
+                        {form.SubGroupPrefix && (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-700 w-fit">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                            Item codes: CON-{form.SubGroupPrefix}-0001, CON-{form.SubGroupPrefix}-0002 ...
+                          </div>
+                        )}
+                      </div>
                     </Field>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -483,7 +511,6 @@ export default function SubGroupPage() {
                 </div>
               ) : (
                 <>
-                  {/* datalists for suggestions */}
                   <datalist id="dl-subgroup-type">
                     {[...new Set(existingSpecs.map(s => s.SubGroupType).filter(Boolean))].map(t => (
                       <option key={t} value={t} />
@@ -495,7 +522,6 @@ export default function SubGroupPage() {
                     ))}
                   </datalist>
 
-                  {/* Read-only identity fields */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <Field label="Group Name">
                       <input
@@ -513,26 +539,22 @@ export default function SubGroupPage() {
                     </Field>
                   </div>
 
-                  {/* Editable spec fields with suggestions */}
                   {(() => {
-                    // Check if typed Sub Group Type matches an existing spec — if so, prefix is locked
                     const matchedType = existingSpecs.find(
                       s => s.SubGroupType.trim().toLowerCase() === specForm.SubGroupType.trim().toLowerCase() && s.SubGroupType.trim() !== ""
                     );
                     const typePrefixLocked = !!matchedType;
                     const lockedTypePrefix = matchedType?.SubGroupTypePrefix || "";
 
-                    // Check if typed Type Specification matches any existing spec by name alone — prefix is global per spec name
                     const matchedSpec = existingSpecs.find(
                       s => s.TypeSpecification.trim().toLowerCase() === specForm.TypeSpecification.trim().toLowerCase() &&
-                           s.TypeSpecification.trim() !== ""
+                        s.TypeSpecification.trim() !== ""
                     );
                     const specPrefixLocked = !!matchedSpec;
                     const lockedSpecPrefix = matchedSpec?.TypeSpacificationPrefix || "";
 
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* 3. Sub Group Type */}
                         <Field label="Sub Group 2" required>
                           <input
                             type="text"
@@ -544,16 +566,13 @@ export default function SubGroupPage() {
                               setSpecForm(p => ({
                                 ...p,
                                 SubGroupType: val,
-                                // if match found use saved prefix, if no match clear it
                                 SubGroupTypePrefix: match ? (match.SubGroupTypePrefix || "") : "",
-                                // also clear spec prefix since type changed
                                 TypeSpacificationPrefix: "",
                               }));
                             }}
                             placeholder=""
                             className={inputCls} />
                         </Field>
-                        {/* 4. Sub Group Type Prefix */}
                         <Field label="Sub Group 2 prefix" required>
                           <input
                             type="text"
@@ -563,7 +582,6 @@ export default function SubGroupPage() {
                             placeholder=""
                             className={inputCls + (typePrefixLocked ? " bg-gray-50 text-gray-500 cursor-not-allowed" : "")} />
                         </Field>
-                        {/* 5. Type Specification */}
                         <Field label="Sub Group 3">
                           <input
                             type="text"
@@ -573,19 +591,17 @@ export default function SubGroupPage() {
                               const val = e.target.value;
                               const match = existingSpecs.find(
                                 s => s.TypeSpecification.trim().toLowerCase() === val.trim().toLowerCase() &&
-                                     val.trim() !== ""
+                                  val.trim() !== ""
                               );
                               setSpecForm(p => ({
                                 ...p,
                                 TypeSpecification: val,
-                                // if match found use saved prefix, if no match clear it
                                 TypeSpacificationPrefix: match ? (match.TypeSpacificationPrefix || "") : "",
                               }));
                             }}
                             placeholder=""
                             className={inputCls} />
                         </Field>
-                        {/* 6. Type Specification Prefix */}
                         <Field label="Sub Group 3 prefix">
                           <input
                             type="text"
@@ -607,12 +623,11 @@ export default function SubGroupPage() {
                     </button>
                   </div>
 
-                  {/* Existing specs for this sub group */}
                   {existingSpecs.length > 0 && (
                     <div className="mt-4">
                       <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest mb-2">Existing Specifications</p>
                       <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        <div className="grid bg-blue-700 text-white text-xs font-semibold" style={{gridTemplateColumns:"1fr 1fr 1fr 1fr auto"}}>
+                        <div className="grid bg-blue-700 text-white text-xs font-semibold" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr auto" }}>
                           <div className="px-4 py-2">Sub Group 2</div>
                           <div className="px-4 py-2">Sub Group 2 Prefix</div>
                           <div className="px-4 py-2">Sub Group 3</div>
@@ -621,7 +636,7 @@ export default function SubGroupPage() {
                         </div>
                         <div className="divide-y divide-gray-100">
                           {existingSpecs.map((s, i) => (
-                            <div key={i} className="grid text-xs hover:bg-gray-50" style={{gridTemplateColumns:"1fr 1fr 1fr 1fr auto"}}>
+                            <div key={i} className="grid text-xs hover:bg-gray-50" style={{ gridTemplateColumns: "1fr 1fr 1fr 1fr auto" }}>
                               <div className="px-4 py-2.5 text-gray-800 font-medium cursor-pointer"
                                 onClick={() => setSpecForm({ SubGroupType: s.SubGroupType, TypeSpecification: s.TypeSpecification, SubGroupTypePrefix: s.SubGroupTypePrefix || "", TypeSpacificationPrefix: s.TypeSpacificationPrefix || "" })}>
                                 {s.SubGroupType || "—"}
@@ -640,7 +655,7 @@ export default function SubGroupPage() {
                               </div>
                               <div className="px-3 py-2 flex items-center">
                                 <button onClick={() => deleteSpec(s)} title="Delete" className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
-                                  <Trash2 size={13}/>
+                                  <Trash2 size={13} />
                                 </button>
                               </div>
                             </div>
@@ -658,7 +673,8 @@ export default function SubGroupPage() {
       </div>
     );
   }
-  // â"€â"€ LIST VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+  // ── LIST VIEW ─────────────────────────────────────────────────────────────────
   const columns: Column<SubGroupRow>[] = [
     { key: "ItemSubGroupID", header: "Group ID", sortable: true },
     { key: "ItemSubGroupName", header: "Sub Group Name", sortable: true },
@@ -672,6 +688,12 @@ export default function SubGroupPage() {
           ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{name}</span>
           : <span className="text-gray-400">— Top Level —</span>;
       },
+    },
+    {
+      key: "SubGroupPrefix", header: "Prefix",
+      render: r => r.SubGroupPrefix
+        ? <span className="font-mono font-bold text-amber-600 text-sm">{r.SubGroupPrefix}</span>
+        : <span className="text-gray-300">—</span>,
     },
   ];
 
@@ -692,7 +714,6 @@ export default function SubGroupPage() {
 
       {/* Cascading filter: Group → Sub Group → Type */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
-        {/* Level 1: Group */}
         {uniqueGroups.length > 1 && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-24 shrink-0">Group</span>
@@ -709,7 +730,6 @@ export default function SubGroupPage() {
           </div>
         )}
 
-        {/* Level 2: Sub Group (only when a group is selected) */}
         {filterGroup !== "All" && uniqueSubGroupNames.length > 1 && (
           <div className="flex items-center gap-2 flex-wrap pl-1 border-t border-gray-100 pt-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-24 shrink-0">Sub Group</span>
@@ -725,7 +745,6 @@ export default function SubGroupPage() {
           </div>
         )}
 
-        {/* Level 3: Type — visible as soon as a Group is selected and types exist for it */}
         {filterGroup !== "All" && typesForSubGroup.length > 1 && (
           <div className="flex items-center gap-2 flex-wrap pl-1 border-t border-gray-100 pt-3">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-24 shrink-0">Type</span>
@@ -738,7 +757,6 @@ export default function SubGroupPage() {
           </div>
         )}
 
-        {/* Active filter summary */}
         {(filterGroup !== "All" || filterSubGroupName !== "All" || filterType !== "All") && (
           <div className="flex items-center gap-2 pt-1">
             <span className="text-xs text-gray-400">Showing:</span>

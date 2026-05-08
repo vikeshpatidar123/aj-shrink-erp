@@ -236,11 +236,23 @@ export default function GravureOrdersPage() {
       productName: String(l.productName ?? ""),
       categoryId: String(l.categoryId ?? ""),
       categoryName: String(l.categoryName ?? ""),
+      content: String(l.content ?? ""),
+      structureType: String(l.structureType ?? "") as GravureOrderLine["structureType"],
       substrate: String(l.substrate ?? ""),
       jobWidth: Number(l.jobWidth ?? 0),
       jobHeight: Number(l.jobHeight ?? 0),
       noOfColors: Number(l.noOfColors ?? 0),
       printType: (l.printType ?? "Surface Print") as GravureOrderLine["printType"],
+      trimmingSize: Number(l.trimmingSize ?? 0),
+      widthShrinkage: Number(l.widthShrinkage ?? 0),
+      gusset: Number(l.gusset ?? 0),
+      topSeal: Number(l.topSeal ?? 0),
+      bottomSeal: Number(l.bottomSeal ?? 0),
+      sideSeal: Number(l.sideSeal ?? 0),
+      centerSealWidth: Number(l.centerSealWidth ?? 0),
+      sideGusset: Number(l.sideGusset ?? 0),
+      seamingArea: Number(l.seamingArea ?? 0),
+      transparentArea: Number(l.transparentArea ?? 0),
       cylinderStatus: (l.cylinderStatus ?? "New") as GravureOrderLine["cylinderStatus"],
       cylinderCount: Number(l.cylinderCount ?? 0),
       filmType: String(l.filmType ?? ""),
@@ -283,7 +295,10 @@ export default function GravureOrdersPage() {
           enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
           jobName: firstLine?.productName ?? "",
           substrate: firstLine?.substrate ?? "",
-          structure: "", categoryId: "", categoryName: "", content: "",
+          structure: String((firstLine as any)?.structureType ?? ""),
+          categoryId: firstLine?.categoryId ?? "",
+          categoryName: firstLine?.categoryName ?? "",
+          content: String((firstLine as any)?.content ?? ""),
           jobWidth: firstLine?.jobWidth ?? 0,
           jobHeight: firstLine?.jobHeight ?? 0,
           width: 0,
@@ -1469,12 +1484,28 @@ export default function GravureOrdersPage() {
               )}
               <button
                 onClick={() => {
+                  const firstLine = row.orderLines?.[0];
+                  const matchedCatalog =
+                    catalog.find(c => c.id === String(firstLine?.catalogId || row.catalogId || "")) ||
+                    catalog.find(c => c.catalogNo === String(firstLine?.catalogNo || row.catalogNo || "")) ||
+                    catalog.find(c =>
+                      String(c.customerId || "") === String(row.customerId || "") &&
+                      String(c.productName || "").trim().toLowerCase() === String(firstLine?.productName || row.jobName || "").trim().toLowerCase()
+                    );
                   sessionStorage.setItem("createPWOFromOrder", JSON.stringify({
                     orderId: row.id,
                     orderNo: row.orderNo,
                     customerId: row.customerId,
                     customerName: row.customerName,
                     salesType: row.salesType ?? "",
+                    catalogId: firstLine?.catalogId ?? row.catalogId ?? "",
+                    catalogNo: firstLine?.catalogNo ?? row.catalogNo ?? "",
+                    productName: firstLine?.productName ?? row.jobName ?? "",
+                    categoryId: row.categoryId ?? "",
+                    categoryName: row.categoryName ?? "",
+                    content: row.content ?? "",
+                    structureType: (row as any).structureType ?? "",
+                    catalogSnapshot: matchedCatalog ?? null,
                     lines: row.orderLines ?? [],
                   }));
                   router.push("/gravure/workorder");
@@ -1543,7 +1574,7 @@ export default function GravureOrdersPage() {
                     <span className="text-xs font-bold text-gray-400">#{i + 1}</span>
                     <span className="ml-2 font-semibold text-gray-800">{line.productName}</span>
                     <span className={`ml-2 text-[10px] font-semibold px-2 py-0.5 rounded-full ${line.sourceType === "Estimation" ? "bg-blue-50 text-blue-700" :
-                        line.sourceType === "Catalog" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
+                      line.sourceType === "Catalog" ? "bg-purple-50 text-purple-700" : "bg-gray-100 text-gray-600"}`}>
                       {line.sourceType}
                     </span>
                   </div>

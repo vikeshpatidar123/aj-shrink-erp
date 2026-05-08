@@ -6,7 +6,7 @@ import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
-const BASE = `${BASE_URL}/api/othermaster`;
+const BASE = `${BASE_URL}/api/othermasterShrink`;
 
 function unwrap(v: any): any {
   let r = v;

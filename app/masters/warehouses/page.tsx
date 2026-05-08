@@ -85,7 +85,7 @@ export default function WarehouseMasterPage() {
   const [companyName] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("companyName") || "Warehouse Master" : "Warehouse Master"
   );
-  
+
   // Lookups
   const [branches, setBranches] = useState<any[]>([]);
   const [productionUnits, setProductionUnits] = useState<any[]>([]);
@@ -95,10 +95,10 @@ export default function WarehouseMasterPage() {
   // â”€â”€â”€ Load Lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     // Attempt to load lookups if they exist (graceful fallback)
-    fetch(`${BASE_URL}/api/othermaster/getbranch`, { headers: authHeaders() })
-      .then(r => r.text()).then(unwrap).then(r => Array.isArray(r) && setBranches(r)).catch(() => {});
-    fetch(`${BASE_URL}/api/othermaster/getproductionunitlist`, { headers: authHeaders() })
-      .then(r => r.text()).then(unwrap).then(r => Array.isArray(r) && setProductionUnits(r)).catch(() => {});
+    fetch(`${BASE_URL}/api/othermasterShrink/getbranch`, { headers: authHeaders() })
+      .then(r => r.text()).then(unwrap).then(r => Array.isArray(r) && setBranches(r)).catch(() => { });
+    fetch(`${BASE_URL}/api/othermasterShrink/getproductionunitlist`, { headers: authHeaders() })
+      .then(r => r.text()).then(unwrap).then(r => Array.isArray(r) && setProductionUnits(r)).catch(() => { });
   }, []);
 
   // â”€â”€â”€ Load list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -131,22 +131,22 @@ export default function WarehouseMasterPage() {
   const openEdit = (row: WarehouseRow) => {
     // Group all bins for this WarehouseName/RefWarehouseCode from the data array
     const siblingBins = data.filter(r => r.RefWarehouseCode === row.RefWarehouseCode);
-    
+
     setEditing(row);
     setError("");
     setSubmitAttempted(false);
     setBinInput("");
     setForm({
-      WarehouseName:    String(row.WarehouseName ?? ""),
+      WarehouseName: String(row.WarehouseName ?? ""),
       RefWarehouseCode: String(row.RefWarehouseCode ?? ""),
-      Address:          String(row.Address ?? ""),
-      City:             String(row.City ?? ""),
+      Address: String(row.Address ?? ""),
+      City: String(row.City ?? ""),
       ProductionUnitID: String(row.ProductionUnitID ?? ""),
-      BranchID:         String(row.BranchID ?? ""),
+      BranchID: String(row.BranchID ?? ""),
       IsFloorWarehouse: Boolean(row.IsFloorWarehouse),
-      Bins: siblingBins.length > 0 
-            ? siblingBins.map(b => ({ WarehouseID: b.WarehouseID, BinName: b.BinName }))
-            : [{ WarehouseID: row.WarehouseID, BinName: row.BinName ?? "Default" }],
+      Bins: siblingBins.length > 0
+        ? siblingBins.map(b => ({ WarehouseID: b.WarehouseID, BinName: b.BinName }))
+        : [{ WarehouseID: row.WarehouseID, BinName: row.BinName ?? "Default" }],
     });
     setView("form");
   };
@@ -158,7 +158,7 @@ export default function WarehouseMasterPage() {
       setError("Please fill all required fields and ensure at least one Bin exists.");
       return;
     }
-    
+
     setSaving(true);
     setError("");
     try {
@@ -202,7 +202,7 @@ export default function WarehouseMasterPage() {
         method: "POST",
         headers: { ...authHeaders(), "Content-Type": "application/json" },
         // Backend Delete uses array with RefWarehouseCode
-        body: JSON.stringify([{ RefWarehouseCode: row.RefWarehouseCode }]), 
+        body: JSON.stringify([{ RefWarehouseCode: row.RefWarehouseCode }]),
       });
       const result = unwrap(await res.text());
       if (res.ok && String(result).includes("Success")) {
@@ -220,8 +220,8 @@ export default function WarehouseMasterPage() {
     const val = binInput.trim();
     if (!val) return;
     if (form.Bins.some(b => b.BinName.toLowerCase() === val.toLowerCase())) {
-        setError(`Bin "${val}" already exists!`);
-        return;
+      setError(`Bin "${val}" already exists!`);
+      return;
     }
     setError("");
     setForm(p => ({ ...p, Bins: [...p.Bins, { BinName: val }] }));
@@ -230,9 +230,9 @@ export default function WarehouseMasterPage() {
 
   const removeBin = (idx: number) => {
     setForm(p => {
-        const newBins = [...p.Bins];
-        newBins.splice(idx, 1);
-        return { ...p, Bins: newBins };
+      const newBins = [...p.Bins];
+      newBins.splice(idx, 1);
+      return { ...p, Bins: newBins };
     });
   };
 
@@ -281,7 +281,7 @@ export default function WarehouseMasterPage() {
               </div>
 
               <div className="flex items-center gap-2 mt-2">
-                <input type="checkbox" id="floorwarehouse" className="w-4 h-4 text-blue-600 rounded" 
+                <input type="checkbox" id="floorwarehouse" className="w-4 h-4 text-blue-600 rounded"
                   checked={form.IsFloorWarehouse} onChange={(e) => f("IsFloorWarehouse", e.target.checked)} />
                 <label htmlFor="floorwarehouse" className="text-sm font-semibold text-gray-700 select-none cursor-pointer">
                   Is Floor Warehouse?
@@ -293,18 +293,18 @@ export default function WarehouseMasterPage() {
             <div>
               <SectionTitle title="Location & Linkage" />
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                 <div className="lg:col-span-2">
-                    <Field label="Address">
-                        <textarea rows={2} value={form.Address}
-                            onChange={e => f("Address", e.target.value)}
-                            placeholder="Full address..." className={inputCls} />
-                    </Field>
-                 </div>
-                 <Field label="City">
-                    <input type="text" value={form.City}
-                            onChange={e => f("City", e.target.value)}
-                            placeholder="e.g. Mumbai" className={inputCls} />
-                 </Field>
+                <div className="lg:col-span-2">
+                  <Field label="Address">
+                    <textarea rows={2} value={form.Address}
+                      onChange={e => f("Address", e.target.value)}
+                      placeholder="Full address..." className={inputCls} />
+                  </Field>
+                </div>
+                <Field label="City">
+                  <input type="text" value={form.City}
+                    onChange={e => f("City", e.target.value)}
+                    placeholder="e.g. Mumbai" className={inputCls} />
+                </Field>
               </div>
             </div>
 
@@ -312,28 +312,28 @@ export default function WarehouseMasterPage() {
             <div>
               <SectionTitle title="Storage Bins" />
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
-                 
-                 <div className="flex items-center gap-3 mb-4 max-w-sm">
-                    <input type="text" value={binInput} onChange={e => setBinInput(e.target.value)}
-                         onKeyDown={e => e.key === 'Enter' && addBin()}
-                         placeholder="Enter bin name..." className={inputCls} />
-                    <Button variant="secondary" size="sm" onClick={addBin} icon={<Plus size={15}/>}>Add Bin</Button>
-                 </div>
 
-                 {form.Bins.length === 0 ? (
-                     <div className="text-sm text-gray-500 italic">No bins added. At least one bin is required.</div>
-                 ) : (
-                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                         {form.Bins.map((bin, idx) => (
-                             <div key={idx} className="bg-white border border-gray-300 rounded-md shadow-sm px-3 py-2 flex items-center justify-between group">
-                                 <span className="text-sm font-semibold text-gray-700 truncate">{bin.BinName}</span>
-                                 <button onClick={() => removeBin(idx)} className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
-                                     <X size={15} />
-                                 </button>
-                             </div>
-                         ))}
-                     </div>
-                 )}
+                <div className="flex items-center gap-3 mb-4 max-w-sm">
+                  <input type="text" value={binInput} onChange={e => setBinInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addBin()}
+                    placeholder="Enter bin name..." className={inputCls} />
+                  <Button variant="secondary" size="sm" onClick={addBin} icon={<Plus size={15} />}>Add Bin</Button>
+                </div>
+
+                {form.Bins.length === 0 ? (
+                  <div className="text-sm text-gray-500 italic">No bins added. At least one bin is required.</div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                    {form.Bins.map((bin, idx) => (
+                      <div key={idx} className="bg-white border border-gray-300 rounded-md shadow-sm px-3 py-2 flex items-center justify-between group">
+                        <span className="text-sm font-semibold text-gray-700 truncate">{bin.BinName}</span>
+                        <button onClick={() => removeBin(idx)} className="text-gray-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -345,17 +345,25 @@ export default function WarehouseMasterPage() {
 
   // â”€â”€â”€ LIST VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const columns: Column<WarehouseRow>[] = [
-    { key: "RefWarehouseCode", header: "Ref Code", sortable: true,
-      render: r => <span className="font-mono text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{r.RefWarehouseCode}</span> },
-    { key: "WarehouseName", header: "Warehouse", sortable: true, 
-      render: r => <span className="font-semibold text-gray-800">{r.WarehouseName}</span>},
-    { key: "BinName", header: "Bin Name", sortable: true,
-      render: r => r.BinName ? <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">{r.BinName}</span> : "â€”" },
+    {
+      key: "RefWarehouseCode", header: "Ref Code", sortable: true,
+      render: r => <span className="font-mono text-xs font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">{r.RefWarehouseCode}</span>
+    },
+    {
+      key: "WarehouseName", header: "Warehouse", sortable: true,
+      render: r => <span className="font-semibold text-gray-800">{r.WarehouseName}</span>
+    },
+    {
+      key: "BinName", header: "Bin Name", sortable: true,
+      render: r => r.BinName ? <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">{r.BinName}</span> : "â€”"
+    },
     { key: "City", header: "City", render: r => <span className="text-sm">{r.City || "â€”"}</span> },
-    { key: "IsFloorWarehouse", header: "Is Floor?", 
-      render: r => r.IsFloorWarehouse 
-        ? <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">Yes</span> 
-        : <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">No</span> },
+    {
+      key: "IsFloorWarehouse", header: "Is Floor?",
+      render: r => r.IsFloorWarehouse
+        ? <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-bold rounded-full">Yes</span>
+        : <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">No</span>
+    },
   ];
 
   return (

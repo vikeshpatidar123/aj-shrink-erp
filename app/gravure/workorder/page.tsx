@@ -192,13 +192,14 @@ const SH = ({ label }: { label: string }) => (
   <p className="text-xs font-bold text-purple-700 uppercase tracking-widest mb-2 pb-2 border-b border-purple-100">{label}</p>
 );
 
+
 export default function GravureWorkOrderPage() {
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
-  const [workOrders, setWOs] = useState<GravureWorkOrder[]>(initWOs);
+  const [workOrders, setWOs] = useState<GravureWorkOrder[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [apiPrefix, setApiPrefix] = useState("GRV");
-  const [orders] = useState<GravureOrder[]>(initOrders);
+  const [orders, setOrders] = useState<GravureOrder[]>([]);
   const [pageTab, setPageTab] = useState<"pending" | "workorders">("pending");
   const [modalOpen, setModal] = useState(false);
   const [viewRow, setViewRow] = useState<GravureWorkOrder | null>(null);
@@ -223,6 +224,7 @@ export default function GravureWorkOrderPage() {
 
   // Holds savedPlan object from product catalog for planId reconciliation
   const catalogSavedPlanRef = useRef<any>(null);
+  const pendingPWOOrderRef = useRef<any>(null);
 
   // ── Production Preparation Types ────────────────────────────
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
@@ -266,6 +268,7 @@ export default function GravureWorkOrderPage() {
     });
     const applyMachines = (mapped: ReturnType<typeof mapMachine>[]) => {
       setDbMachines(mapped);
+
       // Auto-fill machineName if form has machineId but empty name
       setForm(prev => {
         if (prev.machineId && !prev.machineName) {
@@ -281,15 +284,15 @@ export default function GravureWorkOrderPage() {
           applyMachines(rows.map(mapMachine));
         } else {
           // Fallback: pull machines from getdropdowns endpoint
-          return apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
+          apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
             .then(dd => {
               if (Array.isArray(dd?.machines) && dd.machines.length > 0)
                 applyMachines(dd.machines.map(mapMachine));
-            });
+            })
+            .catch(() => { });
         }
       })
       .catch(() => {
-        // Last fallback: getdropdowns
         apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
           .then(dd => {
             if (Array.isArray(dd?.machines) && dd.machines.length > 0)
@@ -311,6 +314,7 @@ export default function GravureWorkOrderPage() {
       if (raw) {
         sessionStorage.removeItem("createPWOFromOrder");
         const src = JSON.parse(raw);
+        pendingPWOOrderRef.current = src;
         setPendingPWOOrder(src);
         // Basic fill immediately so modal opens with customer info
         setForm(f => ({
@@ -330,68 +334,389 @@ export default function GravureWorkOrderPage() {
 
   // ── When pendingPWOOrder is set, fetch all catalog data directly from API ──
   useEffect(() => {
-    if (!pendingPWOOrder) return;
-    const src = pendingPWOOrder;
+    const src = pendingPWOOrder ?? pendingPWOOrderRef.current;
+    if (!src) return;
     const lines: any[] = Array.isArray(src.lines) ? src.lines : [];
     const line = lines[0];
-    if (!line) { setPendingPWOOrder(null); return; }
+    if (!line) {
+      pendingPWOOrderRef.current = null;
+      setPendingPWOOrder(null);
+      return;
+    }
 
-    apiGet<any>(`api/gravureWorkOrderShrink/getpwoinitdata/${line.id}`)
-      .then(cat => {
-        if (!cat) return;
+    const parseMaybeArray = (value: unknown): any[] => {
+      if (Array.isArray(value)) return value;
+      if (typeof value === "string" && value.trim()) {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    };
+    const norm = (value: unknown) => String(value ?? "").trim().toLowerCase();
+    const findFilmMeta = (layer: any) => {
+      const safeLayer = layer ?? {};
+      const byId = FILM_ITEMS.find(i => String(i.id) === String(safeLayer.itemId ?? ""));
+      if (byId) {
+        return {
+          subGroup: byId.subGroup || safeLayer.itemSubGroup || "",
+          density: parseFloat(byId.density) || 0,
+          thickness: parseFloat(byId.thickness) || 0,
+          itemName: byId.name || safeLayer.itemName || "",
+        };
+      }
+      const byName = FILM_ITEMS.find(i =>
+        norm(i.name) === norm(safeLayer.itemName) &&
+        (!safeLayer.itemSubGroup || norm(i.subGroup) === norm(safeLayer.itemSubGroup))
+      );
+      if (byName) {
+        return {
+          subGroup: byName.subGroup || safeLayer.itemSubGroup || "",
+          density: parseFloat(byName.density) || 0,
+          thickness: parseFloat(byName.thickness) || 0,
+          itemName: byName.name || safeLayer.itemName || "",
+        };
+      }
+      const subGroupMeta = FILM_SUBGROUPS.find(s => norm(s.subGroup) === norm(safeLayer.storedSubGroup || safeLayer.itemSubGroup || ""));
+      return {
+        subGroup: String(safeLayer.storedSubGroup || safeLayer.itemSubGroup || ""),
+        density: Number(safeLayer.filmDensity ?? safeLayer.density ?? subGroupMeta?.density ?? 0),
+        thickness: Number(safeLayer.thickness ?? 0),
+        itemName: String(safeLayer.itemName ?? ""),
+      };
+    };
+    const consumableSemanticKey = (c: any) => [
+      norm(c.itemId),
+      norm(c.itemGroup ?? c.consumableType ?? c.itemGroupName),
+      norm(c.itemSubGroup ?? c.itemSubGroupName),
+      norm(c.itemName),
+      norm(c.fieldDisplayName),
+      Number(c.gsm ?? c.dryGSM ?? 0),
+      Number(c.solidPct ?? c.solidPercentage ?? 40),
+    ].join("|");
+    const normalizeConsumables = (items: any[], layerKey: string) => {
+      const mapped = (Array.isArray(items) ? items : []).filter(Boolean).map((c: any, idx: number) => ({
+        ...c,
+        consumableId: String(c?.consumableId ?? c?.ConsumableID ?? `${layerKey}-con-${idx + 1}`),
+        itemId: String(c?.itemId ?? ""),
+        itemName: String(c?.itemName ?? c?.ItemName ?? ""),
+        fieldDisplayName: String(c?.fieldDisplayName ?? c?.itemName ?? c?.ItemName ?? ""),
+        itemGroup: c?.itemGroup ?? c?.consumableType ?? c?.itemGroupName ?? "",
+        itemGroupName: c?.itemGroupName ?? c?.itemGroup ?? c?.consumableType ?? "",
+        itemSubGroup: c?.itemSubGroup ?? c?.itemSubGroupName ?? "",
+        itemSubGroupName: c?.itemSubGroupName ?? c?.itemSubGroup ?? "",
+        itemGroupId: String(c?.itemGroupId ?? ""),
+        itemSubGroupId: String(c?.itemSubGroupId ?? ""),
+        gsm: Number(c?.gsm ?? c?.dryGSM ?? 0),
+        dryGSM: Number(c?.dryGSM ?? c?.gsm ?? 0),
+        solidPct: Number(c?.solidPct ?? c?.solidPercentage ?? 40),
+        solidPercentage: Number(c?.solidPercentage ?? c?.solidPct ?? 40),
+      }));
+      const seen = new Set<string>();
+      return mapped.filter(c => {
+        const key = consumableSemanticKey(c);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).map((c, idx) => ({
+        ...c,
+        consumableId: `${layerKey}-con-${idx + 1}`,
+      }));
+    };
+    const normalizeLayers = (items: any[]) => {
+      const normalizedMapped = (Array.isArray(items) ? items : []).filter(Boolean).map((l: any, idx: number) => {
+        const film = findFilmMeta(l);
+        const thickness = Number(l.thickness ?? film.thickness ?? 0);
+        const density = Number(l.filmDensity ?? l.density ?? film.density ?? 0);
+        const gsm = Number(l.gsm ?? l.filmGSM ?? 0) || (thickness > 0 && density > 0 ? parseFloat((thickness * density).toFixed(3)) : 0);
+        return {
+          ...l,
+          layerNo: Number(l.layerNo ?? idx + 1) || idx + 1,
+          plyType: String(l.plyType ?? ""),
+          itemId: String(l.itemId ?? ""),
+          itemName: String(l.itemName ?? film.itemName ?? ""),
+          itemSubGroup: String(l.storedSubGroup ?? l.itemSubGroup ?? film.subGroup ?? ""),
+          gsm,
+          thickness,
+          density,
+          filmGSM: gsm,
+          filmRate: Number(l.rate ?? l.filmRate ?? 0),
+          consumableItems: normalizeConsumables(l.consumableItems ?? l.Consumables ?? l.consumables ?? [], `layer-${idx + 1}`),
+        };
+      });
+      const merged = new Map<number, any>();
+      normalizedMapped.forEach((layer, idx) => {
+        const key = layer.layerNo || idx + 1;
+        if (!merged.has(key)) {
+          merged.set(key, {
+            ...layer,
+            id: `ply-${key}`,
+            layerNo: key,
+          });
+          return;
+        }
+        const prev = merged.get(key);
+        const nextConsumables = normalizeConsumables(
+          [...(prev.consumableItems || []), ...(layer.consumableItems || [])],
+          `ply-${key}`
+        );
+        merged.set(key, {
+          ...prev,
+          ...layer,
+          id: `ply-${key}`,
+          layerNo: key,
+          plyType: prev.plyType || layer.plyType,
+          itemId: prev.itemId || layer.itemId,
+          itemName: prev.itemName || layer.itemName,
+          itemSubGroup: prev.itemSubGroup || layer.itemSubGroup,
+          gsm: prev.gsm || layer.gsm,
+          thickness: prev.thickness || layer.thickness,
+          density: prev.density || layer.density,
+          filmGSM: prev.filmGSM || layer.filmGSM,
+          filmRate: prev.filmRate || layer.filmRate,
+          consumableItems: nextConsumables,
+        });
+      });
+      return Array.from(merged.values()).sort((a, b) => a.layerNo - b.layerNo);
+    };
+    const normalizeProcesses = (items: any[]) => {
+      const mapped = (Array.isArray(items) ? items : []).map((p: any) => {
+        const pid = String(p.processId ?? "").trim();
+        const pname = String(p.processName ?? "").trim();
+        const pm = ROTO_PROCESSES.find(x => x.id === pid) || ROTO_PROCESSES.find(x => x.name === pname);
+        return {
+          processId: pm?.id ?? pid,
+          processName: (pm?.name ?? pname) || pid,
+          chargeUnit: pm?.chargeUnit ?? String(p.chargeUnit ?? ""),
+          rate: Number(p.rate ?? 0),
+          qty: Number(p.qty ?? 0),
+          setupCharge: pm?.makeSetupCharges ? parseFloat(pm.setupChargeAmount || "0") || 0 : Number(p.setupCharge ?? 0),
+          amount: Number(p.amount ?? 0),
+        };
+      });
+      const seen = new Set<string>();
+      return mapped.filter(p => {
+        const key = `${p.processId}|${norm(p.processName)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const safeNormalizeLayers = (items: any[], fallback: SecondaryLayer[] = []) => {
+      try {
+        return normalizeLayers(items);
+      } catch {
+        return fallback;
+      }
+    };
+    const safeNormalizeProcesses = (items: any[], fallback: GravureEstimationProcess[] = []) => {
+      try {
+        return normalizeProcesses(items);
+      } catch {
+        return fallback;
+      }
+    };
+    const parseNestedJson = (value: unknown) => {
+      if (Array.isArray(value)) return value;
+      if (typeof value !== "string" || !value.trim()) return null;
+      try {
+        const first = JSON.parse(value);
+        if (Array.isArray(first)) return first;
+        if (typeof first === "string" && first.trim()) {
+          const second = JSON.parse(first);
+          return Array.isArray(second) ? second : null;
+        }
+        return first;
+      } catch {
+        return null;
+      }
+    };
+    const mapCatalogApiRow = (row: any) => {
+      if (!row) return null;
+      const layers = parseMaybeArray(row.SavedLayersJSON ?? row.savedLayersJSON ?? row.secondaryLayers);
+      const processes = parseMaybeArray(row.SavedProcessesJSON ?? row.savedProcessesJSON ?? row.processes);
+      return {
+        id: String(row.ProductMasterID ?? row.productMasterID ?? row.id ?? ""),
+        catalogNo: String(row.ProductMasterCode ?? row.catalogNo ?? ""),
+        productName: String(row.ProductName ?? row.productName ?? ""),
+        customerId: String(row.CustomerID ?? row.customerId ?? ""),
+        customerName: String(row.CustomerName ?? row.customerName ?? ""),
+        categoryId: String(row.CategoryID ?? row.categoryId ?? ""),
+        categoryName: String(row.CategoryName ?? row.categoryName ?? ""),
+        content: String(row.Content ?? row.content ?? ""),
+        structureType: String(row.StructureType ?? row.structureType ?? ""),
+        substrate: String(row.Substrate ?? row.substrate ?? ""),
+        jobWidth: Number(row.JobWidth ?? row.jobWidth ?? 0),
+        jobHeight: Number(row.JobHeight ?? row.jobHeight ?? 0),
+        actualWidth: Number(row.ActualWidth ?? row.actualWidth ?? 0),
+        actualHeight: Number(row.ActualHeight ?? row.actualHeight ?? 0),
+        noOfColors: Number(row.NoOfColors ?? row.noOfColors ?? 0),
+        frontColors: Number(row.FrontColors ?? row.frontColors ?? 0),
+        backColors: Number(row.BackColors ?? row.backColors ?? 0),
+        printType: String(row.PrintType ?? row.printType ?? ""),
+        trimmingSize: Number(row.TrimmingSize ?? row.trimmingSize ?? 0),
+        widthShrinkage: Number(row.WidthShrinkage ?? row.widthShrinkage ?? 0),
+        gusset: Number(row.Gusset ?? row.gusset ?? 0),
+        topSeal: Number(row.TopSeal ?? row.topSeal ?? 0),
+        bottomSeal: Number(row.BottomSeal ?? row.bottomSeal ?? 0),
+        sideSeal: Number(row.SideSeal ?? row.sideSeal ?? 0),
+        centerSealWidth: Number(row.CenterSealWidth ?? row.centerSealWidth ?? 0),
+        sideGusset: Number(row.SideGusset ?? row.sideGusset ?? 0),
+        transparentArea: Number(row.TransparentArea ?? row.transparentArea ?? 0),
+        seamingArea: Number(row.SeamingArea ?? row.seamingArea ?? 0),
+        machineId: String(row.MachineID ?? row.GrvMachineID ?? row.machineId ?? ""),
+        machineName: String(row.MachineName ?? row.GrvMachineName ?? row.machineName ?? ""),
+        savedPlanId: String(row.SavedPlanID ?? row.savedPlanId ?? ""),
+        savedPlan: parseNestedJson(row.ContentSizeValues ?? row.GrvSavedPlanJSON ?? row.savedPlanJSON),
+        standardUnit: String(row.StandardUnit ?? row.standardUnit ?? "Meter"),
+        secondaryLayers: layers,
+        processes,
+      };
+    };
+
+    const fallbackContent = String(src.content || line.content || "");
+    const fallbackStructureType = String(src.structureType || line.structureType || (fallbackContent ? getStructureType(fallbackContent) : ""));
+    const fallbackCategoryId = String(src.categoryId || line.categoryId || "");
+    const snapshotCatalogItem = src.catalogSnapshot || null;
+    const fallbackCategoryName = String(
+      src.categoryName ||
+      line.categoryName ||
+      snapshotCatalogItem?.categoryName ||
+      categories.find(c => c.id === fallbackCategoryId)?.name ||
+      ""
+    );
+
+    setForm(f => ({
+      ...f,
+      sourceOrderType: "Catalog",
+      orderId: String(src.orderId ?? ""),
+      orderNo: String(src.orderNo ?? ""),
+      customerId: String(src.customerId ?? ""),
+      customerName: String(src.customerName ?? ""),
+      salesType: String(src.salesType ?? ""),
+      jobName: String(line.productName ?? f.jobName ?? ""),
+      categoryId: fallbackCategoryId,
+      categoryName: fallbackCategoryName,
+      content: String(snapshotCatalogItem?.content || fallbackContent),
+      structure: String(snapshotCatalogItem?.structureType || fallbackStructureType),
+      structureType: String(snapshotCatalogItem?.structureType || fallbackStructureType) as any,
+      substrate: String(snapshotCatalogItem?.substrate || line.substrate || f.substrate || ""),
+      jobWidth: Number(snapshotCatalogItem?.jobWidth || line.jobWidth || f.jobWidth || 0),
+      jobHeight: Number(snapshotCatalogItem?.jobHeight || line.jobHeight || f.jobHeight || 0),
+      noOfColors: Number(snapshotCatalogItem?.noOfColors || line.noOfColors || f.noOfColors || 0),
+      printType: (snapshotCatalogItem?.printType || line.printType || f.printType || "Surface Print") as any,
+      quantity: Number(line.orderQty ?? f.quantity ?? 0),
+      unit: String(line.unit || snapshotCatalogItem?.standardUnit || f.unit || "Meter"),
+      trimmingSize: Number(snapshotCatalogItem?.trimmingSize || line.trimmingSize || f.trimmingSize || 0),
+      widthShrinkage: Number(snapshotCatalogItem?.widthShrinkage || line.widthShrinkage || f.widthShrinkage || 0),
+      gusset: Number(snapshotCatalogItem?.gusset || line.gusset || f.gusset || 0),
+      topSeal: Number(snapshotCatalogItem?.topSeal || line.topSeal || f.topSeal || 0),
+      bottomSeal: Number(snapshotCatalogItem?.bottomSeal || line.bottomSeal || f.bottomSeal || 0),
+      sideSeal: Number(snapshotCatalogItem?.sideSeal || line.sideSeal || f.sideSeal || 0),
+      centerSealWidth: Number(snapshotCatalogItem?.centerSealWidth || line.centerSealWidth || f.centerSealWidth || 0),
+      sideGusset: Number(snapshotCatalogItem?.sideGusset || line.sideGusset || f.sideGusset || 0),
+      transparentArea: Number(snapshotCatalogItem?.transparentArea || line.transparentArea || f.transparentArea || 0),
+      seamingArea: Number(snapshotCatalogItem?.seamingArea || line.seamingArea || f.seamingArea || 0),
+      machineId: String(snapshotCatalogItem?.machineId || f.machineId || ""),
+      machineName: String(snapshotCatalogItem?.machineName || f.machineName || ""),
+      secondaryLayers: Array.isArray(snapshotCatalogItem?.secondaryLayers)
+        ? safeNormalizeLayers(snapshotCatalogItem.secondaryLayers, f.secondaryLayers)
+        : f.secondaryLayers,
+      processes: Array.isArray(snapshotCatalogItem?.processes)
+        ? safeNormalizeProcesses(snapshotCatalogItem.processes, f.processes)
+        : f.processes,
+      selectedPlanId: String(snapshotCatalogItem?.savedPlanId || f.selectedPlanId || ""),
+    } as any));
+
+    if (snapshotCatalogItem?.savedPlanId) {
+      catalogSavedPlanRef.current = snapshotCatalogItem.savedPlan ?? null;
+      setIsPlanApplied(true);
+      setShowPlan(false);
+    }
+
+    if (snapshotCatalogItem?.content || fallbackContent) {
+      setDimValues({
+        width: Number(snapshotCatalogItem?.jobWidth || line.jobWidth) || undefined,
+        height: Number(snapshotCatalogItem?.jobHeight || line.jobHeight) || undefined,
+        widthShrinkage: Number(snapshotCatalogItem?.widthShrinkage || line.widthShrinkage) || undefined,
+        topSeal: Number(snapshotCatalogItem?.topSeal || line.topSeal) || undefined,
+        bottomSeal: Number(snapshotCatalogItem?.bottomSeal || line.bottomSeal) || undefined,
+        sideSeal: Number(snapshotCatalogItem?.sideSeal || line.sideSeal) || undefined,
+        gusset: Number(snapshotCatalogItem?.gusset || line.gusset) || undefined,
+        sideGusset: Number(snapshotCatalogItem?.sideGusset || line.sideGusset) || undefined,
+        centerSealWidth: Number(snapshotCatalogItem?.centerSealWidth || line.centerSealWidth) || undefined,
+        seamingArea: Number(snapshotCatalogItem?.seamingArea || line.seamingArea) || undefined,
+        transparentArea: Number(snapshotCatalogItem?.transparentArea || line.transparentArea) || undefined,
+        layflatWidth: Number(snapshotCatalogItem?.jobWidth || line.jobWidth) || undefined,
+        cutHeight: Number(snapshotCatalogItem?.jobHeight || line.jobHeight) || undefined,
+      });
+    }
+
+    const srcCatalogId = String(src.catalogId || line.catalogId || "");
+    Promise.all([
+      apiGet<any>(`api/gravureWorkOrderShrink/getpwoinitdata/${line.id}`).catch(() => null),
+      srcCatalogId ? apiGet<any>(`api/productcataloggravureShrink/getcatalogbyid/${srcCatalogId}`).catch(() => null) : Promise.resolve(null),
+    ])
+      .then(([cat, catalogByIdRaw]) => {
+        const catalogByIdRows = parseNestedJson(catalogByIdRaw);
+        const catalogById = mapCatalogApiRow(Array.isArray(catalogByIdRows) ? catalogByIdRows[0] : catalogByIdRows);
+        const catRow = cat || {};
+        if (!cat && !catalogById) return;
+
+        const catalogItem =
+          snapshotCatalogItem ||
+          catalogById ||
+          catalog.find(c => c.id === String(catRow.productMasterID || line.catalogId || src.catalogId || "")) ||
+          catalog.find(c => c.catalogNo === String(catRow.catalogNo || line.catalogNo || "")) ||
+          catalog.find(c => c.catalogNo === String(src.catalogNo || "")) ||
+          catalog.find(c => c.sourceOrderId === String(src.orderId || "")) ||
+          catalog.find(c => norm(c.sourceOrderNo) === norm(src.orderNo)) ||
+          catalog.find(c =>
+            norm(c.customerId) === norm(src.customerId) &&
+            norm(c.productName) === norm(catRow.productName || line.productName || src.productName)
+          ) ||
+          catalog.find(c =>
+            norm(c.customerName) === norm(src.customerName) &&
+            norm(c.productName) === norm(catRow.productName || line.productName || src.productName) &&
+            (!fallbackCategoryName || norm(c.categoryName) === norm(fallbackCategoryName))
+          );
+        const hasApiCatalogPayload = Boolean(
+          catRow.machineId || catRow.machineName || catRow.savedPlanId || catRow.savedPlanJSON || catRow.contentSizeValues
+        ) || parseMaybeArray(catRow.processesJSON).length > 0 || parseMaybeArray(catRow.layersJSON).length > 0;
 
         // Map secondaryLayers from layersJSON
-        const rawLayers: any[] = Array.isArray(cat.layersJSON) ? cat.layersJSON : [];
-        const seenLayers = new Set<number>();
-        const secondaryLayers = rawLayers
-          .filter(l => { if (seenLayers.has(Number(l.layerNo))) return false; seenLayers.add(Number(l.layerNo)); return true; })
-          .map((l: any) => {
-            const sg = (l.storedSubGroup || l.itemSubGroup)
-              ? FILM_SUBGROUPS.find(s => s.subGroup === (l.storedSubGroup || l.itemSubGroup))
-              : null;
-            return {
-              layerNo: Number(l.layerNo ?? 0),
-              plyType: String(l.plyType ?? ""),
-              itemId: String(l.itemId ?? ""),
-              itemName: String(l.itemName ?? ""),
-              itemSubGroup: String(l.storedSubGroup || l.itemSubGroup || ""),
-              gsm: Number(l.gsm ?? 0),
-              thickness: 0,
-              density: (Number(l.filmDensity) > 0) ? Number(l.filmDensity) : (sg?.density ?? 0),
-              rate: Number(l.rate ?? 0),
-              consumableItems: Array.isArray(l.consumableItems)
-                ? l.consumableItems.map((c: any) => ({
-                    ...c,
-                    consumableId: String(c.consumableId ?? `${l.layerNo}-${c.itemId ?? Math.random()}`),
-                    itemId: String(c.itemId ?? ""),
-                    itemGroup: c.itemGroup ?? c.consumableType ?? c.itemGroupName ?? "",
-                    itemSubGroup: c.itemSubGroup ?? c.itemSubGroupName ?? "",
-                    gsm: c.gsm ?? c.dryGSM ?? 0,
-                    solidPct: (c.solidPct > 0 ? c.solidPct : (c.solidPercentage > 0 ? c.solidPercentage : 40)),
-                  }))
-                : [],
-            };
-          });
+        const rawLayers: any[] = parseMaybeArray(catRow.layersJSON);
+        const secondaryLayers = safeNormalizeLayers(
+          rawLayers.length > 0
+            ? rawLayers.map((l: any) => {
+              const sg = (l.storedSubGroup || l.itemSubGroup)
+                ? FILM_SUBGROUPS.find(s => s.subGroup === (l.storedSubGroup || l.itemSubGroup))
+                : null;
+              return {
+                layerNo: Number(l.layerNo ?? 0),
+                plyType: String(l.plyType ?? ""),
+                itemId: String(l.itemId ?? ""),
+                itemName: String(l.itemName ?? ""),
+                itemSubGroup: String(l.storedSubGroup || l.itemSubGroup || ""),
+                gsm: Number(l.gsm ?? 0),
+                thickness: 0,
+                density: (Number(l.filmDensity) > 0) ? Number(l.filmDensity) : (sg?.density ?? 0),
+                rate: Number(l.rate ?? 0),
+                consumableItems: l.consumableItems ?? [],
+              };
+            })
+            : (catalogItem?.secondaryLayers || [])
+        );
 
         // Map processes from processesJSON
-        const rawProcs: any[] = Array.isArray(cat.processesJSON) ? cat.processesJSON : [];
-        const processes = rawProcs.map((p: any) => {
-          const pid = String(p.processId ?? "").trim();
-          const pname = String(p.processName ?? "").trim();
-          const pm = ROTO_PROCESSES.find(x => x.id === pid) || ROTO_PROCESSES.find(x => x.name === pname);
-          return {
-            processId: pm?.id ?? pid,
-            processName: (pm?.name ?? pname) || pid,
-            chargeUnit: pm?.chargeUnit ?? String(p.chargeUnit ?? ""),
-            rate: Number(p.rate ?? 0),
-            qty: Number(p.qty ?? 0),
-            setupCharge: pm?.makeSetupCharges ? parseFloat(pm.setupChargeAmount || "0") || 0 : Number(p.setupCharge ?? 0),
-            amount: Number(p.amount ?? 0),
-          };
-        });
+        const rawProcs: any[] = parseMaybeArray(catRow.processesJSON);
+        const processes = safeNormalizeProcesses(rawProcs.length > 0 ? rawProcs : (catalogItem?.processes || []), catalogItem?.processes || []);
 
         // Map colorShades from colorShadesJSON
-        const rawShades: any[] = Array.isArray(cat.colorShadesJSON) ? cat.colorShadesJSON : [];
+        const rawShades: any[] = parseMaybeArray(catRow.colorShadesJSON);
         setColorShades(rawShades.map((s: any) => ({
           colorNo: Number(s.colorNo ?? 0),
           colorName: String(s.colorName ?? ""),
@@ -411,7 +736,7 @@ export default function GravureWorkOrderPage() {
         })));
 
         // Map cylinderAllocs from cylAllocsJSON
-        const rawCyls: any[] = Array.isArray(cat.cylAllocsJSON) ? cat.cylAllocsJSON : [];
+        const rawCyls: any[] = parseMaybeArray(catRow.cylAllocsJSON);
         setCylinderAllocs(rawCyls.map((c: any) => ({
           colorNo: Number(c.colorNo ?? 0),
           colorName: String(c.colorName ?? ""),
@@ -424,9 +749,11 @@ export default function GravureWorkOrderPage() {
 
         // Store saved plan for planId reconciliation (CP- → WO- prefix fix)
         try {
-          catalogSavedPlanRef.current = JSON.parse(cat.contentSizeValues || cat.savedPlanJSON || "null");
+          catalogSavedPlanRef.current =
+            catalogItem?.savedPlan ??
+            JSON.parse(catRow.contentSizeValues || catRow.savedPlanJSON || "null");
         } catch {
-          catalogSavedPlanRef.current = null;
+          catalogSavedPlanRef.current = catalogItem?.savedPlan ?? null;
         }
 
         setForm(f => ({
@@ -436,101 +763,213 @@ export default function GravureWorkOrderPage() {
           orderNo: String(src.orderNo ?? ""),
           customerId: String(src.customerId ?? ""),
           customerName: String(src.customerName ?? ""),
-          salesType: String(cat.salesType || src.salesType || ""),
-          jobName: String(cat.productName || line.productName || ""),
-          categoryId: String(cat.categoryId || ""),
-          categoryName: String(cat.categoryName || ""),
-          substrate: String(cat.substrate || ""),
-          jobWidth: Number(cat.jobWidth || 0),
-          jobHeight: Number(cat.jobHeight || 0),
-          noOfColors: Number(cat.noOfColors || 0),
-          frontColors: Number(cat.frontColors || 0),
-          backColors: Number(cat.backColors || 0),
-          printType: (cat.printType || "Surface Print") as any,
-          quantity: Number(cat.orderQty || line.orderQty || 0),
-          unit: String(cat.unit || "Meter"),
-          productMasterID: Number(cat.productMasterID || 0),
-          productMasterCode: String(cat.catalogNo || ""),
-          structure: String(cat.structureType || ""),
-          structureType: String(cat.structureType || "") as any,
-          content: String(cat.content || ""),
-          trimmingSize: Number(cat.trimmingSize || 0),
-          machineId: String(cat.machineId || ""),
-          machineName: String(cat.machineName || ""),
-          actualWidth: Number(cat.actualWidth || cat.jobWidth || 0),
-          actualHeight: Number(cat.actualHeight || cat.jobHeight || 0),
-          widthShrinkage: Number(cat.widthShrinkage || 0),
-          gusset: Number(cat.gusset || 0),
-          topSeal: Number(cat.topSeal || 0),
-          bottomSeal: Number(cat.bottomSeal || 0),
-          sideSeal: Number(cat.sideSeal || 0),
-          centerSealWidth: Number(cat.centerSealWidth || 0),
-          sideGusset: Number(cat.sideGusset || 0),
-          transparentArea: Number(cat.transparentArea || 0),
-          seamingArea: Number(cat.seamingArea || 0),
-          cylinderCostPerColor: Number(cat.cylinderCostPerColor || 0),
-          overheadPct: Number(cat.overheadPct || 0),
-          profitPct: Number(cat.profitPct || 0),
-          perMeterRate: Number(cat.perMeterRate || 0),
+          salesType: String(catRow.salesType || src.salesType || ""),
+          jobName: String(catRow.productName || catalogItem?.productName || line.productName || ""),
+          categoryId: String(catRow.categoryId || catalogItem?.categoryId || fallbackCategoryId || ""),
+          categoryName: String(catRow.categoryName || catalogItem?.categoryName || fallbackCategoryName || ""),
+          substrate: String(catRow.substrate || catalogItem?.substrate || line.substrate || ""),
+          jobWidth: Number(catRow.jobWidth || catalogItem?.jobWidth || line.jobWidth || 0),
+          jobHeight: Number(catRow.jobHeight || catalogItem?.jobHeight || line.jobHeight || 0),
+          noOfColors: Number(catRow.noOfColors || catalogItem?.noOfColors || line.noOfColors || 0),
+          frontColors: Number(catRow.frontColors || catalogItem?.frontColors || 0),
+          backColors: Number(catRow.backColors || catalogItem?.backColors || 0),
+          printType: (catRow.printType || catalogItem?.printType || line.printType || "Surface Print") as any,
+          quantity: Number(catRow.orderQty || line.orderQty || 0),
+          unit: String(catRow.unit || line.unit || catalogItem?.standardUnit || "Meter"),
+          productMasterID: Number(catRow.productMasterID || catalogItem?.id || 0),
+          productMasterCode: String(catRow.catalogNo || catalogItem?.catalogNo || ""),
+          structure: String(catRow.structureType || catalogItem?.structureType || fallbackStructureType || ""),
+          structureType: String(catRow.structureType || catalogItem?.structureType || fallbackStructureType || "") as any,
+          content: String(catRow.content || catalogItem?.content || fallbackContent || ""),
+          trimmingSize: Number(catRow.trimmingSize || catalogItem?.trimmingSize || line.trimmingSize || 0),
+          machineId: String(catRow.machineId || catalogItem?.machineId || ""),
+          machineName: String(catRow.machineName || catalogItem?.machineName || ""),
+          actualWidth: Number(catRow.actualWidth || catalogItem?.actualWidth || catRow.jobWidth || catalogItem?.jobWidth || line.jobWidth || 0),
+          actualHeight: Number(catRow.actualHeight || catalogItem?.actualHeight || catRow.jobHeight || catalogItem?.jobHeight || line.jobHeight || 0),
+          widthShrinkage: Number(catRow.widthShrinkage || catalogItem?.widthShrinkage || line.widthShrinkage || 0),
+          gusset: Number(catRow.gusset || catalogItem?.gusset || line.gusset || 0),
+          topSeal: Number(catRow.topSeal || catalogItem?.topSeal || line.topSeal || 0),
+          bottomSeal: Number(catRow.bottomSeal || catalogItem?.bottomSeal || line.bottomSeal || 0),
+          sideSeal: Number(catRow.sideSeal || catalogItem?.sideSeal || line.sideSeal || 0),
+          centerSealWidth: Number(catRow.centerSealWidth || catalogItem?.centerSealWidth || line.centerSealWidth || 0),
+          sideGusset: Number(catRow.sideGusset || catalogItem?.sideGusset || line.sideGusset || 0),
+          transparentArea: Number(catRow.transparentArea || catalogItem?.transparentArea || line.transparentArea || 0),
+          seamingArea: Number(catRow.seamingArea || catalogItem?.seamingArea || line.seamingArea || 0),
+          cylinderCostPerColor: Number(catRow.cylinderCostPerColor || 0),
+          overheadPct: Number(catRow.overheadPct || 0),
+          profitPct: Number(catRow.profitPct || 0),
+          perMeterRate: Number(catRow.perMeterRate || 0),
           secondaryLayers: secondaryLayers as any,
           processes,
-          selectedPlanId: String(cat.savedPlanId || ""),
+          selectedPlanId: String(catRow.savedPlanId || catalogItem?.savedPlanId || ""),
         } as any));
 
-        if (cat.savedPlanId) {
+        if (catRow.savedPlanId || catalogItem?.savedPlanId) {
           setIsPlanApplied(true);
           setShowPlan(false);
         }
 
         setDimValues({
-          width: Number(cat.jobWidth) || undefined,
-          height: Number(cat.jobHeight) || undefined,
-          widthShrinkage: Number(cat.widthShrinkage) || undefined,
-          topSeal: Number(cat.topSeal) || undefined,
-          bottomSeal: Number(cat.bottomSeal) || undefined,
-          sideSeal: Number(cat.sideSeal) || undefined,
-          gusset: Number(cat.gusset) || undefined,
-          sideGusset: Number(cat.sideGusset) || undefined,
-          centerSealWidth: Number(cat.centerSealWidth) || undefined,
-          seamingArea: Number(cat.seamingArea) || undefined,
-          transparentArea: Number(cat.transparentArea) || undefined,
-          layflatWidth: Number(cat.jobWidth) || undefined,
-          cutHeight: Number(cat.jobHeight) || undefined,
+          width: Number(catRow.jobWidth || catalogItem?.jobWidth || line.jobWidth) || undefined,
+          height: Number(catRow.jobHeight || catalogItem?.jobHeight || line.jobHeight) || undefined,
+          widthShrinkage: Number(catRow.widthShrinkage || catalogItem?.widthShrinkage || line.widthShrinkage) || undefined,
+          topSeal: Number(catRow.topSeal || catalogItem?.topSeal || line.topSeal) || undefined,
+          bottomSeal: Number(catRow.bottomSeal || catalogItem?.bottomSeal || line.bottomSeal) || undefined,
+          sideSeal: Number(catRow.sideSeal || catalogItem?.sideSeal || line.sideSeal) || undefined,
+          gusset: Number(catRow.gusset || catalogItem?.gusset || line.gusset) || undefined,
+          sideGusset: Number(catRow.sideGusset || catalogItem?.sideGusset || line.sideGusset) || undefined,
+          centerSealWidth: Number(catRow.centerSealWidth || catalogItem?.centerSealWidth || line.centerSealWidth) || undefined,
+          seamingArea: Number(catRow.seamingArea || catalogItem?.seamingArea || line.seamingArea) || undefined,
+          transparentArea: Number(catRow.transparentArea || catalogItem?.transparentArea || line.transparentArea) || undefined,
+          layflatWidth: Number(catRow.jobWidth || catalogItem?.jobWidth || line.jobWidth) || undefined,
+          cutHeight: Number(catRow.jobHeight || catalogItem?.jobHeight || line.jobHeight) || undefined,
         });
+
+        // Keep the source alive until either API catalog payload arrives or catalog context is available.
+        if (hasApiCatalogPayload || catalogItem) {
+          pendingPWOOrderRef.current = null;
+          setPendingPWOOrder(null);
+        }
       })
-      .catch(() => { /* basic form info was already set from sessionStorage */ })
-      .finally(() => setPendingPWOOrder(null));
-  }, [pendingPWOOrder]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => { /* sessionStorage fallback already applied above */ })
+      .finally(() => {
+        const srcCatalogId = String(src.catalogId || line.catalogId || "");
+        const srcCatalogNo = String(src.catalogNo || line.catalogNo || "");
+        const srcProductName = String(src.productName || line.productName || "");
+        const resolvedCatalog =
+          snapshotCatalogItem ||
+          catalog.find(c => c.id === srcCatalogId) ||
+          catalog.find(c => c.catalogNo === srcCatalogNo) ||
+          catalog.find(c =>
+            norm(c.customerId) === norm(src.customerId) &&
+            norm(c.productName) === norm(srcProductName)
+          ) ||
+          catalog.find(c =>
+            norm(c.customerName) === norm(src.customerName) &&
+            norm(c.productName) === norm(srcProductName)
+          );
+        if (resolvedCatalog) {
+          pendingPWOOrderRef.current = null;
+          setPendingPWOOrder(null);
+        }
+      });
+  }, [pendingPWOOrder, categories, catalog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Helper: map API row → GravureOrder shape (for pending orders)
+  function mapApiToOrder(r: any): GravureOrder {
+    let lines = Array.isArray(r.orderLines) ? r.orderLines : [];
+    if (lines.length === 0 && typeof r.linesJSON === "string") {
+      try { lines = JSON.parse(r.linesJSON); } catch { lines = []; }
+    }
+    const firstLine = lines[0] || {};
+    return {
+      id: String(r.orderId || r.OrderBookingID || ""),
+      orderNo: String(r.orderNo || r.SalesOrderNo || r.OrderBookingNo || ""),
+      date: String(r.date || r.OrderBookingDate || ""),
+      customerId: String(r.customerId || r.LedgerID || ""),
+      customerName: String(r.customerName || r.CustomerName || ""),
+      jobName: String(r.jobName || firstLine.productName || ""),
+      substrate: String(r.substrate || firstLine.substrate || ""),
+      structure: String(r.structure || firstLine.structureType || ""),
+      categoryId: String(r.categoryId || firstLine.categoryId || ""),
+      categoryName: String(r.categoryName || firstLine.categoryName || ""),
+      content: String(r.content || firstLine.content || ""),
+      jobWidth: Number(r.jobWidth || firstLine.jobWidth || 0),
+      jobHeight: Number(r.jobHeight || firstLine.jobHeight || 0),
+      width: Number(r.jobWidth || firstLine.jobWidth || 0),
+      noOfColors: Number(r.noOfColors || firstLine.noOfColors || 0),
+      printType: String(r.printType || firstLine.printType || "Surface Print"),
+      quantity: Number(r.quantity || firstLine.orderQty || 0),
+      unit: String(r.unit || firstLine.unit || "Meter"),
+      deliveryDate: String(r.deliveryDate || firstLine.deliveryDate || ""),
+      sourceType: (r.sourceType || "Direct") as any,
+      totalAmount: Number(r.totalAmount || 0),
+      perMeterRate: Number(r.perMeterRate || 0),
+      processes: [],
+      secondaryLayers: [],
+      overheadPct: 12,
+      profitPct: 15,
+      orderLines: lines,
+      status: (r.status || "Confirmed") as any,
+    } as GravureOrder;
+  }
 
   // Helper: map API row → GravureWorkOrder shape
   function mapApiToWO(r: any): GravureWorkOrder {
-    const layers: SecondaryLayer[] = Array.isArray(r.savedLayersJSON)
-      ? r.savedLayersJSON.map((l: any) => ({
-        layerNo: Number(l.layerNo ?? 0),
-        plyType: String(l.plyType ?? ""),
-        itemId: String(l.itemId ?? ""),
-        itemName: String(l.itemName ?? ""),
-        itemSubGroup: String(l.itemSubGroup ?? ""),
-        gsm: Number(l.gsm ?? 0),
-        thickness: Number(l.thickness ?? 0),
-        density: Number(l.density ?? 0),
-        rate: Number(l.rate ?? 0),
-        consumableItems: (() => {
-          const arr = Array.isArray(l.consumableItems)
-            ? l.consumableItems
-            : (() => { try { return JSON.parse(l.consumableItems || "[]"); } catch { return []; } })();
-          return arr.map((c: any) => ({
-            ...c,
-            consumableId: String(c.consumableId ?? c.ConsumableID ?? `${l.layerNo}-${c.itemId ?? Math.random()}`),
-            itemId: String(c.itemId ?? ""),
-            itemGroup: c.itemGroup ?? c.consumableType ?? c.itemGroupName ?? "",
-            itemSubGroup: c.itemSubGroup ?? c.itemSubGroupName ?? "",
-            gsm: c.gsm ?? c.dryGSM ?? 0,
-            solidPct: (c.solidPct > 0 ? c.solidPct : (c.solidPercentage > 0 ? c.solidPercentage : 40)),
-          }));
-        })(),
-      }))
-      : [];
+    const layers: SecondaryLayer[] = (() => {
+      if (!Array.isArray(r.savedLayersJSON)) return [];
+      const merged = new Map<number, SecondaryLayer>();
+      r.savedLayersJSON.forEach((l: any, idx: number) => {
+        const layerNo = Number(l.layerNo ?? idx + 1) || idx + 1;
+        const arr = Array.isArray(l.consumableItems)
+          ? l.consumableItems
+          : (() => { try { return JSON.parse(l.consumableItems || "[]"); } catch { return []; } })();
+        const consumables = arr.map((c: any, cIdx: number) => ({
+          ...c,
+          consumableId: String(c.consumableId ?? c.ConsumableID ?? `ply-${layerNo}-con-${cIdx + 1}`),
+          itemId: String(c.itemId ?? ""),
+          itemGroup: c.itemGroup ?? c.consumableType ?? c.itemGroupName ?? "",
+          itemSubGroup: c.itemSubGroup ?? c.itemSubGroupName ?? "",
+          gsm: c.gsm ?? c.dryGSM ?? 0,
+          solidPct: (c.solidPct > 0 ? c.solidPct : (c.solidPercentage > 0 ? c.solidPercentage : 40)),
+        }));
+        if (!merged.has(layerNo)) {
+          merged.set(layerNo, {
+            id: `ply-${layerNo}`,
+            layerNo,
+            plyType: String(l.plyType ?? ""),
+            itemId: String(l.itemId ?? ""),
+            itemName: String(l.itemName ?? ""),
+            itemSubGroup: String(l.itemSubGroup ?? ""),
+            gsm: Number(l.gsm ?? 0),
+            thickness: Number(l.thickness ?? 0),
+            density: Number(l.density ?? 0),
+            filmRate: Number(l.rate ?? l.filmRate ?? 0),
+            consumableItems: consumables,
+          });
+          return;
+        }
+        const prev = merged.get(layerNo)!;
+        const seen = new Set((prev.consumableItems || []).map((ci: PlyConsumableItem) => [
+          String(ci.itemId ?? "").trim().toLowerCase(),
+          String(ci.itemGroup ?? "").trim().toLowerCase(),
+          String(ci.itemSubGroup ?? "").trim().toLowerCase(),
+          String(ci.itemName ?? "").trim().toLowerCase(),
+          String(ci.fieldDisplayName ?? "").trim().toLowerCase(),
+          Number(ci.gsm ?? 0),
+          Number(ci.solidPct ?? 40),
+        ].join("|")));
+        const nextConsumables = [...(prev.consumableItems || [])];
+        consumables.forEach((ci: PlyConsumableItem) => {
+          const key = [
+            String(ci.itemId ?? "").trim().toLowerCase(),
+            String(ci.itemGroup ?? "").trim().toLowerCase(),
+            String(ci.itemSubGroup ?? "").trim().toLowerCase(),
+            String(ci.itemName ?? "").trim().toLowerCase(),
+            String(ci.fieldDisplayName ?? "").trim().toLowerCase(),
+            Number(ci.gsm ?? 0),
+            Number(ci.solidPct ?? 40),
+          ].join("|");
+          if (!seen.has(key)) {
+            seen.add(key);
+            nextConsumables.push(ci);
+          }
+        });
+        merged.set(layerNo, {
+          ...prev,
+          plyType: prev.plyType || String(l.plyType ?? ""),
+          itemId: prev.itemId || String(l.itemId ?? ""),
+          itemName: prev.itemName || String(l.itemName ?? ""),
+          itemSubGroup: prev.itemSubGroup || String(l.itemSubGroup ?? ""),
+          gsm: prev.gsm || Number(l.gsm ?? 0),
+          thickness: prev.thickness || Number(l.thickness ?? 0),
+          density: prev.density || Number(l.density ?? 0),
+          filmRate: prev.filmRate || Number(l.rate ?? l.filmRate ?? 0),
+          consumableItems: nextConsumables,
+        });
+      });
+      return Array.from(merged.values()).sort((a, b) => a.layerNo - b.layerNo);
+    })();
 
     const processes: GravureEstimationProcess[] = Array.isArray(r.savedProcessesJSON)
       ? r.savedProcessesJSON.map((p: any) => {
@@ -915,20 +1354,28 @@ export default function GravureWorkOrderPage() {
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
   }, [form.machineId, form.actualWidth, form.jobWidth, form.jobHeight, form.trimmingSize, form.quantity, form.content, (form as any).structureType, (form as any).widthShrinkage, (form as any).gusset, (form as any).topSeal, (form as any).bottomSeal, (form as any).sideSeal, (form as any).centerSealWidth, (form as any).sideGusset, (form as any).seamingArea, (form as any).transparentArea, dbMachines, totalPlyGSM]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reconcile catalog planId (CP- prefix) with generated workorder planIds (WO- prefix)
-  useEffect(() => {
-    if (!form.selectedPlanId || allPlans.length === 0) return;
-    if (allPlans.some(p => p.planId === form.selectedPlanId)) return; // direct match
+  const catalogSavedPlanMatch = useMemo(() => {
+    if (allPlans.length === 0) return null;
+    if (form.selectedPlanId) {
+      const direct = allPlans.find(p => p.planId === form.selectedPlanId);
+      if (direct) return direct;
+    }
     const sp = catalogSavedPlanRef.current as any;
-    if (!sp?.filmSize) return;
-    const match = allPlans.find(p =>
+    if (!sp?.filmSize) return null;
+    return allPlans.find(p =>
       (p as any).filmSize === sp.filmSize &&
       (p as any).acUps === sp.acUps &&
       (p as any).sleeveCode === sp.sleeveCode &&
       (p as any).cylinderCode === sp.cylinderCode
-    );
-    if (match) setForm(prev => ({ ...prev, selectedPlanId: match.planId, ups: match.totalUPS }));
-  }, [form.selectedPlanId, allPlans]); // eslint-disable-line react-hooks/exhaustive-deps
+    ) || null;
+  }, [allPlans, form.selectedPlanId]);
+
+  // Reconcile catalog planId (CP- prefix) with generated workorder planIds (WO- prefix)
+  useEffect(() => {
+    if (!catalogSavedPlanMatch) return;
+    if (form.selectedPlanId === catalogSavedPlanMatch.planId && form.ups === catalogSavedPlanMatch.totalUPS) return;
+    setForm(prev => ({ ...prev, selectedPlanId: catalogSavedPlanMatch.planId, ups: catalogSavedPlanMatch.totalUPS }));
+  }, [catalogSavedPlanMatch, form.selectedPlanId, form.ups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visiblePlans = useMemo(() => {
     let rows = allPlans;
@@ -947,9 +1394,14 @@ export default function GravureWorkOrderPage() {
         const diff = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
         return planSort.dir === "asc" ? diff : -diff;
       });
+    } else if (catalogSavedPlanMatch) {
+      rows = [
+        catalogSavedPlanMatch,
+        ...rows.filter(r => r.planId !== catalogSavedPlanMatch.planId),
+      ];
     }
     return rows;
-  }, [allPlans, planSearch, planSort, planColFilters]);
+  }, [allPlans, planSearch, planSort, planColFilters, catalogSavedPlanMatch]);
 
   const togglePlanSort = (key: string) =>
     setPlanSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
@@ -1607,8 +2059,8 @@ export default function GravureWorkOrderPage() {
               <Input label="Substrate" value={form.substrate} onChange={e => f("substrate", e.target.value)} placeholder="e.g. BOPP 20μ" />
               <Input label="Structure" value={form.structure} onChange={e => f("structure", e.target.value)} placeholder="e.g. BOPP + CPP" />
 
-              {/* Category — dropdown for Direct; locked display for order-linked */}
-              {form.sourceOrderType === "Direct" ? (
+              {/* Category — editable for Direct, and also editable for order-linked fallback when catalog mapping is missing */}
+              {form.sourceOrderType === "Direct" || !form.categoryId ? (
                 <Select label="Category *" value={form.categoryId}
                   onChange={e => {
                     setDimValues({});
@@ -1626,8 +2078,8 @@ export default function GravureWorkOrderPage() {
                 </div>
               )}
 
-              {/* Content Type — dropdown for Direct with category; read-only for order-linked */}
-              {form.sourceOrderType === "Direct" && form.categoryId ? (
+              {/* Content Type — dropdown for Direct and for order-linked fallback when content is missing */}
+              {(form.sourceOrderType === "Direct" || (form.categoryId && !form.content)) && form.categoryId ? (
                 <Select label="Content Type *" value={form.content}
                   onChange={e => {
                     const content = e.target.value;
@@ -2868,8 +3320,8 @@ export default function GravureWorkOrderPage() {
                             {reqWt > 0 && <span className="font-bold text-blue-700">~{reqWt} Kg</span>}
                             {req.source && (
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${req.status === "Available" ? "bg-green-50 text-green-700 border-green-200" :
-                                  req.status === "Requested" ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                    "bg-gray-50 text-gray-500 border-gray-200"
+                                req.status === "Requested" ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                  "bg-gray-50 text-gray-500 border-gray-200"
                                 }`}>● {req.status}</span>
                             )}
                           </div>
@@ -2948,8 +3400,8 @@ export default function GravureWorkOrderPage() {
                                 </div>
                                 <button onClick={() => setReq({ status: req.status === "Requested" ? "Pending" : "Requested" })}
                                   className={`flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl border transition-all whitespace-nowrap ${req.status === "Requested"
-                                      ? "bg-green-100 text-green-700 border-green-300"
-                                      : "bg-purple-700 text-white border-purple-700 hover:bg-purple-800"
+                                    ? "bg-green-100 text-green-700 border-green-300"
+                                    : "bg-purple-700 text-white border-purple-700 hover:bg-purple-800"
                                     }`}>
                                   <Send size={11} />
                                   {req.status === "Requested" ? "✓ Sent" : req.source === "Extrusion" ? "Send to Extrusion" : "Raise PR"}
@@ -3160,8 +3612,8 @@ export default function GravureWorkOrderPage() {
                             {cs.deltaE !== "--" ? (
                               <div className="flex flex-col items-center gap-0.5">
                                 <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold font-mono border ${qcSt === "PASS" ? "bg-green-50 text-green-700 border-green-300"
-                                    : qcSt === "WARNING" ? "bg-yellow-50 text-yellow-700 border-yellow-300"
-                                      : "bg-red-50 text-red-600 border-red-300"
+                                  : qcSt === "WARNING" ? "bg-yellow-50 text-yellow-700 border-yellow-300"
+                                    : "bg-red-50 text-red-600 border-red-300"
                                   }`}>{cs.deltaE}</span>
                                 {sev && (
                                   <span className={`text-[9px] font-semibold px-1.5 rounded-full ${sev === "Low" ? "bg-green-100 text-green-700" : sev === "Medium" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
@@ -3192,8 +3644,8 @@ export default function GravureWorkOrderPage() {
                               <span className="text-[10px] text-gray-400 font-medium italic">Not Measured</span>
                             ) : (
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${qcSt === "PASS" ? "bg-green-100 text-green-800 border-green-400"
-                                  : qcSt === "WARNING" ? "bg-yellow-100 text-yellow-800 border-yellow-400"
-                                    : "bg-red-100 text-red-700 border-red-400"
+                                : qcSt === "WARNING" ? "bg-yellow-100 text-yellow-800 border-yellow-400"
+                                  : "bg-red-100 text-red-700 border-red-400"
                                 }`}>
                                 {qcSt === "PASS" ? "✓" : qcSt === "WARNING" ? "⚠" : "✗"} {qcSt}
                               </span>
