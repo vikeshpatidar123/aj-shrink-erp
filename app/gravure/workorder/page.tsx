@@ -891,7 +891,7 @@ export default function GravureWorkOrderPage() {
       profitPct: 15,
       orderLines: lines,
       status: (r.status || "Confirmed") as any,
-    } as GravureOrder;
+    } as unknown as GravureOrder;
   }
 
   // Helper: map API row → GravureWorkOrder shape
