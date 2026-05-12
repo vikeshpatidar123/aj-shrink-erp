@@ -1055,7 +1055,6 @@ export default function GravureEstimationPage() {
       categoryId:   String(cat.categoryId   || ""),
       categoryName: String(cat.categoryName || ""),
       content:      String(cat.content      || ""),
-      structureType: String(cat.structureType || "") as any,
       jobWidth:     Number(cat.jobWidth     || 0),
       jobHeight:    Number(cat.jobHeight    || 0),
       actualWidth:  Number(cat.actualWidth  || cat.jobWidth  || 0),
