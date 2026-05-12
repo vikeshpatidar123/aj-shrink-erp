@@ -5,7 +5,7 @@ import {
   BookMarked, Eye, Trash2, Clock, CheckCircle2,
   ShoppingCart, CheckCircle, AlertCircle, Lock, ArrowRight,
   RefreshCw, Save, Plus, X, Calculator, Layers, Check, Pencil,
-  ChevronRight, Eye as EyeIcon, Factory, Send, Package, Palette, Wrench, Archive, Copy, Search, Printer,
+  ChevronRight, Eye as EyeIcon, Factory, Send, Package, Palette, Wrench, Archive, Copy, Search, Printer, FileText,
 } from "lucide-react";
 import {
   GravureProductCatalog, GravureOrder, GravureWorkOrder,
@@ -208,6 +208,28 @@ export default function ProductCatalogPage() {
   const [cylGuideOpen, setCylGuideOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<{ name: string; url: string; mimeType: string } | null>(null);
   const [printRow, setPrintRow] = useState<GravureProductCatalog | null>(null);
+
+  // ── Field Master dropdown options (fetched once on mount) ─────────────────
+  const [fmOptions, setFmOptions] = useState<Record<string, string[]>>({
+    packSizes: [], brandNames: [], productTypes: [], skuTypes: [], bottleTypes: [], addressTypes: [],
+  });
+  useEffect(() => {
+    const fetchField = (fieldName: string) =>
+      apiGet<any[]>(`api/FieldMasterAJ/GetFieldValues?fieldName=${encodeURIComponent(fieldName)}`)
+        .then(rows => (Array.isArray(rows) ? rows.map((r: any) => String(r.FieldValue ?? "")).filter(Boolean) : []))
+        .catch(() => [] as string[]);
+
+    Promise.all([
+      fetchField("Standard Pack Sizes"),
+      fetchField("Brand Names"),
+      fetchField("Product Types"),
+      fetchField("SKU Types"),
+      fetchField("Bottle Type"),
+      fetchField("Product Address Type"),
+    ]).then(([packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes]) => {
+      setFmOptions({ packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes });
+    });
+  }, []);
 
   // ── Plan grid column filters (Excel-style) ────────────────
   const [planColFilters, setPlanColFilters] = useState<Record<string, Set<string>>>({});
@@ -1063,7 +1085,7 @@ export default function ProductCatalogPage() {
     setReplanIsPlanApplied(!!row.savedPlanId);
     setReplanPlanSearch("");
     setReplanPlanSort({ key: "", dir: "asc" });
-    const _base = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+    const _base = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
     setReplanAttachments((row.attachments ?? []).map((a) => ({
       id: String(a.id),
       name: a.name,
@@ -1686,6 +1708,16 @@ export default function ProductCatalogPage() {
                     className={!row.isActive ? "text-gray-400 cursor-not-allowed" : "text-green-700 hover:text-green-800 hover:bg-green-50"}>
                     Use in Order
                   </Button>
+                  <Button variant="ghost" size="sm" icon={<FileText size={13} />}
+                    onClick={() => {
+                      localStorage.setItem("ajsw_estimation_from_catalog", JSON.stringify(row));
+                      window.location.href = "/gravure/estimation";
+                    }}
+                    disabled={!row.isActive}
+                    title={!row.isActive ? `Inactive: ${row.isActiveReason}` : ""}
+                    className={!row.isActive ? "text-gray-400 cursor-not-allowed" : "text-purple-700 hover:text-purple-800 hover:bg-purple-50"}>
+                    Use in Estimation
+                  </Button>
                   <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
                     onClick={() => setDeleteId(row.id)}>Delete</Button>
                 </div>
@@ -1948,10 +1980,8 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).packSize ?? ""}
                           onChange={e => rf("packSize" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === replanForm.customerId) as any)?.packSizes ?? []).map((ps: string) => (
-                            <option key={ps} value={ps}>{ps}</option>
-                          ))}
-                          {(replanForm as any).packSize && !((customers.find(c => c.id === replanForm.customerId) as any)?.packSizes ?? []).includes((replanForm as any).packSize) && (
+                          {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) && (
                             <option value={(replanForm as any).packSize}>{(replanForm as any).packSize}</option>
                           )}
                         </select>
@@ -1962,10 +1992,8 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).brandName ?? ""}
                           onChange={e => rf("brandName" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === replanForm.customerId) as any)?.brandNames ?? []).map((bn: string) => (
-                            <option key={bn} value={bn}>{bn}</option>
-                          ))}
-                          {(replanForm as any).brandName && !((customers.find(c => c.id === replanForm.customerId) as any)?.brandNames ?? []).includes((replanForm as any).brandName) && (
+                          {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) && (
                             <option value={(replanForm as any).brandName}>{(replanForm as any).brandName}</option>
                           )}
                         </select>
@@ -1976,9 +2004,10 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).productType ?? ""}
                           onChange={e => rf("productType" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          {["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
+                          {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) && (
+                            <option value={(replanForm as any).productType}>{(replanForm as any).productType}</option>
+                          )}
                         </select>
                       </div>
                       <div>
@@ -1987,10 +2016,8 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).skuType ?? ""}
                           onChange={e => rf("skuType" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === replanForm.customerId) as any)?.skuTypes ?? []).map((sk: string) => (
-                            <option key={sk} value={sk}>{sk}</option>
-                          ))}
-                          {(replanForm as any).skuType && !((customers.find(c => c.id === replanForm.customerId) as any)?.skuTypes ?? []).includes((replanForm as any).skuType) && (
+                          {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) && (
                             <option value={(replanForm as any).skuType}>{(replanForm as any).skuType}</option>
                           )}
                         </select>
@@ -2001,9 +2028,10 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).bottleType ?? ""}
                           onChange={e => rf("bottleType" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          {["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
+                          {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) && (
+                            <option value={(replanForm as any).bottleType}>{(replanForm as any).bottleType}</option>
+                          )}
                         </select>
                       </div>
                       <div>
@@ -2012,9 +2040,10 @@ export default function ProductCatalogPage() {
                           value={(replanForm as any).addressType ?? ""}
                           onChange={e => rf("addressType" as any, e.target.value)}>
                           <option value="">-- Select --</option>
-                          <option value="Single">Single</option>
-                          <option value="Multi">Multi</option>
-                          <option value="QR Code">QR Code</option>
+                          {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                          {(replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) && (
+                            <option value={(replanForm as any).addressType}>{(replanForm as any).addressType}</option>
+                          )}
                         </select>
                       </div>
                       <div className="sm:col-span-2">
@@ -5512,6 +5541,14 @@ export default function ProductCatalogPage() {
                 window.location.href = "/gravure/orders";
               }}>
               Use in Order
+            </Button>
+            <Button icon={<FileText size={14} />} variant="secondary"
+              onClick={() => {
+                if (!viewPlanRow) return;
+                localStorage.setItem("ajsw_estimation_from_catalog", JSON.stringify(viewPlanRow));
+                window.location.href = "/gravure/estimation";
+              }}>
+              Use in Estimation
             </Button>
             <Button variant="secondary" onClick={() => setViewPlanRow(null)}>Close</Button>
           </div>

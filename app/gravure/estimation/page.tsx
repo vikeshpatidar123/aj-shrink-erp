@@ -1025,6 +1025,124 @@ export default function GravureEstimationPage() {
     }
   };
 
+  // ── Auto-prefill from Product Catalog "Use In Estimation" button ─────────
+  useEffect(() => {
+    const raw = localStorage.getItem("ajsw_estimation_from_catalog");
+    if (!raw) return;
+    let cat: any;
+    try { cat = JSON.parse(raw); } catch { return; }
+    localStorage.removeItem("ajsw_estimation_from_catalog");
+
+    // Reset all modal state (same as openAdd)
+    setEditing(null);
+    setActiveTab(1);
+    setExtraQtys([]);
+    setActiveQtyIdx(0);
+    setColorShades([]);
+    setAttachments([]);
+    setPrepTab("shade");
+    setPlanColFilters({});
+    setPlanFilterOpen(null);
+    setSelectedPlanId(null);
+    setIsPlanApplied(false);
+
+    // Fill form from catalog (same mapping as loadFromCatalog)
+    setForm({
+      ...blank,
+      customerId:   String(cat.customerId   || ""),
+      customerName: String(cat.customerName || ""),
+      jobName:      String(cat.productName  || ""),
+      categoryId:   String(cat.categoryId   || ""),
+      categoryName: String(cat.categoryName || ""),
+      content:      String(cat.content      || ""),
+      structureType: String(cat.structureType || "") as any,
+      jobWidth:     Number(cat.jobWidth     || 0),
+      jobHeight:    Number(cat.jobHeight    || 0),
+      actualWidth:  Number(cat.actualWidth  || cat.jobWidth  || 0),
+      actualHeight: Number(cat.actualHeight || cat.jobHeight || 0),
+      width:        Number(cat.jobWidth     || 0),
+      trimmingSize: Number(cat.trimmingSize || 0),
+      widthShrinkage: Number(cat.widthShrinkage || 0),
+      noOfColors:   Number(cat.noOfColors   || 0),
+      frontColors:  Number(cat.frontColors  || cat.noOfColors || 0),
+      backColors:   Number(cat.backColors   || 0),
+      printType:    String(cat.printType    || "Surface Print") as any,
+      substrateName: String(cat.substrate   || ""),
+      machineId:    String(cat.machineId    || ""),
+      machineName:  String(cat.machineName  || ""),
+      cylinderCostPerColor: Number(cat.cylinderCostPerColor || 3500),
+      repeatLength: Number(cat.repeatLength || 0),
+      overheadPct:  Number(cat.overheadPct  || 12),
+      profitPct:    Number(cat.profitPct    || 15),
+      perMeterRate: Number(cat.perMeterRate || 0),
+      sellingPrice: Number(cat.perMeterRate || 0),
+      unit:         String(cat.standardUnit || "Meter"),
+      quantity:     Number(cat.standardQty  || 0),
+      remarks:      String(cat.remarks      || ""),
+      salesType:    String(cat.salesType    || "Local"),
+      // Pouch / seal / gusset
+      topSeal:         Number(cat.topSeal        || 0) || undefined,
+      bottomSeal:      Number(cat.bottomSeal      || 0) || undefined,
+      sideSeal:        Number(cat.sideSeal        || 0) || undefined,
+      centerSealWidth: Number(cat.centerSealWidth || 0) || undefined,
+      sideGusset:      Number(cat.sideGusset      || 0) || undefined,
+      gusset:          Number(cat.gusset          || 0) || undefined,
+      seamingArea:     Number(cat.seamingArea     || 0) || undefined,
+      transparentArea: Number(cat.transparentArea || 0) || undefined,
+      // Layers and processes — carry forward directly from catalog
+      secondaryLayers: Array.isArray(cat.secondaryLayers)
+        ? cat.secondaryLayers.map((l: any, i: number) => ({ ...l, id: Math.random().toString(), layerNo: i + 1 }))
+        : [],
+      processes: Array.isArray(cat.processes)
+        ? cat.processes.map((pr: any) => ({ ...pr }))
+        : [],
+    });
+
+    // Cylinder allocs from catalog (or build blanks)
+    if (Array.isArray(cat.savedCylAllocs) && cat.savedCylAllocs.length > 0) {
+      setCylAllocs(cat.savedCylAllocs.map((c: any) => ({
+        ...c,
+        createdInMaster: c.createdInMaster ?? false,
+        repeatUse: c.repeatUse ?? false,
+      })));
+    } else {
+      const n = Number(cat.noOfColors || 0);
+      setCylAllocs(Array.from({ length: n }, (_, i) => ({
+        colorNo: i + 1, colorName: `Color ${i + 1}`, cylinderNo: "",
+        circumference: String(cat.jobHeight || ""),
+        printWidth: String(cat.actualWidth || cat.jobWidth || ""),
+        repeatUPS: 1, cylinderType: "Existing" as const,
+        status: "Pending" as const, remarks: "",
+        createdInMaster: false, repeatUse: false,
+      })));
+    }
+
+    // Dimension diagram values
+    const cfg = cat.content ? CONTENT_TYPE_CONFIG[cat.content as string] : null;
+    if (cfg) {
+      const dims: DimValues = {};
+      if (cfg.fields.includes("layflatWidth")) dims.layflatWidth = cat.jobWidth;
+      else dims.width = cat.jobWidth;
+      if (cfg.fields.includes("cutHeight")) dims.cutHeight = cat.jobHeight;
+      else dims.height = cat.jobHeight;
+      if (cfg.fields.includes("gusset"))         dims.gusset         = cat.gusset         || 0;
+      if (cfg.fields.includes("topSeal"))         dims.topSeal        = cat.topSeal        || 0;
+      if (cfg.fields.includes("bottomSeal"))      dims.bottomSeal     = cat.bottomSeal     || 0;
+      if (cfg.fields.includes("sideSeal"))        dims.sideSeal       = cat.sideSeal       || 0;
+      if (cfg.fields.includes("centerSealWidth")) dims.centerSealWidth= cat.centerSealWidth|| 0;
+      if (cfg.fields.includes("sideGusset"))      dims.sideGusset     = cat.sideGusset     || 0;
+      if (cfg.fields.includes("seamingArea"))     dims.seamingArea    = cat.seamingArea    || 0;
+      if (cfg.fields.includes("transparentArea")) dims.transparentArea= cat.transparentArea|| 0;
+      dims.trimming = cat.trimmingSize || 0;
+      dims.widthShrinkage = cat.widthShrinkage || 0;
+      setDimValues(dims);
+    }
+
+    setLoadedFromCatalog(String(cat.catalogNo || ""));
+    setModal(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Open Cylinder Master from Estimation ─────────────────
   const openEstCylinderMaster = (plan?: typeof selectedPlan) => {
     const n = form.noOfColors || 0;

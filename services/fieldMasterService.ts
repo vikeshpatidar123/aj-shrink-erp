@@ -1,16 +1,13 @@
 import { authHeaders } from "@/lib/auth";
 
-// ── TODO: Replace with correct backend endpoint once confirmed ──────────────
-// Current pattern from other masters: /api/[moduleName]Shrink/[action]
-// Example: /api/categorymasterShrink/getcategory
-// Update BASE below when you know the correct controller name.
-const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in") + "/api/fieldmasterShrink";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in") + "/api/FieldMasterAJ";
 
 export type FieldValueRow = {
-  id:         string;
-  FieldName:  string;
-  FieldValue: string;
-  SortOrder:  number;
+  id:             string;
+  FieldMasterID?: number;
+  FieldName:      string;
+  FieldValue:     string;
+  SortOrder:      number;
 };
 
 async function safeFetch(url: string, options?: RequestInit): Promise<any> {
@@ -23,35 +20,33 @@ async function safeFetch(url: string, options?: RequestInit): Promise<any> {
 }
 
 export async function getFields(): Promise<string[]> {
-  const data = await safeFetch(`${BASE}/getfields`, { headers: authHeaders() });
+  const data = await safeFetch(`${BASE}/GetFields`, { headers: authHeaders() });
   return Array.isArray(data) ? data : [];
 }
 
 export async function getFieldValues(fieldName: string): Promise<FieldValueRow[]> {
   const data = await safeFetch(
-    `${BASE}/getvalues/${encodeURIComponent(fieldName)}`,
+    `${BASE}/GetFieldValues?fieldName=${encodeURIComponent(fieldName)}`,
     { headers: authHeaders() }
   );
   if (!Array.isArray(data)) return [];
   return data.map((row: any, i: number) => ({
     ...row,
-    id: row.id ?? `${row.FieldName}-${row.FieldValue}-${i}`,
+    id: row.FieldMasterID?.toString() ?? `${row.FieldName}-${row.FieldValue}-${i}`,
   }));
 }
 
 export async function addFieldValue(fieldName: string, fieldValue: string): Promise<string> {
-  const data = await safeFetch(`${BASE}/addvalue`, {
-    method:  "POST",
-    headers: authHeaders(),
-    body:    JSON.stringify({ FieldName: fieldName, FieldValue: fieldValue }),
-  });
-  return data?.Result ?? data ?? "Success";
+  const data = await safeFetch(
+    `${BASE}/AddFieldValue?fieldName=${encodeURIComponent(fieldName)}&value=${encodeURIComponent(fieldValue)}`,
+    { method: "POST", headers: authHeaders() }
+  );
+  return typeof data === "string" ? data : (data?.Result ?? "Success");
 }
 
 export async function deleteFieldValue(fieldName: string, fieldValue: string): Promise<void> {
-  await safeFetch(`${BASE}/deletevalue`, {
-    method:  "DELETE",
-    headers: authHeaders(),
-    body:    JSON.stringify({ FieldName: fieldName, FieldValue: fieldValue }),
-  });
+  await safeFetch(
+    `${BASE}/DeleteFieldValue?fieldName=${encodeURIComponent(fieldName)}&value=${encodeURIComponent(fieldValue)}`,
+    { method: "POST", headers: authHeaders() }
+  );
 }

@@ -5,7 +5,7 @@ import {
   Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator, BookMarked,
   X, Save, FileText, Truck, Search, ChevronDown, ChevronUp,
   Check, Layers, Printer, List, Paperclip, PauseCircle, AlertTriangle,
-  ClipboardList,
+  ClipboardList, Download,
 } from "lucide-react";
 import {
   GravureOrder, GravureOrderLine,
@@ -23,6 +23,7 @@ import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 // ─── Extended line type ───────────────────────────────────────
 type OBLine = GravureOrderLine & {
   hsnGroup: string;
+  hsnId: string;
   minQuotedQty: number;
   rateType: string;
   approvedCost: number;
@@ -114,10 +115,10 @@ const blankLine = (): OBLine => ({
   rate: 0, currency: "INR", amount: 0,
   deliveryDate: "",
   remarks: "",
-  hsnGroup: "", minQuotedQty: 0,
+  hsnGroup: "", hsnId: "", minQuotedQty: 0,
   rateType: "UnitCost", approvedCost: 0,
   discPct: 0, discAmt: 0,
-  gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 18,
+  gstPct: 18, cgstPct: 9, sgstPct: 9, igstPct: 0,
   cgstAmt: 0, sgstAmt: 0, igstAmt: 0,
   overheadPctLine: 0, overheadAmtLine: 0,
   netAmount: 0,
@@ -209,13 +210,16 @@ export default function GravureOrdersPage() {
   const [deleteId, setDelId] = useState<string | null>(null);
   const [viewRow, setViewRow] = useState<GravureOrder | null>(null);
   const [showList, setShowList] = useState(false);
-  const [apiCustomers, setApiCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [apiCustomers, setApiCustomers] = useState<{ id: string; name: string; stateTinNo: number }[]>([]);
   const [apiSalesLedgers, setApiSalesLedgers] = useState<string[]>([]);
   const [apiSalesPersons, setApiSalesPersons] = useState<string[]>([]);
   const [apiConsignees, setApiConsignees] = useState<{ id: string; name: string }[]>([]);
   const [apiTransporters, setApiTransporters] = useState<{ id: string; name: string }[]>([]);
-  const [apiHsnList, setApiHsnList] = useState<{ id: string; hsnCode: string; description: string }[]>([]);
+  const [apiHsnList, setApiHsnList] = useState<{ id: string; hsnCode: string; description: string; gstRate: number; cgstPct: number; sgstPct: number; igstPct: number }[]>([]);
   const [saving, setSaving] = useState(false);
+  const [companyStateTinNo, setCompanyStateTinNo] = useState<number>(0);
+  const [orderImage, setOrderImage] = useState<{ name: string; url: string; mimeType: string; size: number; fileObj?: File } | null>(null);
+  const [previewOrderImage, setPreviewOrderImage] = useState(false);
 
   const mapApiLines = (raw: any): GravureOrderLine[] => {
     // linesJSON is a raw JSON string from the backend (FOR JSON PATH result)
@@ -258,12 +262,30 @@ export default function GravureOrdersPage() {
       filmType: String(l.filmType ?? ""),
       laminationRequired: false,
       orderQty: Number(l.orderQty ?? 0),
-      unit: String(l.unit ?? "Kg"),
+      unit: String(l.unit || "Kg"),
       rate: Number(l.rate ?? 0),
       currency: "INR",
       amount: Number(l.amount ?? 0),
       deliveryDate: String(l.deliveryDate ?? l.expectedDeliveryDate ?? ""),
       remarks: String(l.remarks ?? ""),
+      // OBLine extra fields
+      hsnId: String(l.hsnId ?? ""),
+      hsnGroup: String(l.hsnGroup ?? ""),
+      gstPct: Number(l.gstPct ?? 0),
+      cgstPct: Number(l.cgstPct ?? 0),
+      sgstPct: Number(l.sgstPct ?? 0),
+      igstPct: Number(l.igstPct ?? 0),
+      cgstAmt: Number(l.cgstAmt ?? 0),
+      sgstAmt: Number(l.sgstAmt ?? 0),
+      igstAmt: Number(l.igstAmt ?? 0),
+      netAmount: Number(l.netAmount ?? 0),
+      rateType: String(l.rateType ?? "UnitCost"),
+      jobReference: String(l.jobReference ?? "Art Work Approved"),
+      jobPriority: String(l.jobPriority ?? "Normal"),
+      jobType: String(l.jobType ?? "New"),
+      prePressRemark: String(l.prePressRemark ?? ""),
+      productRemark: String(l.productRemark ?? ""),
+      expectedDeliveryDate: String(l.expectedDeliveryDate ?? l.deliveryDate ?? ""),
     }));
   };
 
@@ -314,6 +336,7 @@ export default function GravureOrdersPage() {
           deliveryJSON: r.deliveryJSON ?? "[]",
           salesEmployeeId: String(r.SalesEmployeeID ?? ""),
           salesLedgerId: String(r.SalesLedgerID ?? ""),
+          referenceImageDataUrl: String(r.referenceImageDataUrl ?? ""),
         } as any;
       });
       setData(rows);
@@ -324,7 +347,7 @@ export default function GravureOrdersPage() {
     loadOrders();
     apiGet<any>("api/gravureOrderBookingShrink/getdropdowns").then(res => {
       if (res?.customers) {
-        const apiList: { id: string; name: string }[] = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") }));
+        const apiList: { id: string; name: string; stateTinNo: number }[] = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? ""), stateTinNo: Number(c.stateTinNo ?? 0) }));
         // Merge: keep any pre-injected customer that's not already in the API list
         setApiCustomers(prev => {
           const ids = new Set(apiList.map(c => c.id));
@@ -332,11 +355,12 @@ export default function GravureOrdersPage() {
           return [...extras, ...apiList];
         });
       }
+      if (res?.companyStateTinNo !== undefined) setCompanyStateTinNo(Number(res.companyStateTinNo ?? 0));
       if (res?.salesLedgers) setApiSalesLedgers(res.salesLedgers.map((l: any) => ({ id: String(l.id ?? ""), name: String(l.name ?? l) })) as any);
       if (res?.salesPersons) setApiSalesPersons(res.salesPersons.map((p: any) => ({ id: String(p.id ?? ""), name: String(p.name ?? p) })) as any);
       if (res?.consignees) setApiConsignees(res.consignees.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? "") })));
       if (res?.transporters) setApiTransporters(res.transporters.map((t: any) => ({ id: String(t.id ?? ""), name: String(t.name ?? "") })));
-      if (res?.hsnList) setApiHsnList(res.hsnList.map((h: any) => ({ id: String(h.id ?? ""), hsnCode: String(h.hsnCode ?? ""), description: String(h.description ?? "") })));
+      if (res?.hsnList) setApiHsnList(res.hsnList.map((h: any) => ({ id: String(h.id ?? ""), hsnCode: String(h.hsnCode ?? ""), description: String(h.description ?? ""), gstRate: Number(h.gstRate ?? 0), cgstPct: Number(h.cgstPct ?? 0), sgstPct: Number(h.sgstPct ?? 0), igstPct: Number(h.igstPct ?? 0) })));
     }).catch(() => { });
 
     const raw = localStorage.getItem("ajsw_order_from_catalog");
@@ -350,7 +374,7 @@ export default function GravureOrdersPage() {
           setApiCustomers(prev =>
             prev.some(c => c.id === String(cat.customerId))
               ? prev
-              : [{ id: String(cat.customerId), name: cat.customerName }, ...prev]
+              : [{ id: String(cat.customerId), name: cat.customerName, stateTinNo: 0 }, ...prev]
           );
         }
         const prefillLine = computeLine({
@@ -386,6 +410,28 @@ export default function GravureOrdersPage() {
       } catch { }
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-correct GST split (CGST+SGST vs IGST) when company and customer TIN info loads
+  // This handles the catalog-prefill case where customer stateTinNo arrives after form opens
+  useEffect(() => {
+    if (!formOpen || editing !== null || !form.customerId || companyStateTinNo === 0) return;
+    const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+    if (custTin === 0) return; // TIN not loaded yet for this customer
+    const isSameState = companyStateTinNo === custTin;
+    setForm(prev => ({
+      ...prev,
+      obLines: prev.obLines.map(l =>
+        computeLine({
+          ...l,
+          cgstPct: isSameState ? l.gstPct / 2 : 0,
+          sgstPct: isSameState ? l.gstPct / 2 : 0,
+          igstPct: isSameState ? 0 : l.gstPct,
+        })
+      ),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyStateTinNo, form.customerId, apiCustomers, formOpen]);
+
   const [printOrder, setPrintOrder] = useState<GravureOrder | null>(null);
   const [listSearch, setListSearch] = useState("");
   const [enquirySearch, setEnquirySearch] = useState("");
@@ -577,6 +623,8 @@ export default function GravureOrdersPage() {
       jobPriority: l.jobPriority || "Normal",
       prePressRemark: l.prePressRemark || "",
       productRemark: l.productRemark || "",
+      hsnGroup: l.hsnGroup || "",
+      hsnId: l.hsnId || "",
       expectedDeliveryDate: l.expectedDeliveryDate || l.deliveryDate || "",
       finalDeliveryDate: l.finalDeliveryDate || "",
       deliveryDate: l.deliveryDate || "",
@@ -626,10 +674,19 @@ export default function GravureOrdersPage() {
       quantity: 0, unit: "Kg", deliveryDate: "", cylinderSet: "", perMeterRate: 0,
       machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
     });
+    // Restore saved reference image
+    const savedImg = (row as any).referenceImageDataUrl as string | undefined;
+    if (savedImg) {
+      const mime = savedImg.match(/^data:([^;]+);/)?.[1] ?? "image/jpeg";
+      const ext = mime.split("/")[1] || "jpg";
+      setOrderImage({ name: `reference-image.${ext}`, url: savedImg, mimeType: mime, size: 0 });
+    } else {
+      setOrderImage(null);
+    }
     setFormOpen(true);
   };
 
-  const closeForm = () => { setFormOpen(false); setEditing(null); };
+  const closeForm = () => { setFormOpen(false); setEditing(null); setOrderImage(null); setPreviewOrderImage(false); };
 
   // ── Save ────────────────────────────────────────────────────
   const save = async () => {
@@ -670,6 +727,13 @@ export default function GravureOrdersPage() {
       deliveryDate: l.expectedDeliveryDate || l.deliveryDate || "",
       jobType: l.jobType || "New",
       jobPriority: l.jobPriority || "Normal",
+      jobReference: l.jobReference || "",
+      prePressRemark: l.prePressRemark || "",
+      productRemark: l.productRemark || "",
+      rateType: l.rateType || "UnitCost",
+      netAmount: l.netAmount || 0,
+      hsnGroup: l.hsnGroup || "",
+      hsnId: l.hsnId || "",
       division: l.division || "Gravure",
       remarks: l.remarks || "",
     }));
@@ -686,10 +750,24 @@ export default function GravureOrdersPage() {
       transporter: d.transporter || "",
     }));
 
+    // Resolve image: new upload → read as data URL; existing server image → already a data URL
+    let imageDataUrl = "";
+    if (orderImage?.fileObj) {
+      imageDataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(orderImage.fileObj!);
+      });
+    } else if (orderImage?.url?.startsWith("data:")) {
+      imageDataUrl = orderImage.url;
+    }
+
     const apiPayload = {
       FlagEdit: !!editing,
       OrderBookingID: editing ? (editing.id || 0) : 0,
       Prefix: form.orderPrefix || "GRV",
+      ImageDataUrl: imageDataUrl,
       Header: {
         LedgerID: form.customerId,
         OrderBookingDate: form.date,
@@ -913,7 +991,6 @@ export default function GravureOrdersPage() {
                       <th className="px-3 py-2 text-left">Division</th>
                       <th className="px-3 py-2 text-left">Sales Person</th>
                       <th className="px-3 py-2 text-left">Quote No</th>
-                      <th className="px-3 py-2 text-right">Min Qty</th>
                       <th className="px-3 py-2 text-right">Order Qty</th>
                       <th className="px-3 py-2 text-left">Unit</th>
                       <th className="px-3 py-2 text-right">Quote Rate</th>
@@ -940,7 +1017,6 @@ export default function GravureOrdersPage() {
                           <td className="px-3 py-2 text-gray-600">{row.division}</td>
                           <td className="px-3 py-2 text-gray-600">{row.salesPerson}</td>
                           <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.quoteNo}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{row.minQty.toLocaleString()}</td>
                           <td className="px-3 py-2 text-right text-gray-700">{row.orderQty.toLocaleString()}</td>
                           <td className="px-3 py-2 text-gray-600">{row.unit}</td>
                           <td className="px-3 py-2 text-right text-teal-700 font-semibold">₹{row.quoteRate}</td>
@@ -988,7 +1064,6 @@ export default function GravureOrdersPage() {
                     <th className="px-2 py-2 text-left min-w-[150px]">Product Name</th>
                     <th className="px-2 py-2 text-left min-w-[100px]">Category</th>
                     <th className="px-2 py-2 text-left min-w-[80px]">HSN Group</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">Min Qty</th>
                     <th className="px-2 py-2 text-right min-w-[80px]">Order Qty</th>
                     <th className="px-2 py-2 text-left min-w-[70px]">Unit</th>
                     <th className="px-2 py-2 text-left min-w-[80px]">Rate Type</th>
@@ -1005,8 +1080,6 @@ export default function GravureOrdersPage() {
                     <th className="px-2 py-2 text-right min-w-[70px]">CGST</th>
                     <th className="px-2 py-2 text-right min-w-[70px]">SGST</th>
                     <th className="px-2 py-2 text-right min-w-[70px]">IGST</th>
-                    <th className="px-2 py-2 text-right min-w-[55px]">OH%</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">OH Amt</th>
                     <th className="px-2 py-2 text-right min-w-[90px]">Net Amount</th>
                     <th className="px-2 py-2 text-left min-w-[110px]">Exp. Del. Date</th>
                     <th className="px-2 py-2 text-left min-w-[110px]">Final Del. Date</th>
@@ -1040,14 +1113,22 @@ export default function GravureOrdersPage() {
                         <td className="px-1 py-0.5"><CI value={l.categoryName} onChange={v => updateLine(idx, { ...l, categoryName: v })} placeholder="Category" /></td>
                         {/* HSN */}
                         <td className="px-1 py-0.5">
-                          <select value={l.hsnGroup} onChange={e => updateLine(idx, { ...l, hsnGroup: e.target.value })}
+                          <select value={l.hsnGroup} onChange={e => {
+                            const hsn = apiHsnList.find(h => h.hsnCode === e.target.value);
+                            const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+                            const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
+                            // Preserve existing gstPct if HSN has no GST rate configured (gstRate=0/undefined)
+                            const gstRate = (hsn && (hsn.gstRate ?? 0) > 0) ? hsn.gstRate : l.gstPct;
+                            const cgst = isSameState ? (hsn && (hsn.cgstPct ?? 0) > 0 ? hsn.cgstPct : gstRate / 2) : 0;
+                            const sgst = isSameState ? (hsn && (hsn.sgstPct ?? 0) > 0 ? hsn.sgstPct : gstRate / 2) : 0;
+                            const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
+                            updateLine(idx, { ...l, hsnGroup: e.target.value, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
+                          }}
                             className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px] focus:border-purple-400 outline-none">
                             <option value="">-- HSN --</option>
                             {apiHsnList.map(h => <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>)}
                           </select>
                         </td>
-                        {/* Min Qty */}
-                        <td className="px-1 py-0.5"><CI value={l.minQuotedQty || ""} onChange={v => updateLine(idx, { ...l, minQuotedQty: Number(v) })} type="number" min={0} cls="text-right" /></td>
                         {/* Order Qty */}
                         <td className="px-1 py-0.5">
                           <CI value={l.orderQty || ""} type="number" min={0}
@@ -1089,7 +1170,9 @@ export default function GravureOrdersPage() {
                         <td className="px-1 py-0.5"><CI value={l.gstPct} type="number" min={0}
                           onChange={v => {
                             const g = Number(v);
-                            updateLine(idx, { ...l, gstPct: g, cgstPct: g / 2, sgstPct: g / 2, igstPct: g });
+                            const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+                            const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
+                            updateLine(idx, { ...l, gstPct: g, cgstPct: isSameState ? g / 2 : 0, sgstPct: isSameState ? g / 2 : 0, igstPct: !isSameState ? g : 0 });
                           }} cls="text-right" /></td>
                         {/* CGST% */}
                         <td className="px-1 py-0.5"><CI value={l.cgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
@@ -1103,11 +1186,6 @@ export default function GravureOrdersPage() {
                         <td className="px-1 py-0.5"><CI value={l.sgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
                         {/* IGST Amt */}
                         <td className="px-1 py-0.5"><CI value={l.igstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* OH% */}
-                        <td className="px-1 py-0.5"><CI value={l.overheadPctLine || ""} type="number" min={0} step={0.5}
-                          onChange={v => updateLine(idx, { ...l, overheadPctLine: Number(v) })} cls="text-right" /></td>
-                        {/* OH Amt */}
-                        <td className="px-1 py-0.5"><CI value={l.overheadAmtLine} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
                         {/* Net Amount */}
                         <td className="px-1 py-0.5"><CI value={l.netAmount} readOnly cls="text-right font-bold text-purple-700 bg-purple-50" /></td>
                         {/* Expected Del */}
@@ -1286,76 +1364,95 @@ export default function GravureOrdersPage() {
             </table>
           </div>
 
-          {/* ── SECTION 4: Attachments ── */}
+          {/* ── SECTION 4: Reference Image ── */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-gray-700 text-white">
               <div className="flex items-center gap-2">
                 <Paperclip size={14} className="text-gray-300" />
-                <span className="text-xs font-bold uppercase tracking-wide">Attachments</span>
-                {form.attachments.length > 0 && (
-                  <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">{form.attachments.length} file{form.attachments.length !== 1 ? "s" : ""}</span>
-                )}
+                <span className="text-xs font-bold uppercase tracking-wide">Reference Image</span>
+                {orderImage && <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">1 image</span>}
               </div>
+              {!orderImage && (
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-200 bg-white/10 hover:bg-white/20 border border-white/20 px-2.5 py-1 rounded-lg cursor-pointer transition">
+                  <Plus size={11} /> Upload Image
+                  <input type="file" accept="image/*" className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setOrderImage({ name: file.name, url: URL.createObjectURL(file), mimeType: file.type, size: file.size, fileObj: file });
+                      e.target.value = "";
+                    }} />
+                </label>
+              )}
             </div>
             <div className="p-4">
-              <div className="flex items-center gap-3 flex-wrap">
-                <label className="flex items-center gap-2 cursor-pointer px-4 py-2 bg-gray-100 hover:bg-gray-200 border border-gray-300 border-dashed rounded-lg text-sm text-gray-600 font-medium transition-colors">
-                  <Paperclip size={14} className="text-gray-500" />
-                  Attach Sample / File
-                  <input
-                    type="file"
-                    multiple
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ai,.cdr,.eps,.psd"
+              {!orderImage ? (
+                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-xl py-8 cursor-pointer hover:border-teal-300 hover:bg-teal-50/30 transition"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file || !file.type.startsWith("image/")) return;
+                    setOrderImage({ name: file.name, url: URL.createObjectURL(file), mimeType: file.type, size: file.size, fileObj: file });
+                  }}>
+                  <Paperclip size={24} className="text-gray-300" />
+                  <span className="text-xs text-gray-400 font-medium">Drag & drop an image or click to upload</span>
+                  <span className="text-[10px] text-gray-300">JPG, PNG, GIF, WebP, SVG accepted</span>
+                  <input type="file" accept="image/*" className="hidden"
                     onChange={e => {
-                      const files = Array.from(e.target.files || []);
-                      const newMeta: AttachmentMeta[] = files.map(file => ({
-                        id: Math.random().toString(36).slice(2),
-                        name: file.name,
-                        size: file.size,
-                        fileType: file.type || "application/octet-stream",
-                      }));
-                      f("attachments", [...form.attachments, ...newMeta]);
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setOrderImage({ name: file.name, url: URL.createObjectURL(file), mimeType: file.type, size: file.size, fileObj: file });
                       e.target.value = "";
-                    }}
-                  />
+                    }} />
                 </label>
-                <span className="text-xs text-gray-400">Images, PDF, AI, CDR, PSD, Office files supported</span>
-              </div>
-
-              {form.attachments.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  {form.attachments.map(att => {
-                    const isImage = att.fileType.startsWith("image/");
-                    const isPdf = att.fileType === "application/pdf";
-                    const sizeKB = (att.size / 1024).toFixed(1);
-                    return (
-                      <div key={att.id} className="flex items-center gap-3 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                        <div className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center text-xs font-bold ${isImage ? "bg-blue-100 text-blue-700" : isPdf ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-600"
-                          }`}>
-                          {isImage ? "IMG" : isPdf ? "PDF" : "FILE"}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-gray-800 truncate">{att.name}</p>
-                          <p className="text-[10px] text-gray-400">{sizeKB} KB</p>
-                        </div>
-                        <button
-                          onClick={() => f("attachments", form.attachments.filter(a => a.id !== att.id))}
-                          className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    );
-                  })}
+              ) : (
+                <div className="flex items-start gap-4">
+                  <div className="relative flex-shrink-0 w-32 h-32 rounded-xl overflow-hidden border border-gray-200 shadow-sm bg-gray-50 cursor-pointer group"
+                    onClick={() => setPreviewOrderImage(true)}>
+                    <img src={orderImage.url} alt={orderImage.name} className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/25 transition-colors">
+                      <Eye size={20} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-800 truncate">{orderImage.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{(orderImage.size / 1024).toFixed(1)} KB</p>
+                    <div className="flex items-center gap-2 mt-3 flex-wrap">
+                      <button onClick={() => setPreviewOrderImage(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition-colors">
+                        <Eye size={12} /> View
+                      </button>
+                      <a href={orderImage.url} download={orderImage.name}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold transition-colors">
+                        <Download size={12} /> Download
+                      </a>
+                      <button onClick={() => { URL.revokeObjectURL(orderImage.url); setOrderImage(null); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-lg text-xs font-semibold transition-colors">
+                        <X size={12} /> Remove
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              )}
-
-              {form.attachments.length === 0 && (
-                <p className="mt-2 text-xs text-gray-400">No attachments yet. Attach order samples, art files, or reference documents.</p>
               )}
             </div>
           </div>
+
+          {/* Image Preview Modal */}
+          {previewOrderImage && orderImage && (
+            <Modal open onClose={() => setPreviewOrderImage(false)} title={orderImage.name} size="xl">
+              <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                <img src={orderImage.url} alt={orderImage.name}
+                  className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg" />
+                <div className="mt-4 flex items-center gap-3">
+                  <a href={orderImage.url} download={orderImage.name}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-sm font-semibold transition-colors">
+                    <Download size={14} /> Download
+                  </a>
+                </div>
+              </div>
+            </Modal>
+          )}
 
           {/* ── SECTION 5: Summary + Remarks ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1506,7 +1603,7 @@ export default function GravureOrdersPage() {
                     content: row.content ?? "",
                     structureType: (row as any).structureType ?? "",
                     catalogSnapshot: matchedCatalog ?? null,
-                    lines: row.orderLines ?? [],
+                    orderLines: row.orderLines ?? [],
                   }));
                   router.push("/gravure/workorder");
                 }}

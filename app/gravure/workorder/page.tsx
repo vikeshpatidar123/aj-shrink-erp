@@ -205,6 +205,8 @@ export default function GravureWorkOrderPage() {
   const [viewRow, setViewRow] = useState<GravureWorkOrder | null>(null);
   const [printWO, setPrintWO] = useState<GravureWorkOrder | null>(null);
   const [editing, setEditing] = useState<GravureWorkOrder | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [notif, setNotif] = useState<{ type: "success" | "error"; title: string; msg: string } | null>(null);
   const [form, setForm] = useState<Omit<GravureWorkOrder, "id" | "workOrderNo">>(blankWO);
   const [replanOpen, setReplan] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -219,8 +221,17 @@ export default function GravureWorkOrderPage() {
   const [planFilterSearch, setPlanFilterSearch] = useState<Record<string, string>>({});
   const [planFilterDraft, setPlanFilterDraft] = useState<Record<string, Set<string>>>({});
 
+  // Saved plan from product catalog's GrvSavedPlanJSON — shown exclusively when present
+  const [catalogSavedPlan, setCatalogSavedPlan] = useState<any>(null);
+
   // DB machines fetched from API (replaces dummyData PRINT_MACHINES for dropdowns)
   const [dbMachines, setDbMachines] = useState<{ id: string; name: string; maxWebWidth: number; minWebWidth: number; maxCirc: number; minCirc: number; speed: number }[]>([]);
+
+  // DB vendors fetched from API (replaces dummyData VENDOR_LEDGERS for Film Requisition)
+  const [dbVendors, setDbVendors] = useState<{ id: string; name: string }[]>([]);
+
+  // DB cylinders fetched from ToolMaster API (replaces CYLINDER_TOOLS_ALL dummy data)
+  const [dbCylinders, setDbCylinders] = useState<{ id: string; code: string; name: string; printWidth: string; circumferenceMM: number; cylinderType: string; shelfLifeMeters: number; usedMeters: number; repeatLength: string; }[]>([]);
 
   // Holds savedPlan object from product catalog for planId reconciliation
   const catalogSavedPlanRef = useRef<any>(null);
@@ -248,12 +259,35 @@ export default function GravureWorkOrderPage() {
 
   // ── Pending order pre-fill (set on mount, applied when catalog loads) ──
   const [pendingPWOOrder, setPendingPWOOrder] = useState<any>(null);
+  // Tracks the OrderBookingDetailsID of the line being converted to a WO
+  const orderDetIdRef = React.useRef<number>(0);
 
   // ── Load work orders from API on mount; also check sessionStorage pre-fill ──
   useEffect(() => {
     // Load dropdown prefix
     apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
-      .then(dd => { if (dd?.prefix) setApiPrefix(dd.prefix); })
+      .then(dd => {
+        if (dd?.prefix) setApiPrefix(dd.prefix);
+        if (Array.isArray(dd?.vendors) && dd.vendors.length > 0)
+          setDbVendors(dd.vendors.map((v: any) => ({ id: String(v.id ?? ""), name: String(v.name ?? "") })));
+      })
+      .catch(() => { });
+
+    apiGet<any[]>("api/gravureWorkOrderShrink/getcylinders")
+      .then(rows => {
+        if (Array.isArray(rows) && rows.length > 0)
+          setDbCylinders(rows.map((r: any) => ({
+            id: String(r.id ?? ""),
+            code: String(r.code ?? ""),
+            name: String(r.name ?? ""),
+            printWidth: String(r.printWidth ?? "0"),
+            circumferenceMM: Number(r.circumferenceMM ?? 0),
+            cylinderType: String(r.cylinderType ?? "New"),
+            shelfLifeMeters: Number(r.shelfLifeMeters ?? 0),
+            usedMeters: Number(r.usedMeters ?? 0),
+            repeatLength: String(r.circumferenceMM ?? "0"),
+          })));
+      })
       .catch(() => { });
 
     // Load real DB machines — try getmachinelist first, fallback to getdropdowns
@@ -301,12 +335,22 @@ export default function GravureWorkOrderPage() {
           .catch(() => { });
       });
 
-    // Load work order list — replace dummy data only when API responds with real rows
+    // Load work order list from API
     apiGet<any[]>("api/gravureWorkOrderShrink/getworkorders")
       .then(rows => {
         if (Array.isArray(rows)) setWOs(rows.map(mapApiToWO));
       })
-      .catch(() => { /* keep initWOs on API error */ });
+      .catch((err: any) => {
+        console.error("getworkorders failed:", err?.message || err);
+      });
+
+    // Load confirmed orders from Order Booking to show as pending in WO
+    apiGet<any>("api/gravureOrderBookingShrink/getorders")
+      .then(raw => {
+        const rows: any[] = Array.isArray(raw) ? raw : [];
+        if (rows.length > 0) setOrders(rows.map(mapApiToOrder));
+      })
+      .catch(() => { /* keep empty on API error */ });
 
     // Pre-fill from Order Booking "Create PWO" button — save for catalog-aware effect
     try {
@@ -336,7 +380,7 @@ export default function GravureWorkOrderPage() {
   useEffect(() => {
     const src = pendingPWOOrder ?? pendingPWOOrderRef.current;
     if (!src) return;
-    const lines: any[] = Array.isArray(src.lines) ? src.lines : [];
+    const lines: any[] = Array.isArray(src.orderLines) ? src.orderLines : (Array.isArray(src.lines) ? src.lines : []);
     const line = lines[0];
     if (!line) {
       pendingPWOOrderRef.current = null;
@@ -747,13 +791,67 @@ export default function GravureWorkOrderPage() {
           remarks: String(c.remarks ?? ""),
         })));
 
-        // Store saved plan for planId reconciliation (CP- → WO- prefix fix)
+        // Auto-generate material allocations from ply/consumable data
+        {
+          const qty = Number(catRow.orderQty || line.orderQty || 0);
+          const unit = String(catRow.unit || line.unit || "Meter");
+          const wid = Number(catRow.jobWidth || (catalogItem as any)?.jobWidth || line.jobWidth || 0);
+          const filmGsm = (secondaryLayers[0] as any)?.gsm ?? 0;
+          // If unit is Kg, convert to area via film GSM; otherwise treat qty as meters
+          const sqm = (unit === "Kg" && filmGsm > 0)
+            ? (qty * 1000) / filmGsm
+            : qty * (wid / 1000);
+          const matAllocs: MaterialAlloc[] = [];
+          secondaryLayers.forEach((l: any, idx: number) => {
+            const matName = String(l.itemSubGroup || l.itemName || "");
+            if (matName) {
+              const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * sqm * 1.03).toFixed(3)) : 0;
+              matAllocs.push({ id: `film-${idx}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+            }
+            (l.consumableItems || []).forEach((ci: any, j: number) => {
+              const ciName = String(ci.itemName || ci.fieldDisplayName || "");
+              if (ciName) {
+                const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * sqm * 1.03).toFixed(3)) : 0;
+                matAllocs.push({ id: `con-${idx}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+              }
+            });
+          });
+          if (matAllocs.length > 0) setMaterialAllocs(matAllocs);
+        }
+
+        // Parse GrvSavedPlanJSON from product catalog and store directly
         try {
-          catalogSavedPlanRef.current =
-            catalogItem?.savedPlan ??
-            JSON.parse(catRow.contentSizeValues || catRow.savedPlanJSON || "null");
+          const rawSp = catRow.savedPlanJSON || catRow.contentSizeValues;
+          const sp = rawSp
+            ? (typeof rawSp === "string" ? JSON.parse(rawSp) : rawSp)
+            : (catalogItem?.savedPlan ?? null);
+          catalogSavedPlanRef.current = sp;
+          if (sp?.planId) {
+            const woId = sp.planId.startsWith("CP-") ? "WO-" + sp.planId.slice(3)
+              : sp.planId.startsWith("SLEEVE-") ? "WO-SLEEVE-" + sp.planId.slice(7)
+              : sp.planId;
+            const cylW = Number(sp.cylinderWidthVal || 0);
+            const circ = Number(sp.cylCirc || 0);
+            setCatalogSavedPlan({
+              ...sp,
+              planId: woId,
+              cylRepeatLength: circ,
+              cylAreaSqMm: cylW * circ,
+              cylAreaSqInch: parseFloat(((cylW * circ) / 645.16).toFixed(2)),
+              totalWt: 0,
+              totalTime: 0,
+              isBest: true,
+              isFromCatalog: true,
+              // Catalog handles cylinder creation — never block WO as "special"
+              isSpecial: false,
+              isSpecialSleeve: false,
+            });
+          } else {
+            setCatalogSavedPlan(null);
+          }
         } catch {
           catalogSavedPlanRef.current = catalogItem?.savedPlan ?? null;
+          setCatalogSavedPlan(null);
         }
 
         setForm(f => ({
@@ -858,16 +956,23 @@ export default function GravureWorkOrderPage() {
   // Helper: map API row → GravureOrder shape (for pending orders)
   function mapApiToOrder(r: any): GravureOrder {
     let lines = Array.isArray(r.orderLines) ? r.orderLines : [];
-    if (lines.length === 0 && typeof r.linesJSON === "string") {
-      try { lines = JSON.parse(r.linesJSON); } catch { lines = []; }
+    if (lines.length === 0) {
+      const raw = r.LinesJSON ?? r.linesJSON ?? r.linesJson ?? "";
+      if (typeof raw === "string" && raw.trim()) {
+        try { lines = JSON.parse(raw); } catch { lines = []; }
+      } else if (Array.isArray(raw)) {
+        lines = raw;
+      }
     }
     const firstLine = lines[0] || {};
+    const hasCatalog = lines.some((l: any) => l.catalogId && String(l.catalogId) !== "0" && String(l.catalogId) !== "");
     return {
       id: String(r.orderId || r.OrderBookingID || ""),
       orderNo: String(r.orderNo || r.SalesOrderNo || r.OrderBookingNo || ""),
       date: String(r.date || r.OrderBookingDate || ""),
       customerId: String(r.customerId || r.LedgerID || ""),
       customerName: String(r.customerName || r.CustomerName || ""),
+      salesType: String(r.salesType || r.SalesType || ""),
       jobName: String(r.jobName || firstLine.productName || ""),
       substrate: String(r.substrate || firstLine.substrate || ""),
       structure: String(r.structure || firstLine.structureType || ""),
@@ -880,17 +985,17 @@ export default function GravureWorkOrderPage() {
       noOfColors: Number(r.noOfColors || firstLine.noOfColors || 0),
       printType: String(r.printType || firstLine.printType || "Surface Print"),
       quantity: Number(r.quantity || firstLine.orderQty || 0),
-      unit: String(r.unit || firstLine.unit || "Meter"),
+      unit: String(r.unit || firstLine.unit || "Kg"),
       deliveryDate: String(r.deliveryDate || firstLine.deliveryDate || ""),
-      sourceType: (r.sourceType || "Direct") as any,
-      totalAmount: Number(r.totalAmount || 0),
+      sourceType: (r.sourceType || (hasCatalog ? "Catalog" : "Direct")) as any,
+      totalAmount: Number(r.totalAmount || r.TotalAmount || 0),
       perMeterRate: Number(r.perMeterRate || 0),
       processes: [],
       secondaryLayers: [],
       overheadPct: 12,
       profitPct: 15,
       orderLines: lines,
-      status: (r.status || "Confirmed") as any,
+      status: (r.status || r.Status || "Confirmed") as any,
     } as unknown as GravureOrder;
   }
 
@@ -989,6 +1094,70 @@ export default function GravureWorkOrderPage() {
       })
       : [];
 
+    // ── Extract cylinder allocs: prefer cylAllocsJSON, fall back to color shade cylinder fields
+    const cylAllocsFromJson: CylinderAlloc[] = Array.isArray(r.cylAllocsJSON)
+      ? r.cylAllocsJSON.map((ca: any) => ({
+          colorNo: Number(ca.colorNo ?? 0),
+          colorName: String(ca.colorName ?? ""),
+          cylinderNo: String(ca.cylinderNo ?? ""),
+          circumference: String(ca.circumference ?? ""),
+          cylinderType: (ca.cylinderType || "New") as CylinderAlloc["cylinderType"],
+          status: (ca.status || "Pending") as CylinderAlloc["status"],
+          remarks: String(ca.remarks ?? ""),
+        }))
+      : [];
+    const cylAllocsFromColor: CylinderAlloc[] = Array.isArray(r.savedColorShadesJSON)
+      ? r.savedColorShadesJSON
+          .filter((cs: any) => cs.cylinderNo && String(cs.cylinderNo).trim() !== "")
+          .map((cs: any) => ({
+            colorNo: Number(cs.colorNo ?? 0),
+            colorName: String(cs.colorName ?? ""),
+            cylinderNo: String(cs.cylinderNo ?? ""),
+            circumference: "",
+            cylinderType: (cs.cylinderType || "New") as CylinderAlloc["cylinderType"],
+            status: (cs.cylinderStatus || "Pending") as CylinderAlloc["status"],
+            remarks: String(cs.remarks ?? ""),
+          }))
+      : [];
+    const restoredCylAllocs = cylAllocsFromJson.length > 0 ? cylAllocsFromJson : cylAllocsFromColor;
+
+    // ── Extract film reqs and material allocs
+    const restoredFilmReqs: FilmRequisition[] = Array.isArray(r.filmReqsJSON)
+      ? r.filmReqsJSON.map((fr: any) => ({
+          source: (fr.source || "") as FilmRequisition["source"],
+          status: (fr.status || "Pending") as FilmRequisition["status"],
+          requiredDate: String(fr.requiredDate ?? ""),
+          spec: String(fr.spec ?? ""),
+          priority: String(fr.priority ?? ""),
+          vendor: String(fr.vendor ?? ""),
+          expectedRate: Number(fr.expectedRate ?? 0),
+          remarks: String(fr.remarks ?? ""),
+        }))
+      : [];
+    const restoredMatAllocs: MaterialAlloc[] = Array.isArray(r.materialAllocJSON)
+      ? r.materialAllocJSON.map((ma: any, idx: number) => ({
+          id: String(ma.id ?? `mat-${idx}`),
+          plyNo: Number(ma.plyNo ?? 0) || undefined,
+          materialType: String(ma.materialType ?? ""),
+          materialName: String(ma.materialName ?? ""),
+          requiredQty: Number(ma.requiredQty ?? 0),
+          unit: String(ma.unit ?? "Kg"),
+          allocatedQty: Number(ma.allocatedQty ?? 0),
+          lotNo: String(ma.lotNo ?? ""),
+          location: String(ma.location ?? ""),
+          status: (ma.status || "Pending") as MaterialAlloc["status"],
+        }))
+      : [];
+
+    // ── Parse saved plan JSON for edit-mode restore
+    let restoredSavedPlan: any = null;
+    const rawPlanStr = r.savedPlanJSON;
+    if (rawPlanStr && typeof rawPlanStr === "string" && rawPlanStr.trim()) {
+      try { restoredSavedPlan = JSON.parse(rawPlanStr); } catch { restoredSavedPlan = null; }
+    } else if (rawPlanStr && typeof rawPlanStr === "object") {
+      restoredSavedPlan = rawPlanStr;
+    }
+
     return {
       id: String(r.JobBookingID ?? r.jobBookingId ?? ""),
       workOrderNo: String(r.JobBookingNo ?? r.workOrderNo ?? ""),
@@ -1050,6 +1219,11 @@ export default function GravureWorkOrderPage() {
       plannedDate: String(r.plannedDate ?? ""),
       specialInstructions: String(r.specialInstructions ?? ""),
       status: (r.status ?? "Open") as any,
+      // ── Catalog integration data (used by openEdit to restore states)
+      _cylinderAllocs: restoredCylAllocs,
+      _filmReqs: restoredFilmReqs,
+      _materialAllocs: restoredMatAllocs,
+      _savedPlanJSON: restoredSavedPlan,
     };
   }
 
@@ -1357,27 +1531,52 @@ export default function GravureWorkOrderPage() {
   const catalogSavedPlanMatch = useMemo(() => {
     if (allPlans.length === 0) return null;
     if (form.selectedPlanId) {
+      // Direct match (works if planId wasn't modified)
       const direct = allPlans.find(p => p.planId === form.selectedPlanId);
       if (direct) return direct;
+      // CP- prefix (catalog loop A/B) → WO- prefix (workorder) — same structure after prefix
+      if (form.selectedPlanId.startsWith("CP-")) {
+        const woEquivalent = "WO-" + form.selectedPlanId.slice(3);
+        const byConverted = allPlans.find(p => p.planId === woEquivalent);
+        if (byConverted) return byConverted;
+      }
+      // SLEEVE- prefix (catalog sleeve loop) → WO-SLEEVE- prefix
+      if (form.selectedPlanId.startsWith("SLEEVE-")) {
+        const woEquivalent = "WO-SLEEVE-" + form.selectedPlanId.slice(7);
+        const byConverted = allPlans.find(p => p.planId === woEquivalent);
+        if (byConverted) return byConverted;
+      }
     }
+    // Fuzzy match by saved plan properties (type-safe Number/String coercion)
     const sp = catalogSavedPlanRef.current as any;
     if (!sp?.filmSize) return null;
     return allPlans.find(p =>
-      (p as any).filmSize === sp.filmSize &&
-      (p as any).acUps === sp.acUps &&
-      (p as any).sleeveCode === sp.sleeveCode &&
-      (p as any).cylinderCode === sp.cylinderCode
+      Math.abs(Number((p as any).filmSize) - Number(sp.filmSize)) < 0.5 &&
+      Number((p as any).acUps) === Number(sp.acUps) &&
+      String((p as any).sleeveCode).toLowerCase() === String(sp.sleeveCode).toLowerCase() &&
+      String((p as any).cylinderCode).toLowerCase() === String(sp.cylinderCode).toLowerCase()
     ) || null;
   }, [allPlans, form.selectedPlanId]);
 
-  // Reconcile catalog planId (CP- prefix) with generated workorder planIds (WO- prefix)
+  // Auto-apply catalog saved plan (direct from GrvSavedPlanJSON) or reconcile CP-→WO- prefix
   useEffect(() => {
+    if (catalogSavedPlan) {
+      if (form.selectedPlanId !== catalogSavedPlan.planId || form.ups !== catalogSavedPlan.totalUPS) {
+        setForm(prev => ({ ...prev, selectedPlanId: catalogSavedPlan.planId, ups: catalogSavedPlan.totalUPS }));
+        setIsPlanApplied(true);
+        setShowPlan(false);
+      }
+      return;
+    }
     if (!catalogSavedPlanMatch) return;
     if (form.selectedPlanId === catalogSavedPlanMatch.planId && form.ups === catalogSavedPlanMatch.totalUPS) return;
     setForm(prev => ({ ...prev, selectedPlanId: catalogSavedPlanMatch.planId, ups: catalogSavedPlanMatch.totalUPS }));
-  }, [catalogSavedPlanMatch, form.selectedPlanId, form.ups]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [catalogSavedPlan, catalogSavedPlanMatch, form.selectedPlanId, form.ups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visiblePlans = useMemo(() => {
+    // When a catalog saved plan exists → show only that 1 plan (no full plan list)
+    if (catalogSavedPlan) return [catalogSavedPlan];
+
     let rows = allPlans;
     const q = planSearch.trim().toLowerCase();
     if (q) rows = rows.filter(r => r.machineName.toLowerCase().includes(q) || String(r.cylCirc).includes(q) || String(r.totalUPS).includes(q) || String(r.filmSize).includes(q));
@@ -1401,12 +1600,15 @@ export default function GravureWorkOrderPage() {
       ];
     }
     return rows;
-  }, [allPlans, planSearch, planSort, planColFilters, catalogSavedPlanMatch]);
+  }, [allPlans, planSearch, planSort, planColFilters, catalogSavedPlanMatch, catalogSavedPlan]);
 
   const togglePlanSort = (key: string) =>
     setPlanSort(s => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
 
-  const selectedPlan = useMemo(() => allPlans.find(p => p.planId === form.selectedPlanId) || null, [allPlans, form.selectedPlanId]);
+  const selectedPlan = useMemo(() => {
+    if (catalogSavedPlan && form.selectedPlanId === catalogSavedPlan.planId) return catalogSavedPlan;
+    return allPlans.find(p => p.planId === form.selectedPlanId) || null;
+  }, [allPlans, form.selectedPlanId, catalogSavedPlan]);
 
   // ── Special tool detection ─────────────────────────────────
   const isSelectedPlanSpecial = !!(selectedPlan && ((selectedPlan as any).isSpecial || (selectedPlan as any).isSpecialSleeve));
@@ -1633,7 +1835,10 @@ export default function GravureWorkOrderPage() {
       shadeCardRef: "", status: "Pending" as const, remarks: "",
     })));
     const allocs: MaterialAlloc[] = [];
-    const reqSQM = f.quantity * ((f.jobWidth || 0) / 1000);
+    const filmGsmInit = f.secondaryLayers[0]?.gsm ?? 0;
+    const reqSQM = (f.unit === "Kg" && filmGsmInit > 0)
+      ? (f.quantity * 1000) / filmGsmInit
+      : f.quantity * ((f.jobWidth || 0) / 1000);
     f.secondaryLayers.forEach((l, i) => {
       if (l.itemSubGroup) {
         const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
@@ -1719,12 +1924,144 @@ export default function GravureWorkOrderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.secondaryLayers, form.cylinderSet, modalOpen]);
 
+  // ── Auto-generate materialAllocs when layers are loaded but allocs are empty ──
+  useEffect(() => {
+    if (!modalOpen || materialAllocs.length > 0 || form.secondaryLayers.length === 0) return;
+    const filmGsmAuto = form.secondaryLayers[0]?.gsm ?? 0;
+    const reqSQM = (form.unit === "Kg" && filmGsmAuto > 0)
+      ? (form.quantity * 1000) / filmGsmAuto
+      : form.quantity * ((form.jobWidth || 0) / 1000);
+    const allocs: MaterialAlloc[] = [];
+    form.secondaryLayers.forEach((l, i) => {
+      const matName = String(l.itemSubGroup || l.itemName || "");
+      if (matName) {
+        const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
+        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+      }
+      l.consumableItems.forEach((ci, j) => {
+        const ciName = String(ci.itemName || ci.fieldDisplayName || "");
+        if (ciName) {
+          const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
+          allocs.push({ id: `con-${i}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+        }
+      });
+    });
+    if (allocs.length > 0) setMaterialAllocs(allocs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.secondaryLayers, form.quantity, form.jobWidth, modalOpen, materialAllocs.length]);
+
+  // ── Recalculate requiredQty when quantity or unit changes (allocs already exist) ──
+  useEffect(() => {
+    if (!modalOpen || form.secondaryLayers.length === 0 || materialAllocs.length === 0) return;
+    const filmGsm = form.secondaryLayers[0]?.gsm ?? 0;
+    const reqSQM = (form.unit === "Kg" && filmGsm > 0)
+      ? (form.quantity * 1000) / filmGsm
+      : form.quantity * ((form.jobWidth || 0) / 1000);
+    setMaterialAllocs(prev => prev.map(ma => {
+      let gsm = 0;
+      for (const layer of form.secondaryLayers) {
+        if (ma.materialType === "Film" && ma.materialName === (layer.itemSubGroup || layer.itemName || "")) {
+          gsm = (layer as any).gsm ?? 0; break;
+        }
+        for (const ci of layer.consumableItems) {
+          if (ma.materialName === (ci.itemName || ci.fieldDisplayName || "")) {
+            gsm = (ci as any).gsm ?? 0; break;
+          }
+        }
+      }
+      const newReqQty = gsm > 0 ? parseFloat(((gsm / 1000) * reqSQM * 1.03).toFixed(3)) : ma.requiredQty;
+      return { ...ma, requiredQty: newReqQty };
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.quantity, form.unit, form.jobWidth, modalOpen]);
+
   const cellInput = "w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-purple-400 bg-white";
 
   // ── Convert pending order to WO ────────────────────────────
   const convertToWO = (order: GravureOrder) => {
     setEditing(null);
     const o = order as any;
+    const lines: any[] = Array.isArray(o.orderLines) ? o.orderLines : [];
+    const firstLine = lines[0] || {};
+    const hasCatalog = lines.some((l: any) => l.catalogId && String(l.catalogId) !== "0" && String(l.catalogId) !== "");
+
+    // Capture line-item ID so backend can mark the order line as booked on save
+    orderDetIdRef.current = Number(firstLine.id) || 0;
+
+    setFilmReqs([]); setColorShades([]); setMaterialAllocs([]); setCylinderAllocs([]); setPrepTab("film");
+    setShowPlan(false); setIsPlanApplied(false); setCatalogSavedPlan(null);
+    setModalTab("basic");
+
+    if (hasCatalog) {
+      // Match the catalog item from in-memory store — same as Order Booking "Create PWO" button
+      const firstCatalogLine = lines.find((l: any) => l.catalogId && String(l.catalogId) !== "0");
+      const matchedCatalog =
+        catalog.find(c => c.id === String(firstCatalogLine?.catalogId || "")) ||
+        catalog.find(c => c.catalogNo === String(firstCatalogLine?.catalogNo || "")) ||
+        catalog.find(c =>
+          String(c.customerId || "") === String(order.customerId || "") &&
+          String(c.productName || "").trim().toLowerCase() === String(firstCatalogLine?.productName || order.jobName || "").trim().toLowerCase()
+        );
+
+      const pwoData = {
+        orderId: order.id,
+        orderNo: order.orderNo,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        salesType: o.salesType || o.SalesType || "",
+        catalogId: String(firstCatalogLine?.catalogId || ""),
+        catalogNo: String(firstCatalogLine?.catalogNo || ""),
+        productName: String(firstCatalogLine?.productName || order.jobName || ""),
+        catalogSnapshot: matchedCatalog ?? null,
+        lines: lines.map((l: any) => ({
+          id: String(l.id ?? ""),
+          catalogId: String(l.catalogId ?? ""),
+          catalogNo: String(l.catalogNo ?? ""),
+          productName: String(l.productName ?? ""),
+          orderQty: Number(l.orderQty ?? 0),
+          unit: String(l.unit ?? "Meter"),
+          jobWidth: Number(l.jobWidth ?? 0),
+          jobHeight: Number(l.jobHeight ?? 0),
+          substrate: String(l.substrate ?? ""),
+          structureType: String(l.structureType ?? ""),
+          content: String(l.content ?? ""),
+          categoryId: String(l.categoryId ?? ""),
+          categoryName: String(l.categoryName ?? ""),
+          noOfColors: Number(l.noOfColors ?? 0),
+          printType: String(l.printType ?? ""),
+          trimmingSize: Number(l.trimmingSize ?? 0),
+          widthShrinkage: Number(l.widthShrinkage ?? 0),
+          gusset: Number(l.gusset ?? 0),
+          topSeal: Number(l.topSeal ?? 0),
+          bottomSeal: Number(l.bottomSeal ?? 0),
+          sideSeal: Number(l.sideSeal ?? 0),
+          centerSealWidth: Number(l.centerSealWidth ?? 0),
+          sideGusset: Number(l.sideGusset ?? 0),
+          seamingArea: Number(l.seamingArea ?? 0),
+          transparentArea: Number(l.transparentArea ?? 0),
+          deliveryDate: String(l.deliveryDate ?? ""),
+        })),
+      };
+      pendingPWOOrderRef.current = pwoData;
+      setPendingPWOOrder(pwoData);
+      setForm(f => ({
+        ...blankWO,
+        sourceOrderType: "Catalog",
+        orderId: order.id,
+        orderNo: order.orderNo,
+        customerId: order.customerId,
+        customerName: order.customerName,
+        salesType: o.salesType || "",
+        jobName: String(firstLine.productName ?? order.jobName ?? ""),
+        quantity: Number(firstLine.orderQty ?? order.quantity ?? 0),
+        unit: String(firstLine.unit ?? order.unit ?? "Meter"),
+        deliveryDate: String(firstLine.deliveryDate ?? ""),
+      } as any));
+      setModal(true);
+      return;
+    }
+
+    // No catalog — direct/estimation order, fill all fields immediately
     const sType: GravureWorkOrder["structureType"] = o.structureType || undefined;
     setForm({
       ...blankWO,
@@ -1754,7 +2091,6 @@ export default function GravureWorkOrderPage() {
       cylinderCostPerColor: 3500,
       processes: order.processes,
       secondaryLayers: order.secondaryLayers,
-      // ── Planning fields from estimation ──
       selectedPlanId: o.selectedPlanId || "",
       ups: 0,
       structureType: sType,
@@ -1780,7 +2116,6 @@ export default function GravureWorkOrderPage() {
       perMeterRate: order.perMeterRate,
       totalAmount: order.totalAmount,
     });
-    // Pre-populate dimValues from order fields
     setDimValues({
       width: o.actualWidth || order.jobWidth || undefined,
       height: o.actualHeight || order.jobHeight || undefined,
@@ -1796,9 +2131,6 @@ export default function GravureWorkOrderPage() {
       transparentArea: o.transparentArea || undefined,
       widthShrinkage: o.widthShrinkage || undefined,
     });
-    setModalTab("basic");
-    setShowPlan(false); setIsPlanApplied(false);
-    setFilmReqs([]); setColorShades([]); setMaterialAllocs([]); setCylinderAllocs([]); setPrepTab("film");
     setModal(true);
   };
 
@@ -1840,8 +2172,9 @@ export default function GravureWorkOrderPage() {
   const openEdit = (wo: GravureWorkOrder) => {
     setEditing(wo);
     setForm({ ...wo });
-    // Restore dimValues from saved WO fields
     const w = wo as any;
+
+    // Restore dimValues from saved WO fields
     setDimValues({
       width: wo.actualWidth || undefined,
       height: wo.actualHeight || undefined,
@@ -1857,16 +2190,53 @@ export default function GravureWorkOrderPage() {
       transparentArea: w.transparentArea || undefined,
       widthShrinkage: w.widthShrinkage || undefined,
     });
+
+    // Restore Production Prep states from saved data
+    setCylinderAllocs(Array.isArray(w._cylinderAllocs) && w._cylinderAllocs.length > 0
+      ? w._cylinderAllocs : []);
+    setFilmReqs(Array.isArray(w._filmReqs) && w._filmReqs.length > 0
+      ? w._filmReqs : []);
+    setMaterialAllocs(Array.isArray(w._materialAllocs) && w._materialAllocs.length > 0
+      ? w._materialAllocs : []);
+
+    // Restore color shades from savedColorShadesJSON (already on the WO object via processes mapping)
+    const savedShades = Array.isArray((wo as any).savedColorShadesJSON)
+      ? (wo as any).savedColorShadesJSON.map((cs: any) => ({
+          colorNo: Number(cs.colorNo ?? 0),
+          colorName: String(cs.colorName ?? ""),
+          inkType: (cs.inkType || "Spot") as ColorShade["inkType"],
+          pantoneRef: String(cs.pantoneRef ?? ""),
+          labL: String(cs.labL ?? ""), labA: String(cs.labA ?? ""), labB: String(cs.labB ?? ""),
+          labLMeas: "", labAMeas: "", labBMeas: "",
+          deltaE: "--", deltaETol: String(cs.deltaETol ?? ""),
+          shadeCardRef: String(cs.shadeCardRef ?? ""),
+          status: (cs.status || "Pending") as ColorShade["status"],
+          remarks: String(cs.remarks ?? ""),
+        }))
+      : [];
+    setColorShades(savedShades);
+
+    // Restore saved plan if present (catalog plan or previously saved plan)
+    if (w._savedPlanJSON) {
+      setCatalogSavedPlan({ ...w._savedPlanJSON, isFromCatalog: true, isSpecial: false, isSpecialSleeve: false });
+      setIsPlanApplied(true);
+      setShowPlan(false);
+    } else {
+      setCatalogSavedPlan(null);
+      setIsPlanApplied(!!wo.selectedPlanId);
+      setShowPlan(false);
+    }
+
     setModalTab("basic");
-    setShowPlan(false); setIsPlanApplied(!!wo.selectedPlanId);
-    setFilmReqs([]); setColorShades([]); setMaterialAllocs([]); setCylinderAllocs([]); setPrepTab("film");
+    setPrepTab("film");
     setModal(true);
   };
 
   // ── Save ───────────────────────────────────────────────────
   const save = () => {
     if (!form.customerId || !form.machineId) {
-      alert("Customer and Machine are required."); return;
+      setNotif({ type: "error", title: "Validation Error", msg: "Customer and Machine are required." });
+      return;
     }
 
     // Block save entirely if a special plan is applied — tool must be created in master first
@@ -1875,16 +2245,18 @@ export default function GravureWorkOrderPage() {
       const toolSize = isSelectedPlanSpecialCyl
         ? (selectedPlan as any)?.cylinderWidthVal
         : (selectedPlan as any)?.sleeveWidthVal;
-      alert(
-        `⚠ Cannot Save — Special ${toolType} Required!\n\n` +
-        `This plan needs a ${toolType} (${toolSize}mm) that does NOT exist in inventory yet.\n\n` +
-        `Steps:\n` +
-        `1. Go to Masters → Tools\n` +
-        `2. Add the new ${toolType} (${toolSize}mm)\n` +
-        `3. Come back and click Replan\n` +
-        `4. Select the newly added tool's plan\n` +
-        `5. Save the Work Order`
-      );
+      setNotif({
+        type: "error",
+        title: `Cannot Save — Special ${toolType} Required`,
+        msg:
+          `This plan needs a ${toolType} (${toolSize}mm) that does NOT exist in inventory yet.\n\n` +
+          `Steps:\n` +
+          `1. Go to Masters → Tools\n` +
+          `2. Add the new ${toolType} (${toolSize}mm)\n` +
+          `3. Come back and click Replan\n` +
+          `4. Select the newly added tool's plan\n` +
+          `5. Save the Work Order`,
+      });
       return;
     }
 
@@ -1903,54 +2275,87 @@ export default function GravureWorkOrderPage() {
       : formWithCost;
 
     // ── API save ──────────────────────────────────────────────
+    const planForSave = catalogSavedPlan ?? selectedPlan ?? null;
+    const savedPlanJSONStr = planForSave ? JSON.stringify(planForSave) : "";
+
     const payload = {
       FlagEdit: editing ? "true" : "false",
       JobBookingID: editing ? Number(editing.id) : 0,
       Prefix: apiPrefix,
       ...saveForm,
-      // Align field names to what backend expects
       customerId: saveForm.customerId,
       ledgerId: saveForm.customerId,
       machineId: Number(saveForm.machineId) || 0,
       operatorId: Number(saveForm.operatorId) || 0,
       categoryId: Number(saveForm.categoryId) || 0,
       orderId: Number(saveForm.orderId) || 0,
+      orderBookingDetailsId: orderDetIdRef.current,
       quantity: saveForm.quantity,
       colorShades,
+      cylinderAllocs,
+      filmReqs,
+      materialAllocs,
+      savedPlanJSON: savedPlanJSONStr,
+      cylAllocsJSON: JSON.stringify(cylinderAllocs),
     };
 
+    setSaving(true);
     apiPost<any>("api/gravureWorkOrderShrink/saveworkorder", payload)
       .then(res => {
         if (res?.success) {
           const newId = String(res.jobBookingId ?? res.id ?? "");
           const newNo = String(res.workOrderNo ?? res.no ?? "");
-          if (editing) {
-            setWOs(d => d.map(r => r.id === editing.id
-              ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo }
-              : r));
-          } else {
-            setWOs(d => [...d, { ...saveForm, id: newId, workOrderNo: newNo }]);
-          }
           setModal(false);
           setReplan(false);
+          orderDetIdRef.current = 0;
+          // Refresh WO list + orders from API so pending tab updates immediately
+          apiGet<any[]>("api/gravureWorkOrderShrink/getworkorders")
+            .then(rows => { if (Array.isArray(rows)) setWOs(rows.map(mapApiToWO)); })
+            .catch((err: any) => {
+              console.error("getworkorders refresh failed:", err?.message || err);
+              // Optimistic fallback
+              if (editing) {
+                setWOs(d => d.map(r => r.id === editing.id
+                  ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo }
+                  : r));
+              } else {
+                setWOs(d => [...d, { ...saveForm, id: newId, workOrderNo: newNo }]);
+              }
+            });
+          apiGet<any>("api/gravureOrderBookingShrink/getorders")
+            .then(raw => {
+              const rows: any[] = Array.isArray(raw) ? raw : [];
+              if (rows.length > 0) setOrders(rows.map(mapApiToOrder));
+              else if (!editing && saveForm.orderId)
+                setOrders(d => d.filter(o => o.id !== saveForm.orderId));
+            })
+            .catch(() => {
+              if (!editing && saveForm.orderId)
+                setOrders(d => d.filter(o => o.id !== saveForm.orderId));
+            });
+          setNotif({
+            type: "success",
+            title: editing ? "Work Order Updated" : "Work Order Created",
+            msg: res.message || (editing
+              ? `Work Order ${editing.workOrderNo} updated successfully. All records saved.`
+              : `Work Order ${newNo} created successfully. All records saved.`),
+          });
         } else {
-          alert("Save failed. Please try again.");
+          setNotif({
+            type: "error",
+            title: "Save Failed",
+            msg: res?.message || "Server returned an error. No data was saved — transaction rolled back.",
+          });
         }
       })
-      .catch(() => {
-        // Fallback to local state so UI is not broken if API is down
-        if (editing) {
-          setWOs(d => d.map(r => r.id === editing.id
-            ? { ...saveForm, id: editing.id, workOrderNo: editing.workOrderNo }
-            : r));
-        } else {
-          const workOrderNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.WorkOrder, workOrders.map(d => d.workOrderNo));
-          const id = `GVWO${String(workOrders.length + 1).padStart(3, "0")}`;
-          setWOs(d => [...d, { ...saveForm, id, workOrderNo }]);
-        }
-        setModal(false);
-        setReplan(false);
-      });
+      .catch((err: any) => {
+        setNotif({
+          type: "error",
+          title: "API Error — Work Order NOT Saved",
+          msg: (err?.message || String(err)) + "\n\nAll changes have been rolled back. Please try again.",
+        });
+      })
+      .finally(() => setSaving(false));
   };
 
   const stats = {
@@ -1970,18 +2375,9 @@ export default function GravureWorkOrderPage() {
     { key: "date", header: "Date", sortable: true },
     { key: "customerName", header: "Customer", sortable: true },
     { key: "jobName", header: "Job Name" },
-    { key: "substrate", header: "Substrate", render: r => <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs">{r.substrate || "—"}</span> },
     { key: "noOfColors", header: "Colors", render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
     { key: "machineName", header: "Machine" },
     { key: "plannedDate", header: "Planned Date" },
-    {
-      key: "selectedPlanId", header: "Tool Status",
-      render: r => woHasSpecialPlan(r)
-        ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">⚠ Tool Pending</span>
-        : r.selectedPlanId
-          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200">✓ Ready</span>
-          : <span className="text-gray-300 text-xs">—</span>
-    },
     { key: "status", header: "Status", render: r => statusBadge(r.status), sortable: true },
   ];
 
@@ -2128,8 +2524,8 @@ export default function GravureWorkOrderPage() {
               <Select label="Print Type" value={form.printType} onChange={e => f("printType", e.target.value as typeof form.printType)}
                 options={[{ value: "Surface Print", label: "Surface Print" }, { value: "Reverse Print", label: "Reverse Print" }, { value: "Combination", label: "Combination" }]} />
               <Input label="Quantity" type="number" value={form.quantity || ""} onChange={e => f("quantity", Number(e.target.value))} />
-              <Select label="Unit" value={form.unit} onChange={e => f("unit", e.target.value)}
-                options={[{ value: "Pcs", label: "Pcs" }, { value: "Kg", label: "Kg" }]} />
+              <Select label="Unit" value={form.unit} onChange={e => { f("unit", e.target.value); }}
+                options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }, { value: "Pcs", label: "Pcs" }]} />
               <Input label="Cylinder Set" value={form.cylinderSet} onChange={e => f("cylinderSet", e.target.value)} placeholder="e.g. CYL-P001" />
               <Input label="Wastage %" type="number" value={form.wastagePct ?? 1} onChange={e => f("wastagePct", Number(e.target.value) || 1)} placeholder="1" />
               <Input label="Planned Date" type="date" value={form.plannedDate} onChange={e => f("plannedDate", e.target.value)} />
@@ -2907,7 +3303,7 @@ export default function GravureWorkOrderPage() {
                 <SH label="Production Plan Selection" />
                 <div className="flex items-center gap-2">
                   {isPlanApplied && (
-                    <button onClick={() => { setIsPlanApplied(false); setShowPlan(true); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg border border-gray-200">
+                    <button onClick={() => { setIsPlanApplied(false); setShowPlan(true); setCatalogSavedPlan(null); }} className="flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg border border-gray-200">
                       <RefreshCw size={11} /> Change Plan
                     </button>
                   )}
@@ -2952,8 +3348,8 @@ export default function GravureWorkOrderPage() {
                     <div>
                       <p className="text-white font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
                       <p className="text-indigo-200 text-[10px] mt-0.5">
-                        {form.machineName} · {visiblePlans.length}/{allPlans.length} plans
-                        {Object.keys(planColFilters).length > 0 && (
+                        {form.machineName} · {catalogSavedPlan ? "1 plan (from catalog)" : `${visiblePlans.length}/${allPlans.length} plans`}
+                        {!catalogSavedPlan && Object.keys(planColFilters).length > 0 && (
                           <button onClick={() => setPlanColFilters({})}
                             className="ml-2 px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] font-bold rounded-full hover:bg-yellow-300">
                             ✕ {Object.keys(planColFilters).length} filter{Object.keys(planColFilters).length > 1 ? "s" : ""} active
@@ -2964,7 +3360,7 @@ export default function GravureWorkOrderPage() {
                     <input value={planSearch} onChange={e => setPlanSearch(e.target.value)} placeholder="Search plans..."
                       className="bg-indigo-700 text-white placeholder-indigo-300 text-xs rounded-lg px-3 py-1.5 border border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-400 w-36" />
                     {form.selectedPlanId && (() => {
-                      const selP = allPlans.find(p => p.planId === form.selectedPlanId) as any;
+                      const selP = (catalogSavedPlan?.planId === form.selectedPlanId ? catalogSavedPlan : allPlans.find(p => p.planId === form.selectedPlanId)) as any;
                       const isSpecial = selP?.isSpecial || selP?.isSpecialSleeve;
                       return (
                         <button onClick={() => { setIsPlanApplied(true); setShowPlan(false); }}
@@ -3294,7 +3690,10 @@ export default function GravureWorkOrderPage() {
                 <div className="space-y-3">
                   {form.secondaryLayers.map((l, idx) => {
                     const req: FilmRequisition = filmReqs[idx] ?? { source: "", status: "Pending" };
-                    const reqSQM = form.quantity * ((form.jobWidth || 0) / 1000);
+                    const filmGsmFilm = form.secondaryLayers[0]?.gsm ?? 0;
+                    const reqSQM = (form.unit === "Kg" && filmGsmFilm > 0)
+                      ? (form.quantity * 1000) / filmGsmFilm
+                      : form.quantity * ((form.jobWidth || 0) / 1000);
                     const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
                     const setReq = (patch: Partial<FilmRequisition>) =>
                       setFilmReqs(prev => {
@@ -3384,7 +3783,12 @@ export default function GravureWorkOrderPage() {
                                         value={req.vendor ?? ""}
                                         onChange={e => setReq({ vendor: e.target.value })}>
                                         <option value="">-- Select Vendor --</option>
-                                        {VENDOR_LEDGERS.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
+                                        {(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).map(v => (
+                                          <option key={v.id} value={v.name}>{v.name}</option>
+                                        ))}
+                                        {req.vendor && !(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).some(v => v.name === req.vendor) && (
+                                          <option value={req.vendor}>{req.vendor}</option>
+                                        )}
                                       </select>
                                     </div>
                                     <Input label="Expected Rate (₹/Kg)" type="number" value={req.expectedRate ?? ""}
@@ -3835,16 +4239,16 @@ export default function GravureWorkOrderPage() {
                           <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
                             value={(ca as any).toolId ?? ""}
                             onChange={e => {
-                              const tool = [...CYLINDER_TOOLS_ALL, ...extraCyls].find(t => t.id === e.target.value);
+                              const tool = [...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls].find(t => t.id === e.target.value);
                               setCylinderAllocs(p => p.map((c, ci) => ci === i ? {
                                 ...c,
                                 toolId: tool?.id ?? "",
                                 cylinderNo: tool?.code ?? c.cylinderNo,
-                                circumference: selectedPlan ? String(selectedPlan.cylCirc) : c.circumference,
+                                circumference: selectedPlan ? String(selectedPlan.cylCirc) : ((tool as any)?.repeatLength ? String((tool as any).repeatLength) : c.circumference),
                               } as any : c));
                             }}>
                             <option value="">{ca.cylinderNo || "-- Select Cylinder --"}</option>
-                            {[...CYLINDER_TOOLS_ALL, ...extraCyls].map(t => {
+                            {[...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls].map(t => {
                               const rem = t.shelfLifeMeters ? t.shelfLifeMeters - (t.usedMeters ?? 0) : null;
                               const lifeBadge = rem !== null ? ` [${rem.toLocaleString()}m left]` : "";
                               return <option key={t.id} value={t.id}>{t.code} — {t.name} ({t.printWidth}mm){lifeBadge}</option>;
@@ -3854,7 +4258,7 @@ export default function GravureWorkOrderPage() {
                           {(() => {
                             const toolId = (ca as any).toolId;
                             if (!toolId) return null;
-                            const tool = [...CYLINDER_TOOLS_ALL, ...extraCyls].find(t => t.id === toolId);
+                            const tool = [...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls].find(t => t.id === toolId);
                             if (!tool) return null;
                             const remaining = tool.shelfLifeMeters ? tool.shelfLifeMeters - (tool.usedMeters ?? 0) : null;
                             const reqRMT = selectedPlan?.reqRMT ?? 0;
@@ -3968,8 +4372,10 @@ export default function GravureWorkOrderPage() {
 
           <div className="flex justify-between pt-2">
             <Button variant="secondary" onClick={() => setModalTab("planning")}>← Back</Button>
-            <Button icon={<Printer size={14} />} onClick={save} variant={isSelectedPlanSpecial ? "danger" : "primary"}>
-              {editing ? "Update Work Order" : isSelectedPlanSpecial ? "⚠ Cannot Save — Create Tool First" : "Create Work Order"}
+            <Button icon={saving ? <RefreshCw size={14} className="animate-spin" /> : <Printer size={14} />}
+              onClick={save} variant={isSelectedPlanSpecial ? "danger" : "primary"}
+              disabled={saving}>
+              {saving ? "Saving…" : editing ? "Update Work Order" : isSelectedPlanSpecial ? "⚠ Cannot Save — Create Tool First" : "Create Work Order"}
             </Button>
           </div>
         </div>
@@ -4110,7 +4516,12 @@ export default function GravureWorkOrderPage() {
       )}
 
       {/* ══ CREATE / EDIT MODAL ═══════════════════════════════════ */}
-      <Modal open={modalOpen} onClose={() => setModal(false)}
+      <Modal open={modalOpen} onClose={() => {
+        setModal(false); setCatalogSavedPlan(null); setEditing(null);
+        setFilmReqs([]); setColorShades([]); setMaterialAllocs([]); setCylinderAllocs([]);
+        setIsPlanApplied(false); setShowPlan(false);
+        orderDetIdRef.current = 0;
+      }}
         title={editing ? `Edit Work Order — ${editing.workOrderNo}` : form.sourceOrderType !== "Direct" ? `New Work Order — From ${form.orderNo}` : "New Direct Work Order"}
         size="xl">
         {formContent}
@@ -4225,8 +4636,9 @@ export default function GravureWorkOrderPage() {
         )}
         <div className="flex justify-end gap-3 mt-4">
           <Button variant="secondary" onClick={() => setReplan(false)}>Cancel</Button>
-          <Button icon={<RefreshCw size={14} />} onClick={save}>
-            {editing && woHasSpecialPlan(editing) && !isSelectedPlanSpecial && isPlanApplied ? "Activate & Save" : "Save Replan"}
+          <Button icon={saving ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            onClick={save} disabled={saving}>
+            {saving ? "Saving…" : editing && woHasSpecialPlan(editing) && !isSelectedPlanSpecial && isPlanApplied ? "Activate & Save" : "Save Replan"}
           </Button>
         </div>
       </Modal>
@@ -4294,7 +4706,10 @@ export default function GravureWorkOrderPage() {
         );
         const filmLayers = wo.secondaryLayers.filter(l => l.itemSubGroup);
         const reqMtr = wo.quantity || 0;
-        const reqSQM = reqMtr * ((wo.width || wo.jobWidth || 0) / 1000);
+        const woFilmGsm = wo.secondaryLayers[0]?.gsm ?? 0;
+        const reqSQM = (wo.unit === "Kg" && woFilmGsm > 0)
+          ? (reqMtr * 1000) / woFilmGsm
+          : reqMtr * ((wo.width || wo.jobWidth || 0) / 1000);
         const waste = (wo.wastagePct ?? 3) / 100;
 
         const handlePrint = () => {
@@ -5049,6 +5464,38 @@ export default function GravureWorkOrderPage() {
             <Button icon={<BookMarked size={14} />} onClick={confirmSaveToCatalog}>Save to Catalog</Button>
           </div>
         </Modal>
+      )}
+
+      {/* ══ CUSTOM NOTIFICATION POPUP ════════════════════════════ */}
+      {notif && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40"
+          onClick={() => setNotif(null)}>
+          <div
+            className={`bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4 border-l-4 ${notif.type === "success" ? "border-green-500" : "border-red-500"}`}
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3">
+              {notif.type === "success"
+                ? <CheckCircle2 className="text-green-500 mt-0.5 flex-shrink-0" size={22} />
+                : <AlertCircle className="text-red-500 mt-0.5 flex-shrink-0" size={22} />}
+              <div className="flex-1 min-w-0">
+                <h3 className={`font-bold text-sm ${notif.type === "success" ? "text-green-700" : "text-red-700"}`}>
+                  {notif.title}
+                </h3>
+                <p className="text-xs text-gray-600 mt-1.5 whitespace-pre-wrap leading-relaxed">{notif.msg}</p>
+              </div>
+              <button onClick={() => setNotif(null)} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="flex justify-end mt-5">
+              <button
+                onClick={() => setNotif(null)}
+                className={`px-5 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors ${notif.type === "success" ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600"}`}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
