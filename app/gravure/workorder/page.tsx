@@ -1220,10 +1220,9 @@ export default function GravureWorkOrderPage() {
       specialInstructions: String(r.specialInstructions ?? ""),
       status: (r.status ?? "Open") as any,
       // ── Catalog integration data (used by openEdit to restore states)
-      _cylinderAllocs: restoredCylAllocs,
-      _filmReqs: restoredFilmReqs,
-      _materialAllocs: restoredMatAllocs,
-      _savedPlanJSON: restoredSavedPlan,
+      cylinderAllocs: restoredCylAllocs,
+      filmReqs: restoredFilmReqs,
+      materialAllocs: restoredMatAllocs,
     };
   }
 
