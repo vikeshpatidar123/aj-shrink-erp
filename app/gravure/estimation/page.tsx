@@ -1079,15 +1079,6 @@ export default function GravureEstimationPage() {
       quantity:     Number(cat.standardQty  || 0),
       remarks:      String(cat.remarks      || ""),
       salesType:    String(cat.salesType    || "Local"),
-      // Pouch / seal / gusset
-      topSeal:         Number(cat.topSeal        || 0) || undefined,
-      bottomSeal:      Number(cat.bottomSeal      || 0) || undefined,
-      sideSeal:        Number(cat.sideSeal        || 0) || undefined,
-      centerSealWidth: Number(cat.centerSealWidth || 0) || undefined,
-      sideGusset:      Number(cat.sideGusset      || 0) || undefined,
-      gusset:          Number(cat.gusset          || 0) || undefined,
-      seamingArea:     Number(cat.seamingArea     || 0) || undefined,
-      transparentArea: Number(cat.transparentArea || 0) || undefined,
       // Layers and processes — carry forward directly from catalog
       secondaryLayers: Array.isArray(cat.secondaryLayers)
         ? cat.secondaryLayers.map((l: any, i: number) => ({ ...l, id: Math.random().toString(), layerNo: i + 1 }))
