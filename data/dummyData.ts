@@ -39,6 +39,7 @@ export type PlyConsumableItem = {
   itemName: string;
   gsm: number;
   rate: number;
+  rateUnit?: string;         // unit from Item Master EstimationUnit (e.g. "Kg", "Meter")
   coveragePct?: number;      // ink coverage % (0–100), only for Ink items
   solidPct?: number;         // ink solid content % (default 40), used to calc liquid GSM
   ohPct?: number;            // OH% for Adhesive items
@@ -2370,6 +2371,7 @@ export type GravureEstimationProcess = {
   // Machine allocation (for loan & labour cost calculation)
   machineId?: string;
   machineName?: string;
+  machineIds?: string[];  // all machines allocated to this process in Process Master
   runHours?: number;     // hours this process runs for this job
   interestCost?: number; // computed: machine loan interest for runHours
   labourCost?: number;   // computed: machine labour cost for runHours
@@ -2429,6 +2431,16 @@ export type GravureEstimation = {
   overheadAmt: number; profitAmt: number;
   totalAmount: number; perMeterRate: number; perMeterRateWithoutProfit?: number; marginPct: number;
   contribution: number; breakEvenQty: number;
+  // Pouch / Sleeve seal geometry
+  topSeal?: number; bottomSeal?: number; sideSeal?: number;
+  centerSealWidth?: number; sideGusset?: number; gusset?: number;
+  seamingArea?: number; transparentArea?: number;
+  // Product identity
+  packSize?: string; brandName?: string; productType?: string;
+  skuType?: string; bottleType?: string; addressType?: string;
+  artworkName?: string; specialSpecs?: string;
+  // Roll specs
+  finalRollOD?: number; rollUnit?: string; unwindDirection?: string;
   secondaryLayers: SecondaryLayer[];
   dryWeightRows: DryWeightRow[];
   dryWeightTotal: number;

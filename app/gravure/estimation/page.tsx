@@ -16,7 +16,9 @@ import {
 import { useCategories }     from "@/context/CategoriesContext";
 import { useEnquiries }      from "@/context/EnquiryContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
+import { useMasters }        from "@/context/MastersContext";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
+import { apiGet, apiPost } from "@/lib/api";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
@@ -32,9 +34,63 @@ const ADHESIVE_ITEMS = items.filter(i => i.group === "Adhesive" && i.active);
 const HARDNER_ITEMS  = items.filter(i => i.group === "Hardner"  && i.active);
 const ALL_MAT_ITEMS  = [...FILM_ITEMS, ...INK_ITEMS, ...SOLVENT_ITEMS, ...ADHESIVE_ITEMS, ...HARDNER_ITEMS];
 
-const PRINT_MACHINES  = machines.filter(m => m.department === "Printing");
+// Fallback static data (used when API not yet loaded)
+const STATIC_PRINT_MACHINES = machines.filter(m => m.department === "Printing");
+const STATIC_ROTO_PROCESSES = processMasters.filter(p => p.module === "Rotogravure");
 
-const ROTO_PROCESSES  = processMasters.filter(p => p.module === "Rotogravure");
+// Maps any DB ContentMaster.ContentName → a CONTENT_TYPE_CONFIG key.
+// Order matters: more-specific checks before general ones.
+// If no pattern matches, returns the original string (may already be an exact config key).
+function normalizeContentType(content: string): string {
+  const c = (content || "").toLowerCase().trim();
+  if (!c) return content;
+
+  // ── Sleeve (before "film" so "Shrink Sleeve Film" → Sleeve, not Labels) ──
+  if (c.includes("sleeve") && !c.includes("stretch"))                   return "Sleeve — Shrink";
+  if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";
+
+  // ── Label types ────────────────────────────────────────────────────────
+  if (c.includes("wrap around"))                                         return "Wrap Around Labels";
+  if (c.includes("shrink label") || c.includes("shrink film"))          return "Shrink Labels";
+  if (c.includes("cut") && c.includes("stack"))                         return "Cut & Stack Labels";
+  if (c.includes("in-mould") || c.includes("in mould"))                return "In-Mould Labels";
+
+  // ── Pouch types (specific before generic) ─────────────────────────────
+  if (c.includes("both side") && c.includes("gusset"))                  return "Both Side Gusset Pouch";
+  if ((c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))) return "3D Pouch / Flat Bottom";
+  if (c.includes("3 side") || c.includes("three side"))                return "Pouch — 3 Side Seal";
+  if (c.includes("center seal") || c.includes("centre seal"))          return "Pouch — Center Seal";
+  if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Standup Pouch";
+  if (c.includes("zipper"))                                              return "Zipper Pouch";
+  if (c.includes("pouch") || c.includes("doy"))                         return "Pouch — 3 Side Seal";
+
+  // ── Film / roll types ─────────────────────────────────────────────────
+  if (c.includes("lldpe") || c.includes("ldpe"))                        return "Shrink Labels";
+  if (c.includes("laminate"))                                            return "Laminate Roll";
+  if (c.includes("roll form") || c.includes("roll") || c.includes("film")) return "Laminate Roll";
+
+  // ── Generic keyword fallbacks ─────────────────────────────────────────
+  if (c.includes("bag") || c.includes("sack"))                          return "Pouch — 3 Side Seal";
+  if (c.includes("label") || c.includes("sticker") || c.includes("tag")) return "Wrap Around Labels";
+
+  // Return as-is — may already be an exact CONTENT_TYPE_CONFIG key
+  return content;
+}
+
+// Parses SQL Server datetime strings returned by JavaScriptSerializer.
+// Handles: /Date(1716489600000)/, ISO strings ("2024-05-16"), or "16 May 2024" style.
+// Always returns a "yyyy-MM-dd" string safe for <input type="date"> and new Date().
+function parseApiDate(d: any): string {
+  if (!d) return new Date().toISOString().slice(0, 10);
+  const s = String(d).trim();
+  // Microsoft /Date(ms)/ format from JavaScriptSerializer
+  const msMatch = s.match(/\/Date\((-?\d+)\)\//);
+  if (msMatch) return new Date(parseInt(msMatch[1], 10)).toISOString().slice(0, 10);
+  // ISO / yyyy-MM-dd / other parseable string
+  const dt = new Date(s);
+  if (!isNaN(dt.getTime())) return dt.toISOString().slice(0, 10);
+  return new Date().toISOString().slice(0, 10);
+}
 
 // ─── Tool inventory helpers ────────────────────────────────
 const AVAILABLE_TOOL_IDS = new Set(
@@ -95,6 +151,14 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   overheadAmt: 0, profitAmt: 0,
   totalAmount: 0, perMeterRate: 0, marginPct: 0,
   contribution: 0, breakEvenQty: 0,
+  // Pouch / Sleeve seal geometry
+  topSeal: 0, bottomSeal: 0, sideSeal: 0, centerSealWidth: 0,
+  sideGusset: 0, gusset: 0, seamingArea: 0, transparentArea: 0,
+  // Product identity
+  packSize: "", brandName: "", productType: "", skuType: "",
+  bottleType: "", addressType: "", artworkName: "", specialSpecs: "",
+  // Roll specs
+  finalRollOD: 0, rollUnit: "", unwindDirection: "",
   secondaryLayers: [],
   dryWeightRows: [],
   dryWeightTotal: 0,
@@ -122,26 +186,53 @@ const GROUP_COLORS: Record<string, string> = {
 };
 
 // ─── Auto qty for a process based on its chargeUnit ──────────
-function autoProcessQty(chargeUnit: string, quantity: number, areaM2: number, noOfColors: number) {
-  if (chargeUnit === "m²")       return quantity;
-  if (chargeUnit === "m")        return quantity;
-  if (chargeUnit === "Kg")       return quantity;
+// lengthM = meters of film, areaM2 = m², weightKg = total weight in Kg
+function autoProcessQty(chargeUnit: string, lengthM: number, areaM2: number, weightKg: number, noOfColors: number) {
+  if (chargeUnit === "m²")       return areaM2;
+  if (chargeUnit === "m")        return lengthM;
+  if (chargeUnit === "Kg")       return weightKg;
   if (chargeUnit === "Cylinder") return noOfColors;
-  if (chargeUnit === "1000 Pcs") return quantity / 1000;
+  if (chargeUnit === "1000 Pcs") return lengthM / 1000;
   if (chargeUnit === "Job")      return 1;
   return 0; // unknown / custom → use manual p.qty
 }
 
+// ─── Convert form.quantity to meter/area/weight based on unit ─
+function resolveQuantities(form: { quantity: number; unit: string; jobWidth: number; secondaryLayers: { gsm: number; consumableItems: { gsm: number }[] }[] }) {
+  const totalGSM = form.secondaryLayers.reduce((s, l) =>
+    s + (l.gsm || 0) + l.consumableItems.reduce((cs, ci) => cs + (ci.gsm || 0), 0), 0);
+  const w = form.jobWidth || 0;
+  if (form.unit === "Kg") {
+    const weightKg = form.quantity;
+    const areaM2   = totalGSM > 0 ? weightKg * 1000 / totalGSM : 0;
+    const lengthM  = w > 0 ? areaM2 * 1000 / w : 0;
+    return { lengthM, areaM2, weightKg };
+  }
+  // Default: Meter
+  const lengthM  = form.quantity;
+  const areaM2   = lengthM * (w / 1000);
+  const weightKg = totalGSM > 0 ? areaM2 * totalGSM / 1000 : 0;
+  return { lengthM, areaM2, weightKg };
+}
+
+// ─── Rate option maps passed from component (live API rates) ──
+type RateOptions = {
+  filmRateMap?: Record<string, number>;      // itemSubGroupName → EstimationRate
+  processMinChargeMap?: Record<string, number>; // processId → MinimumCharges
+};
+
 // ─── Cost calculator ──────────────────────────────────────────
-function calcCosts(form: typeof blank) {
-  const areaM2 = form.quantity * (form.jobWidth / 1000);
+function calcCosts(form: typeof blank, opts?: RateOptions) {
+  const { lengthM, areaM2, weightKg } = resolveQuantities(form);
 
   // 1. Material cost: film + consumables (with ink coverage logic)
   let plyMaterialCost = 0;
   form.secondaryLayers.forEach(l => {
-    // Film substrate
+    // Film substrate — priority: user-entered filmRate → live API rate → dummy fallback
     if (l.gsm > 0) {
-      const filmRate = l.filmRate ?? parseFloat(FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup)?.estimationRate || "0");
+      const filmRate = (l.filmRate && l.filmRate > 0)
+        ? l.filmRate
+        : (opts?.filmRateMap?.[l.itemSubGroup] ?? parseFloat(FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup)?.estimationRate || "0"));
       if (filmRate > 0) plyMaterialCost += (l.gsm * areaM2 / 1000) * filmRate;
     }
     // Consumable items — apply coverage % for all consumables
@@ -157,12 +248,14 @@ function calcCosts(form: typeof blank) {
   const manualMatCost = form.materials.reduce((s, m) => s + m.amount, 0);
   const materialCost  = parseFloat((plyMaterialCost + manualMatCost).toFixed(2));
 
-  // 2. Process cost: rate × qty + setupCharge
+  // 2. Process cost: rate × qty + setupCharge, floored by MinimumCharges from master
   const processCost = parseFloat(
     form.processes.reduce((s, p) => {
-      const autoQty = autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors);
+      const autoQty = autoProcessQty(p.chargeUnit, lengthM, areaM2, weightKg, form.noOfColors);
       const qty = autoQty > 0 ? autoQty : (p.qty || 0);
-      return s + (p.rate * qty + p.setupCharge);
+      const rawCost = p.rate * qty + (p.setupCharge || 0);
+      const minCharge = opts?.processMinChargeMap?.[String(p.processId)] ?? 0;
+      return s + Math.max(rawCost, minCharge);
     }, 0).toFixed(2)
   );
 
@@ -191,7 +284,7 @@ function calcCosts(form: typeof blank) {
   const sfCostBox       = ((form.packingStretchFilmGm || 0) / 1000) * (form.packingStretchFilmRate || 0);
   const packPerBox      = (form.packingBoxRate || 0) + plugCostBox + tapeCostBox + sfCostBox;
   const packingPerKg    = boxWt > 0 ? packPerBox / boxWt : 0;
-  const packingCostCalc = parseFloat((packingPerKg * form.quantity).toFixed(2));
+  const packingCostCalc = parseFloat((packingPerKg * weightKg).toFixed(2));
   const packingCost     = form.packingCostOverride !== undefined && form.packingCostOverride > 0
     ? form.packingCostOverride
     : packingCostCalc;
@@ -211,7 +304,7 @@ function calcCosts(form: typeof blank) {
   const perMeterRateWithoutProfit = effectiveQtyForRate > 0 ? parseFloat(((totalAmount - profitAmt) / effectiveQtyForRate).toFixed(4)) : 0;
   const marginPct    = totalAmount > 0 ? parseFloat(((profitAmt / totalAmount) * 100).toFixed(1)) : 0;
 
-  // 6. Contribution & break-even
+  // 6. Contribution & break-even (per unit — same unit as form.quantity)
   const variableCost   = form.quantity > 0 ? parseFloat(((materialCost + processCost) / form.quantity).toFixed(4)) : 0;
   const sellingPriceEff = form.sellingPrice > 0 ? form.sellingPrice : perMeterRate;
   const contribution   = parseFloat((sellingPriceEff - variableCost).toFixed(4));
@@ -225,16 +318,18 @@ function calcCosts(form: typeof blank) {
 type MatLine  = { plyNo: number; plyType: string; name: string; group: string; gsm: number; kg: number; rate: number; amount: number };
 type ProcLine = { name: string; chargeUnit: string; qty: number; rate: number; setupCharge: number; amount: number };
 
-function getCostBreakdown(form: typeof blank): { matLines: MatLine[]; procLines: ProcLine[]; areaM2: number } {
-  const areaM2   = parseFloat((form.quantity * (form.jobWidth / 1000)).toFixed(2));
+function getCostBreakdown(form: typeof blank, opts?: RateOptions): { matLines: MatLine[]; procLines: ProcLine[]; areaM2: number } {
+  const { lengthM, areaM2, weightKg } = resolveQuantities(form);
   const matLines: MatLine[]   = [];
   const procLines: ProcLine[] = [];
 
   form.secondaryLayers.forEach((l, idx) => {
-    // Film
+    // Film — priority: user-entered filmRate → live API rate → dummy fallback
     if (l.gsm > 0) {
       const filmItem = FILM_ITEMS.find(i => i.subGroup === l.itemSubGroup);
-      const rate = l.filmRate ?? parseFloat(filmItem?.estimationRate || "0");
+      const rate = (l.filmRate && l.filmRate > 0)
+        ? l.filmRate
+        : (opts?.filmRateMap?.[l.itemSubGroup] ?? parseFloat(filmItem?.estimationRate || "0"));
       const kg       = parseFloat((l.gsm * areaM2 / 1000).toFixed(3));
       matLines.push({ plyNo: idx + 1, plyType: l.plyType || "Film", name: l.itemSubGroup || "Film Substrate", group: "Film", gsm: l.gsm, kg, rate, amount: parseFloat((kg * rate).toFixed(2)) });
     }
@@ -257,12 +352,14 @@ function getCostBreakdown(form: typeof blank): { matLines: MatLine[]; procLines:
     matLines.push({ plyNo: 0, plyType: "Extra", name: m.itemName, group: m.group, gsm: 0, kg: m.qty, rate: m.rate, amount: m.amount });
   });
 
-  // Processes
+  // Processes — apply MinimumCharges floor from master
   form.processes.forEach(p => {
-    const _autoQty = autoProcessQty(p.chargeUnit, form.quantity, areaM2, form.noOfColors);
+    const _autoQty = autoProcessQty(p.chargeUnit, lengthM, areaM2, weightKg, form.noOfColors);
     const qty      = parseFloat((_autoQty > 0 ? _autoQty : (p.qty || 0)).toFixed(2));
-    const amount = parseFloat((p.rate * qty + p.setupCharge).toFixed(2));
-    procLines.push({ name: p.processName || "—", chargeUnit: p.chargeUnit, qty, rate: p.rate, setupCharge: p.setupCharge, amount });
+    const rawAmt   = p.rate * qty + (p.setupCharge || 0);
+    const minCharge = opts?.processMinChargeMap?.[String(p.processId)] ?? 0;
+    const amount   = parseFloat(Math.max(rawAmt, minCharge).toFixed(2));
+    procLines.push({ name: p.processName || "—", chargeUnit: p.chargeUnit, qty, rate: p.rate, setupCharge: p.setupCharge || 0, amount });
   });
 
   return { matLines, procLines, areaM2 };
@@ -294,12 +391,458 @@ const FILM_SUBGROUPS = Array.from(
 
 
 export default function GravureEstimationPage() {
-  const { categories } = useCategories();   // ← live from Category Master
-  const { enquiries: allEnquiries } = useEnquiries();  // ← live from Enquiry page
+  const { categories } = useCategories();
+  const { enquiries: allEnquiries } = useEnquiries();
   const { catalog: productCatalog } = useProductCatalog();
+  const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems } = useMasters();
   const gravureEnqList = allEnquiries.filter(e => e.businessUnit === "Gravure");
   const activeCatalog  = productCatalog.filter(c => c.status === "Active");
-  const [data, setData]       = useState<GravureEstimation[]>(initData);
+
+  // ── Live API machines & processes (fall back to static if API not loaded) ──
+  const dedupe = <T extends { id: string }>(arr: T[]): T[] => {
+    const seen = new Set<string>();
+    return arr.filter(x => { if (seen.has(x.id)) return false; seen.add(x.id); return true; });
+  };
+  const PRINT_MACHINES = useMemo(() =>
+    apiMachines.length > 0
+      ? dedupe(apiMachines.map(m => ({
+          id: String(m.MachineID), name: m.MachineName, department: "Printing",
+          status: "Running",
+          costPerHour: m.PerHourCost > 0 ? m.PerHourCost : 1350,
+          maxWebWidth: m.MaxRollWidth, minWebWidth: m.MinRollWidth,
+          repeatLengthMin: m.MinCircumference, repeatLengthMax: m.MaxCircumference,
+          noOfColors: m.Colors,
+          speedMax: m.Speed, speedUnit: m.SpeedUnit || "Meter/Min",
+          // Loan / interest
+          isOnLoan: m.IsOnLoan === 1,
+          loanAmount: m.PurchaseCost ?? 0,
+          loanInterestRatePct: m.AnnualInterestRate ?? 0,
+          loanDuration: m.LoanDuration ?? 0,
+          purchaseCost: m.PurchaseCost ?? 0,
+          machineLifespan: m.MachineLifespan ?? 0,
+          // Labour
+          numberOfOperators: m.NumberOfOperators ?? 1,
+          avgLaborSalaryPerYear: m.AvgLaborSalaryPerYear ?? 0,
+          labourCharges: m.LabourCharges ?? 0,
+          workingHoursPerDay: m.WorkingHoursPerDay ?? 8,
+          workingDaysPerYear: m.WorkingDaysPerYear ?? 300,
+          // Derived for estimation compatibility
+          monthlyLabourSalary: m.AvgLaborSalaryPerYear > 0
+            ? Math.round((m.AvgLaborSalaryPerYear * (m.NumberOfOperators || 1)) / 12)
+            : 0,
+          // LabourCharges is a DIRECT per-hour rate (not monthly) — used as fallback
+          directLabourPerHr: m.LabourCharges > 0 ? m.LabourCharges : 0,
+          // PerHourCost is direct machine cost per hour (depreciation + power) — fallback when PurchaseCost=0
+          directCostPerHr: m.PerHourCost > 0 ? m.PerHourCost : 0,
+          workingDaysPerMonth: m.WorkingDaysPerYear > 0 ? Math.round(m.WorkingDaysPerYear / 12) : 25,
+          shiftHours: m.WorkingHoursPerDay ?? 8,
+        } as any)))
+      : STATIC_PRINT_MACHINES,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [apiMachines]);
+
+  const ROTO_PROCESSES = useMemo(() =>
+    apiProcesses.length > 0
+      ? dedupe(apiProcesses.map(p => ({
+          id: String(p.ProcessID), name: p.ProcessName, displayName: p.DisplayProcessName,
+          module: "Rotogravure", department: p.DepartmentName,
+          chargeUnit: p.TypeofCharges, rate: String(p.Rate),
+          makeSetupCharges: Number(p.SetupCharges) > 0,
+          setupChargeAmount: String(p.SetupCharges ?? 0),
+          minimumCharge: Number(p.MinimumCharges ?? 0),
+          minimumQty: Number(p.MinimumQuantityToBeCharged ?? 0),
+          perHourCost: Number(p.PerHourCostingParameter ?? 0),
+          startUnit: String(p.StartUnit || ""),
+          endUnit: String(p.EndUnit || ""),
+          machineIds: (() => {
+            const alloc = String(p.AllocattedMachineID || "");
+            const ids = alloc.split(",").map((s: string) => s.trim()).filter(Boolean);
+            // Fall back to MachineID if AllocattedMachineID is empty
+            if (ids.length === 0 && p.MachineID) ids.push(String(p.MachineID));
+            return ids;
+          })(),
+          machineId: (() => {
+            const alloc = String(p.AllocattedMachineID || "");
+            const ids = alloc.split(",").map((s: string) => s.trim()).filter(Boolean);
+            if (ids.length === 1) return ids[0];
+            if (ids.length === 0) return String(p.MachineID || "");
+            return ""; // multiple — require user to pick in loan/labour table
+          })(),
+          machineMasterName: String(p.MachineMasterName || ""),
+        } as any)))
+      : STATIC_ROTO_PROCESSES,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [apiProcesses]);
+
+  // Film rate lookup: subGroupID → EstimationRate (from live API), fallback to subGroupName → rate
+  const apiFilmRateBySubGroupId = useMemo(() => {
+    const map: Record<string, number> = {};
+    apiFilmItems.forEach(f => { if (f.ItemSubGroupID && f.EstimationRate > 0) map[f.ItemSubGroupID] = f.EstimationRate; });
+    return map;
+  }, [apiFilmItems]);
+  const apiFilmRateBySubGroupName = useMemo(() => {
+    const map: Record<string, number> = {};
+    apiFilmItems.forEach(f => { if (f.ItemSubGroupName && f.EstimationRate > 0) map[f.ItemSubGroupName] = f.EstimationRate; });
+    return map;
+  }, [apiFilmItems]);
+
+  // Film sub-groups from live API (DB sub-group names + density/thicknesses per sub-group)
+  const apiFilmSubGroups = useMemo(() => {
+    if (apiFilmItems.length === 0) return FILM_SUBGROUPS;
+    const map = new Map<string, { density: number; thicknesses: Set<number> }>();
+    apiFilmItems.forEach(f => {
+      if (!f.ItemSubGroupName) return;
+      if (!map.has(f.ItemSubGroupName)) map.set(f.ItemSubGroupName, { density: f.Density || 0, thicknesses: new Set() });
+      const t = parseFloat(String(f.Thickness));
+      if (!isNaN(t) && t > 0) map.get(f.ItemSubGroupName)!.thicknesses.add(t);
+    });
+    return Array.from(map.entries()).map(([subGroup, d]) => ({
+      subGroup, density: d.density,
+      thicknesses: Array.from(d.thicknesses).sort((a, b) => a - b),
+    }));
+  }, [apiFilmItems]);
+
+  // Normalize DB ItemGroupName → standard frontend group key (Ink / Solvent / Adhesive / Hardner)
+  const normalizeConsumableGroup = (grp: string): string => {
+    const g = (grp || "").toLowerCase();
+    if (g.includes("ink"))      return "Ink";
+    if (g.includes("solvent"))  return "Solvent";
+    if (g.includes("adhesive")) return "Adhesive";
+    if (g.includes("hardner") || g.includes("hardener")) return "Hardner";
+    return grp;
+  };
+
+  // Consumable sub-groups from live API keyed by normalized group name
+  const apiConsumableSubGroups = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    apiInkItems.forEach(i => {
+      if (!i.ItemGroupName || !i.ItemSubGroupName) return;
+      const key = normalizeConsumableGroup(i.ItemGroupName);
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(i.ItemSubGroupName)) map[key].push(i.ItemSubGroupName);
+    });
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiInkItems]);
+
+  const [data, setData]       = useState<GravureEstimation[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
+  const [saving, setSaving]   = useState(false);
+
+  // ── Load list from API ─────────────────────────────────────
+  const loadList = async () => {
+    setLoadingData(true);
+    try {
+      const rows = await apiGet<any[]>("api/gravureestimationShrink/getestimationlist");
+      if (!Array.isArray(rows)) return;
+      setData(rows.map(r => ({
+        ...blank,
+        id:            String(r.GrvEstimationID ?? r.BookingID ?? ""),
+        estimationNo:  String(r.GrvEstimationCode ?? ""),
+        date:          parseApiDate(r.GrvEstimationDate),
+        customerId:    String(r.CustomerID ?? ""),
+        customerName:  String(r.CustomerName ?? ""),
+        categoryId:    String(r.CategoryID ?? ""),
+        categoryName:  String(r.CategoryName ?? ""),
+        jobName:       String(r.JobName ?? ""),
+        content:       String(r.Content ?? ""),
+        jobWidth:      Number(r.JobWidth ?? 0),
+        jobHeight:     Number(r.JobHeight ?? 0),
+        actualWidth:   Number(r.ActualWidth ?? 0),
+        actualHeight:  Number(r.ActualHeight ?? 0),
+        noOfColors:    Number(r.NoOfColors ?? 0),
+        printType:     String(r.PrintType ?? "Surface Print") as any,
+        quantity:      Number(r.Quantity ?? 0),
+        unit:          String(r.Unit ?? "Kg") as any,
+        machineId:     String(r.MachineID ?? ""),
+        machineName:   String(r.MachineName ?? ""),
+        totalAmount:   Number(r.TotalAmount ?? 0),
+        perMeterRate:  Number(r.PerMeterRate ?? 0),
+        materialCost:  Number(r.MaterialCost ?? 0),
+        processCost:   Number(r.ProcessCost ?? 0),
+        sellingPrice:  Number(r.SellingPrice ?? 0),
+        status:        String(r.Status ?? "Draft") as any,
+        remarks:       String(r.Remarks ?? ""),
+        salesPerson:   String(r.SalesPerson ?? ""),
+        salesType:     String(r.SalesType ?? "Local") as any,
+      })));
+    } catch {}
+    finally { setLoadingData(false); }
+  };
+
+  useEffect(() => { loadList(); }, []);
+
+  // ── Fetch full record then open Edit modal ─────────────────
+  const openEditFromApi = async (row: GravureEstimation) => {
+    setLoadingData(true);
+    try {
+      const full = await apiGet<any[]>(`api/gravureestimationShrink/getestimationbyid/${row.id}`);
+      if (!Array.isArray(full) || full.length === 0) { openEdit(row); return; }
+      const r = full[0];
+      let layers: any[] = [];
+      let processes: any[] = [];
+      let materials: any[] = [];
+      let qtyOverridesRaw: any[] = [];
+      try { layers          = JSON.parse(r.GrvLayersJSON      || "[]"); } catch {}
+      try { processes       = JSON.parse(r.GrvProcessesJSON   || "[]"); } catch {}
+      try { materials       = JSON.parse(r.GrvMaterialsJSON   || "[]"); } catch {}
+      try { qtyOverridesRaw = JSON.parse(r.GrvQtyOverridesJSON|| "[]"); } catch {}
+      // Normalise layers — data may come from JobBookingContentsLayerDetail (DB table) or GrvLayersJSON (JSON blob).
+      // DB table stores plyType in ItemName (aliased as plyType in query). Blob stores it directly as plyType.
+      const normLayers = layers.map((l: any, i: number) => ({
+        ...l,
+        id:           Math.random().toString(),
+        layerNo:      i + 1,
+        plyType:      String(l.plyTypeLabel || l.plyType || ""),  // plyTypeLabel = old alias, plyType = new alias / blob value
+        itemId:       String(l.itemId ?? ""),
+        itemSubGroupId: String(l.itemSubGroupId ?? ""),
+        itemSubGroup: String(l.itemSubGroup ?? ""),
+        density:      Number(l.density ?? 0),
+        gsm:          Number(l.gsm ?? 0),
+        filmRate:     Number(l.filmRate ?? 0),
+        thickness:    Number(l.thickness ?? 0),
+        consumableItems: Array.isArray(l.consumableItems)
+          ? l.consumableItems.map((c: any) => ({
+              ...c,
+              consumableId:   String(c.consumableId ?? Math.random()),
+              itemId:         String(c.itemId ?? ""),
+              itemGroup:      String(c.itemGroup ?? ""),
+              itemSubGroupId: String(c.itemSubGroupId ?? ""),
+              itemSubGroup:   String(c.itemSubGroup ?? ""),
+              gsm:            Number(c.gsm ?? 0),
+              liquidGsm:      Number(c.liquidGsm ?? 0),
+              ratioPct:       Number(c.ratioPct ?? 0),
+              coveragePct:    Number(c.coveragePct ?? 100),
+              solidPct:       Number(c.solidPct > 0 ? c.solidPct : (c.solidPercentage > 0 ? c.solidPercentage : 40)),
+              rate:           Number(c.rate ?? 0),
+              fieldDisplayName: String(c.fieldDisplayName ?? ""),
+            }))
+          : [],
+      }));
+      const fullRow: GravureEstimation = {
+        ...blank,
+        id:           row.id,
+        estimationNo: String(r.GrvEstimationCode ?? ""),
+        date:         parseApiDate(r.GrvEstimationDate),
+        customerId:   String(r.CustomerID  ?? ""),
+        customerName: String(r.CustomerName ?? ""),
+        categoryId:   String(r.CategoryID  ?? ""),
+        categoryName: String(r.CategoryName ?? ""),
+        enquiryId:    String(r.EnquiryID   ?? ""),
+        enquiryNo:    String(r.EnquiryNo   ?? ""),
+        jobName:      String(r.JobName     ?? ""),
+        content:      String(r.Content     ?? ""),
+        jobWidth:     Number(r.JobWidth    ?? 0),
+        jobHeight:    Number(r.JobHeight   ?? 0),
+        actualWidth:  Number(r.ActualWidth ?? 0),
+        actualHeight: Number(r.ActualHeight ?? 0),
+        width:        Number(r.Width       ?? 0),
+        noOfColors:   Number(r.NoOfColors  ?? 0),
+        frontColors:  Number(r.FrontColors ?? 0),
+        backColors:   Number(r.BackColors  ?? 0),
+        printType:    String(r.PrintType   ?? "Surface Print") as any,
+        substrateItemId: String(r.SubstrateItemId ?? ""),
+        substrateName:   String(r.SubstrateName   ?? ""),
+        quantity:     Number(r.Quantity    ?? 0),
+        unit:         String(r.Unit        ?? "Kg") as any,
+        machineId:    (() => {
+          const savedId   = String(r.MachineID   ?? "");
+          const savedName = String(r.MachineName ?? "");
+          if (savedId && (PRINT_MACHINES as any[]).find((m: any) => m.id === savedId)) return savedId;
+          // Saved ID is from dummy data / catalog — resolve by machine name
+          if (savedName) {
+            const byName = (PRINT_MACHINES as any[]).find((m: any) =>
+              m.name === savedName || m.name?.toLowerCase() === savedName.toLowerCase()
+            );
+            if (byName) return String((byName as any).id);
+          }
+          return savedId;
+        })(),
+        machineName:  (() => {
+          const savedId   = String(r.MachineID   ?? "");
+          const savedName = String(r.MachineName ?? "");
+          if (savedName && (PRINT_MACHINES as any[]).find((m: any) => m.id === savedId)) return savedName;
+          if (savedName) {
+            const byName = (PRINT_MACHINES as any[]).find((m: any) =>
+              m.name === savedName || m.name?.toLowerCase() === savedName.toLowerCase()
+            );
+            if (byName) return String((byName as any).name);
+          }
+          return savedName;
+        })(),
+        cylinderCostPerColor:  Number(r.CylinderCostPerColor  ?? 3500),
+        cylinderRatePerSqInch: Number(r.CylinderRatePerSqInch ?? 2.5),
+        repeatLength:  Number(r.RepeatLength  ?? 0),
+        trimmingSize:  Number(r.TrimmingSize  ?? 0),
+        widthShrinkage:Number(r.WidthShrinkage ?? 0),
+        sleeveWidth:   Number(r.SleeveWidth   ?? 0),
+        wastagePct:    Number(r.WastagePct    ?? 1),
+        setupTime:     Number(r.SetupTime     ?? 0),
+        machineCostPerHour:     Number(r.MachineCostPerHour     ?? 1350),
+        machineShiftHours:      Number(r.MachineShiftHours      ?? 8),
+        machineBaseCostPerHour: Number(r.MachineBaseCostPerHour ?? 1350),
+        minimumOrderValue:      Number(r.MinimumOrderValue      ?? 0),
+        sellingPrice:  Number(r.SellingPrice  ?? 0),
+        overheadPct:   Number(r.OverheadPct   ?? 12),
+        profitPct:     Number(r.ProfitPct     ?? 15),
+        materialCost:  Number(r.MaterialCost  ?? 0),
+        processCost:   Number(r.ProcessCost   ?? 0),
+        cylinderCost:  Number(r.CylinderCost  ?? 0),
+        setupCost:     Number(r.SetupCost     ?? 0),
+        packingCost:   Number(r.PackingCost   ?? 0),
+        packingBoxRate:       Number(r.PackingBoxRate        ?? 80),
+        packingCoilsPerBox:   Number(r.PackingCoilsPerBox   ?? 6),
+        packingCoilWt:        Number(r.PackingCoilWt        ?? 15),
+        packingPlugsPerBox:   Number(r.PackingPlugsPerBox   ?? 12),
+        packingPlugRate:      Number(r.PackingPlugRate      ?? 2),
+        packingTapeRate:      Number(r.PackingTapeRate      ?? 40),
+        packingTapeMetres:    Number(r.PackingTapeMetres    ?? 10),
+        packingStretchFilmGm: Number(r.PackingStretchFilmGm ?? 200),
+        packingStretchFilmRate:Number(r.PackingStretchFilmRate ?? 90),
+        cylinderCostOverride: r.CylinderCostOverride > 0 ? Number(r.CylinderCostOverride) : undefined,
+        setupCostOverride:    r.SetupCostOverride    > 0 ? Number(r.SetupCostOverride)    : undefined,
+        packingCostOverride:  r.PackingCostOverride  > 0 ? Number(r.PackingCostOverride)  : undefined,
+        labourCost:          Number(r.LabourCost          ?? 0),
+        transportationCost:  Number(r.TransportationCost  ?? 0),
+        interestCost:        Number(r.InterestCost        ?? 0),
+        loanAmount:          Number(r.LoanAmount          ?? 0),
+        loanInterestRatePct: Number(r.LoanInterestRatePct ?? 12),
+        monthlyLabourSalary: Number(r.MonthlyLabourSalary ?? 0),
+        workingDaysPerMonth: Number(r.WorkingDaysPerMonth ?? 25),
+        jobRunHours:         Number(r.JobRunHours         ?? 0),
+        overheadAmt:         Number(r.OverheadAmt         ?? 0),
+        profitAmt:           Number(r.ProfitAmt           ?? 0),
+        totalAmount:         Number(r.TotalAmount         ?? 0),
+        perMeterRate:        Number(r.PerMeterRate        ?? 0),
+        marginPct:           Number(r.MarginPct           ?? 0),
+        contribution:        Number(r.Contribution        ?? 0),
+        breakEvenQty:        Number(r.BreakEvenQty        ?? 0),
+        topSeal:         r.TopSeal         ?? undefined,
+        bottomSeal:      r.BottomSeal      ?? undefined,
+        sideSeal:        r.SideSeal        ?? undefined,
+        centerSealWidth: r.CenterSealWidth ?? undefined,
+        sideGusset:      r.SideGusset      ?? undefined,
+        gusset:          r.Gusset          ?? undefined,
+        seamingArea:     r.SeamingArea     ?? undefined,
+        transparentArea: r.TransparentArea ?? undefined,
+        packSize:         r.PackSize        ?? undefined,
+        brandName:        r.BrandName       ?? undefined,
+        productType:      r.ProductType     ?? undefined,
+        skuType:          r.SkuType         ?? undefined,
+        bottleType:       r.BottleType      ?? undefined,
+        addressType:      r.AddressType     ?? undefined,
+        artworkName:      r.ArtworkName     ?? undefined,
+        specialSpecs:     r.SpecialSpecs    ?? undefined,
+        finalRollOD:      r.FinalRollOD     ?? undefined,
+        rollUnit:         r.RollUnit        ?? undefined,
+        unwindDirection:  r.UnwindDirection ?? undefined,
+        status:     String(r.Status     ?? "Draft") as any,
+        remarks:    String(r.Remarks    ?? ""),
+        salesPerson:String(r.SalesPerson ?? ""),
+        salesType:  String(r.SalesType   ?? "Local") as any,
+        concernPerson: String(r.ConcernPerson ?? ""),
+        secondaryLayers: normLayers,
+        processes: Array.isArray(processes) ? processes.map((p: any) => {
+          let pid   = String(p.processId   ?? "");
+          let pname = String(p.processName ?? "");
+          // ProcessID is BIGINT in DB — non-numeric IDs from catalog are saved as NULL.
+          // Match by name against live master list so the dropdown resolves correctly.
+          if ((!pid || pid === "0" || pid === "null") && pname && (ROTO_PROCESSES as any[]).length > 0) {
+            const matched = (ROTO_PROCESSES as any[]).find((proc: any) =>
+              proc.name === pname ||
+              proc.displayName === pname ||
+              (proc.name || "").toLowerCase() === pname.toLowerCase()
+            );
+            if (matched) { pid = String(matched.id); pname = String(matched.name); }
+          }
+          // Resolve machineId — if blank (catalog processes never had it), pull from process master
+          let mid   = String(p.machineId   ?? "");
+          let mname = String(p.machineName ?? "");
+          const pm  = (ROTO_PROCESSES as any[]).find((proc: any) => proc.id === pid);
+          const pmMachineIds: string[] = pm?.machineIds || [];
+          if (!mid || mid === "0" || mid === "null") {
+            if (pmMachineIds.length === 1) {
+              mid   = pmMachineIds[0];
+              mname = (PRINT_MACHINES as any[]).find((m: any) => m.id === mid)?.name
+                      || pm?.machineMasterName || mname;
+            } else if (pmMachineIds.length === 0 && pm?.machineId) {
+              mid   = String(pm.machineId);
+              mname = (PRINT_MACHINES as any[]).find((m: any) => m.id === mid)?.name
+                      || pm?.machineMasterName || mname;
+            }
+            // multiple machines → leave mid="" so user picks in loan/labour table
+          }
+          return {
+            processId:   pid,
+            processName: pname,
+            chargeUnit:  String(p.chargeUnit  ?? ""),
+            rate:        Number(p.rate        ?? 0),
+            qty:         0,   // reset: let calcCosts recalculate from current form.quantity
+            setupCharge: Number(p.setupCharge ?? 0),
+            amount:      0,   // recalculated by calcCosts
+            machineId:   mid,
+            machineName: mname,
+            machineIds:  pmMachineIds,
+            runHours:    Number(p.runHours    ?? 0),
+            interestCost:Number(p.interestCost ?? 0),
+            labourCost:  Number(p.labourCost  ?? 0),
+          };
+        }) : [],
+        // Extra materials from JobBookingGrvMaterials
+        materials: Array.isArray(materials) ? materials.map((m: any) => ({
+          itemId:   String(m.itemId   ?? ""),
+          itemCode: String(m.itemCode ?? ""),
+          itemName: String(m.itemName ?? ""),
+          group:    String(m.group    ?? ""),
+          unit:     String(m.unit     ?? "Kg"),
+          rate:     Number(m.rate     ?? 0),
+          qty:      Number(m.qty      ?? 0),
+          amount:   Number(m.amount   ?? 0),
+        })) : [],
+      };
+      // Restore plan — SavedPlanID is INT so string plan IDs (PLAN-xxx) were stored as NULL.
+      // Fallback: extract planId from the saved PlanJSON object itself.
+      let restoredPlanId: string | null = r.SavedPlanID ? String(r.SavedPlanID) : null;
+      let restoredPlanObj: any = null;
+      try { restoredPlanObj = JSON.parse(r.PlanJSON || "{}"); } catch {}
+      if (!restoredPlanId && restoredPlanObj?.planId) restoredPlanId = String(restoredPlanObj.planId);
+      if (restoredPlanId) {
+        setPendingSavedPlan({ planId: restoredPlanId, plan: restoredPlanObj });
+      }
+      openEdit(fullRow);
+      // Restore extra quantities (Q2, Q3...) from saved Quantities array
+      try {
+        const qtys: number[] = JSON.parse(r.QuantitiesJSON || "[]");
+        if (Array.isArray(qtys) && qtys.length > 1)
+          setExtraQtys(qtys.slice(1).map(Number).filter((q: number) => q > 0));
+      } catch {}
+      // Restore per-qty cost overrides from JobBookingGrvQtyOverrides
+      try {
+        if (Array.isArray(qtyOverridesRaw) && qtyOverridesRaw.length > 0) {
+          const arr: any[] = [];
+          qtyOverridesRaw.forEach((ov: any) => {
+            const idx = Number(ov.QtyIndex ?? ov.qtyIndex ?? 0);
+            const entry: any = {};
+            if (ov.labourCost           != null) entry.labourCost           = Number(ov.labourCost);
+            if (ov.transportationCost   != null) entry.transportationCost   = Number(ov.transportationCost);
+            if (ov.interestCost         != null) entry.interestCost         = Number(ov.interestCost);
+            if (ov.overheadPct          != null) entry.overheadPct          = Number(ov.overheadPct);
+            if (ov.profitPct            != null) entry.profitPct            = Number(ov.profitPct);
+            if (ov.cylinderCostOverride != null) entry.cylinderCostOverride = Number(ov.cylinderCostOverride);
+            if (ov.setupCostOverride    != null) entry.setupCostOverride    = Number(ov.setupCostOverride);
+            if (ov.packingCostOverride  != null) entry.packingCostOverride  = Number(ov.packingCostOverride);
+            arr[idx] = entry;
+          });
+          setQtyOverrides(arr);
+        }
+      } catch {}
+      // Restore color shades and cylinder allocs from JobBookingGrvColorShades / JobBookingGrvCylAllocs
+      try { const s = JSON.parse(r.GrvColorShadesJSON || "[]"); if (Array.isArray(s) && s.length > 0) setColorShades(s); } catch {}
+      try { const s = JSON.parse(r.GrvCylAllocsJSON   || "[]"); if (Array.isArray(s) && s.length > 0) setCylAllocs(s);   } catch {}
+    } catch { openEdit(row); }
+    finally { setLoadingData(false); }
+  };
+
   const [modalOpen, setModal] = useState(false);
   const [viewRow,   setViewRow]   = useState<GravureEstimation | null>(null);
   const [printRow,  setPrintRow]  = useState<GravureEstimation | null>(null);
@@ -357,6 +900,8 @@ export default function GravureEstimationPage() {
   const [activeTab, setActiveTab] = useState<number>(1);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [isPlanApplied, setIsPlanApplied] = useState(false);
+  const [pendingSavedPlan, setPendingSavedPlan] = useState<{ planId: string; plan: any } | null>(null);
+  const [overridePlan, setOverridePlan] = useState<any>(null);
   const [planSearch, setPlanSearch] = useState("");
   const [planSort, setPlanSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
   const [extraQtys, setExtraQtys] = useState<number[]>([]);
@@ -376,8 +921,83 @@ export default function GravureEstimationPage() {
     });
   };
 
+  // ── Rate option maps for live API-driven cost calculation ──
+  const processMinChargeMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    ROTO_PROCESSES.forEach((p: any) => { if (p.minimumCharge > 0) map[String(p.id)] = p.minimumCharge; });
+    return map;
+  }, [ROTO_PROCESSES]);
+
+  const rateOpts = useMemo((): RateOptions => ({
+    filmRateMap: apiFilmRateBySubGroupName,
+    processMinChargeMap,
+  }), [apiFilmRateBySubGroupName, processMinChargeMap]);
+
+  // Auto-correct machineId when PRINT_MACHINES loads from API
+  // Saved records may store a dummy/catalog machine ID — resolve to real DB ID by machine name
+  useEffect(() => {
+    if ((PRINT_MACHINES as any[]).length === 0) return;
+    setForm(prev => {
+      if (!prev.machineId && !prev.machineName) return prev;
+      if ((PRINT_MACHINES as any[]).find((m: any) => m.id === prev.machineId)) return prev;
+      const byName = (PRINT_MACHINES as any[]).find((m: any) =>
+        m.name === prev.machineName ||
+        m.name?.toLowerCase() === (prev.machineName || "").toLowerCase()
+      );
+      if (!byName) return prev;
+      return { ...prev, machineId: String((byName as any).id), machineName: String((byName as any).name) };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [PRINT_MACHINES]);
+
+  // Auto-correct process IDs when ROTO_PROCESSES (re-)loads from API
+  // Old records may have static dummy IDs — match by name to get the real API ProcessID
+  useEffect(() => {
+    if (ROTO_PROCESSES.length === 0) return;
+    setForm(prev => {
+      let changed = false;
+      const fixed = prev.processes.map(pr => {
+        if ((ROTO_PROCESSES as any[]).find(p => p.id === pr.processId)) return pr;
+        const byName = (ROTO_PROCESSES as any[]).find(p =>
+          pr.processName && (
+            p.name === pr.processName ||
+            p.displayName === pr.processName ||
+            p.name?.toLowerCase() === pr.processName?.toLowerCase()
+          )
+        );
+        if (byName) {
+          changed = true;
+          return { ...pr, processId: byName.id, processName: byName.name };
+        }
+        return pr;
+      });
+      return changed ? { ...prev, processes: fixed } : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ROTO_PROCESSES]);
+
+  // Auto-fill consumable rates from Item Master API when rate is 0 (e.g. loaded from old catalog)
+  useEffect(() => {
+    if (apiInkItems.length === 0) return;
+    setForm(prev => {
+      let changed = false;
+      const layers = prev.secondaryLayers.map(layer => {
+        const consumableItems = layer.consumableItems.map(ci => {
+          if (!ci.itemId || ci.rate > 0) return ci;
+          const apiIt = apiInkItems.find(x => String(x.ItemID) === String(ci.itemId));
+          if (!apiIt || !(apiIt.EstimationRate > 0)) return ci;
+          changed = true;
+          return { ...ci, rate: apiIt.EstimationRate, rateUnit: apiIt.EstimationUnit || "Kg" };
+        });
+        return { ...layer, consumableItems };
+      });
+      return changed ? { ...prev, secondaryLayers: layers } : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiInkItems]);
+
   // Derived costs (live)
-  const costs     = useMemo(() => calcCosts(form), [form]);
+  const costs     = useMemo(() => calcCosts(form, rateOpts), [form, rateOpts]);
   const allQtys   = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
   const allCosts      = useMemo(() => allQtys.map((qty, qi) => {
     const ov = qtyOverrides[qi] ?? {};
@@ -391,14 +1011,14 @@ export default function GravureEstimationPage() {
       cylinderCostOverride: ov.cylinderCostOverride,
       setupCostOverride:    ov.setupCostOverride,
       packingCostOverride:  ov.packingCostOverride,
-    });
-  }), [form, allQtys, qtyOverrides]);
-  const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty })), [form, allQtys]);
+    }, rateOpts);
+  }), [form, allQtys, qtyOverrides, rateOpts]);
+  const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty }, rateOpts)), [form, allQtys, rateOpts]);
   const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
   const activeCosts = allCosts[safeIdx] ?? costs;
   const activeQty   = allQtys[safeIdx] ?? form.quantity;
   // breakdown always reflects the ACTIVE quantity row (Q1/Q2/Q3)
-  const breakdown = useMemo(() => getCostBreakdown({ ...form, quantity: activeQty }), [form, activeQty]);
+  const breakdown = useMemo(() => getCostBreakdown({ ...form, quantity: activeQty }, rateOpts), [form, activeQty, rateOpts]);
 
   // ── Production plan rows (Tab 2) ────────────────────────
   const totalPlyGSM = useMemo(() =>
@@ -407,9 +1027,13 @@ export default function GravureEstimationPage() {
 
   const allPlans = useMemo(() => {
     if (!form.actualWidth || form.actualWidth <= 0) return [];
-    const machinesToPlan = form.machineId
-      ? PRINT_MACHINES.filter(m => m.id === form.machineId)
-      : PRINT_MACHINES;
+    const machinesToPlan = (() => {
+      if (!form.machineId) return PRINT_MACHINES;
+      const byId = PRINT_MACHINES.filter(m => m.id === form.machineId);
+      if (byId.length > 0) return byId;
+      const byName = PRINT_MACHINES.filter(m => m.name === form.machineName);
+      return byName.length > 0 ? byName : PRINT_MACHINES;
+    })();
 
     const rawPlans = machinesToPlan.flatMap(machine => {
       const machineMaxFilm = parseFloat((machine as any).maxWebWidth) || 1300;
@@ -689,7 +1313,7 @@ export default function GravureEstimationPage() {
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
   }, [form.machineId, form.jobHeight, form.actualWidth, form.trimmingSize, form.widthShrinkage, form.quantity, form.noOfColors, form.cylinderCostPerColor, form.cylinderRatePerSqInch, totalPlyGSM, costs.processCost, (form as any).structureType, (form as any).content, (form as any).gusset, (form as any).topSeal, (form as any).bottomSeal, (form as any).sideSeal, (form as any).centerSealWidth, (form as any).sideGusset, (form as any).seamingArea, (form as any).transparentArea]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId), [allPlans, selectedPlanId]);
+  const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId) ?? overridePlan ?? null, [allPlans, selectedPlanId, overridePlan]);
 
   const visiblePlans = useMemo(() => {
     let rows = allPlans;
@@ -881,6 +1505,7 @@ export default function GravureEstimationPage() {
   const openAdd = () => {
     setEditing(null);
     setForm({ ...blank });
+    setDimValues({});
     setActiveTab(1); setExtraQtys([]); setActiveQtyIdx(0);
     setLoadedFromCatalog("");
     setCylAllocs([]);
@@ -889,7 +1514,7 @@ export default function GravureEstimationPage() {
     setPrepTab("shade");
     setPlanColFilters({});
     setPlanFilterOpen(null);
-    setSelectedPlanId(null); setIsPlanApplied(false);
+    setSelectedPlanId(null); setIsPlanApplied(false); setOverridePlan(null);
     setPreviewCode(generateCode(UNIT_CODE.Gravure, MODULE_CODE.Estimation, data.map(d => d.estimationNo)));
     setModal(true);
   };
@@ -905,7 +1530,36 @@ export default function GravureEstimationPage() {
     setPrepTab("shade");
     setPlanColFilters({});
     setPlanFilterOpen(null);
-    setSelectedPlanId(null); setIsPlanApplied(false);
+    setSelectedPlanId(null); setIsPlanApplied(false); setOverridePlan(null);
+
+    // Restore dimension diagram values from the saved row
+    const rc = (row as any);
+    if (row.content) {
+      const cfg = CONTENT_TYPE_CONFIG[normalizeContentType(row.content)];
+      if (cfg) {
+        const dims: DimValues = {};
+        if (cfg.fields.includes("layflatWidth")) dims.layflatWidth = row.jobWidth;
+        else                                     dims.width        = row.jobWidth;
+        if (cfg.fields.includes("cutHeight"))    dims.cutHeight    = row.jobHeight;
+        else                                     dims.height       = row.jobHeight;
+        if (cfg.fields.includes("gusset"))           dims.gusset          = rc.gusset          || 0;
+        if (cfg.fields.includes("topSeal"))          dims.topSeal         = rc.topSeal         || 0;
+        if (cfg.fields.includes("bottomSeal"))       dims.bottomSeal      = rc.bottomSeal      || 0;
+        if (cfg.fields.includes("sideSeal"))         dims.sideSeal        = rc.sideSeal        || 0;
+        if (cfg.fields.includes("centerSealWidth"))  dims.centerSealWidth = rc.centerSealWidth || 0;
+        if (cfg.fields.includes("sideGusset"))       dims.sideGusset      = rc.sideGusset      || 0;
+        if (cfg.fields.includes("seamingArea"))      dims.seamingArea     = rc.seamingArea     || 0;
+        if (cfg.fields.includes("transparentArea"))  dims.transparentArea = rc.transparentArea || 0;
+        dims.trimming       = row.trimmingSize          || 0;
+        dims.widthShrinkage = rc.widthShrinkage         || 0;
+        setDimValues(dims);
+      } else {
+        setDimValues({});
+      }
+    } else {
+      setDimValues({});
+    }
+
     setModal(true);
   };
 
@@ -941,12 +1595,28 @@ export default function GravureEstimationPage() {
       cylinderCostPerColor: cat.cylinderCostPerColor,
       overheadPct:  cat.overheadPct,
       profitPct:    cat.profitPct,
-      // Ply & Processes — copy directly
-      secondaryLayers: cat.secondaryLayers.map((l, i) => ({
-        ...l,
-        id: Math.random().toString(),
-        layerNo: i + 1,
-      })),
+      // Ply & Processes — copy directly; auto-fill rates from live API if saved rate is 0
+      secondaryLayers: cat.secondaryLayers.map((l, i) => {
+        const apiFilm = l.itemId ? apiFilmItems.find(f => String(f.ItemID) === String(l.itemId)) : null;
+        const filmRate = ((l.filmRate ?? 0) > 0) ? l.filmRate! : (apiFilm?.EstimationRate ?? 0);
+        return {
+          ...l,
+          id: Math.random().toString(),
+          layerNo: i + 1,
+          filmRate,
+          consumableItems: Array.isArray(l.consumableItems)
+            ? l.consumableItems.map((c: any) => {
+                const apiIt = c.itemId ? apiInkItems.find(x => String(x.ItemID) === String(c.itemId)) : null;
+                const finalRate = (c.rate > 0) ? c.rate : (apiIt?.EstimationRate ?? 0);
+                return {
+                  ...c,
+                  rate:     finalRate,
+                  rateUnit: c.rateUnit || apiIt?.EstimationUnit || "Kg",
+                };
+              })
+            : [],
+        };
+      }),
       processes: (cat.processes || []).map(pr => ({ ...pr })),
       // Substrate, unit, remarks from catalog
       substrateName: cat.substrate || "",
@@ -980,7 +1650,7 @@ export default function GravureEstimationPage() {
       concernPerson:   (cat as any).concernPerson   ?? "",
     }));
     // Populate dimension inputs so the dimension box shows with values
-    const cfg = CONTENT_TYPE_CONFIG[cat.content];
+    const cfg = CONTENT_TYPE_CONFIG[normalizeContentType(cat.content)];
     if (cfg) {
       const dims: DimValues = {};
       if (cfg.fields.includes("layflatWidth")) dims.layflatWidth = cat.jobWidth;
@@ -1045,8 +1715,15 @@ export default function GravureEstimationPage() {
     setPlanFilterOpen(null);
     setSelectedPlanId(null);
     setIsPlanApplied(false);
+    setOverridePlan(null);
+    // Store saved plan for deferred matching (allPlans updates after form state settles)
+    if (cat.savedPlan || cat.savedPlanId) {
+      setPendingSavedPlan({ planId: String(cat.savedPlanId || ""), plan: cat.savedPlan || null });
+    } else {
+      setPendingSavedPlan(null);
+    }
 
-    // Fill form from catalog (same mapping as loadFromCatalog)
+    // Fill form from catalog (mirrors loadFromCatalog exactly)
     setForm({
       ...blank,
       customerId:   String(cat.customerId   || ""),
@@ -1063,12 +1740,10 @@ export default function GravureEstimationPage() {
       trimmingSize: Number(cat.trimmingSize || 0),
       widthShrinkage: Number(cat.widthShrinkage || 0),
       noOfColors:   Number(cat.noOfColors   || 0),
-      frontColors:  Number(cat.frontColors  || cat.noOfColors || 0),
-      backColors:   Number(cat.backColors   || 0),
+      frontColors:  Number(cat.frontColors  ?? cat.noOfColors ?? 0),
+      backColors:   Number(cat.backColors   ?? 0),
       printType:    String(cat.printType    || "Surface Print") as any,
       substrateName: String(cat.substrate   || ""),
-      machineId:    String(cat.machineId    || ""),
-      machineName:  String(cat.machineName  || ""),
       cylinderCostPerColor: Number(cat.cylinderCostPerColor || 3500),
       repeatLength: Number(cat.repeatLength || 0),
       overheadPct:  Number(cat.overheadPct  || 12),
@@ -1079,14 +1754,94 @@ export default function GravureEstimationPage() {
       quantity:     Number(cat.standardQty  || 0),
       remarks:      String(cat.remarks      || ""),
       salesType:    String(cat.salesType    || "Local"),
-      // Layers and processes — carry forward directly from catalog
-      secondaryLayers: Array.isArray(cat.secondaryLayers)
-        ? cat.secondaryLayers.map((l: any, i: number) => ({ ...l, id: Math.random().toString(), layerNo: i + 1 }))
-        : [],
+      salesPerson:  String(cat.salesPerson  || ""),
+      concernPerson: String(cat.concernPerson || ""),
+      // ── Pouch seal / gusset fields ──
+      topSeal:         cat.topSeal         ?? undefined,
+      bottomSeal:      cat.bottomSeal      ?? undefined,
+      sideSeal:        cat.sideSeal        ?? undefined,
+      centerSealWidth: cat.centerSealWidth ?? undefined,
+      sideGusset:      cat.sideGusset      ?? undefined,
+      gusset:          cat.gusset          ?? undefined,
+      seamingArea:     cat.seamingArea     ?? undefined,
+      transparentArea: cat.transparentArea ?? undefined,
+      // ── Product identity fields ──
+      packSize:        cat.packSize        ?? undefined,
+      brandName:       cat.brandName       ?? undefined,
+      productType:     cat.productType     ?? undefined,
+      skuType:         cat.skuType         ?? undefined,
+      bottleType:      cat.bottleType      ?? undefined,
+      addressType:     cat.addressType     ?? undefined,
+      artworkName:     cat.artworkName     ?? undefined,
+      specialSpecs:    cat.specialSpecs    ?? undefined,
+      finalRollOD:     cat.finalRollOD     ?? undefined,
+      rollUnit:        cat.rollUnit        ?? undefined,
+      unwindDirection: cat.unwindDirection ?? undefined,
+      // Machine — match by ID first, then by name (catalog stores API IDs, page uses static IDs)
+      machineId:    (() => {
+        const byId   = PRINT_MACHINES.find(m => m.id   === String(cat.machineId   || ""));
+        const byName = PRINT_MACHINES.find(m => m.name === String(cat.machineName || ""));
+        return (byId || byName)?.id || String(cat.machineId || "");
+      })(),
+      machineName:  (() => {
+        const byId   = PRINT_MACHINES.find(m => m.id   === String(cat.machineId   || ""));
+        const byName = PRINT_MACHINES.find(m => m.name === String(cat.machineName || ""));
+        return (byId || byName)?.name || String(cat.machineName || "");
+      })(),
+      // Processes — keep original catalog values; API-correction useEffect will resolve machineId once loaded
       processes: Array.isArray(cat.processes)
-        ? cat.processes.map((pr: any) => ({ ...pr }))
+        ? cat.processes.map((pr: any) => {
+            const matchedProc = ROTO_PROCESSES.find(p => p.id   === String(pr.processId   || ""))
+                             || ROTO_PROCESSES.find(p => p.name === String(pr.processName || ""));
+            return {
+              processId:    matchedProc ? matchedProc.id         : String(pr.processId   || ""),
+              processName:  matchedProc ? matchedProc.name       : String(pr.processName || ""),
+              chargeUnit:   matchedProc ? matchedProc.chargeUnit : String(pr.chargeUnit  || ""),
+              rate:         Number(pr.rate         || 0),
+              qty:          Number(pr.qty          || 0),
+              setupCharge:  Number(pr.setupCharge  ?? 0),
+              amount:       Number(pr.amount       || 0),
+              // Keep original catalog machineId/machineName — do NOT resolve from static PRINT_MACHINES
+              // (static IDs like "M004" differ from real API IDs like "11").
+              // The auto-correct useEffect will fill correct machineId/machineIds once API loads.
+              machineId:    String(pr.machineId   || ""),
+              machineName:  String(pr.machineName || ""),
+              machineIds:   [],
+              runHours:     Number(pr.runHours     || 0),
+              interestCost: Number(pr.interestCost || 0),
+              labourCost:   Number(pr.labourCost   || 0),
+            };
+          })
         : [],
-    });
+      // Layers — deduplicate by layerNo + hydrate names + auto-fill rates from live API if saved rate is 0
+      secondaryLayers: Array.isArray(cat.secondaryLayers)
+        ? cat.secondaryLayers
+            .filter((l: any, idx: number, arr: any[]) => arr.findIndex((x: any) => x.layerNo === l.layerNo) === idx)
+            .map((l: any, i: number) => {
+              const apiFilm = l.itemId ? apiFilmItems.find((f: any) => String(f.ItemID) === String(l.itemId)) : null;
+              const filmRate = (l.filmRate > 0) ? l.filmRate : (apiFilm?.EstimationRate ?? 0);
+              return {
+                ...l,
+                id: Math.random().toString(),
+                layerNo: i + 1,
+                filmRate,
+                consumableItems: Array.isArray(l.consumableItems)
+                  ? l.consumableItems
+                      .filter((c: any, ci: number, ca: any[]) => ca.findIndex((x: any) => x.consumableId === c.consumableId) === ci)
+                      .map((c: any) => {
+                        const apiIt = c.itemId ? apiInkItems.find((x: any) => String(x.ItemID) === String(c.itemId)) : null;
+                        return {
+                          ...c,
+                          itemName: c.itemName || (c.itemId ? (items.find((it: any) => it.id === String(c.itemId))?.name ?? "") : ""),
+                          rate:     (c.rate > 0) ? c.rate     : (apiIt?.EstimationRate ?? 0),
+                          rateUnit: c.rateUnit   || apiIt?.EstimationUnit || "Kg",
+                        };
+                      })
+                  : [],
+              };
+            })
+        : [],
+    } as unknown as GravureEstimation);
 
     // Cylinder allocs from catalog (or build blanks)
     if (Array.isArray(cat.savedCylAllocs) && cat.savedCylAllocs.length > 0) {
@@ -1108,7 +1863,7 @@ export default function GravureEstimationPage() {
     }
 
     // Dimension diagram values
-    const cfg = cat.content ? CONTENT_TYPE_CONFIG[cat.content as string] : null;
+    const cfg = cat.content ? CONTENT_TYPE_CONFIG[normalizeContentType(cat.content as string)] : null;
     if (cfg) {
       const dims: DimValues = {};
       if (cfg.fields.includes("layflatWidth")) dims.layflatWidth = cat.jobWidth;
@@ -1132,6 +1887,89 @@ export default function GravureEstimationPage() {
     setModal(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-correct process machineId/machineIds once BOTH catalog processes and API data are available.
+  // MUST be defined AFTER ajsw_estimation_from_catalog so React fires it after catalog sets processes.
+  // Two scenarios: (A) API already loaded when catalog fires → this effect fires after, sees processes.
+  //               (B) API loads later → apiProcesses/apiMachines change → this effect fires again.
+  useEffect(() => {
+    if (apiProcesses.length === 0 || apiMachines.length === 0) return;
+    setForm(prev => {
+      if (prev.processes.length === 0) return prev;
+      let changed = false;
+      const fixed = prev.processes.map(pr => {
+        // Already has a valid API machine ID — keep as-is
+        if (pr.machineId && (PRINT_MACHINES as any[]).find((m: any) => m.id === pr.machineId)) return pr;
+        // Find process in live API ROTO_PROCESSES: by id → name → displayName
+        const pm = (ROTO_PROCESSES as any[]).find((p: any) => p.id === pr.processId)
+                || (ROTO_PROCESSES as any[]).find((p: any) => p.name === pr.processName)
+                || (ROTO_PROCESSES as any[]).find((p: any) => p.displayName === pr.processName);
+        if (!pm) return pr;
+        const pmMachineIds: string[] = pm.machineIds || [];
+        // Single allocated machine → auto-fill; multiple → update machineIds so Tab 2 shows dropdown
+        const autoMachineId = pmMachineIds.length === 1
+          ? pmMachineIds[0]
+          : (pmMachineIds.length === 0 ? (pm.machineId || "") : "");
+        const autoMach = autoMachineId
+          ? (PRINT_MACHINES as any[]).find((m: any) => m.id === autoMachineId)
+          : undefined;
+        const newMachineIds = pmMachineIds.length > 0 ? pmMachineIds : (pr.machineIds || []);
+        if (!autoMach && newMachineIds.length === (pr.machineIds || []).length) return pr;
+        changed = true;
+        return {
+          ...pr,
+          machineIds:  newMachineIds,
+          machineId:   autoMach ? autoMach.id   : "",
+          machineName: autoMach ? autoMach.name : "",
+        };
+      });
+      return changed ? { ...prev, processes: fixed } : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiProcesses, apiMachines]);
+
+  // ── Restore saved plan from catalog once allPlans is populated ──────────
+  useEffect(() => {
+    if (!pendingSavedPlan || allPlans.length === 0) return;
+    // 1. Direct planId match
+    let match = allPlans.find(p => p.planId === pendingSavedPlan.planId);
+    // 2. Normalize prefix: catalog uses CP-, estimation generates PLAN-
+    if (!match) {
+      const normalizedId = pendingSavedPlan.planId.replace(/^CP-/, "PLAN-");
+      match = allPlans.find(p => p.planId === normalizedId);
+    }
+    // 3. Property-based fallback (filmSize, acUps, sleeveCode, cylinderCode)
+    if (!match && pendingSavedPlan.plan) {
+      const sp = pendingSavedPlan.plan as any;
+      match = allPlans.find(p =>
+        (p as any).filmSize     === sp.filmSize     &&
+        (p as any).acUps        === sp.acUps        &&
+        (p as any).sleeveCode   === sp.sleeveCode   &&
+        (p as any).cylinderCode === sp.cylinderCode
+      );
+    }
+    if (match) {
+      setSelectedPlanId(match.planId);
+      setOverridePlan(null);
+      setIsPlanApplied(true);
+      setShowPlan(true);
+    } else if (pendingSavedPlan.plan) {
+      // 4. Plan not regenerated (sleeve/cylinder removed) — use stored plan directly.
+      // Spread defaults first so any missing cost fields don't crash toLocaleString().
+      setOverridePlan({
+        grandTotal: 0, planCost: 0, unitPrice: 0,
+        cylCost: 0, cylAreaSqMm: 0, cylAreaSqInch: 0, cylCostByArea: 0,
+        totalWt: 0, totalTime: 0, machineId: "", sleeveId: "", cylinderId: "",
+        cylRepeatLength: 0, usedWidth: 0, isDoctorBlade: false,
+        ...pendingSavedPlan.plan,
+      });
+      setSelectedPlanId(null);
+      setIsPlanApplied(true);
+      setShowPlan(true);
+    }
+    setPendingSavedPlan(null); // clear regardless — avoid infinite loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPlans, pendingSavedPlan]);
 
   // ── Open Cylinder Master from Estimation ─────────────────
   const openEstCylinderMaster = (plan?: typeof selectedPlan) => {
@@ -1241,24 +2079,25 @@ export default function GravureEstimationPage() {
   const selectProcess = (i: number, processId: string) => {
     const pm = ROTO_PROCESSES.find(x => x.id === processId);
     if (!pm) return;
-    // For Printing processes: prefer the main machine already selected in Machine & Process section
-    // For others: auto-select if only 1 available, else first from list
-    let autoMachineId = pm.machineIds?.[0] || "";
-    if (pm.department === "Printing" && form.machineId && (pm.machineIds || []).includes(form.machineId)) {
-      autoMachineId = form.machineId;
-    }
-    const autoMachine = machines.find(m => m.id === autoMachineId);
+    const pmMachineIds: string[] = (pm as any).machineIds || [];
+    // Auto-select if exactly one machine is allocated; blank if multiple (user picks in table)
+    const autoMachineId = pmMachineIds.length === 1
+      ? pmMachineIds[0]
+      : (pmMachineIds.length === 0 ? ((pm as any).machineId || form.machineId || "") : "");
+    const autoMachine = PRINT_MACHINES.find(m => m.id === autoMachineId);
+    const autoMachineName = autoMachine?.name || (pm as any).machineMasterName || form.machineName || "";
     updateProcess(i, {
       processId: pm.id, processName: pm.name,
       chargeUnit: pm.chargeUnit, rate: parseFloat(pm.rate) || 0,
       setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0,
       machineId:   autoMachineId,
-      machineName: autoMachine?.name || "",
+      machineName: autoMachineName,
+      machineIds:  pmMachineIds,
     });
   };
 
   const updateProcessMachine = (i: number, machineId: string) => {
-    const m = machines.find(x => x.id === machineId);
+    const m = PRINT_MACHINES.find(x => x.id === machineId);
     updateProcess(i, { machineId, machineName: m?.name || "" });
   };
 
@@ -1333,31 +2172,148 @@ export default function GravureEstimationPage() {
   };
 
   // ── Save ─────────────────────────────────────────────────
-  const save = () => {
+  const save = async () => {
     if (!form.customerId || !form.jobName || !form.machineId) {
       alert("Please fill required Basic Info & Machine."); return;
     }
     if (form.secondaryLayers.length === 0) {
       alert("Please configure Ply Details Composition."); return;
     }
-    const substrateName = form.secondaryLayers.map(l => l.itemSubGroup).join(" + ") || "Multiple Plys";
+    const substrateName = form.secondaryLayers.map(l => l.itemSubGroup).filter(Boolean).join(" + ") || "Multiple Plys";
+    const quantities    = [form.quantity, ...extraQtys.filter(q => q > 0)];
 
-    if (editing) {
-      // Update single record — preserve quantities array
-      const quantities: number[] = [form.quantity, ...extraQtys.filter(q => q > 0)];
-      const record = { ...form, ...costs, substrateName, quantities };
-      setData(d => d.map(r => r.id === editing.id ? { ...record, id: editing.id, estimationNo: editing.estimationNo } : r));
-    } else {
-      // Save single record with all quantities stored inside
-      const quantities: number[] = [form.quantity, ...extraQtys.filter(q => q > 0)];
-      setData(prev => {
-        const estimationNo = generateCode(UNIT_CODE.Gravure, MODULE_CODE.Estimation, prev.map(d => d.estimationNo));
-        const id = `GVES${String(prev.length + 1).padStart(3, "0")}`;
-        return [...prev, { ...form, ...costs, substrateName, quantities, id, estimationNo }];
-      });
+    const payload: Record<string, any> = {
+      CustomerID:    form.customerId,
+      CategoryID:    form.categoryId    || "",
+      CategoryName:  form.categoryName  || "",
+      EnquiryID:     form.enquiryId     || "",
+      EnquiryNo:     form.enquiryNo     || "",
+      JobName:       form.jobName,
+      Content:       form.content       || "",
+      JobWidth:      form.jobWidth      || 0,
+      JobHeight:     form.jobHeight     || 0,
+      ActualWidth:   form.actualWidth   || 0,
+      ActualHeight:  form.actualHeight  || 0,
+      Width:         form.width         || form.jobWidth || 0,
+      NoOfColors:    form.noOfColors    || 0,
+      FrontColors:   form.frontColors   || 0,
+      BackColors:    form.backColors    || 0,
+      PrintType:     form.printType     || "",
+      SubstrateItemId: form.substrateItemId || "",
+      SubstrateName: substrateName,
+      Quantity:      form.quantity      || 0,
+      Quantities:    quantities,
+      Unit:          form.unit          || "Kg",
+      MachineID:     form.machineId     || "",
+      MachineName:   form.machineName   || "",
+      CylinderCostPerColor:    form.cylinderCostPerColor    || 0,
+      CylinderRatePerSqInch:   form.cylinderRatePerSqInch   || 2.5,
+      RepeatLength:            form.repeatLength             || 0,
+      TrimmingSize:            form.trimmingSize             || 0,
+      WidthShrinkage:          form.widthShrinkage           || 0,
+      SleeveWidth:             form.sleeveWidth              || 0,
+      WastagePct:              form.wastagePct               || 0,
+      SetupTime:               form.setupTime                || 0,
+      MachineCostPerHour:      form.machineCostPerHour       || 0,
+      MachineShiftHours:       form.machineShiftHours        || 0,
+      MachineBaseCostPerHour:  form.machineBaseCostPerHour   || 0,
+      MinimumOrderValue:       form.minimumOrderValue        || 0,
+      SellingPrice:            form.sellingPrice || costs.perMeterRate || 0,
+      OverheadPct:             form.overheadPct  || 0,
+      ProfitPct:               form.profitPct    || 0,
+      MaterialCost:            costs.materialCost,
+      ProcessCost:             costs.processCost,
+      CylinderCost:            costs.cylinderCost,
+      SetupCost:               costs.setupCost,
+      PackingCost:             costs.packingCost,
+      PackingBoxRate:          form.packingBoxRate       || 0,
+      PackingCoilsPerBox:      form.packingCoilsPerBox   || 0,
+      PackingCoilWt:           form.packingCoilWt        || 0,
+      PackingPlugsPerBox:      form.packingPlugsPerBox   || 0,
+      PackingPlugRate:         form.packingPlugRate      || 0,
+      PackingTapeRate:         form.packingTapeRate      || 0,
+      PackingTapeMetres:       form.packingTapeMetres    || 0,
+      PackingStretchFilmGm:    form.packingStretchFilmGm || 0,
+      PackingStretchFilmRate:  form.packingStretchFilmRate || 0,
+      CylinderCostOverride:    form.cylinderCostOverride || 0,
+      SetupCostOverride:       form.setupCostOverride    || 0,
+      PackingCostOverride:     form.packingCostOverride  || 0,
+      LabourCost:              form.labourCost           || 0,
+      TransportationCost:      form.transportationCost   || 0,
+      InterestCost:            form.interestCost         || 0,
+      LoanAmount:              form.loanAmount           || 0,
+      LoanInterestRatePct:     form.loanInterestRatePct  || 0,
+      MonthlyLabourSalary:     form.monthlyLabourSalary  || 0,
+      WorkingDaysPerMonth:     form.workingDaysPerMonth  || 0,
+      JobRunHours:             form.jobRunHours          || 0,
+      OverheadAmt:             costs.overheadAmt,
+      ProfitAmt:               costs.profitAmt,
+      TotalAmount:             costs.totalAmount,
+      PerMeterRate:            costs.perMeterRate,
+      PerMeterRateWithoutProfit: costs.perMeterRateWithoutProfit,
+      MarginPct:               costs.marginPct,
+      Contribution:            costs.contribution,
+      BreakEvenQty:            costs.breakEvenQty,
+      TopSeal:         form.topSeal         || 0,
+      BottomSeal:      form.bottomSeal      || 0,
+      SideSeal:        form.sideSeal        || 0,
+      CenterSealWidth: form.centerSealWidth || 0,
+      SideGusset:      form.sideGusset      || 0,
+      Gusset:          form.gusset          || 0,
+      SeamingArea:     form.seamingArea     || 0,
+      TransparentArea: form.transparentArea || 0,
+      PackSize:        form.packSize        || "",
+      BrandName:       form.brandName       || "",
+      ProductType:     form.productType     || "",
+      SkuType:         form.skuType         || "",
+      BottleType:      form.bottleType      || "",
+      AddressType:     form.addressType     || "",
+      ArtworkName:     form.artworkName     || "",
+      SpecialSpecs:    form.specialSpecs    || "",
+      FinalRollOD:     form.finalRollOD     || 0,
+      RollUnit:        form.rollUnit        || "",
+      UnwindDirection: form.unwindDirection || "",
+      SavedPlanID:     selectedPlanId       || "",
+      PlanJSON:        JSON.stringify(selectedPlan || overridePlan || {}),
+      Status:          form.status          || "Draft",
+      Remarks:         form.remarks         || "",
+      SalesPerson:     form.salesPerson     || "",
+      SalesType:       form.salesType       || "Local",
+      ConcernPerson:   form.concernPerson   || "",
+      EstimationDate:  form.date            || new Date().toISOString().slice(0, 10),
+      SourceProductMasterID: loadedFromCatalog || "",
+      SecondaryLayers: form.secondaryLayers,
+      Processes:       form.processes,
+      ColorShades:     colorShades,
+      CylAllocs:       cylAllocs,
+      Materials:       form.materials,
+      QtyOverrides:    allQtys.map((qty, i) => ({ qtyIndex: i, quantity: qty, ...(qtyOverrides[i] ?? {}) })),
+    };
+
+    setSaving(true);
+    try {
+      let res: any;
+      if (editing) {
+        payload.BookingID        = editing.id;
+        payload.GrvEstimationCode = editing.estimationNo;
+        res = await apiPost("api/gravureestimationShrink/updateestimation", payload);
+      } else {
+        res = await apiPost("api/gravureestimationShrink/saveestimation", payload);
+      }
+      // API returns array: [{ Status: "success", BookingID: "...", GrvEstimationCode: "..." }]
+      const parsed = Array.isArray(res) ? res[0] : res;
+      if (parsed?.Status !== "success") {
+        alert("Save failed: " + (parsed?.Message || "Unknown error"));
+        return;
+      }
+      setModal(false);
+      setShowPlan(false);
+      await loadList();
+    } catch (err: any) {
+      alert("Save error: " + (err?.message || String(err)));
+    } finally {
+      setSaving(false);
     }
-    setModal(false);
-    setShowPlan(false);
   };
 
   // ── Stats ────────────────────────────────────────────────
@@ -1429,7 +2385,11 @@ export default function GravureEstimationPage() {
           </div>
           <p className="text-sm text-gray-500">{stats.total} estimations · ₹{stats.totalAmt.toLocaleString()} total value</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Estimation</Button>
+        <div className="flex items-center gap-2">
+          {loadingData && <span className="text-xs text-gray-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Loading…</span>}
+          <Button icon={<RefreshCw size={14} />} variant="secondary" onClick={loadList} disabled={loadingData}>Refresh</Button>
+          <Button icon={<Plus size={16} />} onClick={openAdd}>New Estimation</Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -1456,7 +2416,7 @@ export default function GravureEstimationPage() {
             <div className="flex items-center gap-1.5 justify-end">
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
               <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintRow(row)}>Print</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEditFromApi(row)}>Edit</Button>
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
             </div>
           )}
@@ -1497,13 +2457,13 @@ export default function GravureEstimationPage() {
                <div>
                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest block mb-1">Estimation Date</label>
                  <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 select-none">
-                   {new Date(form.date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                   {(() => { const dt = new Date(form.date || new Date()); return isNaN(dt.getTime()) ? new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); })()}
                  </div>
                </div>
              </div>
 
-             {/* Load from Product Catalog */}
-             <div className="flex items-center gap-3 mb-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
+             {/* Load from Product Catalog — hidden temporarily */}
+             <div className="hidden flex items-center gap-3 mb-3 p-3 bg-teal-50 border border-teal-200 rounded-xl">
                <div className="flex-1">
                  <p className="text-[10px] font-bold text-teal-700 uppercase tracking-wider">Load from Product Catalog</p>
                  {loadedFromCatalog
@@ -1532,6 +2492,7 @@ export default function GravureEstimationPage() {
                    setPlanFilterOpen(null);
                    setSelectedPlanId(null);
                    setIsPlanApplied(false);
+                   setOverridePlan(null);
                  }}
                    className="text-teal-400 hover:text-red-500 p-1 rounded-lg hover:bg-red-50 transition">
                    <X size={14} />
@@ -1572,6 +2533,11 @@ export default function GravureEstimationPage() {
                        .map(name => {
                          const pm = ROTO_PROCESSES.find(p => p.name === name);
                          if (!pm) return null;
+                         const pmMachineIds: string[] = (pm as any).machineIds || [];
+                         const autoMachineId = pmMachineIds.length === 1
+                           ? pmMachineIds[0]
+                           : (pmMachineIds.length === 0 ? ((pm as any).machineId || "") : "");
+                         const autoMachine = PRINT_MACHINES.find((m: any) => m.id === autoMachineId);
                          return {
                            processId: pm.id,
                            processName: pm.name,
@@ -1580,6 +2546,9 @@ export default function GravureEstimationPage() {
                            qty: 0,
                            setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0,
                            amount: 0,
+                           machineId:   autoMachineId,
+                           machineName: autoMachine?.name || (pm as any).machineMasterName || "",
+                           machineIds:  pmMachineIds,
                          } as GravureEstimationProcess;
                        })
                        .filter((x): x is GravureEstimationProcess => x !== null);
@@ -1627,11 +2596,16 @@ export default function GravureEstimationPage() {
                    label="Customer *"
                    value={form.customerId}
                    onChange={e => {
-                     const c = customers.find(x => x.id === e.target.value);
+                     const c = apiCustomers.find(x => String(x.LedgerID) === e.target.value);
                      f("customerId", e.target.value);
-                     if (c) f("customerName", c.name);
+                     if (c) f("customerName", c.CustomerName);
                    }}
-                   options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+                   options={[
+                     { value: "", label: "-- Select Customer --" },
+                     ...(apiCustomers.length > 0
+                       ? apiCustomers.map(c => ({ value: String(c.LedgerID), label: c.CustomerName }))
+                       : customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name })))
+                   ]}
                  />
                  <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Job / carton description" />
                  <Select
@@ -1645,14 +2619,28 @@ export default function GravureEstimationPage() {
                        applyCategory(e.target.value);
                      }
                    }}
-                   options={[{ value: "", label: "-- Select Category --" }, ...categories.map(c => ({ value: c.id, label: c.name }))]}
+                   options={[
+                     { value: "", label: "-- Select Category --" },
+                     ...categories.map(c => ({ value: c.id, label: c.name })),
+                     // Fallback: show pre-selected value even if API categories not loaded yet
+                     ...(form.categoryId && form.categoryName && !categories.find(c => c.id === form.categoryId)
+                       ? [{ value: form.categoryId, label: form.categoryName }]
+                       : []),
+                   ]}
                  />
                  <Select
                    label="Select Product Type *"
                    value={form.content || ""}
                    onChange={e => { f("content", e.target.value); setForm(p => ({ ...p, content: e.target.value, structureType: getStructureType(e.target.value) } as any)); }}
-                   options={[...(!form.categoryId ? [] : [{ value: "", label: "-- Select Product Type --" }]), ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx }))]}
-                   disabled={!form.categoryId || !(categories.find(c => c.id === form.categoryId)?.contents?.length)}
+                   options={[
+                     ...(!form.categoryId ? [] : [{ value: "", label: "-- Select Product Type --" }]),
+                     ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx })),
+                     // Fallback: show pre-selected content even if category contents not loaded yet
+                     ...(form.content && !(categories.find(c => c.id === form.categoryId)?.contents || []).includes(form.content)
+                       ? [{ value: form.content, label: form.content }]
+                       : []),
+                   ]}
+                   disabled={!form.categoryId}
                  />
                   <Select
                     label="Sales Person *"
@@ -1807,14 +2795,15 @@ export default function GravureEstimationPage() {
                     value={form.unit}
                     onChange={e => f("unit", e.target.value)}
                     options={[
-                      { value: "Pcs", label: "Pcs" },
+                      { value: "Meter", label: "Meter" },
                       { value: "Kg",    label: "Kg" },
+                      { value: "Pcs",   label: "Pcs" },
                     ]}
                   />
                 </div>
 
                 {/* ── Dimension Setup block (with live diagram) ── */}
-                {form.content && CONTENT_TYPE_CONFIG[form.content] ? (
+                {form.content && CONTENT_TYPE_CONFIG[normalizeContentType(form.content)] ? (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
                     <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
                       <Calculator size={14} className="text-white" />
@@ -1826,7 +2815,7 @@ export default function GravureEstimationPage() {
                         <div>
                           <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-2">Packaging Dimensions</p>
                           <DimensionInputPanel
-                            contentType={form.content}
+                            contentType={normalizeContentType(form.content)}
                             dims={dimValues}
                             onChange={patch => {
                               patchDim(patch);
@@ -2188,7 +3177,7 @@ export default function GravureEstimationPage() {
                         </div>
                       </div>
                       {/* Right: live diagram */}
-                      <DimensionDiagram contentType={form.content} dims={dimValues} />
+                      <DimensionDiagram contentType={normalizeContentType(form.content)} dims={dimValues} />
                     </div>
                   </div>
                 ) : (
@@ -2261,7 +3250,7 @@ export default function GravureEstimationPage() {
               {form.secondaryLayers.length > 0 && (
                 <div className="space-y-3">
                   {form.secondaryLayers.map((l, index) => {
-                    const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
+                    const thicknesses = apiFilmSubGroups.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
                     return (
                       <div key={l.id} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
                         {/* Ply header */}
@@ -2291,17 +3280,29 @@ export default function GravureEstimationPage() {
                           {l.plyType && (
                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                               <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
+                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
                                 <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={l.itemSubGroup}
+                                  value={l.itemId || ""}
                                   onChange={e => {
-                                    const sg = FILM_SUBGROUPS.find(s => s.subGroup === e.target.value);
+                                    const fi = apiFilmItems.find(f => String(f.ItemID) === e.target.value);
+                                    const density  = fi?.Density    || 0;
+                                    const thickness = fi?.Thickness  || 0;
+                                    const gsm = thickness > 0 && density > 0 ? parseFloat((thickness * density).toFixed(3)) : 0;
                                     const layers = [...form.secondaryLayers];
-                                    layers[index] = { ...l, itemSubGroup: e.target.value, density: sg?.density ?? 0, thickness: 0, gsm: 0, filmRate: parseFloat(FILM_ITEMS.find(fi => fi.subGroup === e.target.value)?.estimationRate || "0") };
+                                    layers[index] = {
+                                      ...l,
+                                      itemId:       e.target.value,
+                                      itemName:     fi ? (fi.ItemDisplayName || fi.ItemName) : "",
+                                      itemSubGroup: fi?.ItemSubGroupName || "",
+                                      density, thickness, gsm,
+                                      filmRate: fi?.EstimationRate || l.filmRate || 0,
+                                    };
                                     f("secondaryLayers", layers);
                                   }}>
-                                  <option value="">Select Film Type</option>
-                                  {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
+                                  <option value="">-- Select Film Item --</option>
+                                  {apiFilmItems
+                                    .filter((fi, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(fi.ItemID)) === idx)
+                                    .map(fi => <option key={fi.ItemID} value={String(fi.ItemID)}>{fi.ItemDisplayName || fi.ItemName}</option>)}
                                 </select>
                               </div>
                               <div className="grid grid-cols-4 gap-2">
@@ -2317,7 +3318,11 @@ export default function GravureEstimationPage() {
                                       f("secondaryLayers", layers);
                                     }}>
                                     <option value={0}>Select</option>
-                                    {thicknesses.map(t => <option key={t} value={t}>{t}</option>)}
+                                    {/* Include current thickness even if not in sub-group list */}
+                                    {(l.thickness && !thicknesses.includes(l.thickness)
+                                      ? [...thicknesses, l.thickness].sort((a, b) => a - b)
+                                      : thicknesses
+                                    ).map(t => <option key={t} value={t}>{t}</option>)}
                                   </select>
                                 </div>
                                 <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
@@ -2326,7 +3331,7 @@ export default function GravureEstimationPage() {
                                   <div className="flex gap-1 items-stretch">
                                     <input type="number" step={0.01} min={0} placeholder="₹/Kg"
                                       className="flex-1 min-w-0 text-xs border border-orange-200 bg-orange-50 rounded-xl px-2 py-2 font-mono outline-none focus:ring-2 focus:ring-orange-400"
-                                      value={l.filmRate !== undefined ? l.filmRate : (parseFloat(FILM_ITEMS.find(fi => fi.subGroup === l.itemSubGroup)?.estimationRate || "0") || "")}
+                                      value={l.filmRate !== undefined ? l.filmRate : ""}
                                       onChange={e => { const layers = [...form.secondaryLayers]; layers[index] = { ...l, filmRate: Number(e.target.value) }; f("secondaryLayers", layers); }} />
                                     {/* Stock lots picker button — only if lots exist for this film */}
                                     {(() => {
@@ -2371,8 +3376,16 @@ export default function GravureEstimationPage() {
                                 });
                                 return l.consumableItems.map((ci, ciIdx) => {
                                   const CONSUMABLE_GROUPS = ["Ink", "Solvent", "Adhesive", "Hardner"];
-                                  const subGroups = ci.itemGroup ? (CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? []) : [];
-                                  const filteredItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
+                                  const subGroups = ci.itemGroup
+                                    ? (apiConsumableSubGroups[ci.itemGroup]?.length
+                                        ? apiConsumableSubGroups[ci.itemGroup]
+                                        : CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? [])
+                                    : [];
+                                  const filteredApiItems = apiInkItems
+                                    .filter(it => normalizeConsumableGroup(it.ItemGroupName) === ci.itemGroup && (!ci.itemSubGroup || it.ItemSubGroupName === ci.itemSubGroup))
+                                    .filter((it, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(it.ItemID)) === idx);
+                                  const filteredStaticItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
+                                  const filteredItems = filteredStaticItems; // kept for legacy rate/solidPct lookups below
                                   const ciLabel = ci.itemGroup || "Consumable";
                                   const ciSerial = groupSerials[ciIdx] ?? 1;
 
@@ -2437,28 +3450,46 @@ export default function GravureEstimationPage() {
                                           <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
                                             value={ci.itemId}
                                             onChange={e => {
-                                              const it = filteredItems.find(x => x.id === e.target.value);
+                                              const apiIt  = filteredApiItems.find(x => String(x.ItemID) === e.target.value);
+                                              const staticIt = filteredItems.find(x => x.id === e.target.value);
+                                              // Rate comes from Item Master EstimationRate (API first, static fallback)
+                                              const masterRate = apiIt?.EstimationRate
+                                                ?? parseFloat(staticIt?.estimationRate ?? "0")
+                                                ?? 0;
+                                              const masterUnit = apiIt?.EstimationUnit || staticIt?.estimationUnit || "Kg";
                                               const patch: Partial<PlyConsumableItem> = {
-                                                itemId: it?.id ?? "",
-                                                itemName: it?.name ?? "",
-                                                rate: parseFloat(it?.estimationRate ?? "0") || 0,
+                                                itemId:   e.target.value,
+                                                itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
+                                                rate:     masterRate,
+                                                rateUnit: masterUnit,
                                               };
-                                              // For Ink: auto-fill liquid GSM + solidPct from item master defaults
-                                              if (ci.itemGroup === "Ink" && it) {
-                                                if (!ci.gsm || ci.gsm === 0) patch.gsm = (it as any).defaultGsm ?? 3.0;
-                                                if (!ci.solidPct) patch.solidPct = (it as any).solidPct ?? 35;
+                                              // For Ink: auto-fill solidPct + dry GSM from static master defaults
+                                              if (ci.itemGroup === "Ink" && (apiIt || staticIt)) {
+                                                if (!ci.gsm || ci.gsm === 0) patch.gsm = (staticIt as any)?.defaultGsm ?? 3.0;
+                                                if (!ci.solidPct) patch.solidPct = (staticIt as any)?.solidPct ?? 35;
                                               }
                                               updatePlyConsumable(index, ciIdx, patch);
                                             }}
                                             disabled={!ci.itemGroup}>
                                             <option value="">-- Select Item --</option>
-                                            {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}{it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}</option>)}
+                                            {filteredApiItems.length > 0
+                                              ? filteredApiItems
+                                                  .filter((it, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(it.ItemID)) === idx)
+                                                  .map(it => (
+                                                    <option key={it.ItemID} value={String(it.ItemID)}>
+                                                      {it.ItemName}{it.EstimationRate > 0 ? ` — ₹${it.EstimationRate}/${it.EstimationUnit || "Kg"}` : ""}
+                                                    </option>
+                                                  ))
+                                              : filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}{it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}</option>)}
                                           </select>
                                         </div>
                                         <div>
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Rate (₹/Kg)</label>
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">
+                                            Rate (₹/{ci.rateUnit || "Kg"})
+                                          </label>
                                           <div className="flex gap-1 items-stretch">
-                                            <input type="number" step={0.01} min={0} placeholder="₹/Kg"
+                                            <input type="number" step={0.01} min={0}
+                                              placeholder={`₹/${ci.rateUnit || "Kg"}`}
                                               className="flex-1 min-w-0 text-xs border border-orange-200 bg-orange-50 rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-orange-400 font-mono"
                                               value={ci.rate || ""}
                                               onChange={e => updatePlyConsumable(index, ciIdx, { rate: Number(e.target.value) })} />
@@ -2752,6 +3783,12 @@ export default function GravureEstimationPage() {
                     }}
                     options={[{ value: "", label: "-- All Machines --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status}) – ₹${m.costPerHour}/hr` }))]}
                   />
+                  {/* Show catalog machine name when it's not in the static machine list */}
+                  {form.machineId && !PRINT_MACHINES.find(m => m.id === form.machineId) && form.machineName && (
+                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1">
+                      Catalog machine: <strong>{form.machineName}</strong> — select from dropdown to link production plans
+                    </p>
+                  )}
                 </div>
                 {/* Shift Hours selector */}
                 <div>
@@ -2799,7 +3836,8 @@ export default function GravureEstimationPage() {
 
               {/* Machine Specs bar */}
               {form.machineId && (() => {
-                const selMachine = PRINT_MACHINES.find(m => m.id === form.machineId);
+                const selMachine = PRINT_MACHINES.find(m => m.id === form.machineId)
+                  || PRINT_MACHINES.find(m => m.name === form.machineName);
                 if (!selMachine) return null;
                 const minW    = parseFloat((selMachine as any).minWebWidth)    || 0;
                 const maxW    = parseFloat((selMachine as any).maxWebWidth)    || 0;
@@ -2872,31 +3910,79 @@ export default function GravureEstimationPage() {
                   <table className="min-w-full text-xs">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>
-                        {["Process (Master)", "Machine", "Charge Unit", "Rate (₹)", "Setup (₹)", "Amount (₹)", ""].map(h => (
+                        {["Process (Master)", "Machine (Auto)", "Charge Unit", "Rate (₹)", "Setup (₹)", "Amount (₹)", ""].map(h => (
                           <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {form.processes.map((pr, i) => {
-                        const pm = ROTO_PROCESSES.find(x => x.id === pr.processId);
-                        const availMachines = machines.filter(m => (pm?.machineIds || []).includes(m.id));
+                        // Match by ID first, then by name (handles static-ID mismatch when API loads after useEffect)
+                        const pm = (ROTO_PROCESSES.find((x: any) => x.id === pr.processId)
+                          || ROTO_PROCESSES.find((x: any) => x.name === pr.processName)) as any;
+                        // Use live machineIds from ROTO_PROCESSES if form doesn't have them (timing: API loaded after useEffect)
+                        const liveMachineIds: string[] = (pr.machineIds && pr.machineIds.length > 0)
+                          ? pr.machineIds
+                          : pm?.machineIds || [];
+                        // Machine lookup: by machineId → by machineName → by process master machineId → by process master machineName
+                        const resolvedMach = PRINT_MACHINES.find((m: any) => m.id === pr.machineId)
+                          || (pr.machineName ? PRINT_MACHINES.find((m: any) => m.name === pr.machineName) : undefined)
+                          || (pm?.machineId ? PRINT_MACHINES.find((m: any) => m.id === pm.machineId) : undefined);
+                        const displayMachineName = resolvedMach?.name
+                          || pr.machineName
+                          || pm?.machineMasterName
+                          || "";
                         return (
                         <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 min-w-[200px]">
-                            <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
+                          <td className="px-3 py-2 min-w-[220px]">
+                            <select
+                              value={pm ? pm.id : ""}
+                              onChange={e => selectProcess(i, e.target.value)}
+                              className={cellInput}
+                            >
                               <option value="">-- Select Process --</option>
-                              {ROTO_PROCESSES.map(p => <option key={p.id} value={p.id}>{p.name} ({p.department})</option>)}
+                              {/* Fallback: if stored process has no match in loaded list, show whatever we have */}
+                              {!pm && (pr.processName || pr.processId) && (
+                                <option value={pr.processId || pr.processName}>
+                                  {pr.processName || `Process ${pr.processId}`}
+                                </option>
+                              )}
+                              {ROTO_PROCESSES.map((p: any) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.displayName || p.name}
+                                </option>
+                              ))}
                             </select>
                           </td>
-                          <td className="px-3 py-2 min-w-[140px]">
-                            {availMachines.length > 0 ? (
-                              <select value={pr.machineId || ""} onChange={e => updateProcessMachine(i, e.target.value)} className={cellInput}>
-                                <option value="">-- Machine --</option>
-                                {availMachines.map(m => <option key={m.id} value={m.id}>{m.displayName || m.name}</option>)}
+                          <td className="px-3 py-2 min-w-[170px]">
+                            {liveMachineIds.length > 1 ? (
+                              // Multiple machines allocated — pick one
+                              <select
+                                value={pr.machineId || ""}
+                                onChange={e => updateProcessMachine(i, e.target.value)}
+                                className="border border-indigo-300 bg-indigo-50 rounded px-2 py-1 text-[10px] text-indigo-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full"
+                              >
+                                <option value="">— select machine —</option>
+                                {liveMachineIds.map(mid => {
+                                  const m = PRINT_MACHINES.find((x: any) => x.id === mid);
+                                  return <option key={mid} value={mid}>{m?.name || mid}</option>;
+                                })}
                               </select>
+                            ) : displayMachineName ? (
+                              // Single machine auto-filled — show badge
+                              <span className="px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-[10px] font-medium">{displayMachineName}</span>
                             ) : (
-                              <span className="text-gray-400 text-[10px]">—</span>
+                              // No machine in Process Master — allow manual assignment
+                              <select
+                                value={pr.machineId || ""}
+                                onChange={e => updateProcessMachine(i, e.target.value)}
+                                className="border border-gray-300 bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full"
+                              >
+                                <option value="">— assign machine —</option>
+                                {PRINT_MACHINES.map((m: any) => (
+                                  <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                              </select>
                             )}
                           </td>
                           <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
@@ -2904,9 +3990,12 @@ export default function GravureEstimationPage() {
                           <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
                           <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">
                             {(() => {
-                              const aq2 = autoProcessQty(pr.chargeUnit, form.quantity, form.quantity * (form.jobWidth / 1000), form.noOfColors);
+                              const { lengthM: lm, areaM2: am, weightKg: wk } = resolveQuantities(form);
+                              const aq2 = autoProcessQty(pr.chargeUnit, lm, am, wk, form.noOfColors);
                               const lq  = aq2 > 0 ? aq2 : (pr.qty || 0);
-                              return `₹${(lq * pr.rate + pr.setupCharge).toLocaleString()}`;
+                              const rawAmt = lq * pr.rate + (pr.setupCharge || 0);
+                              const minC   = processMinChargeMap[String(pr.processId)] ?? 0;
+                              return `₹${Math.max(rawAmt, minC).toLocaleString()}`;
                             })()}
                           </td>
                           <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
@@ -2979,7 +4068,7 @@ export default function GravureEstimationPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => { setIsPlanApplied(false); setSelectedPlanId(null); }}
+                  onClick={() => { setIsPlanApplied(false); setSelectedPlanId(null); setOverridePlan(null); }}
                   className="flex-shrink-0 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg transition">
                   Change Plan
                 </button>
@@ -3232,7 +4321,7 @@ export default function GravureEstimationPage() {
 
                 {selectedPlanId && (
                   <div className="border-t border-purple-200 bg-purple-50 px-4 py-2.5 flex items-center justify-between text-xs">
-                    <span className="text-purple-700 font-medium flex items-center gap-1.5"><Check size={12} className="text-green-600" /> Plan selected — Grand Total: <strong className="text-purple-900">₹{selectedPlan?.grandTotal.toLocaleString()}</strong></span>
+                    <span className="text-purple-700 font-medium flex items-center gap-1.5"><Check size={12} className="text-green-600" /> Plan selected — Grand Total: <strong className="text-purple-900">₹{(selectedPlan?.grandTotal ?? 0).toLocaleString()}</strong></span>
                     <Button onClick={() => {
                       setIsPlanApplied(true);
                       // auto-build cylAllocs from selected plan
@@ -3440,6 +4529,97 @@ export default function GravureEstimationPage() {
             </div>
           </div>
 
+          {/* ── Extra Materials ──────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <SectionHeader label="Extra Materials (Optional)" />
+              <button
+                type="button"
+                onClick={addMaterial}
+                className="text-xs px-3 py-1.5 rounded-lg border border-purple-300 text-purple-700 bg-white hover:bg-purple-50 font-semibold"
+              >+ Add Material</button>
+            </div>
+            {form.materials.length === 0 ? (
+              <div className="border border-dashed border-gray-300 rounded-xl p-4 text-center text-xs text-gray-400">
+                No extra materials. Click "+ Add Material" to add items not in the ply structure (e.g. carton, tape, special consumable).
+              </div>
+            ) : (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="min-w-full text-xs">
+                  <thead style={{ background: "var(--erp-primary)" }} className="text-white">
+                    <tr>
+                      {["Item", "Group", "Unit", "Rate (₹)", "Qty", "Amount (₹)", ""].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 bg-white">
+                    {form.materials.map((m, i) => (
+                      <tr key={i}>
+                        <td className="px-2 py-1.5 min-w-[180px]">
+                          <select
+                            value={m.itemId || ""}
+                            onChange={e => {
+                              if (e.target.value) selectMaterialItem(i, e.target.value);
+                              else updateMaterial(i, { itemId: "", itemCode: "", itemName: "", rate: 0 });
+                            }}
+                            className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white"
+                          >
+                            <option value="">— select item —</option>
+                            {(ALL_MAT_ITEMS as any[]).map((it: any) => (
+                              <option key={it.id} value={it.id}>{it.name} ({it.group})</option>
+                            ))}
+                          </select>
+                          {!m.itemId && (
+                            <input
+                              type="text"
+                              value={m.itemName}
+                              onChange={e => updateMaterial(i, { itemName: e.target.value })}
+                              placeholder="or type item name"
+                              className="w-full text-xs border border-gray-200 rounded px-2 py-1 mt-1 bg-gray-50"
+                            />
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="text" value={m.group}
+                            onChange={e => updateMaterial(i, { group: e.target.value })}
+                            className="w-24 text-xs border border-gray-200 rounded px-2 py-1 bg-white" placeholder="Group" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="text" value={m.unit}
+                            onChange={e => updateMaterial(i, { unit: e.target.value })}
+                            className="w-16 text-xs border border-gray-200 rounded px-2 py-1 bg-white" placeholder="Unit" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" min={0} value={m.rate || ""}
+                            onChange={e => updateMaterial(i, { rate: Number(e.target.value) })}
+                            className="w-24 text-xs border border-gray-200 rounded px-2 py-1 bg-white text-right" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" min={0} step={0.001} value={m.qty || ""}
+                            onChange={e => updateMaterial(i, { qty: Number(e.target.value) })}
+                            className="w-20 text-xs border border-gray-200 rounded px-2 py-1 bg-white text-right" />
+                        </td>
+                        <td className="px-2 py-1.5 font-bold text-gray-900">₹{m.amount.toLocaleString()}</td>
+                        <td className="px-2 py-1.5">
+                          <button type="button" onClick={() => removeMaterial(i)}
+                            className="text-red-400 hover:text-red-600 font-bold text-base leading-none">×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t border-gray-200">
+                    <tr>
+                      <td colSpan={5} className="px-3 py-2 text-xs font-bold text-gray-600 text-right">Total Extra Materials</td>
+                      <td className="px-3 py-2 text-sm font-black text-gray-900">₹{form.materials.reduce((s, m) => s + m.amount, 0).toLocaleString()}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+
           {/* ── Process Cost Breakdown ────────────────────────── */}
           {breakdown.procLines.length > 0 && (
           <div>
@@ -3511,17 +4691,37 @@ export default function GravureEstimationPage() {
 
                 // Build per-process rows
                 const rows = form.processes.map((pr, i) => {
-                  const mach = machines.find(m => m.id === pr.machineId);
-                  const loan    = parseFloat(mach?.loanAmount        || "0");
-                  const rate    = parseFloat(mach?.loanInterestRatePct || "12");
-                  const salary  = parseFloat(mach?.monthlyLabourSalary || "0");
-                  const days    = parseFloat(mach?.workingDaysPerMonth  || "25");
-                  const shift   = parseFloat(mach?.shiftHours           || "8");
-                  const annInt  = loan > 0 ? (loan * rate) / 100 : 0;
-                  const intPerHr = annInt > 0 ? annInt / (12 * days * shift) : 0;
-                  const labPerHr = salary > 0 ? salary / (days * shift) : 0;
+                  // Match process: by ID → by name → by displayName
+                  const pm3 = (ROTO_PROCESSES.find((p: any) => p.id === pr.processId)
+                    || ROTO_PROCESSES.find((p: any) => p.name === pr.processName)
+                    || ROTO_PROCESSES.find((p: any) => p.displayName === pr.processName)) as any;
+                  // Find machine: by ID → by name → by process master's machineId → by process master's machineName
+                  const mach = PRINT_MACHINES.find((m: any) => m.id === pr.machineId)
+                    || (pr.machineName ? PRINT_MACHINES.find((m: any) => m.name === pr.machineName) : undefined)
+                    || (pm3?.machineId ? PRINT_MACHINES.find((m: any) => m.id === pm3.machineId) : undefined)
+                    || (pm3?.machineMasterName ? PRINT_MACHINES.find((m: any) => m.name === pm3.machineMasterName) : undefined);
+                  const loan    = Number(mach?.loanAmount        ?? 0);
+                  const rate    = Number(mach?.loanInterestRatePct ?? 0);
+                  const salary  = Number(mach?.monthlyLabourSalary ?? 0); // monthly (from AvgLaborSalaryPerYear)
+                  const directLabHr  = Number(mach?.directLabourPerHr ?? 0); // LabourCharges (already per-hour)
+                  const directCostHr = Number(mach?.directCostPerHr  ?? 0); // PerHourCost (machine cost/hr)
+                  const days    = Number(mach?.workingDaysPerMonth  ?? 25);
+                  const shift   = Number(mach?.shiftHours           ?? 8);
+                  // Interest per hour:
+                  //   Primary  → PurchaseCost × AnnualInterestRate% ÷ (12 mo × days × shift)
+                  //   Fallback → PerHourCost used as machine capital cost/hr when PurchaseCost=0
+                  const annInt   = loan > 0 && rate > 0 ? (loan * rate) / 100 : 0;
+                  const intPerHr = annInt > 0
+                    ? parseFloat((annInt / (12 * days * shift)).toFixed(4))
+                    : (loan === 0 && directCostHr > 0 ? directCostHr : 0);
+                  // Labour per hour:
+                  //   Primary  → AvgLaborSalaryPerYear × Operators ÷ 12 mo ÷ (days × shift) = salary / (days×shift)
+                  //   Fallback → LabourCharges (direct per-hour field)
+                  const labPerHr = salary > 0
+                    ? parseFloat((salary / (days * shift)).toFixed(4))
+                    : (directLabHr > 0 ? directLabHr : 0);
                   // Auto run hours from machine speed; manual pr.runHours overrides
-                  const machSpeed = parseFloat(mach?.speedMax || "0");
+                  const machSpeed = Number(mach?.speedMax ?? 0);
                   const autoHrs   = machSpeed > 0 && effectiveQty > 0
                     ? parseFloat((effectiveQty / (machSpeed * 60)).toFixed(2))
                     : 0;
@@ -3529,7 +4729,9 @@ export default function GravureEstimationPage() {
                   const isAutoHrs = !(pr.runHours && pr.runHours > 0);
                   const intCost = parseFloat((intPerHr * runHrs).toFixed(2));
                   const labCost = parseFloat((labPerHr * runHrs).toFixed(2));
-                  return { i, pr, mach, loan, rate, salary, days, shift, annInt, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost };
+                  const isDirectCost  = loan === 0 && directCostHr > 0;
+                  const isDirectLabHr = salary === 0 && directLabHr > 0;
+                  return { i, pr, pm3, mach, loan, rate, salary, directLabHr, directCostHr, days, shift, annInt, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost, isDirectCost, isDirectLabHr };
                 });
                 const hasAnyMachine = rows.some(r => r.mach);
                 const totalInterest = parseFloat(rows.reduce((s, r) => s + r.intCost, 0).toFixed(2));
@@ -3550,12 +4752,12 @@ export default function GravureEstimationPage() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-100">
-                            {rows.map(({ i, pr, mach, loan, rate, salary, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost }) => (
+                            {rows.map(({ i, pr, pm3, mach, loan, rate, salary, directLabHr, directCostHr, intPerHr, labPerHr, runHrs, autoHrs, isAutoHrs, intCost, labCost, isDirectCost, isDirectLabHr }) => (
                               <tr key={i} className="hover:bg-gray-50">
                                 <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap max-w-[160px] truncate">
-                                  {pr.processName || <span className="text-gray-400 italic">—</span>}
+                                  {pm3?.displayName || pr.processName || <span className="text-gray-400 italic">—</span>}
                                 </td>
-                                <td className="px-3 py-2 whitespace-nowrap">
+                                <td className="px-3 py-2 whitespace-nowrap min-w-[160px]">
                                   {mach ? (
                                     <div>
                                       <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 rounded text-indigo-700 font-medium text-[10px]">
@@ -3566,23 +4768,41 @@ export default function GravureEstimationPage() {
                                       )}
                                     </div>
                                   ) : (
-                                    <span className="text-gray-400 text-[10px] italic">No machine</span>
+                                    <span className="text-amber-500 text-[10px] italic">← assign in Tab 2</span>
                                   )}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-gray-600">
-                                  {loan > 0 ? `₹${loan.toLocaleString("en-IN")}` : "—"}
+                                  {loan > 0
+                                    ? `₹${loan.toLocaleString("en-IN")}`
+                                    : isDirectCost
+                                      ? <span className="text-amber-600 text-[9px]">Per-Hr rate</span>
+                                      : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-gray-600">
-                                  {mach?.loanInterestRatePct ? `${rate}%` : "—"}
+                                  {rate > 0 ? `${rate}%` : isDirectCost ? <span className="text-amber-600 text-[9px]">—</span> : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-blue-700 font-semibold">
-                                  {intPerHr > 0 ? `₹${intPerHr.toFixed(2)}` : "—"}
+                                  {intPerHr > 0
+                                    ? <span title={isDirectCost ? "Using PerHourCost from Machine Master (PurchaseCost not set)" : ""}>
+                                        {isDirectCost && <span className="text-[8px] text-amber-500 mr-0.5">*</span>}
+                                        ₹{intPerHr.toFixed(2)}
+                                      </span>
+                                    : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-gray-600">
-                                  {salary > 0 ? `₹${salary.toLocaleString("en-IN")}` : "—"}
+                                  {salary > 0
+                                    ? `₹${salary.toLocaleString("en-IN")}/mo`
+                                    : directLabHr > 0
+                                      ? <span className="text-amber-600 text-[9px]">₹{directLabHr}/hr</span>
+                                      : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2 font-mono text-green-700 font-semibold">
-                                  {labPerHr > 0 ? `₹${labPerHr.toFixed(2)}` : "—"}
+                                  {labPerHr > 0
+                                    ? <span title={isDirectLabHr ? "Using LabourCharges from Machine Master (AvgLaborSalaryPerYear not set)" : ""}>
+                                        {isDirectLabHr && <span className="text-[8px] text-amber-500 mr-0.5">*</span>}
+                                        ₹{labPerHr.toFixed(2)}
+                                      </span>
+                                    : <span className="text-gray-300">—</span>}
                                 </td>
                                 <td className="px-3 py-2 w-28">
                                   <div className="relative">
@@ -4460,8 +5680,8 @@ export default function GravureEstimationPage() {
               <Button onClick={() => { const next = activeTab === 2 ? 4 : activeTab + 1; setActiveTab(next); }}>Next</Button>
             ) : (
               <>
-                <Button icon={<Calculator size={14} />} onClick={save}>
-                  {editing ? "Update Estimation" : "Save Estimation"}
+                <Button icon={<Calculator size={14} />} onClick={save} disabled={saving}>
+                  {saving ? "Saving…" : editing ? "Update Estimation" : "Save Estimation"}
                 </Button>
               </>
             )}
@@ -4915,7 +6135,7 @@ export default function GravureEstimationPage() {
           <div className="flex justify-between mt-6">
             <Button variant="secondary" onClick={() => setViewRow(null)}>Close</Button>
             <div className="flex gap-2">
-              <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => { setViewRow(null); openEdit(viewRow); }}>Edit</Button>
+              <Button variant="secondary" icon={<Pencil size={14} />} onClick={() => { setViewRow(null); openEditFromApi(viewRow!); }}>Edit</Button>
               {viewRow.status === "Approved" && <Button icon={<ArrowRight size={14} />}>Convert to Order</Button>}
             </div>
           </div>
@@ -5354,7 +6574,18 @@ export default function GravureEstimationPage() {
         <p className="text-sm text-gray-600">Delete this estimation? This cannot be undone.</p>
         <div className="flex justify-end gap-3 mt-6">
           <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => { setData(d => d.filter(r => r.id !== deleteId)); setDeleteId(null); }}>Delete</Button>
+          <Button variant="danger" onClick={async () => {
+            if (!deleteId) return;
+            try {
+              const res: any = await apiGet(`api/gravureestimationShrink/deleteestimation/${deleteId}`);
+              const parsed = Array.isArray(res) ? res[0] : res;
+              if (parsed?.Status !== "success") {
+                alert("Delete failed: " + (parsed?.Message || "Unknown error")); return;
+              }
+              setDeleteId(null);
+              await loadList();
+            } catch (err: any) { alert("Delete error: " + (err?.message || String(err))); }
+          }}>Delete</Button>
         </div>
       </Modal>
 

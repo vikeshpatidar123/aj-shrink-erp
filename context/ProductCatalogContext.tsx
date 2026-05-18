@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/Toast";
 type ApiCatalogRow = {
   ProductMasterID: string; ProductMasterCode: string; PCDate: string;
   ProductName: string; CustomerID: string; CustomerName: string;
-  CategoryID: string; CategoryName: string; Content: string;
+  CategoryID: string; CategoryName: string; Content: string; GrvContent?: string;
   JobWidth: number; JobHeight: number; ActualWidth: number; ActualHeight: number;
   NoOfColors: number; FrontColors: number; BackColors: number;
   PrintType: string; Substrate: string; MachineID: string; MachineName: string;
@@ -61,7 +61,7 @@ function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
     customerName: r.CustomerName ?? "",
     categoryId: String(r.CategoryID ?? ""),
     categoryName: r.CategoryName ?? "",
-    content: r.Content ?? "",
+    content: r.Content || r.GrvContent || "",
     jobWidth: Number(r.JobWidth ?? 0),
     jobHeight: Number(r.JobHeight ?? 0),
     actualWidth: Number(r.ActualWidth ?? 0),

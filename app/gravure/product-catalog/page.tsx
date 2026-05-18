@@ -11,8 +11,10 @@ import {
   GravureProductCatalog, GravureOrder, GravureWorkOrder,
   GravureEstimationProcess, SecondaryLayer, PlyConsumableItem,
   CATEGORY_GROUP_SUBGROUP,
-  tools as allTools, toolInventory,
+  tools as allTools, toolInventory, processMasters,
 } from "@/data/dummyData";
+
+const STATIC_ROTO_PROCESSES = processMasters.filter(p => p.module === "Rotogravure");
 // Sleeve/Cylinder tool inventory stays as local data (not in DB masters)
 // All other masters (customers, machines, processes, items, vendors) come from API via useMasters()
 import { useCategories } from "@/context/CategoriesContext";
@@ -99,15 +101,17 @@ export default function ProductCatalogPage() {
     [apiMachines]);
 
   const ROTO_PROCESSES = useMemo(() =>
-    dedupe(apiProcesses.map(p => ({
-      id: String(p.ProcessID), name: p.ProcessName, displayName: p.DisplayProcessName,
-      module: "Rotogravure",
-      chargeUnit: p.TypeofCharges,
-      rate: p.Rate,
-      makeSetupCharges: Number(p.SetupCharges) > 0,
-      setupChargeAmount: String(p.SetupCharges ?? 0),
-      ...p,
-    } as any))),
+    apiProcesses.length > 0
+      ? dedupe(apiProcesses.map(p => ({
+          id: String(p.ProcessID), name: p.ProcessName, displayName: p.DisplayProcessName,
+          module: "Rotogravure", department: p.DepartmentName,
+          chargeUnit: p.TypeofCharges,
+          rate: p.Rate,
+          makeSetupCharges: Number(p.SetupCharges) > 0,
+          setupChargeAmount: String(p.SetupCharges ?? 0),
+          ...p,
+        } as any)))
+      : STATIC_ROTO_PROCESSES,
     [apiProcesses]);
 
   const FILM_ITEMS = useMemo(() =>
@@ -305,13 +309,31 @@ export default function ProductCatalogPage() {
   // Maps DB ContentMaster.ContentName → CONTENT_TYPE_CONFIG key
   // Needed because DB names may differ from the internal keys used by the dimension diagram
   const normalizeContentType = (content: string): string => {
-    const c = (content || "").toLowerCase();
-    if (c.includes("wrap around")) return "Wrap Around Labels";
-    if (c === "shrink sleeve" || (c.includes("sleeve") && c.includes("shrink") && !c.includes("stretch"))) return "Sleeve — Shrink";
-    if (c.includes("sleeve") && c.includes("stretch")) return "Sleeve — Stretch";
-    if (c.includes("shrink label")) return "Shrink Labels";
-    if (c.includes("cut") && c.includes("stack")) return "Cut & Stack Labels";
-    if (c.includes("in-mould") || c.includes("in mould")) return "In-Mould Labels";
+    const c = (content || "").toLowerCase().trim();
+    if (!c) return content;
+    // Sleeve (before film checks)
+    if (c.includes("sleeve") && !c.includes("stretch"))                   return "Sleeve — Shrink";
+    if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";
+    // Label types
+    if (c.includes("wrap around"))                                         return "Wrap Around Labels";
+    if (c.includes("shrink label") || c.includes("shrink film"))          return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack"))                         return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould"))                return "In-Mould Labels";
+    // Pouch types (specific first)
+    if (c.includes("both side") && c.includes("gusset"))                  return "Both Side Gusset Pouch";
+    if ((c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))) return "3D Pouch / Flat Bottom";
+    if (c.includes("3 side") || c.includes("three side"))                return "Pouch — 3 Side Seal";
+    if (c.includes("center seal") || c.includes("centre seal"))          return "Pouch — Center Seal";
+    if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Standup Pouch";
+    if (c.includes("zipper"))                                              return "Zipper Pouch";
+    if (c.includes("pouch") || c.includes("doy"))                         return "Pouch — 3 Side Seal";
+    // Film / roll types
+    if (c.includes("lldpe") || c.includes("ldpe"))                        return "Shrink Labels";
+    if (c.includes("laminate"))                                            return "Laminate Roll";
+    if (c.includes("roll form") || c.includes("roll") || c.includes("film")) return "Laminate Roll";
+    // Generic fallbacks
+    if (c.includes("bag") || c.includes("sack"))                          return "Pouch — 3 Side Seal";
+    if (c.includes("label") || c.includes("sticker") || c.includes("tag")) return "Wrap Around Labels";
     return content;
   };
 
@@ -1701,7 +1723,7 @@ export default function ProductCatalogPage() {
                         standardUnit: row.standardUnit,
                         perMeterRate: row.perMeterRate,
                       }));
-                      window.location.href = "/gravure/orders";
+                      window.open("/gravure/orders", "_blank");
                     }}
                     disabled={!row.isActive}
                     title={!row.isActive ? `Inactive: ${row.isActiveReason}` : ""}
@@ -1710,8 +1732,9 @@ export default function ProductCatalogPage() {
                   </Button>
                   <Button variant="ghost" size="sm" icon={<FileText size={13} />}
                     onClick={() => {
-                      localStorage.setItem("ajsw_estimation_from_catalog", JSON.stringify(row));
-                      window.location.href = "/gravure/estimation";
+                      const toStore = { ...row, secondaryLayers: (row.secondaryLayers || []).filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx) };
+                      localStorage.setItem("ajsw_estimation_from_catalog", JSON.stringify(toStore));
+                      window.open("/gravure/estimation", "_blank");
                     }}
                     disabled={!row.isActive}
                     title={!row.isActive ? `Inactive: ${row.isActiveReason}` : ""}
@@ -2908,8 +2931,11 @@ export default function ProductCatalogPage() {
                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">{i + 1}</span>
                               </td>
                               <td className="px-3 py-2 min-w-[200px]">
-                                <select value={pr.processId} onChange={e => selectReplanProcess(i, e.target.value)} className={cellInput}>
+                                <select value={String(pr.processId || "")} onChange={e => selectReplanProcess(i, e.target.value)} className={cellInput}>
                                   <option value="">-- Select Process --</option>
+                                  {pr.processId && !ROTO_PROCESSES.find(pm => pm.id === String(pr.processId)) && (pr as any).processName && (
+                                    <option value={String(pr.processId)}>{(pr as any).processName}</option>
+                                  )}
                                   {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
                                 </select>
                               </td>
@@ -5538,7 +5564,7 @@ export default function ProductCatalogPage() {
                   standardUnit: viewPlanRow.standardUnit,
                   perMeterRate: viewPlanRow.perMeterRate,
                 }));
-                window.location.href = "/gravure/orders";
+                window.open("/gravure/orders", "_blank");
               }}>
               Use in Order
             </Button>
@@ -5546,7 +5572,7 @@ export default function ProductCatalogPage() {
               onClick={() => {
                 if (!viewPlanRow) return;
                 localStorage.setItem("ajsw_estimation_from_catalog", JSON.stringify(viewPlanRow));
-                window.location.href = "/gravure/estimation";
+                window.open("/gravure/estimation", "_blank");
               }}>
               Use in Estimation
             </Button>

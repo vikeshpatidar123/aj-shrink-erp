@@ -436,6 +436,7 @@ export default function GravureOrdersPage() {
   const [listSearch, setListSearch] = useState("");
   const [enquirySearch, setEnquirySearch] = useState("");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [viewRefRow, setViewRefRow] = useState<any | null>(null);
 
   // Hold modal state
   const [holdTarget, setHoldTarget] = useState<GravureOrder | null>(null);
@@ -482,6 +483,8 @@ export default function GravureOrdersPage() {
       currency: "INR",
       quoteRate: c.perMeterRate, apprRate: c.perMeterRate,
       unit: c.standardUnit, rateType: "UnitCost",
+      artworkName: c.artworkName || "—",
+      _catalogRef: c,
     }));
     const q = enquirySearch.toLowerCase();
     return [...est, ...cat].filter(r =>
@@ -986,16 +989,12 @@ export default function GravureOrdersPage() {
                     <tr>
                       <th className="px-3 py-2 text-left">Type</th>
                       <th className="px-3 py-2 text-left">Job Name</th>
+                      <th className="px-3 py-2 text-left">Artwork Name</th>
                       <th className="px-3 py-2 text-left">Product Code</th>
                       <th className="px-3 py-2 text-left">Category</th>
                       <th className="px-3 py-2 text-left">Division</th>
-                      <th className="px-3 py-2 text-left">Sales Person</th>
                       <th className="px-3 py-2 text-left">Quote No</th>
-                      <th className="px-3 py-2 text-right">Order Qty</th>
-                      <th className="px-3 py-2 text-left">Unit</th>
-                      <th className="px-3 py-2 text-right">Quote Rate</th>
-                      <th className="px-3 py-2 text-right">Appr. Rate</th>
-                      <th className="px-3 py-2 text-center w-24">Action</th>
+                      <th className="px-3 py-2 text-center w-32">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1012,26 +1011,30 @@ export default function GravureOrdersPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 font-semibold text-gray-800 max-w-[180px] truncate" title={row.jobName}>{row.jobName}</td>
+                          <td className="px-3 py-2 text-gray-700 max-w-[160px] truncate" title={(row as any).artworkName || "—"}>{(row as any).artworkName || "—"}</td>
                           <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.productCode}</td>
                           <td className="px-3 py-2 text-gray-600">{row.category}</td>
                           <td className="px-3 py-2 text-gray-600">{row.division}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.salesPerson}</td>
                           <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.quoteNo}</td>
-                          <td className="px-3 py-2 text-right text-gray-700">{row.orderQty.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.unit}</td>
-                          <td className="px-3 py-2 text-right text-teal-700 font-semibold">₹{row.quoteRate}</td>
-                          <td className="px-3 py-2 text-right text-blue-700 font-semibold">₹{row.apprRate}</td>
                           <td className="px-3 py-2 text-center">
-                            {isAdded ? (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
-                                <Check size={11} />Added
-                              </span>
-                            ) : (
-                              <button onClick={() => addFromEnquiry(row)}
-                                className="inline-flex items-center gap-1 px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                                <Plus size={11} />Add
-                              </button>
-                            )}
+                            <div className="flex items-center justify-center gap-1.5">
+                              {(row as any)._catalogRef && (
+                                <button onClick={() => setViewRefRow((row as any)._catalogRef)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-semibold transition-colors">
+                                  <Eye size={11} />View
+                                </button>
+                              )}
+                              {isAdded ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
+                                  <Check size={11} />Added
+                                </span>
+                              ) : (
+                                <button onClick={() => addFromEnquiry(row)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                                  <Plus size={11} />Add
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1495,6 +1498,56 @@ export default function GravureOrdersPage() {
               </div>
             </div>
           </div>
+
+          {/* ── Catalog Details Popup ── */}
+          {viewRefRow && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setViewRefRow(null)}>
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-5 py-3.5 bg-indigo-700 text-white">
+                  <div className="flex items-center gap-2">
+                    <BookMarked size={15} />
+                    <span className="font-bold text-sm">{viewRefRow.catalogNo} — {viewRefRow.productName}</span>
+                  </div>
+                  <button onClick={() => setViewRefRow(null)} className="text-indigo-200 hover:text-white p-1 rounded hover:bg-indigo-600 transition-colors"><X size={15} /></button>
+                </div>
+                <div className="p-5 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      ["Catalog No",     viewRefRow.catalogNo],
+                      ["Product Name",   viewRefRow.productName],
+                      ["Customer",       viewRefRow.customerName],
+                      ["Category",       viewRefRow.categoryName || "—"],
+                      ["Artwork Name",   viewRefRow.artworkName || "—"],
+                      ["Brand Name",     viewRefRow.brandName || "—"],
+                      ["Pack Size",      viewRefRow.packSize || "—"],
+                      ["Product Type",   viewRefRow.productType || "—"],
+                      ["SKU Type",       viewRefRow.skuType || "—"],
+                      ["Print Type",     viewRefRow.printType || "—"],
+                      ["No. of Colors",  viewRefRow.noOfColors || "—"],
+                      ["Job Width (mm)", viewRefRow.jobWidth || "—"],
+                      ["Job Height (mm)",viewRefRow.jobHeight || "—"],
+                      ["Substrate",      viewRefRow.substrate || "—"],
+                      ["Machine",        viewRefRow.machineName || "—"],
+                      ["Std Qty",        viewRefRow.standardQty ? `${viewRefRow.standardQty} ${viewRefRow.standardUnit}` : "—"],
+                      ["Rate/Meter",     viewRefRow.perMeterRate ? `₹${viewRefRow.perMeterRate}` : "—"],
+                      ["Special Specs",  viewRefRow.specialSpecs || "—"],
+                    ].map(([label, value]) => (
+                      <div key={label} className="bg-gray-50 rounded-lg px-3 py-2 border border-gray-100">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">{label}</p>
+                        <p className="font-semibold text-gray-800 break-words">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {viewRefRow.remarks && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      <p className="text-[10px] font-semibold text-amber-600 uppercase tracking-wide mb-0.5">Remarks</p>
+                      <p className="text-gray-700">{viewRefRow.remarks}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── Action buttons ── */}
           <div className="flex items-center gap-3 pb-6">

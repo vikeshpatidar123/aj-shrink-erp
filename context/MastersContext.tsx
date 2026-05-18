@@ -4,10 +4,19 @@ import { apiGet } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 
 export type ApiCustomer = { LedgerID: string; CustomerName: string };
-export type ApiMachine  = { MachineID: string; MachineName: string; MachineCode: string; DepartmentName: string; MinRollWidth: number; MaxRollWidth: number; MinCircumference: number; MaxCircumference: number; Colors: number; Speed: number };
-export type ApiProcess  = { ProcessID: string; ProcessName: string; DisplayProcessName: string; TypeofCharges: string; Rate: number; SetupCharges: number; StartUnit: string; EndUnit: string; ProcessModuleType: string; ProcessWastagePercentage: number; ProcessCategory: string; DepartmentName: string };
-export type ApiFilmItem = { ItemID: string; ItemName: string; ItemDisplayName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; Density: number; Thickness: number; WebWidth: number };
-export type ApiInkItem  = { ItemID: string; ItemName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; InkColour: string };
+export type ApiMachine  = {
+  MachineID: string; MachineName: string; MachineCode: string; DepartmentName: string;
+  MinRollWidth: number; MaxRollWidth: number; MinCircumference: number; MaxCircumference: number;
+  Colors: number; Speed: number; SpeedUnit: string;
+  PerHourCost: number; LabourCharges: number;
+  IsOnLoan: number; AnnualInterestRate: number; LoanDuration: number;
+  NumberOfOperators: number; AvgLaborSalaryPerYear: number;
+  WorkingHoursPerDay: number; WorkingDaysPerYear: number;
+  PurchaseCost: number; MachineLifespan: number;
+};
+export type ApiProcess  = { ProcessID: string; ProcessName: string; DisplayProcessName: string; TypeofCharges: string; Rate: number; SetupCharges: number; StartUnit: string; EndUnit: string; ProcessModuleType: string; ProcessWastagePercentage: number; ProcessCategory: string; DepartmentName: string; MinimumCharges: number; MinimumQuantityToBeCharged: number; PerHourCostingParameter: number; MachineID: string; MachineMasterName: string; AllocattedMachineID: string };
+export type ApiFilmItem = { ItemID: string; ItemName: string; ItemDisplayName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; Density: number; Thickness: number; WebWidth: number; EstimationRate: number; EstimationUnit: string };
+export type ApiInkItem  = { ItemID: string; ItemName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; InkColour: string; EstimationRate: number; EstimationUnit: string };
 export type ApiVendor   = { LedgerID: string; LedgerName: string; LedgerGroupName: string };
 export type ApiCylinder = { CylinderID: string; CylinderCode: string; CylinderName: string; Circumference: number; PrintWidth: number; RepeatUPS: number; CylinderType: string; CylinderStatus: string };
 

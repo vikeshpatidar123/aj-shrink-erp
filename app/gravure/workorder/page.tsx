@@ -15,6 +15,7 @@ import {
 } from "@/data/dummyData";
 import { useCategories } from "@/context/CategoriesContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
+import { useMasters } from "@/context/MastersContext";
 import { GravureProductCatalog } from "@/data/dummyData";
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
@@ -196,6 +197,29 @@ const SH = ({ label }: { label: string }) => (
 export default function GravureWorkOrderPage() {
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
+  const { inkItems: apiInkItems } = useMasters();
+
+  const normalizeConsumableGroup = (grp: string): string => {
+    const g = (grp || "").toLowerCase();
+    if (g.includes("ink"))      return "Ink";
+    if (g.includes("solvent"))  return "Solvent";
+    if (g.includes("adhesive")) return "Adhesive";
+    if (g.includes("hardner") || g.includes("hardener")) return "Hardner";
+    return grp;
+  };
+
+  const apiConsumableSubGroups = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    apiInkItems.forEach(i => {
+      if (!i.ItemGroupName || !i.ItemSubGroupName) return;
+      const key = normalizeConsumableGroup(i.ItemGroupName);
+      if (!map[key]) map[key] = [];
+      if (!map[key].includes(i.ItemSubGroupName)) map[key].push(i.ItemSubGroupName);
+    });
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiInkItems]);
+
   const [workOrders, setWOs] = useState<GravureWorkOrder[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [apiPrefix, setApiPrefix] = useState("GRV");
@@ -1220,10 +1244,26 @@ export default function GravureWorkOrderPage() {
       specialInstructions: String(r.specialInstructions ?? ""),
       status: (r.status ?? "Open") as any,
       // ── Catalog integration data (used by openEdit to restore states)
+      colorShades: Array.isArray(r.savedColorShadesJSON)
+        ? r.savedColorShadesJSON.map((cs: any) => ({
+            colorNo: Number(cs.colorNo ?? 0),
+            colorName: String(cs.colorName ?? ""),
+            inkType: (cs.inkType || "Spot") as any,
+            pantoneRef: String(cs.pantoneRef ?? ""),
+            labL: String(cs.labL ?? ""), labA: String(cs.labA ?? ""), labB: String(cs.labB ?? ""),
+            labLMeas: "", labAMeas: "", labBMeas: "",
+            deltaE: "--", deltaETol: String(cs.deltaETol ?? ""),
+            shadeCardRef: String(cs.shadeCardRef ?? ""),
+            status: (cs.status || "Pending") as any,
+            remarks: String(cs.remarks ?? ""),
+          }))
+        : [],
       cylinderAllocs: restoredCylAllocs,
       filmReqs: restoredFilmReqs,
       materialAllocs: restoredMatAllocs,
-    };
+      // Extra field for plan restore (not in type, accessed via cast in openEdit)
+      _savedPlanJSON: restoredSavedPlan,
+    } as any as GravureWorkOrder;
   }
 
   // ── Derive structureType from content string ──────────────
@@ -2191,28 +2231,15 @@ export default function GravureWorkOrderPage() {
     });
 
     // Restore Production Prep states from saved data
-    setCylinderAllocs(Array.isArray(w._cylinderAllocs) && w._cylinderAllocs.length > 0
-      ? w._cylinderAllocs : []);
-    setFilmReqs(Array.isArray(w._filmReqs) && w._filmReqs.length > 0
-      ? w._filmReqs : []);
-    setMaterialAllocs(Array.isArray(w._materialAllocs) && w._materialAllocs.length > 0
-      ? w._materialAllocs : []);
+    setCylinderAllocs(Array.isArray(w.cylinderAllocs) && w.cylinderAllocs.length > 0
+      ? w.cylinderAllocs : []);
+    setFilmReqs(Array.isArray(w.filmReqs) && w.filmReqs.length > 0
+      ? w.filmReqs : []);
+    setMaterialAllocs(Array.isArray(w.materialAllocs) && w.materialAllocs.length > 0
+      ? w.materialAllocs : []);
 
-    // Restore color shades from savedColorShadesJSON (already on the WO object via processes mapping)
-    const savedShades = Array.isArray((wo as any).savedColorShadesJSON)
-      ? (wo as any).savedColorShadesJSON.map((cs: any) => ({
-          colorNo: Number(cs.colorNo ?? 0),
-          colorName: String(cs.colorName ?? ""),
-          inkType: (cs.inkType || "Spot") as ColorShade["inkType"],
-          pantoneRef: String(cs.pantoneRef ?? ""),
-          labL: String(cs.labL ?? ""), labA: String(cs.labA ?? ""), labB: String(cs.labB ?? ""),
-          labLMeas: "", labAMeas: "", labBMeas: "",
-          deltaE: "--", deltaETol: String(cs.deltaETol ?? ""),
-          shadeCardRef: String(cs.shadeCardRef ?? ""),
-          status: (cs.status || "Pending") as ColorShade["status"],
-          remarks: String(cs.remarks ?? ""),
-        }))
-      : [];
+    // Restore color shades — mapped into wo.colorShades by mapApiToWO
+    const savedShades = Array.isArray(wo.colorShades) ? wo.colorShades as ColorShade[] : [];
     setColorShades(savedShades);
 
     // Restore saved plan if present (catalog plan or previously saved plan)
@@ -3117,8 +3144,15 @@ export default function GravureWorkOrderPage() {
                               });
                               const CONSUMABLE_GROUPS = ["Ink", "Solvent", "Adhesive", "Hardner"];
                               return l.consumableItems.map((ci, ciIdx) => {
-                                const subGroups = ci.itemGroup ? (CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? []) : [];
-                                const filteredItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
+                                const subGroups = ci.itemGroup
+                                  ? (apiConsumableSubGroups[ci.itemGroup]?.length
+                                      ? apiConsumableSubGroups[ci.itemGroup]
+                                      : CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? [])
+                                  : [];
+                                const filteredApiItems = apiInkItems
+                                  .filter(it => normalizeConsumableGroup(it.ItemGroupName) === ci.itemGroup && (!ci.itemSubGroup || it.ItemSubGroupName === ci.itemSubGroup))
+                                  .filter((it, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(it.ItemID)) === idx);
+                                const filteredStaticItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
                                 const ciLabel = ci.itemGroup || "Consumable";
                                 const ciSerial = groupSerials[ciIdx] ?? 1;
                                 // Ink calcs
@@ -3170,12 +3204,18 @@ export default function GravureWorkOrderPage() {
                                         <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
                                           value={ci.itemId}
                                           onChange={e => {
-                                            const it = filteredItems.find(x => x.id === e.target.value);
-                                            updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "" });
+                                            const apiIt = filteredApiItems.find(x => String(x.ItemID) === e.target.value);
+                                            const staticIt = filteredStaticItems.find(x => x.id === e.target.value);
+                                            updatePlyConsumable(index, ciIdx, {
+                                              itemId:   e.target.value,
+                                              itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
+                                            });
                                           }}
                                           disabled={!ci.itemGroup}>
                                           <option value="">-- Select Item --</option>
-                                          {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
+                                          {filteredApiItems.length > 0
+                                            ? filteredApiItems.map(it => <option key={it.ItemID} value={String(it.ItemID)}>{it.ItemName}</option>)
+                                            : filteredStaticItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
                                         </select>
                                       </div>
                                       {/* Ink */}
