@@ -287,7 +287,7 @@ export default function UnitMasterPage() {
                 <Field label="Conversion Value">
                   <input type="number" value={form.ConversionValue}
                     onChange={e => f("ConversionValue", e.target.value)}
-                    placeholder="e.g. 1000 (for g Ã¢â€ ' kg)" min="0" step="any" className={inputCls} />
+                    placeholder="e.g. 1000 (for g → kg)" min="0" step="any" className={inputCls} />
                 </Field>
                 <Field label="Decimal Places">
                   <select value={form.DecimalPlace}
@@ -314,21 +314,21 @@ export default function UnitMasterPage() {
       key: "UnitSymbol", header: "Symbol",
       render: r => r.UnitSymbol
         ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-mono font-bold bg-gray-100 text-gray-700">{r.UnitSymbol}</span>
-        : <span className="text-gray-400">â€”</span>,
+        : <span className="text-gray-400">—</span>,
     },
     {
       key: "Type", header: "Type",
       render: r => r.Type
         ? <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${typeColors[r.Type] || "bg-gray-100 text-gray-600"}`}>{r.Type}</span>
-        : <span className="text-gray-400">â€”</span>,
+        : <span className="text-gray-400">—</span>,
     },
     {
       key: "ConversionValue", header: "Conversion",
-      render: r => <span className="text-sm font-mono text-gray-700">{r.ConversionValue || "â€”"}</span>,
+      render: r => <span className="text-sm font-mono text-gray-700">{r.ConversionValue || "—"}</span>,
     },
     {
       key: "DecimalPlace", header: "Decimals",
-      render: r => <span className="inline-flex px-2 py-0.5 rounded text-xs font-mono bg-gray-100 text-gray-600">{r.DecimalPlace ?? "â€”"}</span>,
+      render: r => <span className="inline-flex px-2 py-0.5 rounded text-xs font-mono bg-gray-100 text-gray-600">{r.DecimalPlace ?? "—"}</span>,
     },
   ];
 

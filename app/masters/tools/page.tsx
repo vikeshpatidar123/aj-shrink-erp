@@ -750,7 +750,7 @@ export default function ToolMasterPage() {
                   {hasSpecs && (
                     <div className="flex justify-end pt-4 border-t border-gray-100">
                       <button onClick={() => setActiveTab("specs")}
-                        className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 shadow-sm">
+                        className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
                         Specifications <ChevronRight size={16} />
                       </button>
                     </div>

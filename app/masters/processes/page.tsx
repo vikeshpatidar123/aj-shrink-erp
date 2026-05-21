@@ -454,7 +454,7 @@ export default function ProcessMasterPage() {
 
                 <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                   <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <button onClick={() => setActiveTab("machines")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900 transition-colors shadow-sm">Machine Allocation â†’</button>
+                  <button onClick={() => setActiveTab("machines")} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">Machine Allocation →</button>
                 </div>
               </div>
             )}
@@ -463,7 +463,7 @@ export default function ProcessMasterPage() {
             {activeTab === "machines" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
-                  <SectionTitle title={`Machines â€” ${selectedDeptName || "Select Department First"}`} />
+                  <SectionTitle title={`Machines — ${selectedDeptName || "Select Department First"}`} />
                   {!form.DepartmentID ? (
                     <div className="flex items-center justify-center py-12 text-sm text-gray-400 italic border-2 border-dashed border-gray-200 rounded-xl">
                       Please select a department in the Process Detail tab first.
@@ -503,7 +503,7 @@ export default function ProcessMasterPage() {
                 <div className="flex items-center justify-between pt-6 border-t border-gray-200">
                   <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setActiveTab("detail")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">â† Process Detail</button>
+                    <button onClick={() => setActiveTab("detail")} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">← Process Detail</button>
                     <button onClick={save} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
                       <Check size={16} /> {saving ? "Saving..." : "Save Process"}
                     </button>
@@ -523,14 +523,14 @@ export default function ProcessMasterPage() {
 
   const columns: Column<ProcessRow>[] = [
     { key: "ProcessName", header: "Process Name", sortable: true },
-    { key: "DisplayProcessName", header: "Display Name", render: (r) => r.DisplayProcessName || <span className="text-gray-400">â€”</span> },
+    { key: "DisplayProcessName", header: "Display Name", render: (r) => r.DisplayProcessName || <span className="text-gray-400">—</span> },
     {
       key: "DepartmentName", header: "Department", sortable: true,
       render: (r) => <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.DepartmentName}</span>,
     },
-    { key: "TypeofCharges", header: "Charge Type", render: (r) => r.TypeofCharges || <span className="text-gray-400">â€”</span> },
-    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `â‚¹ ${r.Rate}` : "â€”" },
-    { key: "ProcessWastagePercentage", header: "Waste %", render: (r) => r.ProcessWastagePercentage ? `${r.ProcessWastagePercentage}%` : "â€”" },
+    { key: "TypeofCharges", header: "Charge Type", render: (r) => r.TypeofCharges || <span className="text-gray-400">—</span> },
+    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `â‚¹ ${r.Rate}` : "—" },
+    { key: "ProcessWastagePercentage", header: "Waste %", render: (r) => r.ProcessWastagePercentage ? `${r.ProcessWastagePercentage}%` : "—" },
   ];
 
   return (

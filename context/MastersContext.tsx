@@ -19,6 +19,7 @@ export type ApiFilmItem = { ItemID: string; ItemName: string; ItemDisplayName: s
 export type ApiInkItem  = { ItemID: string; ItemName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; InkColour: string; EstimationRate: number; EstimationUnit: string };
 export type ApiVendor   = { LedgerID: string; LedgerName: string; LedgerGroupName: string };
 export type ApiCylinder = { CylinderID: string; CylinderCode: string; CylinderName: string; Circumference: number; PrintWidth: number; RepeatUPS: number; CylinderType: string; CylinderStatus: string };
+export type ApiSleeveItem = { ItemID: string; ItemCode: string; ItemName: string; ItemDisplayName: string; SizeW: number };
 
 type MastersCtxType = {
   customers:     ApiCustomer[];
@@ -28,13 +29,14 @@ type MastersCtxType = {
   inkItems:      ApiInkItem[];
   vendorLedgers: ApiVendor[];
   cylinderMaster: ApiCylinder[];
+  sleeveItems:   ApiSleeveItem[];
   loading:       boolean;
   refresh:       () => Promise<void>;
 };
 
 const MastersCtx = createContext<MastersCtxType>({
   customers: [], machines: [], processes: [],
-  filmItems: [], inkItems: [], vendorLedgers: [], cylinderMaster: [],
+  filmItems: [], inkItems: [], vendorLedgers: [], cylinderMaster: [], sleeveItems: [],
   loading: false, refresh: async () => {},
 });
 
@@ -46,6 +48,7 @@ export function MastersProvider({ children }: { children: ReactNode }) {
   const [inkItems,      setInkItems]      = useState<ApiInkItem[]>([]);
   const [vendorLedgers,  setVendorLedgers]  = useState<ApiVendor[]>([]);
   const [cylinderMaster, setCylinderMaster] = useState<ApiCylinder[]>([]);
+  const [sleeveItems,    setSleeveItems]    = useState<ApiSleeveItem[]>([]);
   const [loading,        setLoading]        = useState(false);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -65,6 +68,7 @@ export function MastersProvider({ children }: { children: ReactNode }) {
         if (Array.isArray(data.inkItems))       setInkItems(data.inkItems);
         if (Array.isArray(data.vendorLedgers))  setVendorLedgers(data.vendorLedgers);
         if (Array.isArray(data.cylinderMaster)) setCylinderMaster(data.cylinderMaster);
+        if (Array.isArray(data.sleeveItems))    setSleeveItems(data.sleeveItems);
       }
     } catch {
       // Silently retry after 10 seconds — server may not be ready yet
@@ -83,7 +87,7 @@ export function MastersProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <MastersCtx.Provider value={{ customers, machines, processes, filmItems, inkItems, vendorLedgers, cylinderMaster, loading, refresh }}>
+    <MastersCtx.Provider value={{ customers, machines, processes, filmItems, inkItems, vendorLedgers, cylinderMaster, sleeveItems, loading, refresh }}>
       {children}
     </MastersCtx.Provider>
   );

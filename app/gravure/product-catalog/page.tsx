@@ -53,7 +53,7 @@ export default function ProductCatalogPage() {
   const { catalog, loading: catalogLoading, error: catalogError, refresh: refreshCatalog, saveCatalogItem, deleteCatalogItem, updateCatalogStatus } = useProductCatalog();
   const { machines: apiMachines, processes: apiProcesses, customers: apiCustomers,
     filmItems: apiFilmItems, inkItems: apiInkItems, vendorLedgers: apiVendors,
-    cylinderMaster: apiCylinders } = useMasters();
+    cylinderMaster: apiCylinders, sleeveItems: apiSleeveItems } = useMasters();
   const { showToast } = useToast();
 
   // ── Cylinder tools from API (ToolMaster) ─────────────────────
@@ -113,6 +113,22 @@ export default function ProductCatalogPage() {
         } as any)))
       : STATIC_ROTO_PROCESSES,
     [apiProcesses]);
+
+  // Sleeve tools from Item Master (ItemGroupName='Sleeve', SizeW = sleeve width mm)
+  const SLEEVE_TOOLS_LIVE = useMemo(() =>
+    apiSleeveItems.length > 0
+      ? apiSleeveItems
+          .filter(s => s.SizeW > 0)
+          .map(s => ({
+            id: String(s.ItemID),
+            code: s.ItemCode,
+            name: s.ItemDisplayName || s.ItemName,
+            printWidth: String(s.SizeW),
+            toolType: "Sleeve",
+          }))
+          .sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth))
+      : SLEEVE_TOOLS,
+  [apiSleeveItems]);
 
   const FILM_ITEMS = useMemo(() =>
     dedupe(apiFilmItems.map(i => ({
@@ -435,6 +451,17 @@ export default function ProductCatalogPage() {
   };
 
   const selectReplanProcess = (i: number, processId: string) => {
+    const live = apiProcesses.find(x => String(x.ProcessID) === processId);
+    if (live) {
+      updateReplanProcess(i, {
+        processId: String(live.ProcessID),
+        processName: live.ProcessName,
+        chargeUnit: live.TypeofCharges,
+        rate: Number(live.Rate) || 0,
+        setupCharge: Number(live.SetupCharges) > 0 ? Number(live.SetupCharges) : 0,
+      });
+      return;
+    }
     const pm = ROTO_PROCESSES.find(x => x.id === processId);
     if (!pm) return;
     updateReplanProcess(i, { processId: pm.id, processName: pm.name, chargeUnit: pm.chargeUnit, rate: parseFloat(pm.rate) || 0, setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0 });
@@ -595,135 +622,116 @@ export default function ProductCatalogPage() {
       return remainder < 0.5 || (effectiveRepeat - remainder) < 0.5;
     };
 
-    // ── LOOP A: Sleeve in stock → cylinder (or SPECIAL CYL) ──
-    const loopA = SLEEVE_TOOLS.flatMap(sleeve => {
-      const sleeveWidthVal = parseFloat(sleeve.printWidth);
-      if (sleeveWidthVal > machineMaxFilm) return [];
-      const maxAcUps = Math.floor(sleeveWidthVal / laneWidth);
-      if (maxAcUps === 0) return [];
-      return Array.from({ length: maxAcUps }, (_, i) => {
-        const acUps = i + 1;
+    // Ply film (from Ply Configuration → Item Master) — used ONLY for Shrink Sleeve loopS.
+    // For Sleeve products, this is the actual film roll running through the machine.
+    // Label/Pouch loops (A/B) are NOT affected — they iterate acUps freely from job dimensions.
+    const ply1ItemId = String(replanForm?.secondaryLayers?.[0]?.itemId ?? "");
+    const plyFilm = ply1ItemId ? apiFilmItems.find(f => String(f.ItemID) === ply1ItemId) : null;
+    const plyFilmSizeW = plyFilm ? Number(plyFilm.WebWidth ?? 0) : 0;
+
+    // Helper: build cylinder list for a sleeve — one entry per valid circumference multiple.
+    // Per multiple: real cylinder(s) if width >= minCylWidth, else Special Order.
+    const buildCylList = (minCylWidth: number): any[] => {
+      const list: any[] = [];
+      if (sType === "Sleeve") {
+        if (effectiveRepeat >= machineMinCirc && effectiveRepeat <= machineMaxCirc) {
+          const real = CYLINDER_TOOLS.filter(t => (parseFloat(t.printWidth) || 0) >= minCylWidth && Math.abs((parseFloat(t.repeatLength || "0") || 0) - effectiveRepeat) < 1);
+          if (real.length > 0) real.forEach(c => list.push({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(effectiveRepeat), isSpecial: false, isSpecialSleeve: false }));
+          else list.push({ id: "SPECIAL-CYL-SLEEVE", code: "SPL", name: `Special Order Sleeve Cyl (${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(effectiveRepeat), isSpecial: true, isSpecialSleeve: false });
+        }
+      } else if (effectiveRepeat > 0) {
+        for (let mult = 1; mult * effectiveRepeat <= machineMaxCirc; mult++) {
+          const circ = mult * effectiveRepeat;
+          if (circ < machineMinCirc) continue;
+          const real = CYLINDER_TOOLS.filter(t => (parseFloat(t.printWidth) || 0) >= minCylWidth && Math.abs((parseFloat(t.repeatLength || "0") || 0) - circ) < 0.5);
+          if (real.length > 0) real.forEach(c => list.push({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false, isSpecialSleeve: false }));
+          else list.push({ id: `SPECIAL-CYL-${mult}`, code: "SPL", name: `Special Order (${mult}×${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(circ), isSpecial: true, isSpecialSleeve: false });
+        }
+      } else {
+        list.push({ id: "SPECIAL-CYL-1", code: "SPL", name: "Special Order", printWidth: String(Math.ceil(minCylWidth)), repeatLength: "450", isSpecial: true, isSpecialSleeve: false });
+      }
+      return list;
+    };
+
+    // ── LOOP A: Label / Pouch ──
+    // Sleeve width = film width (±10mm). Match sleeve from Item Master (SizeW ≈ filmWidth).
+    // Cylinder ≥ sleeveWidth + 100mm (~50mm each side). One row per circumference multiple.
+    // If plyFilmSizeW > 0: filmWidth is FIXED from Ply Configuration (e.g. 970mm);
+    //   acUps = how many label lanes fit across that fixed film. Sleeve matched to 970mm → 980mm is standard.
+    //   Only cylinder can be Special Order in this case.
+    // If plyFilmSizeW = 0: filmWidth is derived by iterating acUps freely.
+    const loopA = (sType !== "Sleeve" && sType !== "MultiPackShrink") ? (() => {
+      const plans: any[] = [];
+
+      const runForFilmWidth = (filmWidth: number, acUps: number) => {
+        if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return;
+
+        // Match rubber impression sleeve where SizeW ≈ filmWidth (±10mm)
+        const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+        const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+        const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
+        const sleeveCode = slv ? slv.code : "SPL-S";
+        const sleeveName = slv ? slv.name : "Special Order Sleeve";
+        const isSpecialSleeve = !slv;
+
+        // Cylinder ≥ sleeveWidth + 100mm; one entry per valid circumference multiple of effectiveRepeat
+        const minCylWidth = sleeveWidthVal + 100;
+        const cylList = buildCylList(minCylWidth);
+        if (cylList.length === 0) return;
+
         const printingWidth = acUps * laneWidth;
-        const filmWidth = printingWidth + 2 * trim;
-        if (filmWidth > sleeveWidthVal) return [];
-        if (filmWidth < machineMinFilm) return [];
-        const req = filmWidth + 100;
-        const minCyl = req < sleeveWidthVal ? req : sleeveWidthVal + 100;
-        // Only keep real cylinders whose circumference is an exact multiple of effectiveRepeat
-        const validCylinders = CYLINDER_TOOLS.filter(t => {
-          if (parseFloat(t.printWidth) < minCyl) return false;
-          const circ = parseFloat(t.repeatLength || "450") || 450;
-          return isValidCircumference(circ);
-        });
-        // Special Order cylinders:
-        //   Sleeve → only ONE valid circ = layflat × 2. No multiples.
-        //   Label/Pouch → generate all valid multiples of effectiveRepeat.
-        const specialCylinders = (() => {
-          if (sType === "Sleeve") {
-            // effectiveRepeat already = (jobWidth×2) + shrink
-            if (effectiveRepeat < machineMinCirc || effectiveRepeat > machineMaxCirc) return [];
-            return [{ id: "SPECIAL-CYL-SLEEVE", code: "SPL", name: `Special Order Sleeve Cyl (${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCyl)), repeatLength: String(effectiveRepeat), isSpecial: true, isSpecialSleeve: false }];
-          }
-          if (effectiveRepeat <= 0) return [{ id: "SPECIAL-CYL-1", code: "SPL", name: "Special Order", printWidth: String(Math.ceil(minCyl)), repeatLength: "450", isSpecial: true, isSpecialSleeve: false }];
-          const results = [];
-          for (let mult = 1; mult * effectiveRepeat <= machineMaxCirc; mult++) {
-            const circ = mult * effectiveRepeat;
-            if (circ < machineMinCirc) continue;
-            results.push({ id: `SPECIAL-CYL-${mult}`, code: "SPL", name: `Special Order (${mult}×${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCyl)), repeatLength: String(circ), isSpecial: true, isSpecialSleeve: false });
-          }
-          return results.length > 0 ? results : [];
-        })();
-        const cylList = validCylinders.length > 0
-          ? validCylinders.map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || "450", isSpecial: false, isSpecialSleeve: false }))
-          : specialCylinders;
         const sideWaste = parseFloat((2 * trim).toFixed(1));
-        const deadMargin = parseFloat((sleeveWidthVal - filmWidth).toFixed(1));
-        const totalWaste = parseFloat((sideWaste + deadMargin).toFixed(1));
-        return cylList.flatMap(cylinder => {
+        const deadMargin = parseFloat((sleeveWidthVal - filmWidth).toFixed(1)); // ≈0 since sleeve≈film
+
+        for (const cylinder of cylList) {
           const cylWidthV = parseFloat(cylinder.printWidth);
-          // Cylinder must be at least sleeve + 100mm (50mm each side minimum)
-          if (cylWidthV < sleeveWidthVal + 100) return [];
-          // Cylinder width must be within machine width limits
-          if (cylWidthV < machineMinFilm || cylWidthV > machineMaxFilm) return [];
+          if (cylWidthV < minCylWidth) continue;
           const cylCirc = parseFloat(cylinder.repeatLength) || 450;
           const repeatUPS = calcRepeatUPS(cylCirc);
           const totalUPS = acUps * repeatUPS;
           const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
           const totalRMT = Math.ceil(reqRMT * 1.01);
-          return [{
-            planId: `CP-${machine.id}-${sleeve.id}-UPS${acUps}-${cylinder.id}`,
+          plans.push({
+            planId: `CP-${machine.id}-${slv ? slv.id : "SPLS"}-UPS${acUps}-${cylinder.id}`,
             machineName: machine.name,
             filmSize: filmWidth, acUps, printingWidth,
-            sleeveCode: sleeve.code, sleeveName: sleeve.name, sleeveWidthVal,
+            sleeveCode, sleeveName, sleeveWidthVal,
             cylinderCode: cylinder.code, cylinderName: cylinder.name,
             cylinderWidthVal: cylWidthV,
-            sideWaste, deadMargin, totalWaste,
+            sideWaste, deadMargin,
+            totalWaste: parseFloat((sideWaste + Math.max(0, deadMargin)).toFixed(1)),
             cylCirc, repeatUPS, totalUPS,
-            reqRMT, totalRMT, wastage: totalWaste,
-            isSpecial: cylinder.isSpecial, isSpecialSleeve: false, isBest: false,
-          }];
-        }).flat();
-      }).flat();
-    });
+            reqRMT, totalRMT, wastage: sideWaste,
+            isSpecial: cylinder.isSpecial, isSpecialSleeve, isBest: false,
+          });
+        }
+      };
 
-    // ── LOOP B: Cylinder in stock → no sleeve available → SPECIAL SLEEVE ──
-    const loopB = CYLINDER_TOOLS.flatMap(cylinder => {
-      const cylWidthVal = parseFloat(cylinder.printWidth);
-      // Cylinder width must be within machine width limits
-      if (cylWidthVal < machineMinFilm || cylWidthVal > machineMaxFilm) return [];
-      const maxAcUps = Math.floor(cylWidthVal / laneWidth);
-      if (maxAcUps === 0) return [];
-      return Array.from({ length: maxAcUps }, (_, i) => {
-        const acUps = i + 1;
-        const printingWidth = acUps * laneWidth;
-        const filmWidth = printingWidth + 2 * trim;
-        if (filmWidth > machineMaxFilm) return [];
-        if (filmWidth < machineMinFilm) return [];
-        const realSleeveExists = SLEEVE_TOOLS.some(s => {
-          const sw = parseFloat(s.printWidth);
-          if (sw < filmWidth || sw > machineMaxFilm) return false;
-          const req = filmWidth + 100;
-          const minCyl = req < sw ? req : sw + 100;
-          return cylWidthVal >= minCyl;
-        });
-        if (realSleeveExists) return [];
-        if (cylWidthVal < filmWidth + 100) return [];
-        const sideWaste = parseFloat((2 * trim).toFixed(1));
-        const deadMargin = 0;
-        const totalWaste = sideWaste;
-        const cylCirc = parseFloat(cylinder.repeatLength || "450") || 450;
-        if (!isValidCircumference(cylCirc)) return [];
-        const repeatUPS = calcRepeatUPS(cylCirc);
-        const totalUPS = acUps * repeatUPS;
-        const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
-        const totalRMT = Math.ceil(reqRMT * 1.01);
-        return [{
-          planId: `CP-${machine.id}-SPLSLV-UPS${acUps}-${cylinder.id}`,
-          machineName: machine.name,
-          filmSize: filmWidth, acUps, printingWidth,
-          sleeveCode: "SPL-S", sleeveName: "Special Order", sleeveWidthVal: filmWidth,
-          cylinderCode: cylinder.code, cylinderName: cylinder.name,
-          cylinderWidthVal: cylWidthVal,
-          sideWaste, deadMargin, totalWaste,
-          cylCirc, repeatUPS, totalUPS,
-          reqRMT, totalRMT, wastage: totalWaste,
-          isSpecial: true, isSpecialSleeve: true, isBest: false,
-        }];
-      }).flat();
-    });
+      if (plyFilmSizeW > 0) {
+        // Film selected in Ply Configuration → fixed film width, acUps derived from it
+        const filmWidth = plyFilmSizeW;
+        const acUps = Math.floor((filmWidth - 2 * trim) / laneWidth);
+        if (acUps >= 1) runForFilmWidth(filmWidth, acUps);
+      } else {
+        // No film in Ply → iterate all possible film widths (free mode)
+        const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
+        for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+          const filmWidth = acUps * laneWidth + 2 * trim;
+          runForFilmWidth(filmWidth, acUps);
+        }
+      }
 
-    // ── LOOP S: SLEEVE products — no print sleeve needed, direct cylinder planning ──
-    // Gravure shrink/stretch sleeves are printed flat. Film = layflat width.
-    // designCirc = LF×2 + widthShrinkage  (circumferential shrinkage ONLY)
-    // Sleeve cylinder circ = cuttingLength × N (N = 1, 2, 3...) — LENGTH direction
-    //   cuttingLength = jobHeight + lengthShrinkage
-    //   Must be within machine min/max circumference
-    // UPS across = floor((machineMaxFilm - 2×trim) / laneWidth)
+      return plans;
+    })() : [];
+
+    // ── LOOP S: Shrink Sleeve products ──
+    // Rubber impression sleeve from Item Master (SizeW ≈ filmWidth ±10mm).
+    // If no matching sleeve → Special Order Sleeve.
+    // Cylinder ≥ sleeveWidth + 100mm. Per-repeatCount: real cylinder if width qualifies, else Special Order.
+    // When plyFilmSizeW > 0: filmWidth fixed from Ply Configuration; acUps derived from it.
+    // When plyFilmSizeW = 0: iterate acUps up to machine max film width.
     const loopS = sType === "Sleeve" ? (() => {
       if (sleeveCutLength <= 0) return [];
-      const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
-      if (maxAcUps === 0) return [];
-      // Max repeat count: how many times cuttingLength fits inside machineMaxCirc
       const maxRepeatCount = Math.floor(machineMaxCirc / sleeveCutLength);
       if (maxRepeatCount === 0) return [];
 
@@ -731,25 +739,32 @@ export default function ProductCatalogPage() {
 
       for (let repeatCount = 1; repeatCount <= maxRepeatCount; repeatCount++) {
         const cylinderCirc = sleeveCutLength * repeatCount;
-        if (cylinderCirc < machineMinCirc) continue;  // below machine minimum — try next multiple
+        if (cylinderCirc < machineMinCirc) continue;
         if (cylinderCirc > machineMaxCirc) break;
 
-        // Find real cylinders with circ ≈ cylinderCirc (±1mm)
-        const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
+        // Cylinders matching this circumference (width check done per-filmWidth inside pushPlan)
+        const cylsByCirc = CYLINDER_TOOLS_ALL.filter(t => {
           const circ = parseFloat(t.repeatLength || "0") || 0;
           return Math.abs(circ - cylinderCirc) < 1;
         }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(cylinderCirc), isSpecial: false }));
 
-        // Special order if no stock cylinder matches
-        const specialCyl = { id: `SPECIAL-CYL-SLEEVE-R${repeatCount}`, code: "SPL", name: `Special Order (${cylinderCirc}mm = ${sleeveCutLength}×${repeatCount})`, printWidth: "1500", repeatLength: String(cylinderCirc), isSpecial: true };
-        const cylList = realCyls.length > 0 ? realCyls : [specialCyl];
-
-        for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+        const pushPlan = (acUps: number, filmWidth: number, deadMargin: number) => {
           const printingWidth = acUps * laneWidth;
-          const filmWidth = printingWidth + 2 * trim; // trim both sides of film
-          if (filmWidth > machineMaxFilm) break;
-          if (filmWidth < machineMinFilm) continue;
-          const deadMargin = parseFloat((machineMaxFilm - filmWidth).toFixed(1));
+
+          // Match rubber impression sleeve from Item Master (SizeW ≈ filmWidth ±10mm)
+          const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+          const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+          const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
+          const sleeveCode = slv ? slv.code : "SPL-S";
+          const sleeveName = slv ? slv.name : "Special Order Sleeve";
+          const isSpecialSleeve = !slv;
+          const minCylWidth = sleeveWidthVal + 100;
+
+          // Filter real cylinders by width ≥ minCylWidth; special if none qualify
+          const validRealCyls = cylsByCirc.filter(c => (parseFloat(c.printWidth) || 0) >= minCylWidth);
+          const cylList = validRealCyls.length > 0
+            ? validRealCyls
+            : [{ id: `SPECIAL-CYL-SLEEVE-R${repeatCount}`, code: "SPL", name: `Special Order (${cylinderCirc}mm = ${sleeveCutLength}×${repeatCount})`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(cylinderCirc), isSpecial: true }];
 
           for (const cyl of cylList) {
             const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / (acUps * repeatCount)) : 1;
@@ -758,15 +773,36 @@ export default function ProductCatalogPage() {
               planId: `SLEEVE-${machine.id}-R${repeatCount}-${acUps}UPS-${cyl.id}`,
               machineName: machine.name,
               filmSize: filmWidth, acUps, printingWidth,
-              sleeveCode: "—", sleeveName: "No Print Sleeve Required", sleeveWidthVal: filmWidth,
+              sleeveCode, sleeveName, sleeveWidthVal,
               cylinderCode: cyl.code, cylinderName: cyl.name,
               cylinderWidthVal: parseFloat(cyl.printWidth) || 0,
               sideWaste: 0, deadMargin, totalWaste: deadMargin,
               cylCirc: cylinderCirc, repeatUPS: repeatCount, totalUPS: acUps * repeatCount,
               reqRMT, totalRMT, wastage: deadMargin,
-              isSpecial: cyl.isSpecial, isSpecialSleeve: false, isBest: false,
-              designCirc, sleeveCutLength, repeatCount,   // carry for UI display
+              isSpecial: cyl.isSpecial, isSpecialSleeve, isBest: false,
+              designCirc, sleeveCutLength, repeatCount,
             });
+          }
+        };
+
+        if (plyFilmSizeW > 0) {
+          // Shrink Sleeve: ply film IS the actual roll on the machine.
+          // acUps derived from actual film roll width, not iterated.
+          const filmWidth = plyFilmSizeW;
+          if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) continue;
+          const acUps = Math.floor((filmWidth - 2 * trim) / laneWidth);
+          if (acUps < 1) continue;
+          const deadMargin = parseFloat((filmWidth - acUps * laneWidth - 2 * trim).toFixed(1));
+          pushPlan(acUps, filmWidth, deadMargin);
+        } else {
+          // No film selected: iterate acUps up to machine max film width
+          const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
+          for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+            const filmWidth = acUps * laneWidth + 2 * trim;
+            if (filmWidth > machineMaxFilm) break;
+            if (filmWidth < machineMinFilm) continue;
+            const deadMargin = parseFloat((machineMaxFilm - filmWidth).toFixed(1));
+            pushPlan(acUps, filmWidth, deadMargin);
           }
         }
       }
@@ -774,13 +810,14 @@ export default function ProductCatalogPage() {
     })() : [];
 
     // ── LOOP MPS: LDPE Printed Shrink Film (Multi-Pack) ──
-    // Repeat = fixed from artwork. Cylinder circ must be exact multiple of effectiveRepeat (= repeatLength + shrinkage).
-    // repeatUPS = cylCirc / effectiveRepeat. totalUPS = (acrossUPS × verticalUPS) × repeatUPS.
+    // Same logic as loopS / loopA:
+    //   filmWidth = plyFilmSizeW when set (film from Ply Configuration), else jobW.
+    //   Rubber impression sleeve from Item Master (SizeW ≈ filmWidth ±10mm); special sleeve if none match.
+    //   Cylinder ≥ sleeveWidth + 100mm. Circumference = exact multiple of mpEffRepeat.
     const loopMPS = sType === "MultiPackShrink" ? (() => {
       const mpRepeatLength = (replanForm as any).repeatLength || 0;
       const mpRepeatShrink = (replanForm as any).repeatShrinkage || 0;
-      const mpEffRepeat = mpRepeatLength + mpRepeatShrink;   // what is actually printed on cylinder per track
-      // Derive UPS from pack dimensions (same formula as UI)
+      const mpEffRepeat = mpRepeatLength + mpRepeatShrink;
       const mpPackW = (replanForm as any).packWidth || 0;
       const mpPackH = (replanForm as any).packHeight || 0;
       const mpHMargin = (replanForm as any).hMargin || 0;
@@ -790,9 +827,21 @@ export default function ProductCatalogPage() {
       const mpAcrossUPS = unitW > 0 ? Math.floor(jobW / unitW) : ((replanForm as any).acrossUPS || 1);
       const mpVerticalUPS = unitH > 0 ? Math.floor(mpEffRepeat / unitH) : ((replanForm as any).verticalUPS || 1);
       const mpTotalUPS = mpAcrossUPS * mpVerticalUPS;
-      if (mpEffRepeat <= 0 || jobW <= 0) return [];
-      const filmWidth = jobW;
+      if (mpEffRepeat <= 0) return [];
+      // Film width: prefer plyFilmSizeW (from Ply Configuration) → else jobW
+      const filmWidth = plyFilmSizeW > 0 ? plyFilmSizeW : jobW;
+      if (filmWidth <= 0) return [];
       if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return [];
+
+      // Match rubber impression sleeve (SizeW ≈ filmWidth ±10mm)
+      const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+      const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+      const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
+      const sleeveCode = slv ? slv.code : "SPL-S";
+      const sleeveName = slv ? slv.name : "Special Order Sleeve";
+      const isSpecialSleeve = !slv;
+      const minCylWidth = sleeveWidthVal + 100;
+
       const plans: any[] = [];
       const maxRepeatCount = Math.floor(machineMaxCirc / mpEffRepeat);
       for (let mult = 1; mult <= maxRepeatCount; mult++) {
@@ -801,17 +850,21 @@ export default function ProductCatalogPage() {
         if (circ > machineMaxCirc) break;
         const repeatUPS = mult;
         const totalUPS = mpTotalUPS * repeatUPS;
+
         const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
           const cylCirc = parseFloat(t.repeatLength || "0") || 0;
-          return Math.abs(cylCirc - circ) < 1;
+          const cylW = parseFloat(t.printWidth) || 0;
+          return Math.abs(cylCirc - circ) < 1 && cylW >= minCylWidth;
         }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false }));
+
         const specialCyl = {
           id: `MPS-SPL-${mult}`, code: "SPL",
           name: `Special Order (${circ}mm = ${mpEffRepeat}×${mult})`,
-          printWidth: String(Math.ceil(filmWidth + 100)),
+          printWidth: String(Math.ceil(minCylWidth)),
           repeatLength: String(circ), isSpecial: true,
         };
         const cylList = realCyls.length > 0 ? realCyls : [specialCyl];
+
         for (const cyl of cylList) {
           const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
           const totalRMT = Math.ceil(reqRMT * 1.01);
@@ -819,7 +872,7 @@ export default function ProductCatalogPage() {
             planId: `MPS-${machine.id}-R${mult}-${cyl.id}`,
             machineName: machine.name,
             filmSize: filmWidth, acUps: mpAcrossUPS, printingWidth: filmWidth,
-            sleeveCode: "—", sleeveName: "No Sleeve (LDPE Flat Film)", sleeveWidthVal: filmWidth,
+            sleeveCode, sleeveName, sleeveWidthVal,
             cylinderCode: cyl.code, cylinderName: cyl.name,
             cylinderWidthVal: parseFloat(cyl.printWidth) || 0,
             sideWaste: 0, deadMargin: 0, totalWaste: 0,
@@ -827,25 +880,33 @@ export default function ProductCatalogPage() {
             mpAcrossUPS, mpVerticalUPS, mpTotalUPS,
             mpRepeatShrink, mpEffRepeat,
             reqRMT, totalRMT, wastage: 0,
-            isSpecial: cyl.isSpecial, isSpecialSleeve: false, isBest: false,
+            isSpecial: cyl.isSpecial, isSpecialSleeve, isBest: false,
           });
         }
       }
       return plans;
     })() : [];
 
-    // Route plans: MultiPackShrink → loopMPS; Sleeve → loopS; Label/Pouch → loopA + loopB.
-    const rawPlans = sType === "MultiPackShrink" ? loopMPS : sType === "Sleeve" ? loopS : [...loopA, ...loopB];
+    // Route plans by product type.
+    const rawPlans = sType === "MultiPackShrink" ? loopMPS : sType === "Sleeve" ? loopS : loopA;
 
     if (rawPlans.length === 0) return rawPlans;
-    const sorted = [...rawPlans].sort((a, b) =>
+
+    // Dead margin ≤ 10mm applies ONLY to Label/Pouch (sleeve tool width vs film width).
+    // Shrink Sleeve (loopS): deadMargin = unused film roll portion — not a 10mm constraint.
+    // LDPE Multi-Pack (loopMPS): deadMargin is always 0, no filter needed.
+    const validPlans = (sType === "Sleeve" || sType === "MultiPackShrink")
+      ? rawPlans
+      : rawPlans.filter(p => (p.deadMargin ?? 0) <= 10);
+
+    const sorted = [...validPlans].sort((a, b) =>
       a.totalWaste !== b.totalWaste ? a.totalWaste - b.totalWaste :
         a.deadMargin !== b.deadMargin ? a.deadMargin - b.deadMargin :
           a.sideWaste !== b.sideWaste ? a.sideWaste - b.sideWaste :
             b.acUps !== a.acUps ? b.acUps - a.acUps : 0
     );
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
-  }, [replanForm?.machineId, replanForm?.actualWidth, replanForm?.jobWidth, replanForm?.jobHeight, replanForm?.trimmingSize, replanForm?.widthShrinkage, replanForm?.standardQty, (replanForm as any)?.structureType, (replanForm as any)?.content, (replanForm as any)?.gusset, (replanForm as any)?.sealSize, (replanForm as any)?.seamingArea, (replanForm as any)?.transparentArea, (replanForm as any)?.topSeal, (replanForm as any)?.bottomSeal, (replanForm as any)?.sideSeal, (replanForm as any)?.centerSealWidth, (replanForm as any)?.sideGusset, (replanForm as any)?.repeatLength, (replanForm as any)?.acrossUPS, (replanForm as any)?.verticalUPS, (replanForm as any)?.packWidth, (replanForm as any)?.packHeight, (replanForm as any)?.hMargin, (replanForm as any)?.vMargin]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [replanForm?.machineId, replanForm?.actualWidth, replanForm?.jobWidth, replanForm?.jobHeight, replanForm?.trimmingSize, replanForm?.widthShrinkage, replanForm?.standardQty, (replanForm as any)?.structureType, (replanForm as any)?.content, (replanForm as any)?.gusset, (replanForm as any)?.sealSize, (replanForm as any)?.seamingArea, (replanForm as any)?.transparentArea, (replanForm as any)?.topSeal, (replanForm as any)?.bottomSeal, (replanForm as any)?.sideSeal, (replanForm as any)?.centerSealWidth, (replanForm as any)?.sideGusset, (replanForm as any)?.repeatLength, (replanForm as any)?.acrossUPS, (replanForm as any)?.verticalUPS, (replanForm as any)?.packWidth, (replanForm as any)?.packHeight, (replanForm as any)?.hMargin, (replanForm as any)?.vMargin, SLEEVE_TOOLS_LIVE, CYLINDER_TOOLS, CYLINDER_TOOLS_ALL, replanForm?.secondaryLayers, apiFilmItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const replanVisiblePlans = useMemo(() => {
     let rows = replanAllPlans;
@@ -1261,8 +1322,28 @@ export default function ProductCatalogPage() {
     );
 
     const n = catalog.length + 1;
+    // Resolve any code-based processIds (e.g. "PR003" from old static data) to numeric DB IDs
+    const rawProcesses = replanForm.processes ?? [];
+    const resolvedProcesses = rawProcesses.map((pr: any) => {
+      const idStr = String(pr.id ?? pr.processId ?? "");
+      if (/^\d+$/.test(idStr)) return pr;
+      // Try to resolve by name from live API processes
+      const match = apiProcesses.find(rp => rp.ProcessName === (pr.processName ?? (pr as any).name));
+      if (match) return { ...pr, processId: String(match.ProcessID) };
+      // Try by name in ROTO_PROCESSES (may already have numeric id if live)
+      const match2 = ROTO_PROCESSES.find(rp => rp.name === (pr.processName ?? (pr as any).name));
+      return match2 ? { ...pr, processId: match2.id } : pr;
+    });
+    const invalidProcs = resolvedProcesses.filter((pr: any) => {
+      const id = String(pr.id ?? pr.processId ?? "");
+      return !/^\d+$/.test(id) || parseInt(id, 10) <= 0;
+    });
+    if (invalidProcs.length > 0) {
+      showToast("warning", "Process ID Issue", `${invalidProcs.length} process(es) could not be saved — please re-select them from the dropdown.`);
+    }
     const updated: GravureProductCatalog = {
       ...replanForm,
+      processes: resolvedProcesses,
       perMeterRate: replanCost?.perMeter ?? replanForm.perMeterRate,
       ...(isNewCatalog && {
         id: `GPC${String(n).padStart(3, "0")}`,
@@ -2238,8 +2319,8 @@ export default function ProductCatalogPage() {
 
                 </div>
 
-                {/* ── Dimension Input + Live Diagram — appears only after Content Type is selected ── */}
-                {replanForm.content && CONTENT_TYPE_CONFIG[normalizeContentType(replanForm.content)] && (
+                {/* ── Dimension Input + Live Diagram — hidden for MultiPackShrink (has its own layout section below) ── */}
+                {replanForm.content && CONTENT_TYPE_CONFIG[normalizeContentType(replanForm.content)] && sTypeGlobal !== "MultiPackShrink" && (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
                     <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
                       <Calculator size={14} className="text-white" />
@@ -2305,39 +2386,43 @@ export default function ProductCatalogPage() {
                             </div>
                           )}
                           {sType === "Sleeve" && (
-                            <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-[10px]">
-                              <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-wide">
-                                <Layers size={12} /> Sleeve Planning
+                            <div className="space-y-3">
+                              {/* Sleeve formula summary */}
+                              <div className="flex flex-wrap items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-[10px]">
+                                <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-wide">
+                                  <Layers size={12} /> Sleeve Planning
+                                </div>
+                                <div className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg font-bold text-blue-700">
+                                  Layflat = {replanForm.jobWidth} mm
+                                </div>
+                                {(() => {
+                                  const lf = replanForm.jobWidth || 0;
+                                  const sh = replanForm.widthShrinkage || 0;
+                                  const sa = (replanForm as any).seamingArea || 0;
+                                  const ta = (replanForm as any).transparentArea || 0;
+                                  const dc = lf * 2 + sa + ta;
+                                  const parts: string[] = [`${lf}×2`];
+                                  if (ta > 0) parts.push(`+${ta}`);
+                                  if (sa > 0) parts.push(`+${sa}`);
+                                  return (
+                                    <>
+                                      <div className="flex flex-col px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[10px] leading-tight">
+                                        <span>Design Circ (per sleeve)</span>
+                                        <span className="text-xs font-black">{parts.join("")} = {dc} mm</span>
+                                      </div>
+                                      <div className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-blue-600">
+                                        Cutting Length = {replanForm.jobHeight} mm
+                                      </div>
+                                      <div className="flex flex-col px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-700 font-bold ml-auto text-[10px] leading-tight">
+                                        <span>Cylinder Circ</span>
+                                        <span>{sh > 0 ? `(${replanForm.jobHeight}+${sh})` : `${replanForm.jobHeight}`}mm × N (N=1,2,3…)</span>
+                                        <span className="font-normal text-amber-600">Shrink applied per sleeve</span>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
-                              <div className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg font-bold text-blue-700">
-                                Layflat = {replanForm.jobWidth} mm
-                              </div>
-                              {(() => {
-                                const lf = replanForm.jobWidth || 0;
-                                const sh = replanForm.widthShrinkage || 0;
-                                const sa = (replanForm as any).seamingArea || 0;
-                                const ta = (replanForm as any).transparentArea || 0;
-                                const dc = lf * 2 + sa + ta; // width direction only
-                                const parts: string[] = [`${lf}×2`];
-                                if (ta > 0) parts.push(`+${ta}`);
-                                if (sa > 0) parts.push(`+${sa}`);
-                                return (
-                                  <>
-                                    <div className="flex flex-col px-3 py-1.5 bg-blue-600 text-white rounded-lg font-bold text-[10px] leading-tight">
-                                      <span>Design Circ (per sleeve)</span>
-                                      <span className="text-xs font-black">{parts.join("")} = {dc} mm</span>
-                                    </div>
-                                    <div className="px-3 py-1.5 bg-white border border-blue-200 rounded-lg text-blue-600">
-                                      Cutting Length = {replanForm.jobHeight} mm
-                                    </div>
-                                    <div className="flex flex-col px-3 py-1.5 bg-amber-50 border border-amber-300 rounded-lg text-amber-700 font-bold ml-auto text-[10px] leading-tight">
-                                      <span>Cylinder Circ</span>
-                                      <span>{sh > 0 ? `(${replanForm.jobHeight}+${sh})` : `${replanForm.jobHeight}`}mm × N (N=1,2,3…)</span>
-                                      <span className="font-normal text-amber-600">Shrink applied per sleeve</span>
-                                    </div>
-                                  </>
-                                );
-                              })()}
+
                             </div>
                           )}
                         </div>
@@ -2910,9 +2995,13 @@ export default function ProductCatalogPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <SH label="Process List (from Process Master)" />
-                    <button onClick={addReplanProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
-                      <Plus size={12} /> Add Process
-                    </button>
+                    {apiProcesses.length > 0 ? (
+                      <button onClick={addReplanProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+                        <Plus size={12} /> Add Process
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 italic">Loading processes...</span>
+                    )}
                   </div>
                   {replanForm.processes.length > 0 ? (
                     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
@@ -2933,10 +3022,10 @@ export default function ProductCatalogPage() {
                               <td className="px-3 py-2 min-w-[200px]">
                                 <select value={String(pr.processId || "")} onChange={e => selectReplanProcess(i, e.target.value)} className={cellInput}>
                                   <option value="">-- Select Process --</option>
-                                  {pr.processId && !ROTO_PROCESSES.find(pm => pm.id === String(pr.processId)) && (pr as any).processName && (
+                                  {pr.processId && !apiProcesses.find(p => String(p.ProcessID) === String(pr.processId)) && (pr as any).processName && (
                                     <option value={String(pr.processId)}>{(pr as any).processName}</option>
                                   )}
-                                  {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
+                                  {apiProcesses.map(p => <option key={p.ProcessID} value={String(p.ProcessID)}>{p.ProcessName} ({p.DepartmentName})</option>)}
                                 </select>
                               </td>
                               <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeReplanProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
@@ -3392,6 +3481,16 @@ export default function ProductCatalogPage() {
                                 </button>
                               )}
                             </p>
+                            {(() => {
+                              const ply1Id = String(replanForm?.secondaryLayers?.[0]?.itemId ?? "");
+                              const plyFilm = ply1Id ? apiFilmItems.find(f => String(f.ItemID) === ply1Id) : null;
+                              return plyFilm ? (
+                                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 bg-cyan-500/20 border border-cyan-400/40 rounded-full text-[9px] text-cyan-200 font-semibold">
+                                  <span className="text-cyan-300">Film:</span> {plyFilm.ItemDisplayName || plyFilm.ItemName} · {plyFilm.WebWidth}mm
+                                  <span className="ml-1 text-cyan-400/70">· Only {plyFilm.WebWidth}mm plans shown</span>
+                                </span>
+                              ) : null;
+                            })()}
                           </div>
                           <input value={replanPlanSearch} onChange={e => setReplanPlanSearch(e.target.value)} placeholder="Search plans..."
                             className="bg-indigo-700 text-white placeholder-indigo-300 text-xs rounded-lg px-3 py-1.5 border border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-400 w-36" />
@@ -3399,6 +3498,78 @@ export default function ProductCatalogPage() {
                             <button onClick={() => { setReplanIsPlanApplied(true); setReplanShowPlan(false); }} className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg flex-shrink-0">Apply Plan</button>
                           )}
                         </div>
+
+                        {/* Sleeve Matching Table — shown in Planning for Sleeve product type */}
+                        {(() => {
+                          const sTypeP = (replanForm as any)?.structureType || "Label";
+                          const lf = replanForm.jobWidth || 0;
+                          if (sTypeP !== "Sleeve" || lf === 0) return null;
+                          const allSleeves = SLEEVE_TOOLS_LIVE.map(s => {
+                            const sw = parseFloat(s.printWidth);
+                            const excess = sw - lf;
+                            const acUps = sw > 0 && lf > 0 ? Math.floor(sw / lf) : 0;
+                            const deadMargin = sw - acUps * lf;
+                            let fitCategory: "Max to Max" | "+10mm" | "0–10mm" | null = null;
+                            if (excess === 0) fitCategory = "Max to Max";
+                            else if (excess === 10) fitCategory = "+10mm";
+                            else if (excess > 0 && excess <= 10) fitCategory = "0–10mm";
+                            return { ...s, sw, excess, acUps, deadMargin, fitCategory };
+                          }).filter(s => s.fitCategory !== null);
+
+                          const catCls = (cat: string) =>
+                            cat === "Max to Max" ? "bg-green-100 text-green-700 border-green-300"
+                            : cat === "+10mm" ? "bg-blue-100 text-blue-700 border-blue-300"
+                            : "bg-amber-100 text-amber-700 border-amber-300";
+
+                          return (
+                            <div className="border-t border-indigo-900 bg-slate-900 px-3 py-2">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Layers size={12} className="text-indigo-300" />
+                                <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">Sleeve Matching (from Item Master) — Layflat {lf}mm</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-green-600 text-white text-[9px] font-semibold">Max to Max</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-blue-500 text-white text-[9px] font-semibold">+10mm</span>
+                                <span className="px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-semibold">0–10mm</span>
+                              </div>
+                              {allSleeves.length === 0 ? (
+                                <p className="text-[10px] text-slate-400 italic px-2 py-1">No sleeves within 0–10mm of layflat {lf}mm found in Item Master.</p>
+                              ) : (
+                                <div className="overflow-x-auto rounded-lg border border-slate-700">
+                                  <table className="min-w-full text-[10px] whitespace-nowrap">
+                                    <thead className="bg-slate-800 text-slate-300">
+                                      <tr>
+                                        <th className="px-3 py-1.5 text-left border-r border-slate-700">Item Code</th>
+                                        <th className="px-3 py-1.5 text-left border-r border-slate-700">Sleeve Name</th>
+                                        <th className="px-3 py-1.5 text-center border-r border-slate-700">Width (mm)</th>
+                                        <th className="px-3 py-1.5 text-center border-r border-slate-700">Excess (mm)</th>
+                                        <th className="px-3 py-1.5 text-center border-r border-slate-700">AC UPS</th>
+                                        <th className="px-3 py-1.5 text-center border-r border-slate-700">Dead Margin</th>
+                                        <th className="px-3 py-1.5 text-center">Fit</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700">
+                                      {allSleeves.map((s, idx) => (
+                                        <tr key={s.id} className={idx % 2 === 0 ? "bg-slate-900" : "bg-slate-800/60"}>
+                                          <td className="px-3 py-1.5 font-mono text-slate-400 border-r border-slate-700">{s.code}</td>
+                                          <td className="px-3 py-1.5 font-semibold text-slate-200 border-r border-slate-700">{s.name}</td>
+                                          <td className="px-3 py-1.5 text-center font-bold text-indigo-300 border-r border-slate-700">{s.sw} mm</td>
+                                          <td className="px-3 py-1.5 text-center text-slate-300 border-r border-slate-700">{s.excess > 0 ? `+${s.excess}` : s.excess} mm</td>
+                                          <td className="px-3 py-1.5 text-center border-r border-slate-700">
+                                            <span className="inline-block px-2 py-0.5 rounded-full bg-indigo-800 text-indigo-200 font-bold">{s.acUps}×</span>
+                                          </td>
+                                          <td className="px-3 py-1.5 text-center text-slate-300 border-r border-slate-700">{s.deadMargin} mm</td>
+                                          <td className="px-3 py-1.5 text-center">
+                                            <span className={`inline-block px-2 py-0.5 rounded-full border text-[9px] font-semibold ${catCls(s.fitCategory!)}`}>{s.fitCategory}</span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+
                         <div className="overflow-x-auto" onClick={() => planFilterOpen && setPlanFilterOpen(null)}>
                           <table className="min-w-full text-[10px] whitespace-nowrap border-collapse">
                             <thead className="bg-slate-800 text-slate-300">
@@ -3599,10 +3770,15 @@ export default function ProductCatalogPage() {
                                   const dc = jW * 2 + sh;
                                   const maxN = dc > 0 ? Math.floor(maxC / dc) : 0;
                                   const minN = dc > 0 ? Math.ceil(minC / dc) : 0;
+                                  // Film width for Sleeve = ply film from Item Master (not layflat)
+                                  const plyId = String(replanForm?.secondaryLayers?.[0]?.itemId ?? "");
+                                  const plyFilmW = plyId ? Number(apiFilmItems.find(f => String(f.ItemID) === plyId)?.WebWidth ?? 0) : 0;
+                                  const effectiveFilmW = plyFilmW > 0 ? plyFilmW : jW;
                                   if (dc <= 0) reason = "Enter Layflat Width to generate plans.";
+                                  else if (!plyFilmW) reason = "Select a Film in Ply Configuration — film width drives the plan.";
+                                  else if (effectiveFilmW < minF) reason = `Film width (${effectiveFilmW}mm) is below machine minimum ${minF}mm.`;
+                                  else if (effectiveFilmW > maxF) reason = `Film width (${effectiveFilmW}mm) exceeds machine max ${maxF}mm.`;
                                   else if (dc * maxN < minC) reason = `Design Circ = ${dc}mm. Even ${maxN}× repeat = ${dc * maxN}mm is below machine min ${minC}mm. Use a larger Layflat.`;
-                                  else if (jW > maxF) reason = `Layflat ${jW}mm exceeds machine max film width ${maxF}mm.`;
-                                  else if (jW < minF) reason = `Film width (${jW}mm) is below machine minimum ${minF}mm.`;
                                   else reason = "No plans generated. Check machine selection and limits.";
                                   if (dc > 0 && minN >= 1 && minN <= maxN)
                                     tip = `Machine min circ = ${minC}mm → min repeat count = ${minN}× (cylinder = ${dc}×${minN} = ${dc * minN}mm). Plans with ${minN}× to ${maxN}× repeat should appear.`;
@@ -4551,7 +4727,7 @@ export default function ProductCatalogPage() {
         // For Label/Pouch: shrink is on repeat length — does NOT affect lane width either
         const laneW = jobW;
         // Available sleeves from stock
-        const stockSleeves = SLEEVE_TOOLS.map(s => parseFloat(s.printWidth)).filter(w => w > 0).sort((a, b) => a - b);
+        const stockSleeves = SLEEVE_TOOLS_LIVE.map(s => parseFloat(s.printWidth)).filter(w => w > 0).sort((a, b) => a - b);
         // Circumference options: 1× to 8× jobHeight (practical range)
         const maxRepeat = 8;
         const rows = Array.from({ length: maxRepeat }, (_, i) => {

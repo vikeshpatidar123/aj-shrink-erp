@@ -476,7 +476,7 @@ export default function LedgerMasterPage() {
               </span>
               <button onClick={() => setFormStep("select-group")}
                 className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-                â† Change Group
+                ← Change Group
               </button>
             </div>
 
@@ -551,7 +551,7 @@ export default function LedgerMasterPage() {
                   <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
                     <button onClick={() => setFormStep("select-group")}
                       className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      â† Change Group
+                      ← Change Group
                     </button>
                     <button onClick={saveLedger} disabled={formSaving}
                       className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">

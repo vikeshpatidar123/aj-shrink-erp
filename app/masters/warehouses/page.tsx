@@ -355,9 +355,9 @@ export default function WarehouseMasterPage() {
     },
     {
       key: "BinName", header: "Bin Name", sortable: true,
-      render: r => r.BinName ? <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">{r.BinName}</span> : "â€”"
+      render: r => r.BinName ? <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-xs border border-blue-100">{r.BinName}</span> : "—"
     },
-    { key: "City", header: "City", render: r => <span className="text-sm">{r.City || "â€”"}</span> },
+    { key: "City", header: "City", render: r => <span className="text-sm">{r.City || "—"}</span> },
     {
       key: "IsFloorWarehouse", header: "Is Floor?",
       render: r => r.IsFloorWarehouse

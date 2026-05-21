@@ -143,7 +143,7 @@ export default function HSNPage() {
   const [sgTypeOpts, setSgTypeOpts] = useState<{type: string; prefix: string}[]>([]);
   const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{spec: string; prefix: string}[]>([]);
 
-  // â”€â”€ Auto-computed DisplayName â€” declared after sgSubGroupOpts/itemGroups â”€â”€â”€
+  // â”€â”€ Auto-computed DisplayName — declared after sgSubGroupOpts/itemGroups â”€â”€â”€
   const autoDisplayName = useMemo(() => {
     if (!form.ProductCategory) return "";
     if (form.ProductCategory === "Raw Material") {
@@ -152,7 +152,7 @@ export default function HSNPage() {
       if (parts) return parts;
       return itemGroups.find(g => String(g.ItemGRoupID) === form.ItemGroupID)?.ItemGroupName ?? "Raw Material";
     }
-    if (form.HSNCode.trim()) return `${form.ProductCategory} â€” ${form.HSNCode.trim()}`;
+    if (form.HSNCode.trim()) return `${form.ProductCategory} — ${form.HSNCode.trim()}`;
     return form.ProductCategory;
   }, [form.ProductCategory, form.ItemGroupID, form.ItemSubGroupID, form.SubGroupType,
       form.TypeSpecification, form.HSNCode, sgSubGroupOpts, itemGroups]);
@@ -582,7 +582,7 @@ export default function HSNPage() {
       key: "ProductCategory", header: "Product Type",
       render: r => r.ProductCategory
         ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.ProductCategory}</span>
-        : <span className="text-gray-400">â€”</span>,
+        : <span className="text-gray-400">—</span>,
     },
     {
       key: "GSTTaxPercentage", header: "GST %",

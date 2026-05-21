@@ -9,20 +9,22 @@ import { apiPost, apiGet } from "@/lib/api";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type ColorTab = {
-  colorNo:        number;
-  colorName:      string;
-  cylinderCode:   string;
-  cylinderName:   string;
-  vendor:         string;
-  vendorLedgerID: string;
-  hsnCode:        string;
-  hsnId:          string;
-  hsnDesc:        string;
-  purchaseRate:   string;
-  numOfRepeat:    string;
-  estLife:        string;
-  remarks:        string;
-  status:         "Pending" | "Ordered" | "Available";
+  colorNo:         number;
+  colorName:       string;
+  cylinderCode:    string;
+  cylinderName:    string;
+  vendor:          string;
+  vendorLedgerID:  string;
+  hsnCode:         string;
+  hsnId:           string;
+  hsnDesc:         string;
+  purchaseRate:    string;
+  purchaseUnitId:  string;
+  purchaseUnit:    string;
+  numOfRepeat:     string;
+  estLife:         string;
+  remarks:         string;
+  status:          "Pending" | "Ordered" | "Available";
 };
 
 type PrefillData = {
@@ -85,7 +87,8 @@ export default function CreateCylindersPage() {
   const [saving, setSaving]           = useState(false);
   const [submitAttempted, setSubmit]  = useState(false);
   const [errors, setErrors]           = useState<Record<number, string[]>>({});
-  const [hsnList, setHsnList]         = useState<{ id: string; hsnCode: string; description: string; gstRate: number }[]>([]);
+  const [hsnList,  setHsnList]  = useState<{ id: string; hsnCode: string; description: string; gstRate: number }[]>([]);
+  const [unitList, setUnitList] = useState<{ id: string; symbol: string; name: string }[]>([]);
 
   useEffect(() => {
     apiGet<any[]>("api/productcataloggravureShrink/gethsnlist").then(rows => {
@@ -95,6 +98,15 @@ export default function CreateCylindersPage() {
         hsnCode:     String(h.HSNCode ?? ""),
         description: h.DisplayName || h.ProductHSNName || "",
         gstRate:     Number(h.GSTTaxPercentage ?? 0),
+      })));
+    }).catch(() => {});
+
+    apiGet<any[]>("api/unitmasterShrink/getunit").then(rows => {
+      const arr = Array.isArray(rows) ? rows : [];
+      setUnitList(arr.map((u: any) => ({
+        id:     String(u.UnitID ?? ""),
+        symbol: String(u.UnitSymbol ?? ""),
+        name:   String(u.UnitName ?? ""),
       })));
     }).catch(() => {});
   }, []);
@@ -125,7 +137,9 @@ export default function CreateCylindersPage() {
           hsnCode:        "",
           hsnId:          "",
           hsnDesc:        "",
-          purchaseRate:   "",
+          purchaseRate:    "",
+          purchaseUnitId:  "",
+          purchaseUnit:    "",
           numOfRepeat:    String(parsedData!.repeatUPS),
           estLife:        "25000",
           remarks:        "",
@@ -147,7 +161,9 @@ export default function CreateCylindersPage() {
           hsnCode:        "",
           hsnId:          "",
           hsnDesc:        "",
-          purchaseRate:   "",
+          purchaseRate:    "",
+          purchaseUnitId:  "",
+          purchaseUnit:    "",
           numOfRepeat:    String(parsedData!.repeatUPS),
           estLife:        "25000",
           remarks:        "",
@@ -175,6 +191,7 @@ export default function CreateCylindersPage() {
       if (!t.hsnCode.trim())      e.push("HSN Code required");
       if (!t.purchaseRate.trim() || isNaN(Number(t.purchaseRate)))
         e.push("Valid Purchase Rate required");
+      if (!t.purchaseUnitId) e.push("Purchase Unit required");
       if (e.length) errs[i] = e;
     });
     setErrors(errs);
@@ -214,6 +231,8 @@ export default function CreateCylindersPage() {
           vendorName:      t.vendor || "",
           hsnID:           t.hsnId || "0",
           purchaseRate:    parseFloat(t.purchaseRate) || 0,
+          purchaseUnitId:  t.purchaseUnitId || "",
+          purchaseUnit:    t.purchaseUnit || "",
           remarks:         t.remarks || "",
         })),
       };
@@ -242,7 +261,7 @@ export default function CreateCylindersPage() {
   };
 
   const readyCnt = tabs.filter(
-    t => t.vendor && t.hsnCode && t.purchaseRate,
+    t => t.vendor && t.hsnCode && t.purchaseRate && t.purchaseUnitId,
   ).length;
 
   // ── Empty state ──────────────────────────────────────────────────────────
@@ -282,7 +301,7 @@ export default function CreateCylindersPage() {
           <table className="min-w-full text-xs">
             <thead className="bg-green-700 text-white">
               <tr>
-                {["#", "Color", "Cylinder Code", "Vendor", "HSN", "Rate", "Status"].map(h => (
+                {["#", "Color", "Cylinder Code", "Vendor", "HSN", "Rate", "Unit", "Status"].map(h => (
                   <th key={h} className="px-3 py-2 font-semibold whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -296,6 +315,7 @@ export default function CreateCylindersPage() {
                   <td className="px-3 py-2 text-gray-600 truncate max-w-[140px]">{t.vendor}</td>
                   <td className="px-3 py-2 font-mono">{t.hsnCode}</td>
                   <td className="px-3 py-2 font-mono">₹{t.purchaseRate}</td>
+                  <td className="px-3 py-2 font-mono">{t.purchaseUnit || "—"}</td>
                   <td className="px-3 py-2">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                       t.status === "Available" ? "bg-green-50 text-green-700 border-green-200"
@@ -437,6 +457,20 @@ export default function CreateCylindersPage() {
             onBlur={e => {
               if (e.target.value) applyToAll({ purchaseRate: e.target.value });
             }} />
+        </div>
+        {/* Unit */}
+        <div className="w-36">
+          <Label>Purchase Unit</Label>
+          <select className={inp} defaultValue=""
+            onChange={e => {
+              const u = unitList.find(x => x.id === e.target.value);
+              if (u) applyToAll({ purchaseUnitId: u.id, purchaseUnit: u.symbol });
+            }}>
+            <option value="">-- Unit --</option>
+            {unitList.map(u => (
+              <option key={u.id} value={u.id}>{u.symbol} — {u.name}</option>
+            ))}
+          </select>
         </div>
         <div className="text-[10px] text-teal-600 font-medium self-center">
           ↑ Fill once, applies to every color tab
@@ -599,6 +633,21 @@ export default function CreateCylindersPage() {
                     className={submitAttempted && (!tab.purchaseRate || isNaN(Number(tab.purchaseRate))) ? inpE : inp}
                     value={tab.purchaseRate}
                     onChange={e => updateTab(activeTab, { purchaseRate: e.target.value })} />
+                </div>
+                <div>
+                  <Label required>Purchase Unit</Label>
+                  <select
+                    className={submitAttempted && !tab.purchaseUnitId ? inpE : inp}
+                    value={tab.purchaseUnitId}
+                    onChange={e => {
+                      const u = unitList.find(x => x.id === e.target.value);
+                      if (u) updateTab(activeTab, { purchaseUnitId: u.id, purchaseUnit: u.symbol });
+                    }}>
+                    <option value="">-- Select Unit --</option>
+                    {unitList.map(u => (
+                      <option key={u.id} value={u.id}>{u.symbol} — {u.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <Label>Status</Label>

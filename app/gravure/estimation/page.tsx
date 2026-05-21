@@ -394,7 +394,7 @@ export default function GravureEstimationPage() {
   const { categories } = useCategories();
   const { enquiries: allEnquiries } = useEnquiries();
   const { catalog: productCatalog } = useProductCatalog();
-  const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems } = useMasters();
+  const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw } = useMasters();
   const gravureEnqList = allEnquiries.filter(e => e.businessUnit === "Gravure");
   const activeCatalog  = productCatalog.filter(c => c.status === "Active");
 
@@ -485,6 +485,30 @@ export default function GravureEstimationPage() {
     apiFilmItems.forEach(f => { if (f.ItemSubGroupName && f.EstimationRate > 0) map[f.ItemSubGroupName] = f.EstimationRate; });
     return map;
   }, [apiFilmItems]);
+
+  // Sleeve tools from Item Master (SizeW = sleeve width mm)
+  const SLEEVE_TOOLS_LIVE = useMemo(() =>
+    apiSleeveItems.length > 0
+      ? apiSleeveItems.filter(s => s.SizeW > 0).map(s => ({
+          id: String(s.ItemID), code: s.ItemCode,
+          name: s.ItemDisplayName || s.ItemName,
+          printWidth: String(s.SizeW), toolType: "Sleeve" as const,
+        })).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth))
+      : SLEEVE_TOOLS,
+  [apiSleeveItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cylinder tools from Cylinder Master (API)
+  const CYLINDER_TOOLS_LIVE = useMemo(() =>
+    apiCylindersRaw.length > 0
+      ? apiCylindersRaw.map(c => ({
+          id: String(c.CylinderID), code: c.CylinderCode,
+          name: c.CylinderName,
+          printWidth: String(c.PrintWidth),
+          repeatLength: String(c.Circumference),
+          toolType: "Cylinder" as const,
+        })).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth))
+      : CYLINDER_TOOLS_ALL,
+  [apiCylindersRaw]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Film sub-groups from live API (DB sub-group names + density/thicknesses per sub-group)
   const apiFilmSubGroups = useMemo(() => {
@@ -1112,139 +1136,100 @@ export default function GravureEstimationPage() {
         return rem < 0.5 || (effectiveRepeat - rem) < 0.5;
       };
 
-      // ── LOOP A: Sleeve in stock → cylinder (or SPECIAL CYL for all valid circ multiples) ──
-      const loopA = SLEEVE_TOOLS.flatMap(sleeve => {
-        const sleeveWidthVal = parseFloat(sleeve.printWidth);
-        if (sleeveWidthVal > machineMaxFilm) return [];
-        const maxAcUps = Math.floor(sleeveWidthVal / laneWidth);
-        if (maxAcUps === 0) return [];
-        return Array.from({ length: maxAcUps }, (_, i) => {
-          const acUps         = i + 1;
-          const printingWidth = acUps * laneWidth;
-          const filmWidth     = printingWidth + 2 * trim;
-          if (filmWidth > sleeveWidthVal) return [];
-          if (filmWidth < machineMinFilm) return [];
-          const req    = filmWidth + 100;
-          const minCyl = req < sleeveWidthVal ? req : sleeveWidthVal + 100;
-          const validCylinders = CYLINDER_TOOLS.filter(t => {
-            const cw = parseFloat(t.printWidth);
-            if (cw < minCyl || cw < machineMinFilm || cw > machineMaxFilm) return false;
-            return isValidCircumference(parseFloat(t.repeatLength || "450") || 450);
-          });
-          const specialCylinders = (() => {
-            if (effectiveRepeat <= 0) return [{ id: "SPECIAL-CYL-1", code: "SPL", name: "Special Order", printWidth: String(Math.ceil(minCyl)), repeatLength: "450", isSpecial: true }];
-            const res = [];
+      // Ply film width: from secondary layer 0 → Item Master WebWidth (same as product-catalog logic)
+      const ply1ItemId = String((form as any).secondaryLayers?.[0]?.itemId ?? "");
+      const plyFilm = ply1ItemId ? apiFilmItems.find(f => String(f.ItemID) === ply1ItemId) : null;
+      const plyFilmSizeW = plyFilm ? Number(plyFilm.WebWidth ?? 0) : 0;
+
+      // ── LOOP A: Label / Pouch ──
+      // Sleeve width = film width (±10mm). Sleeve from Item Master; special if none match.
+      // Cylinder ≥ sleeveWidth + 100mm. One row per valid circumference multiple.
+      // filmWidth fixed from Ply when plyFilmSizeW > 0; else iterate freely.
+      const loopA = sType !== "Sleeve" ? (() => {
+        const plans: any[] = [];
+
+        const generateForFilmWidth = (filmWidth: number, acUps: number) => {
+          if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return;
+          const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+          const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+          const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
+          const sleeveCode = slv ? slv.code : "SPL-S";
+          const sleeveName = slv ? slv.name : "Special Order Sleeve";
+          const isSpecialSleeve = !slv;
+          const minCylWidth = sleeveWidthVal + 100;
+
+          // Build cylinder list per circumference multiple
+          const cylList: any[] = [];
+          if (effectiveRepeat <= 0) {
+            cylList.push({ id: "SPECIAL-CYL-1", code: "SPL", name: "Special Order", printWidth: String(Math.ceil(minCylWidth)), repeatLength: "450", isSpecial: true });
+          } else {
             for (let mult = 1; mult * effectiveRepeat <= machineMaxCirc; mult++) {
               const circ = mult * effectiveRepeat;
               if (circ < machineMinCirc) continue;
-              const cw = Math.ceil(minCyl);
-              if (cw < machineMinFilm || cw > machineMaxFilm) continue;
-              res.push({ id: `SPECIAL-CYL-${mult}`, code: "SPL", name: `Special Order (${mult}×${effectiveRepeat}mm)`, printWidth: String(cw), repeatLength: String(circ), isSpecial: true });
+              const real = CYLINDER_TOOLS_LIVE.filter(t => (parseFloat(t.printWidth) || 0) >= minCylWidth && Math.abs((parseFloat(t.repeatLength || "0") || 0) - circ) < 0.5);
+              if (real.length > 0) real.forEach(c => cylList.push({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false }));
+              else cylList.push({ id: `SPECIAL-CYL-${mult}`, code: "SPL", name: `Special Order (${mult}×${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(circ), isSpecial: true });
             }
-            return res.length > 0 ? res : [];
-          })();
-          const cylList = validCylinders.length > 0
-            ? validCylinders.map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || "450", isSpecial: false }))
-            : specialCylinders;
-          const sideWaste  = parseFloat((2 * trim).toFixed(1));
+          }
+          if (cylList.length === 0) return;
+
+          const printingWidth = acUps * laneWidth;
+          const sideWaste = parseFloat((2 * trim).toFixed(1));
           const deadMargin = parseFloat((sleeveWidthVal - filmWidth).toFixed(1));
-          const totalWaste = parseFloat((sideWaste + deadMargin).toFixed(1));
-          return cylList.flatMap(cylinder => {
+          const totalWaste = parseFloat((sideWaste + Math.max(0, deadMargin)).toFixed(1));
+
+          for (const cylinder of cylList) {
             const cylWidthV = parseFloat(cylinder.printWidth);
-            if (cylWidthV < sleeveWidthVal + 100) return [];
-            if (cylWidthV < machineMinFilm || cylWidthV > machineMaxFilm) return [];
-            const cylCirc    = parseFloat(cylinder.repeatLength) || 450;
-            const repeatUPS  = calcRepeatUPS(cylCirc);
-            const totalUPS   = acUps * repeatUPS;
-            const reqRMT     = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
-            const totalRMT   = Math.ceil(reqRMT * 1.01);
-            const totalWt    = parseFloat((totalRMT * (form.actualWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
-            const totalTime  = parseFloat((totalRMT / (speed * 60)).toFixed(2));
-            const planCost   = parseFloat((totalTime * costPerHour).toFixed(2));
-            const cylAreaSqMm   = cylWidthV * cylCirc;
+            if (cylWidthV < minCylWidth) continue;
+            const cylCirc = parseFloat(cylinder.repeatLength) || 450;
+            const repeatUPS = calcRepeatUPS(cylCirc);
+            const totalUPS = acUps * repeatUPS;
+            const reqRMT = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
+            const totalRMT = Math.ceil(reqRMT * 1.01);
+            const totalWt = parseFloat((totalRMT * (form.actualWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
+            const totalTime = parseFloat((totalRMT / (speed * 60)).toFixed(2));
+            const planCost = parseFloat((totalTime * costPerHour).toFixed(2));
+            const cylAreaSqMm = cylWidthV * cylCirc;
             const cylAreaSqInch = parseFloat((cylAreaSqMm / 645.16).toFixed(2));
-            const rate          = form.cylinderRatePerSqInch ?? 0;
+            const rate = form.cylinderRatePerSqInch ?? 0;
             const cylCostByArea = parseFloat((cylAreaSqInch * rate * form.noOfColors).toFixed(2));
-            const cylCost       = rate > 0 ? cylCostByArea : form.noOfColors * form.cylinderCostPerColor;
-            const grandTotal    = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
-            const unitPrice     = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
-            return [{
-              planId: `PLAN-${machine.id}-${sleeve.id}-UPS${acUps}-${cylinder.id}`,
+            const cylCost = rate > 0 ? cylCostByArea : form.noOfColors * form.cylinderCostPerColor;
+            const grandTotal = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
+            const unitPrice = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
+            plans.push({
+              planId: `PLAN-${machine.id}-${slv ? slv.id : "SPLS"}-UPS${acUps}-${cylinder.id}`,
               machineId: machine.id, machineName: machine.name,
               filmSize: filmWidth, acUps, printingWidth,
-              sleeveId: sleeve.id, sleeveName: sleeve.name, sleeveCode: sleeve.code, sleeveWidthVal,
+              sleeveId: slv ? slv.id : "SPECIAL-SLV", sleeveName, sleeveCode, sleeveWidthVal,
               cylinderId: cylinder.id, cylinderName: cylinder.name, cylinderCode: cylinder.code,
               cylinderWidthVal: cylWidthV, cylRepeatLength: cylCirc, cylAreaSqMm, cylAreaSqInch, cylCostByArea,
               usedWidth: printingWidth, sideWaste, deadMargin, totalWaste,
               cylCirc, repeatUPS, totalUPS,
               reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice,
-              isSpecial: cylinder.isSpecial, isSpecialSleeve: false, isDoctorBlade: false, isBest: false,
-            }];
-          }).flat();
-        }).flat();
-      });
+              isSpecial: cylinder.isSpecial, isSpecialSleeve, isDoctorBlade: false, isBest: false,
+            });
+          }
+        };
 
-      // ── LOOP B: Cylinder in stock → SPECIAL SLEEVE ──
-      const loopB = CYLINDER_TOOLS.flatMap(cylinder => {
-        const cylWidthVal = parseFloat(cylinder.printWidth);
-        if (cylWidthVal < machineMinFilm || cylWidthVal > machineMaxFilm) return [];
-        const maxAcUps = Math.floor(cylWidthVal / laneWidth);
-        if (maxAcUps === 0) return [];
-        return Array.from({ length: maxAcUps }, (_, i) => {
-          const acUps         = i + 1;
-          const printingWidth = acUps * laneWidth;
-          const filmWidth     = printingWidth + 2 * trim;
-          if (filmWidth > machineMaxFilm) return [];
-          if (filmWidth < machineMinFilm) return [];
-          const realSleeveExists = SLEEVE_TOOLS.some(s => {
-            const sw = parseFloat(s.printWidth);
-            if (sw < filmWidth || sw > machineMaxFilm) return false;
-            const req = filmWidth + 100;
-            const minCyl = req < sw ? req : sw + 100;
-            return cylWidthVal >= minCyl;
-          });
-          if (realSleeveExists) return [];
-          if (cylWidthVal < filmWidth + 100) return [];
-          const cylCirc = parseFloat(cylinder.repeatLength || "450") || 450;
-          if (!isValidCircumference(cylCirc)) return [];
-          const sideWaste  = parseFloat((2 * trim).toFixed(1));
-          const totalWaste = sideWaste;
-          const repeatUPS  = calcRepeatUPS(cylCirc);
-          const totalUPS   = acUps * repeatUPS;
-          const reqRMT     = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
-          const totalRMT   = Math.ceil(reqRMT * 1.01);
-          const totalWt    = parseFloat((totalRMT * (form.actualWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
-          const totalTime  = parseFloat((totalRMT / (speed * 60)).toFixed(2));
-          const planCost   = parseFloat((totalTime * costPerHour).toFixed(2));
-          const cylAreaSqMm   = cylWidthVal * cylCirc;
-          const cylAreaSqInch = parseFloat((cylAreaSqMm / 645.16).toFixed(2));
-          const rate          = form.cylinderRatePerSqInch ?? 0;
-          const cylCostByArea = parseFloat((cylAreaSqInch * rate * form.noOfColors).toFixed(2));
-          const cylCost       = rate > 0 ? cylCostByArea : form.noOfColors * form.cylinderCostPerColor;
-          const grandTotal    = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
-          const unitPrice     = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
-          return [{
-            planId: `PLAN-${machine.id}-SPLSLV-UPS${acUps}-${cylinder.id}`,
-            machineId: machine.id, machineName: machine.name,
-            filmSize: filmWidth, acUps, printingWidth,
-            sleeveId: "SPECIAL-SLV", sleeveName: "Special Order", sleeveCode: "SPL-S", sleeveWidthVal: filmWidth,
-            cylinderId: cylinder.id, cylinderName: cylinder.name, cylinderCode: cylinder.code,
-            cylinderWidthVal: cylWidthVal, cylRepeatLength: cylCirc, cylAreaSqMm, cylAreaSqInch, cylCostByArea,
-            usedWidth: printingWidth, sideWaste, deadMargin: 0, totalWaste,
-            cylCirc, repeatUPS, totalUPS,
-            reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice,
-            isSpecial: true, isSpecialSleeve: true, isDoctorBlade: false, isBest: false,
-          }];
-        }).flat();
-      });
+        if (plyFilmSizeW > 0) {
+          const filmWidth = plyFilmSizeW;
+          const acUps = Math.floor((filmWidth - 2 * trim) / laneWidth);
+          if (acUps >= 1) generateForFilmWidth(filmWidth, acUps);
+        } else {
+          const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
+          for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+            const filmWidth = acUps * laneWidth + 2 * trim;
+            generateForFilmWidth(filmWidth, acUps);
+          }
+        }
+        return plans;
+      })() : [];
 
-      // ── LOOP S: Sleeve products — direct cylinder planning (no print sleeve needed) ──
-      //    Gravure sleeve printed flat. Cylinder circ = sleeveCutLength × N (length direction).
-      //    cuttingLength = jobHeight + lengthShrinkage
+      // ── LOOP S: Shrink Sleeve products ──
+      // Rubber impression sleeve from Item Master (SizeW ≈ filmWidth ±10mm); special if none.
+      // Cylinder ≥ sleeveWidth + 100mm. filmWidth from Ply when set; else iterate.
       const loopS = sType === "Sleeve" ? (() => {
         if (sleeveCutLength <= 0) return [];
-        const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
-        if (maxAcUps === 0) return [];
         const maxRepeatCount = Math.floor(machineMaxCirc / sleeveCutLength);
         if (maxRepeatCount === 0) return [];
         const plans: any[] = [];
@@ -1252,55 +1237,80 @@ export default function GravureEstimationPage() {
           const cylinderCirc = sleeveCutLength * repeatCount;
           if (cylinderCirc < machineMinCirc) continue;
           if (cylinderCirc > machineMaxCirc) break;
-          // Real cylinders matching this circumference (±1mm)
-          const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
+
+          const cylsByCirc = CYLINDER_TOOLS_LIVE.filter(t => {
             const circ = parseFloat(t.repeatLength || "0") || 0;
             return Math.abs(circ - cylinderCirc) < 1;
           }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(cylinderCirc), isSpecial: false }));
-          const specialCyl = { id: `SPECIAL-CYL-SLEEVE-R${repeatCount}`, code: "SPL", name: `Special Order (${cylinderCirc}mm = ${sleeveCutLength}×${repeatCount})`, printWidth: "1500", repeatLength: String(cylinderCirc), isSpecial: true };
-          const cylList = realCyls.length > 0 ? realCyls : [specialCyl];
-          for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+
+          const pushPlan = (acUps: number, filmWidth: number, deadMargin: number) => {
+            const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+            const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+            const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
+            const sleeveCode = slv ? slv.code : "SPL-S";
+            const sleeveName = slv ? slv.name : "Special Order Sleeve";
+            const isSpecialSleeve = !slv;
+            const minCylWidth = sleeveWidthVal + 100;
+            const validRealCyls = cylsByCirc.filter(c => (parseFloat(c.printWidth) || 0) >= minCylWidth);
+            const cylList = validRealCyls.length > 0
+              ? validRealCyls
+              : [{ id: `SPECIAL-CYL-SLEEVE-R${repeatCount}`, code: "SPL", name: `Special Order (${cylinderCirc}mm = ${sleeveCutLength}×${repeatCount})`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(cylinderCirc), isSpecial: true }];
             const printingWidth = acUps * laneWidth;
-            const filmWidth = printingWidth + 2 * trim;
-            if (filmWidth > machineMaxFilm) break;
-            if (filmWidth < machineMinFilm) continue;
-            const deadMargin = parseFloat((machineMaxFilm - filmWidth).toFixed(1));
             for (const cyl of cylList) {
-              const totalUPS  = acUps * repeatCount;
-              const reqRMT    = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
-              const totalRMT  = Math.ceil(reqRMT * 1.01);
-              const totalWt   = parseFloat((totalRMT * (laneWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
+              const cylWidthV = parseFloat(cyl.printWidth) || 0;
+              const totalUPS = acUps * repeatCount;
+              const reqRMT = form.quantity > 0 ? Math.ceil(form.quantity / totalUPS) : 1;
+              const totalRMT = Math.ceil(reqRMT * 1.01);
+              const totalWt = parseFloat((totalRMT * (laneWidth / 1000) * totalPlyGSM / 1000).toFixed(3));
               const totalTime = parseFloat((totalRMT / (speed * 60)).toFixed(2));
-              const planCost  = parseFloat((totalTime * costPerHour).toFixed(2));
-              const cylAreaSqMm   = parseFloat(cyl.printWidth) * cylinderCirc;
+              const planCost = parseFloat((totalTime * costPerHour).toFixed(2));
+              const cylAreaSqMm = cylWidthV * cylinderCirc;
               const cylAreaSqInch = parseFloat((cylAreaSqMm / 645.16).toFixed(2));
-              const rate          = form.cylinderRatePerSqInch ?? 0;
+              const rate = form.cylinderRatePerSqInch ?? 0;
               const cylCostByArea = parseFloat((cylAreaSqInch * rate * form.noOfColors).toFixed(2));
-              const cylCost       = rate > 0 ? cylCostByArea : form.noOfColors * form.cylinderCostPerColor;
-              const grandTotal    = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
-              const unitPrice     = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
+              const cylCost = rate > 0 ? cylCostByArea : form.noOfColors * form.cylinderCostPerColor;
+              const grandTotal = parseFloat((planCost + costs.processCost + cylCost).toFixed(2));
+              const unitPrice = form.quantity > 0 ? parseFloat((grandTotal / form.quantity).toFixed(4)) : 0;
               plans.push({
                 planId: `SLEEVE-${machine.id}-R${repeatCount}-${acUps}UPS-${cyl.id}`,
                 machineId: machine.id, machineName: machine.name,
                 filmSize: filmWidth, acUps, printingWidth,
-                sleeveId: "SPECIAL-SLV", sleeveName: "No Print Sleeve Required", sleeveCode: "—", sleeveWidthVal: filmWidth,
+                sleeveId: slv ? slv.id : "SPECIAL-SLV", sleeveName, sleeveCode, sleeveWidthVal,
                 cylinderId: cyl.id, cylinderName: cyl.name, cylinderCode: cyl.code,
-                cylinderWidthVal: parseFloat(cyl.printWidth) || 0, cylRepeatLength: cylinderCirc,
+                cylinderWidthVal: cylWidthV, cylRepeatLength: cylinderCirc,
                 cylAreaSqMm, cylAreaSqInch, cylCostByArea,
                 usedWidth: printingWidth, sideWaste: 0, deadMargin, totalWaste: deadMargin,
                 cylCirc: cylinderCirc, repeatUPS: repeatCount, totalUPS,
                 reqRMT, totalRMT, totalWt, totalTime, planCost, grandTotal, unitPrice,
-                isSpecial: cyl.isSpecial, isSpecialSleeve: false, isDoctorBlade: false, isBest: false,
+                isSpecial: cyl.isSpecial, isSpecialSleeve, isDoctorBlade: false, isBest: false,
                 designCirc, sleeveCutLength, repeatCount,
               });
+            }
+          };
+
+          if (plyFilmSizeW > 0) {
+            const filmWidth = plyFilmSizeW;
+            if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) continue;
+            const acUps = Math.floor((filmWidth - 2 * trim) / laneWidth);
+            if (acUps < 1) continue;
+            const deadMargin = parseFloat((filmWidth - acUps * laneWidth - 2 * trim).toFixed(1));
+            pushPlan(acUps, filmWidth, deadMargin);
+          } else {
+            const maxAcUps = Math.floor((machineMaxFilm - 2 * trim) / laneWidth);
+            for (let acUps = 1; acUps <= maxAcUps; acUps++) {
+              const filmWidth = acUps * laneWidth + 2 * trim;
+              if (filmWidth > machineMaxFilm) break;
+              if (filmWidth < machineMinFilm) continue;
+              const deadMargin = parseFloat((machineMaxFilm - filmWidth).toFixed(1));
+              pushPlan(acUps, filmWidth, deadMargin);
             }
           }
         }
         return plans;
       })() : [];
 
-      // Route: Sleeve → loopS only. Label / Pouch → loopA + loopB.
-      return sType === "Sleeve" ? loopS : [...loopA, ...loopB];
+      // Route: Sleeve → loopS. Label/Pouch → loopA.
+      return sType === "Sleeve" ? loopS : loopA;
     });
 
     if (rawPlans.length === 0) return rawPlans;
@@ -1311,7 +1321,7 @@ export default function GravureEstimationPage() {
       b.acUps       !== a.acUps       ? b.acUps        - a.acUps       : 0
     );
     return sorted.map((p, idx) => ({ ...p, isBest: !p.isSpecial && idx === 0 }));
-  }, [form.machineId, form.jobHeight, form.actualWidth, form.trimmingSize, form.widthShrinkage, form.quantity, form.noOfColors, form.cylinderCostPerColor, form.cylinderRatePerSqInch, totalPlyGSM, costs.processCost, (form as any).structureType, (form as any).content, (form as any).gusset, (form as any).topSeal, (form as any).bottomSeal, (form as any).sideSeal, (form as any).centerSealWidth, (form as any).sideGusset, (form as any).seamingArea, (form as any).transparentArea]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.machineId, form.jobHeight, form.actualWidth, form.trimmingSize, form.widthShrinkage, form.quantity, form.noOfColors, form.cylinderCostPerColor, form.cylinderRatePerSqInch, totalPlyGSM, costs.processCost, (form as any).structureType, (form as any).content, (form as any).gusset, (form as any).topSeal, (form as any).bottomSeal, (form as any).sideSeal, (form as any).centerSealWidth, (form as any).sideGusset, (form as any).seamingArea, (form as any).transparentArea, SLEEVE_TOOLS_LIVE, CYLINDER_TOOLS_LIVE, apiFilmItems, form.secondaryLayers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId) ?? overridePlan ?? null, [allPlans, selectedPlanId, overridePlan]);
 
@@ -1705,7 +1715,7 @@ export default function GravureEstimationPage() {
 
     // Reset all modal state (same as openAdd)
     setEditing(null);
-    setActiveTab(1);
+    setActiveTab(2);
     setExtraQtys([]);
     setActiveQtyIdx(0);
     setColorShades([]);

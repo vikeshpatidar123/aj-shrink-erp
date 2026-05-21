@@ -117,7 +117,7 @@ const blank = (): FormState => ({
   contents: [], processAllocations: [], coaRows: [], dryRows: [], plyRows: [],
 });
 
-// Layer string Ã¢â€ ' max ply count
+// Layer string → max ply count
 const layerToPlyCount = (layer: string): number => {
   if (!layer || layer.toLowerCase() === "mono") return 1;
   const m = layer.match(/(\d+)/);
@@ -293,7 +293,7 @@ export default function CategoryMasterPage() {
       const rows: any[] = Array.isArray(raw) ? raw : [];
       return rows.map(r => {
         const name = r.ItemGroupName ?? "";
-        // ItemGroupID is not stored in CategoryPlyConfiguration â€” resolve it by matching name
+        // ItemGroupID is not stored in CategoryPlyConfiguration — resolve it by matching name
         const grp = groups.find(g => g.ItemGroupName === name);
         return {
           id: uid(),
@@ -357,7 +357,7 @@ export default function CategoryMasterPage() {
     const items = [...form.contents];
     items[idx] = { ...items[idx], [field]: !items[idx][field] };
     if (field === "IsSelected" && !items[idx].IsSelected) {
-      // Deselected â€” remove process allocations for this content
+      // Deselected — remove process allocations for this content
       const contentID = items[idx].ContentID;
       setForm(p => ({
         ...p,
@@ -436,7 +436,7 @@ export default function CategoryMasterPage() {
         .filter(a => selectedContentIDs.has(a.ContentID))
         .map(a => ({ ProcessID: a.ProcessID, ContentID: a.ContentID }));
 
-      // Note: 'id' (client uid) and 'ItemGroupID' excluded â€” neither exists as a column in CategoryPlyConfiguration
+      // Note: 'id' (client uid) and 'ItemGroupID' excluded — neither exists as a column in CategoryPlyConfiguration
       const plyConfigPayload = form.plyRows.map(r => ({
         PlyNumber: r.PlyNumber,
         ItemGroupName: r.ItemGroupName,
@@ -658,8 +658,8 @@ export default function CategoryMasterPage() {
                         </div>
                       </div>
                       <div className="flex justify-end pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("content")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">
-                          Content Allocation Ã¢â€ '
+                        <button onClick={() => setActiveTab("content")} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                          Content Allocation →
                         </button>
                       </div>
                     </div>
@@ -738,8 +738,8 @@ export default function CategoryMasterPage() {
                         </div>
                       )}
                       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Ã¢â€ Â Detail</button>
-                        <button onClick={() => setActiveTab("coa")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">COA Parameters Ã¢â€ '</button>
+                        <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Detail</button>
+                        <button onClick={() => setActiveTab("coa")} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">COA Parameters →</button>
                       </div>
                     </div>
                   )}
@@ -799,13 +799,13 @@ export default function CategoryMasterPage() {
                             {form.coaRows.map(row => (
                               <div key={row.id} className="grid hover:bg-gray-50 text-xs"
                                 style={{ gridTemplateColumns: "1.4fr 1fr 1fr 1fr 0.7fr 1fr 0.7fr 0.7fr 48px" }}>
-                                <div className="px-3 py-3 font-medium text-gray-700 truncate">{row.TestParameterName || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.Specification || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldDataFromTable || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldValue || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldUnit || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.ResultDataFieldType || "â€”"}</div>
-                                <div className="px-3 py-3 text-gray-600 truncate">{row.Defaults || "â€”"}</div>
+                                <div className="px-3 py-3 font-medium text-gray-700 truncate">{row.TestParameterName || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Specification || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldDataFromTable || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldValue || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.SpecificationFieldUnit || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.ResultDataFieldType || "—"}</div>
+                                <div className="px-3 py-3 text-gray-600 truncate">{row.Defaults || "—"}</div>
                                 <div className="px-3 py-3 text-gray-600 truncate">{row.ShowIn ? "Yes" : "No"}</div>
                                 <div className="px-3 py-3 flex justify-center">
                                   <button onClick={() => f("coaRows", form.coaRows.filter(r => r.id !== row.id))}
@@ -823,8 +823,8 @@ export default function CategoryMasterPage() {
                       </div>
 
                       <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                        <button onClick={() => setActiveTab("content")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Ã¢â€ Â Content</button>
-                        <button onClick={() => setActiveTab("ply")} className="px-6 py-2.5 text-sm font-medium text-white bg-slate-800 rounded-lg hover:bg-slate-900">Ply Configuration â†’</button>
+                        <button onClick={() => setActiveTab("content")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Content</button>
+                        <button onClick={() => setActiveTab("ply")} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Ply Configuration →</button>
                       </div>
                     </div>
                   )}
@@ -901,7 +901,7 @@ export default function CategoryMasterPage() {
                                   }
                                 }}
                               >
-                                <option value="">â€” Select Group â€”</option>
+                                <option value="">— Select Group —</option>
                                 {itemGroupsFull.map(g => (
                                   <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
                                 ))}
@@ -916,7 +916,7 @@ export default function CategoryMasterPage() {
                                 onChange={e => { setPlyDraft(p => ({ ...p, ItemSubGroupName: e.target.value })); setPlyDraftErr(p => ({ ...p, ItemSubGroupName: false })); }}
                                 disabled={!plyDraft.ItemGroupID}
                               >
-                                <option value="">â€” Select Sub Group â€”</option>
+                                <option value="">— Select Sub Group —</option>
                                 {itemSubGroups.map(s => <option key={s} value={s}>{s}</option>)}
                               </select>
                             </div>
@@ -980,7 +980,7 @@ export default function CategoryMasterPage() {
                           return (
                             <div key={plyNum} className="border border-gray-200 rounded-lg overflow-hidden">
                               <div className="bg-blue-700 px-4 py-2 text-white text-xs font-bold uppercase tracking-widest">
-                                Ply {plyNum} â€” Consumables
+                                Ply {plyNum} — Consumables
                               </div>
                               <div className="overflow-x-auto">
                                 <div className="min-w-[820px]">
@@ -998,11 +998,11 @@ export default function CategoryMasterPage() {
                                           <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded text-[10px] font-semibold">{row.ItemGroupName}</span>
                                         </div>
                                         <div className="px-3 py-2.5 text-gray-700 font-medium">{row.ItemSubGroupName}</div>
-                                        <div className="px-3 py-2.5 text-gray-600">{row.FieldDisplayName || "â€”"}</div>
+                                        <div className="px-3 py-2.5 text-gray-600">{row.FieldDisplayName || "—"}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-600 font-mono">{row.DefaultGSM}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MinimumValue}</div>
                                         <div className="px-3 py-2.5 text-center text-gray-500 font-mono">{row.MaximumValue}</div>
-                                        <div className="px-3 py-2.5 text-gray-500 truncate">{row.SharePercentageFormula || "â€”"}</div>
+                                        <div className="px-3 py-2.5 text-gray-500 truncate">{row.SharePercentageFormula || "—"}</div>
                                         <div className="px-2 py-2.5 flex justify-center">
                                           <button onClick={() => f("plyRows", form.plyRows.filter(r => r.id !== row.id))}
                                             className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50">
@@ -1025,7 +1025,7 @@ export default function CategoryMasterPage() {
                         )}
 
                         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                          <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">â† COA Parameters</button>
+                          <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← COA Parameters</button>
                           <button onClick={saveCategory} disabled={saving}
                             className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
@@ -1053,10 +1053,10 @@ export default function CategoryMasterPage() {
       key: "SegmentName", header: "Segment",
       render: r => r.SegmentName
         ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.SegmentName}</span>
-        : <span className="text-gray-400">â€”</span>,
+        : <span className="text-gray-400">—</span>,
     },
-    { key: "Layer", header: "Ply", render: r => r.Layer || <span className="text-gray-400">â€”</span> },
-    { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">â€”</span> },
+    { key: "Layer", header: "Ply", render: r => r.Layer || <span className="text-gray-400">—</span> },
+    { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">—</span> },
   ];
 
   return (
