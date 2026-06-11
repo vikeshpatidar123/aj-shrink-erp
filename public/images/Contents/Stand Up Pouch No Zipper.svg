@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <rect width="200" height="240" fill="#eff6ff" rx="8"/>
+  <!-- Pouch body -->
+  <path d="M55,175 Q50,175 48,160 L45,70 Q44,55 100,50 Q156,55 155,70 L152,160 Q150,175 145,175 Z" fill="#bfdbfe" stroke="#3b82f6" stroke-width="2.5"/>
+  <!-- Bottom gusset oval -->
+  <ellipse cx="100" cy="175" rx="45" ry="14" fill="#93c5fd" stroke="#3b82f6" stroke-width="2"/>
+  <!-- Top seal -->
+  <rect x="45" y="48" width="110" height="10" rx="3" fill="#1d4ed8" opacity="0.7"/>
+  <!-- Side seals -->
+  <line x1="55" y1="58" x2="48" y2="162" stroke="#1d4ed8" stroke-width="4" stroke-linecap="round"/>
+  <line x1="145" y1="58" x2="152" y2="162" stroke="#1d4ed8" stroke-width="4" stroke-linecap="round"/>
+  <!-- Label area -->
+  <rect x="68" y="90" width="64" height="60" rx="4" fill="white" opacity="0.5"/>
+  <text x="100" y="124" text-anchor="middle" font-family="Arial" font-size="8" fill="#1e3a8a">PRODUCT</text>
+  <text x="100" y="220" text-anchor="middle" font-family="Arial" font-size="10" fill="#1e40af" font-weight="bold">Stand Up - No Zipper</text>
+</svg>

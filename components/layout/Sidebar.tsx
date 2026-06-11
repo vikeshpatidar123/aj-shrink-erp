@@ -8,10 +8,11 @@ import {
   Printer, BookOpen, Barcode, Tag, Workflow, Wrench, Boxes, Building2,
   Warehouse, ShoppingBag, ReceiptText, PackageCheck, ArrowLeftRight, ClipboardCheck, PackageMinus, ArrowRightLeft,
   Package, BookMarked, Layers, RotateCcw, Shuffle, ScanSearch, PackagePlus, ClipboardSignature,
-  ChevronLeft,
+  ChevronLeft, Beaker, ImageIcon, Palette, Users,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useUnit } from "@/context/UnitContext";
+import { useCompanyName } from "@/lib/useCompanyName";
 
 // ─── Badge helpers ─────────────────────────────────────────────────────────────
 const ExtBadge = () => (
@@ -25,7 +26,7 @@ const GrvBadge = () => (
 
 type NavBadge = "EXT" | "GRV" | null;
 type FlatItem  = { label: string; href: string; icon: React.ElementType; badge?: NavBadge };
-type GroupItem = { label: string; icon: React.ElementType; children: { label: string; href: string; icon: React.ElementType }[] };
+type GroupItem = { label: string; icon: React.ElementType; badge?: NavBadge; children: { label: string; href: string; icon: React.ElementType }[] };
 type NavItem   = FlatItem | GroupItem;
 
 const navItems: NavItem[] = [
@@ -40,6 +41,14 @@ const navItems: NavItem[] = [
   { label: "Work Order",       href: "/extrusion/workorder",       icon: Printer,        badge: "EXT" },
   { label: "Work Order",       href: "/gravure/workorder",         icon: Printer,        badge: "GRV" },
   { label: "Production",       href: "/production",                icon: PlayCircle,     badge: "EXT" },
+  { label: "Ink Kitchen",       href: "/gravure/ink-kitchen",       icon: Beaker,         badge: "GRV" },
+  {
+    label: "Artwork Mgmt", icon: ImageIcon, badge: "GRV", children: [
+      { label: "Artwork Library", href: "/gravure/artwork-management",          icon: Palette },
+      { label: "Designer Tab",    href: "/gravure/artwork-management/designer", icon: Users },
+      { label: "Manager Tab",     href: "/gravure/artwork-management/manager",  icon: ClipboardList },
+    ],
+  },
   { label: "Production",       href: "/gravure/production",        icon: PlayCircle,     badge: "GRV" },
   { label: "Dispatch",         href: "/dispatch",                  icon: Truck,          badge: null },
   {
@@ -165,6 +174,7 @@ interface SidebarProps { mobileOpen: boolean; desktopOpen: boolean; onClose: () 
 export default function Sidebar({ mobileOpen, desktopOpen, onClose, onNavClick }: SidebarProps) {
   const pathname = usePathname();
   const { unit } = useUnit();
+  const companyName = useCompanyName("ERP");
   const [expanded, setExpanded] = useState<string | null>(null);
   const toggle = (label: string) => setExpanded(p => p === label ? null : label);
 
@@ -175,8 +185,13 @@ export default function Sidebar({ mobileOpen, desktopOpen, onClose, onNavClick }
   const collapsed = !desktopOpen;
 
   const visibleItems = navItems.filter(item => {
-    if ("children" in item) return true;
-    const badge = (item as FlatItem).badge;
+    const badge = (item as FlatItem | GroupItem).badge;
+    if ("children" in item) {
+      if (!badge) return true;
+      if (unit === "Extrusion" && badge === "EXT") return true;
+      if (unit === "Gravure"   && badge === "GRV") return true;
+      return false;
+    }
     if (badge === null || badge === undefined) return true;
     if (unit === "Extrusion" && badge === "EXT") return true;
     if (unit === "Gravure"   && badge === "GRV") return true;
@@ -221,9 +236,9 @@ export default function Sidebar({ mobileOpen, desktopOpen, onClose, onNavClick }
           <div className={`ml-2.5 overflow-hidden transition-all duration-300 ${collapsed ? "lg:w-0 lg:opacity-0" : "lg:w-auto lg:opacity-100"} w-auto opacity-100`}>
             <p className="text-[9px] font-semibold uppercase tracking-widest leading-none mb-0.5 whitespace-nowrap"
               style={{ color: "rgba(255,255,255,0.35)" }}>
-              Flexible Packaging ERP
+              Indus Analytics ERP
             </p>
-            <h1 className="text-sm font-bold text-white leading-none whitespace-nowrap">AJ Shrink</h1>
+            <h1 className="text-sm font-bold text-white leading-none whitespace-nowrap">{companyName}</h1>
           </div>
 
           {/* Mobile close */}
@@ -361,7 +376,7 @@ export default function Sidebar({ mobileOpen, desktopOpen, onClose, onNavClick }
         >
           {!collapsed && (
             <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.25)" }}>
-              v1.2024 AJ Shrink ERP
+              v1.2024 {companyName}
             </span>
           )}
           <Settings2 size={13} className="cursor-pointer transition-colors"

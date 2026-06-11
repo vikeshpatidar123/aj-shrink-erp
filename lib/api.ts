@@ -28,19 +28,37 @@ async function parseResponse<T>(res: Response): Promise<T> {
   }
 }
 
+function getAuthHeaders(): Record<string, string> {
+  const headers = authHeaders();
+  // If basicAuth is missing, redirect to login rather than sending broken header
+  if (!localStorage.getItem("basicAuth") && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Session expired — redirecting to login");
+  }
+  return headers;
+}
+
 export async function apiGet<T = unknown>(path: string): Promise<T> {
   const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
     method: "GET",
-    headers: authHeaders(),
+    headers: getAuthHeaders(),
   });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
   return parseResponse<T>(res);
 }
 
 export async function apiPost<T = unknown>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
     method: "POST",
-    headers: authHeaders(),
+    headers: getAuthHeaders(),
     body: JSON.stringify(body),
   });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
   return parseResponse<T>(res);
 }

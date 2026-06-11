@@ -697,7 +697,11 @@ export default function CategoryMasterPage() {
                                       src={card.ContentClosedHref.startsWith("http") ? card.ContentClosedHref : `${BASE_URL}/${card.ContentClosedHref.replace(/^\//, "")}`}
                                       alt={card.ContentCaption || card.ContentName}
                                       className="w-20 h-20 object-contain"
-                                      onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                      onError={e => {
+                                        const img = e.target as HTMLImageElement;
+                                        const fallback = `/${card.ContentClosedHref.replace(/^\//, "")}`;
+                                        if (img.src !== window.location.origin + fallback) { img.src = fallback; } else { img.style.display = "none"; }
+                                      }}
                                     />
                                   ) : (
                                     <div className="w-20 h-20 bg-gray-200 rounded-lg flex items-center justify-center text-gray-400 text-[10px] text-center leading-tight px-1">

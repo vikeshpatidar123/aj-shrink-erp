@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <rect width="200" height="240" fill="#fdf4ff" rx="8"/>
+  <!-- Sachet body -->
+  <rect x="40" y="60" width="120" height="140" rx="4" fill="#e9d5ff" stroke="#a855f7" stroke-width="2.5"/>
+  <!-- 3 sealed edges (top, left, right) -->
+  <rect x="40" y="60" width="120" height="12" rx="0" fill="#7c3aed" opacity="0.8"/>
+  <rect x="40" y="60" width="10" height="140" fill="#7c3aed" opacity="0.8"/>
+  <rect x="150" y="60" width="10" height="140" fill="#7c3aed" opacity="0.8"/>
+  <!-- Bottom open indicator -->
+  <path d="M50,200 L150,200" stroke="#a855f7" stroke-width="2" stroke-dasharray="5,3"/>
+  <text x="100" y="215" text-anchor="middle" font-family="Arial" font-size="7" fill="#7c3aed">← Open End →</text>
+  <!-- Label -->
+  <rect x="65" y="85" width="70" height="90" rx="4" fill="white" opacity="0.5"/>
+  <text x="100" y="134" text-anchor="middle" font-family="Arial" font-size="8" fill="#581c87">SACHET</text>
+  <text x="100" y="228" text-anchor="middle" font-family="Arial" font-size="10" fill="#7c3aed" font-weight="bold">3-Side Seal - Standard</text>
+</svg>

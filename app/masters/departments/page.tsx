@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermasterShrink`;
 
 function unwrap(v: any): any {
@@ -114,18 +114,21 @@ export default function DepartmentMasterPage() {
           method: "POST",
           headers: { ...authHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify({
-            CostingDataGroupMaster: {
+            CostingDataGroupMaster: [{
               DepartmentName: form.DepartmentName,
               Press: "Pree",
               SequenceNo: "1",
-            },
+            }],
             DepartmentName: form.DepartmentName,
             SelectBoxPress: "Pree",
           }),
         });
       }
-      const result = unwrap(await res.text());
-      if (result === "Success") {
+      const raw = await res.text();
+      const result = unwrap(raw);
+      const ok = result === true || result === 1 ||
+        (typeof result === "string" && result.toLowerCase() === "success");
+      if (ok) {
         loadList();
         setView("list");
       } else if (typeof result === "string" && result.toLowerCase().includes("duplicate")) {

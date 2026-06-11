@@ -289,57 +289,73 @@ export default function GravureOrdersPage() {
     }));
   };
 
-  const loadOrders = () => {
-    setLoadingList(true);
+  const ORDERS_CACHE_KEY = "grv_orders_list";
+  const parseOrderRows = (res: any): GravureOrder[] =>
+    (Array.isArray(res) ? res : []).map((r: any) => {
+      const orderLines = mapApiLines(r.linesJSON ?? r.lines ?? []);
+      const firstLine = orderLines[0];
+      return {
+        id: String(r.OrderBookingID ?? ""),
+        orderNo: String(r.SalesOrderNo ?? ""),
+        date: String(r.OrderBookingDate ?? ""),
+        customerId: String(r.LedgerID ?? ""),
+        customerName: String(r.CustomerName ?? ""),
+        salesPerson: String(r.SalesPerson ?? ""),
+        salesType: String(r.SalesType ?? "Local"),
+        salesLedger: String(r.SalesLedger ?? ""),
+        poNo: String(r.PONo ?? ""),
+        poDate: String(r.PODate ?? ""),
+        directDispatch: Number(r.DirectDispatch ?? 0) === 1,
+        totalAmount: Number(r.TotalAmount ?? 0),
+        advancePaid: Number(r.AdvancePaid ?? 0),
+        remarks: String(r.Remark ?? ""),
+        status: (r.Status ?? "Confirmed") as GravureOrder["status"],
+        orderLines,
+        sourceType: "Direct" as const,
+        enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
+        jobName: firstLine?.productName ?? "",
+        substrate: firstLine?.substrate ?? "",
+        structure: String((firstLine as any)?.structureType ?? ""),
+        categoryId: firstLine?.categoryId ?? "",
+        categoryName: firstLine?.categoryName ?? "",
+        content: String((firstLine as any)?.content ?? ""),
+        jobWidth: firstLine?.jobWidth ?? 0,
+        jobHeight: firstLine?.jobHeight ?? 0,
+        width: 0,
+        noOfColors: firstLine?.noOfColors ?? 0,
+        printType: "Surface Print" as const,
+        quantity: firstLine?.orderQty ?? 0,
+        unit: firstLine?.unit ?? "Kg",
+        deliveryDate: firstLine?.deliveryDate ?? "",
+        cylinderSet: "", perMeterRate: firstLine?.rate ?? 0,
+        machineId: "", machineName: "", secondaryLayers: [], processes: [],
+        overheadPct: 0, profitPct: 0, attachments: [],
+        deliveryJSON: r.deliveryJSON ?? "[]",
+        salesEmployeeId: String(r.SalesEmployeeID ?? ""),
+        salesLedgerId: String(r.SalesLedgerID ?? ""),
+        referenceImageDataUrl: String(r.referenceImageDataUrl ?? ""),
+      } as any;
+    });
+
+  const loadOrders = (invalidate = false) => {
+    if (invalidate) { try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch { /* ignore */ } }
+    // Show stale data immediately from cache
+    try {
+      const cached = localStorage.getItem(ORDERS_CACHE_KEY);
+      if (cached) {
+        const { ts, data: raw } = JSON.parse(cached);
+        if (Date.now() - ts < 5 * 60_000) {
+          setData(parseOrderRows(raw));
+          setLoadingList(false);
+        }
+      }
+    } catch { /* ignore */ }
+    // Always fetch fresh in background
+    setLoadingList(prev => prev);
     apiGet<any>("api/gravureOrderBookingShrink/getorders").then(res => {
-      const rows: GravureOrder[] = (Array.isArray(res) ? res : []).map((r: any) => {
-        const orderLines = mapApiLines(r.linesJSON ?? r.lines ?? []);
-        const firstLine = orderLines[0];
-        return {
-          id: String(r.OrderBookingID ?? ""),
-          orderNo: String(r.SalesOrderNo ?? ""),
-          date: String(r.OrderBookingDate ?? ""),
-          customerId: String(r.LedgerID ?? ""),
-          customerName: String(r.CustomerName ?? ""),
-          salesPerson: String(r.SalesPerson ?? ""),
-          salesType: String(r.SalesType ?? "Local"),
-          salesLedger: String(r.SalesLedger ?? ""),
-          poNo: String(r.PONo ?? ""),
-          poDate: String(r.PODate ?? ""),
-          directDispatch: Number(r.DirectDispatch ?? 0) === 1,
-          totalAmount: Number(r.TotalAmount ?? 0),
-          advancePaid: Number(r.AdvancePaid ?? 0),
-          remarks: String(r.Remark ?? ""),
-          status: (r.Status ?? "Confirmed") as GravureOrder["status"],
-          orderLines,
-          // legacy fields
-          sourceType: "Direct" as const,
-          enquiryId: "", estimationId: "", catalogId: "", catalogNo: "",
-          jobName: firstLine?.productName ?? "",
-          substrate: firstLine?.substrate ?? "",
-          structure: String((firstLine as any)?.structureType ?? ""),
-          categoryId: firstLine?.categoryId ?? "",
-          categoryName: firstLine?.categoryName ?? "",
-          content: String((firstLine as any)?.content ?? ""),
-          jobWidth: firstLine?.jobWidth ?? 0,
-          jobHeight: firstLine?.jobHeight ?? 0,
-          width: 0,
-          noOfColors: firstLine?.noOfColors ?? 0,
-          printType: "Surface Print" as const,
-          quantity: firstLine?.orderQty ?? 0,
-          unit: firstLine?.unit ?? "Kg",
-          deliveryDate: firstLine?.deliveryDate ?? "",
-          cylinderSet: "", perMeterRate: firstLine?.rate ?? 0,
-          machineId: "", machineName: "", secondaryLayers: [], processes: [],
-          overheadPct: 0, profitPct: 0, attachments: [],
-          // carry delivery JSON for openEdit
-          deliveryJSON: r.deliveryJSON ?? "[]",
-          salesEmployeeId: String(r.SalesEmployeeID ?? ""),
-          salesLedgerId: String(r.SalesLedgerID ?? ""),
-          referenceImageDataUrl: String(r.referenceImageDataUrl ?? ""),
-        } as any;
-      });
+      const rows = parseOrderRows(res);
       setData(rows);
+      try { localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: Array.isArray(res) ? res : [] })); } catch { /* ignore */ }
     }).catch(() => { }).finally(() => setLoadingList(false));
   };
 
@@ -799,7 +815,7 @@ export default function GravureOrdersPage() {
         return;
       }
       closeForm();
-      loadOrders(); // refresh list from API
+      loadOrders(true); // invalidate cache and refresh
     } catch (e: any) {
       alert(e?.message || "Save failed.");
     } finally {
@@ -1916,7 +1932,7 @@ export default function GravureOrdersPage() {
                   <div style={{ borderBottom: "3px solid #0f766e", paddingBottom: "6px", marginBottom: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#0f766e", letterSpacing: "1px" }}>AJ SHRINK INDUSTRIES</div>
+                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#0f766e", letterSpacing: "1px" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
                         <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Printing &amp; Flexible Packaging</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -2050,7 +2066,7 @@ export default function GravureOrdersPage() {
                   {/* ── FOOTER ── */}
                   <div style={{ marginTop: "6px", display: "flex", justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: "4px", fontSize: "6.5pt", color: "#9ca3af" }}>
                     <span>Printed: {new Date().toLocaleString("en-IN")}</span>
-                    <span>AJ Shrink Industries — Gravure Order Confirmation</span>
+                    <span>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"} — Gravure Order Confirmation</span>
                     <span>{o.orderNo}</span>
                   </div>
 
@@ -2114,7 +2130,7 @@ export default function GravureOrdersPage() {
             <Button variant="danger" onClick={() => {
               apiPost("api/gravureOrderBookingShrink/deleteorder", { OrderBookingID: deleteId })
                 .catch(() => { })
-                .finally(() => { setDelId(null); loadOrders(); });
+                .finally(() => { setDelId(null); loadOrders(true); });
             }}>Delete</Button>
           </div>
         </Modal>

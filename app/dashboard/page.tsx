@@ -2,18 +2,20 @@
 import Link from "next/link";
 import { Layers, Printer, ArrowRight, Activity, Package, Users, TrendingUp } from "lucide-react";
 import { dashboardStats, orders, jobCards } from "@/data/dummyData";
+import { useCompanyName } from "@/lib/useCompanyName";
 
 const activeExt  = jobCards.filter(j => j.status === "In Progress" && !j.rotoJobId).length;
 const activeRoto = jobCards.filter(j => j.status === "In Progress" && j.rotoJobId).length;
 
 export default function DashboardPage() {
+  const companyName = useCompanyName("ERP");
   return (
     <div className="min-h-[80vh] flex flex-col">
 
       {/* ── Page heading ─────────────────────────────────── */}
       <div className="mb-8 text-center">
         <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">
-          AJ Shrink Wrap Pvt Ltd
+          {companyName}
         </p>
         <h1 className="text-3xl font-bold text-gray-800">Production Control Centre</h1>
         <p className="text-gray-400 text-sm mt-1">Select a production unit to view its dashboard</p>

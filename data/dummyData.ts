@@ -47,9 +47,12 @@ export type PlyConsumableItem = {
   isClone?: boolean;         // true if created via Clone button (label stays "Consumable 1")
 };
 
+export type CategoryContentDetail = { name: string; imageUrl: string; caption: string };
+
 export type CategoryMaster = {
   id: string; name: string; description: string; status: "Active" | "Inactive";
   contents?: string[];
+  contentDetails?: CategoryContentDetail[];
   plyConsumables?: CategoryPlyConsumable[];
 };
 
@@ -213,6 +216,10 @@ export type Tool = {
   // Cylinder Life Tracking
   shelfLifeMeters?: number;  // Total designed life in running meters
   usedMeters?: number;       // Meters already printed (updated after each job)
+  purchaseRate?: number;     // Rate per unit (from CylinderMaster API)
+  repeatUPS?: number;        // Repeats up/side
+  cylinderType?: string;     // Gravure / Flexo / Offset
+  cylinderStatus?: string;   // Available / In Use / Under Maintenance
 };
 
 const bt = { clientName: "", jobCardNo: "", jobName: "", location: "", hsnCode: "", purchaseUnit: "Nos", stockUnit: "Nos", category: "", description: "", status: "Active" as const, repeatLength: "", printWidth: "", noOfColors: "", colorName: "", engravingType: "", screen: "", engravingAngle: "", cellDepth: "", cylinderMaterial: "", surfaceFinish: "", chromeStatus: "", toolPrefix: "", toolRefCode: "", dieType: "", length: "", width: "", height: "", upsL: "", upsW: "", totalUps: "", machine: "", deckNo: "", lineCount: "", volume: "", rollWidth: "", rollDiameter: "", aniloxEngravingType: "", aniloxMaterial: "", material: "", bladeWidth: "", bladeThickness: "", bladeLength: "", hardness: "", knifeType: "", knifeDiameter: "", knifeThickness: "" };
@@ -2435,6 +2442,10 @@ export type GravureEstimation = {
   topSeal?: number; bottomSeal?: number; sideSeal?: number;
   centerSealWidth?: number; sideGusset?: number; gusset?: number;
   seamingArea?: number; transparentArea?: number;
+  // Pouch accessory flags
+  hasZipper?: boolean; hasSpout?: boolean; hasValve?: boolean;
+  hasWindow?: boolean; hasTearNotch?: boolean; hasEuroHole?: boolean; hasRoundCorner?: boolean;
+  laminationPlies?: number; zipperWeight?: number; spoutWeight?: number;
   // Product identity
   packSize?: string; brandName?: string; productType?: string;
   skuType?: string; bottleType?: string; addressType?: string;
@@ -2444,6 +2455,7 @@ export type GravureEstimation = {
   secondaryLayers: SecondaryLayer[];
   dryWeightRows: DryWeightRow[];
   dryWeightTotal: number;
+  plyStructureText?: string;
   status: "Draft" | "Approved" | "Sent" | "Accepted" | "Rejected";
   remarks: string;
   salesPerson?: string;
@@ -2567,6 +2579,11 @@ export type GravureProductCatalog = {
   gusset?: number;
   sealSize?: number;
   hasZipper?: boolean;
+  hasSpout?: boolean;
+  hasValve?: boolean;
+  laminationPlies?: number;
+  zipperWeight?: number;
+  spoutWeight?: number;
   // ── Pouch-specific seal / gusset dimensions ──
   topSeal?: number;
   bottomSeal?: number;
@@ -2640,6 +2657,9 @@ export type GravureWorkOrder = {
   sideGusset?: number;
   seamingArea?: number;
   transparentArea?: number;
+  hasZipper?: number; hasSpout?: number; hasValve?: number;
+  hasWindow?: number; hasTearNotch?: number; hasEuroHole?: number; hasRoundCorner?: number;
+  laminationPlies?: number; zipperWeight?: number; spoutWeight?: number;
   finalRollOD?: number;
   rollUnit?: "Meter" | "KG";
   unwindDirection?: number;

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <rect width="200" height="240" fill="#fff1f2" rx="8"/>
+  <text x="100" y="26" text-anchor="middle" font-family="Arial" font-size="11" fill="#9f1239" font-weight="bold">RETORT / 5-PLY</text>
+  <!-- Layer 1 PET -->
+  <rect x="25" y="32" width="150" height="22" rx="4" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="100" y="47" text-anchor="middle" font-family="Arial" font-size="8" fill="#1e3a8a">PET 12μ (Outer Print)</text>
+  <!-- Adh -->
+  <rect x="25" y="56" width="150" height="9" rx="1" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+  <text x="100" y="64" text-anchor="middle" font-family="Arial" font-size="6.5" fill="#92400e">Adhesive</text>
+  <!-- Alu foil -->
+  <rect x="25" y="67" width="150" height="22" rx="4" fill="#e2e8f0" stroke="#475569" stroke-width="2"/>
+  <text x="100" y="82" text-anchor="middle" font-family="Arial" font-size="8" fill="#1e293b" font-weight="bold">ALU FOIL 9μ (Barrier)</text>
+  <!-- Adh -->
+  <rect x="25" y="91" width="150" height="9" rx="1" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+  <text x="100" y="99" text-anchor="middle" font-family="Arial" font-size="6.5" fill="#92400e">Adhesive</text>
+  <!-- Nylon -->
+  <rect x="25" y="102" width="150" height="22" rx="4" fill="#fce7f3" stroke="#ec4899" stroke-width="1.5"/>
+  <text x="100" y="117" text-anchor="middle" font-family="Arial" font-size="8" fill="#9d174d">Nylon 15μ (Strength)</text>
+  <!-- Adh -->
+  <rect x="25" y="126" width="150" height="9" rx="1" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+  <text x="100" y="134" text-anchor="middle" font-family="Arial" font-size="6.5" fill="#92400e">Adhesive</text>
+  <!-- Cast PP -->
+  <rect x="25" y="137" width="150" height="22" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="2"/>
+  <text x="100" y="152" text-anchor="middle" font-family="Arial" font-size="8" fill="#14532d" font-weight="bold">Cast PP 80μ (Heat Seal)</text>
+  <!-- Retort badge -->
+  <rect x="60" y="168" width="80" height="22" rx="5" fill="#dc2626"/>
+  <text x="100" y="183" text-anchor="middle" font-family="Arial" font-size="9" fill="white" font-weight="bold">RETORT GRADE</text>
+  <text x="100" y="220" text-anchor="middle" font-family="Arial" font-size="11" fill="#9f1239" font-weight="bold">Laminated - Retort</text>
+</svg>

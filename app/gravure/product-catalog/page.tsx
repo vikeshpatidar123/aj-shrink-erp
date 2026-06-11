@@ -203,6 +203,9 @@ export default function ProductCatalogPage() {
   const [dimValues, setDimValues] = useState<DimValues>({});
   const patchDim = (patch: DimValues) => setDimValues(p => ({ ...p, ...patch }));
 
+  // ── Unwind direction image preview ───────────────────────
+  const [unwindPreview, setUnwindPreview] = useState<number | null>(null);
+
   // ── Replan / Edit state ───────────────────────────────────
   const [replanOpen, setReplanOpen] = useState(false);
   const [replanForm, setReplanForm] = useState<GravureProductCatalog | null>(null);
@@ -228,6 +231,7 @@ export default function ProductCatalogPage() {
   const [cylGuideOpen, setCylGuideOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<{ name: string; url: string; mimeType: string } | null>(null);
   const [printRow, setPrintRow] = useState<GravureProductCatalog | null>(null);
+  const [contentPickerOpen, setContentPickerOpen] = useState(false);
 
   // ── Field Master dropdown options (fetched once on mount) ─────────────────
   const [fmOptions, setFmOptions] = useState<Record<string, string[]>>({
@@ -315,45 +319,59 @@ export default function ProductCatalogPage() {
   // Label/Roll Form/Laminate Roll: standard label planning
   const getStructureType = (content: string): "Label" | "Sleeve" | "Pouch" | "MultiPackShrink" => {
     const c = content.toLowerCase();
-    // Detect LLDPE / LDPE shrink film (multi-pack) — DB name "LLDPE Shrink Film"
     if (c.includes("lldpe") || c.includes("ldpe")) return "MultiPackShrink";
     if (c.includes("sleeve")) return "Sleeve";
-    if (c.includes("pouch") || c.includes("standup") || c === "zipper pouch") return "Pouch";
+    if (
+      c.includes("pouch") || c.includes("standup") || c === "zipper pouch" ||
+      c.includes("sachet") || c.includes("gusset bag") || c.includes("gusset")
+    ) return "Pouch";
     return "Label";
   };
 
   // Maps DB ContentMaster.ContentName → CONTENT_TYPE_CONFIG key
-  // Needed because DB names may differ from the internal keys used by the dimension diagram
   const normalizeContentType = (content: string): string => {
     const c = (content || "").toLowerCase().trim();
     if (!c) return content;
-    // Sleeve (before film checks)
-    if (c.includes("sleeve") && !c.includes("stretch"))                   return "Sleeve — Shrink";
-    if (c.includes("sleeve") && c.includes("stretch"))                    return "Sleeve — Stretch";
-    // Label types
-    if (c.includes("wrap around"))                                         return "Wrap Around Labels";
-    if (c.includes("shrink label") || c.includes("shrink film"))          return "Shrink Labels";
-    if (c.includes("cut") && c.includes("stack"))                         return "Cut & Stack Labels";
-    if (c.includes("in-mould") || c.includes("in mould"))                return "In-Mould Labels";
-    // Pouch types (specific first)
-    if (c.includes("both side") && c.includes("gusset"))                  return "Both Side Gusset Pouch";
-    if ((c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))) return "3D Pouch / Flat Bottom";
-    if (c.includes("3 side") || c.includes("three side"))                return "Pouch — 3 Side Seal";
-    if (c.includes("center seal") || c.includes("centre seal"))          return "Pouch — Center Seal";
-    if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Standup Pouch";
-    if (c.includes("zipper"))                                              return "Zipper Pouch";
-    if (c.includes("pouch") || c.includes("doy"))                         return "Pouch — 3 Side Seal";
-    // Film / roll types
-    if (c.includes("lldpe") || c.includes("ldpe"))                        return "Shrink Labels";
-    if (c.includes("laminate"))                                            return "Laminate Roll";
-    if (c.includes("roll form") || c.includes("roll") || c.includes("film")) return "Laminate Roll";
-    // Generic fallbacks
-    if (c.includes("bag") || c.includes("sack"))                          return "Pouch — 3 Side Seal";
-    if (c.includes("label") || c.includes("sticker") || c.includes("tag")) return "Wrap Around Labels";
+    // ── Canonical 5 pouch names (exact match first — no remapping needed) ──
+    if (c === "flat bottom pouch")  return "Flat Bottom Pouch";
+    if (c === "stand up pouch")     return "Stand Up Pouch";
+    if (c === "3 side seal sachet") return "3 Side Seal Sachet";
+    if (c === "gusset bag")         return "Gusset Bag";
+    if (c === "center seal pouch")  return "Center Seal Pouch";
+    // ── Sleeve ──────────────────────────────────────────────────────────────
+    if (c.includes("sleeve") && !c.includes("stretch"))                           return "Sleeve — Shrink";
+    if (c.includes("sleeve") && c.includes("stretch"))                            return "Sleeve — Stretch";
+    // ── Label types ──────────────────────────────────────────────────────────
+    if (c.includes("wrap around"))                                                 return "Wrap Around Labels";
+    if (c.includes("shrink label") || c.includes("shrink film"))                  return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack"))                                 return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould"))                        return "In-Mould Labels";
+    // ── Pouch — legacy names (kept for backward-compat with old catalog records) ──
+    if (c.includes("both side") && c.includes("gusset"))                          return "Gusset Bag";
+    if (c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))  return "Flat Bottom Pouch";
+    if (c.includes("3 side") || c.includes("3-side") || c.includes("three side") || c.includes("sachet")) return "3 Side Seal Sachet";
+    if (c.includes("center seal") || c.includes("centre seal"))                   return "Center Seal Pouch";
+    if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Stand Up Pouch";
+    if (c.includes("zipper") && !c.includes("stand"))                             return "Stand Up Pouch";
+    if (c.includes("gusset") || c.includes("side gusset"))                        return "Gusset Bag";
+    if (c.includes("pouch") || c.includes("doy"))                                 return "3 Side Seal Sachet";
+    // ── Film / roll types ────────────────────────────────────────────────────
+    if (c.includes("lldpe") || c.includes("ldpe"))                                return "Shrink Labels";
+    if (c.includes("laminate"))                                                    return "Laminate Roll";
+    if (c.includes("roll form") || c.includes("roll") || c.includes("film"))      return "Laminate Roll";
+    // ── Generic fallbacks ─────────────────────────────────────────────────────
+    if (c.includes("bag") || c.includes("sack"))                                  return "Gusset Bag";
+    if (c.includes("label") || c.includes("sticker") || c.includes("tag"))        return "Wrap Around Labels";
     return content;
   };
 
-  const rf = <K extends keyof GravureProductCatalog>(k: K, v: GravureProductCatalog[K]) => {
+  // Returns exact key for DimensionInputPanel/Diagram (does NOT affect planning math).
+  // If the content name is an explicit entry in CONTENT_TYPE_CONFIG, use it directly.
+  // Otherwise fall back to the structural-group key from normalizeContentType.
+  const getDisplayContentType = (content: string): string =>
+    CONTENT_TYPE_CONFIG[content] ? content : normalizeContentType(content);
+
+  const rf =<K extends keyof GravureProductCatalog>(k: K, v: GravureProductCatalog[K]) => {
     setReplanForm(p => {
       if (!p) return p;
       const next = { ...p, [k]: v };
@@ -545,6 +563,7 @@ export default function ProductCatalogPage() {
     const trim = replanForm.trimmingSize || 0;
     const sType = (replanForm as any).structureType || "Label";
     const content = (replanForm as any).content || "";
+    const nContent = normalizeContentType(content); // normalized key for comparisons
     const gusset = (replanForm as any).gusset || 0;
     const topSeal = (replanForm as any).topSeal || 0;
     const bottomSeal = (replanForm as any).bottomSeal || 0;
@@ -567,11 +586,11 @@ export default function ProductCatalogPage() {
     let laneWidth: number;
     if (sType === "Sleeve") {
       laneWidth = jobW * 2 + sleeveTransp + sleeveSeam;
-    } else if (content === "Pouch — 3 Side Seal" || content === "Standup Pouch" || content === "Zipper Pouch") {
+    } else if (nContent === "3 Side Seal Sachet" || nContent === "Stand Up Pouch") {
       laneWidth = jobW + 2 * sideSeal;
-    } else if (content === "Pouch — Center Seal") {
+    } else if (nContent === "Center Seal Pouch") {
       laneWidth = jobW * 2 + ctrSeal;
-    } else if (content === "Both Side Gusset Pouch" || content === "3D Pouch / Flat Bottom") {
+    } else if (nContent === "Gusset Bag" || nContent === "Flat Bottom Pouch") {
       laneWidth = jobW + 2 * sideGusset;
     } else {
       laneWidth = planWidth;
@@ -591,9 +610,11 @@ export default function ProductCatalogPage() {
     let effectiveRepeat: number;
     if (sType === "Sleeve") {
       effectiveRepeat = sleeveCutLength;
-    } else if (content === "Pouch — 3 Side Seal" || content === "Pouch — Center Seal" || content === "Both Side Gusset Pouch") {
+    } else if (nContent === "3 Side Seal Sachet") {
+      effectiveRepeat = (jobH + topSeal + bottomSeal + shrink) * 2;  // front + back stacked in repeat direction
+    } else if (nContent === "Center Seal Pouch" || nContent === "Gusset Bag") {
       effectiveRepeat = jobH + topSeal + bottomSeal + shrink;
-    } else if (content === "Standup Pouch" || content === "Zipper Pouch" || content === "3D Pouch / Flat Bottom") {
+    } else if (nContent === "Stand Up Pouch" || nContent === "Flat Bottom Pouch") {
       effectiveRepeat = jobH + topSeal + (gusset > 0 ? gusset / 2 : 0) + shrink;
     } else {
       // Label / roll form / other
@@ -635,7 +656,7 @@ export default function ProductCatalogPage() {
       const list: any[] = [];
       if (sType === "Sleeve") {
         if (effectiveRepeat >= machineMinCirc && effectiveRepeat <= machineMaxCirc) {
-          const real = CYLINDER_TOOLS.filter(t => (parseFloat(t.printWidth) || 0) >= minCylWidth && Math.abs((parseFloat(t.repeatLength || "0") || 0) - effectiveRepeat) < 1);
+          const real = CYLINDER_TOOLS.filter(t => { const w = parseFloat(t.printWidth) || 0; return w >= minCylWidth && w <= machineMaxFilm && Math.abs((parseFloat(t.repeatLength || "0") || 0) - effectiveRepeat) < 1; });
           if (real.length > 0) real.forEach(c => list.push({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(effectiveRepeat), isSpecial: false, isSpecialSleeve: false }));
           else list.push({ id: "SPECIAL-CYL-SLEEVE", code: "SPL", name: `Special Order Sleeve Cyl (${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(effectiveRepeat), isSpecial: true, isSpecialSleeve: false });
         }
@@ -643,7 +664,7 @@ export default function ProductCatalogPage() {
         for (let mult = 1; mult * effectiveRepeat <= machineMaxCirc; mult++) {
           const circ = mult * effectiveRepeat;
           if (circ < machineMinCirc) continue;
-          const real = CYLINDER_TOOLS.filter(t => (parseFloat(t.printWidth) || 0) >= minCylWidth && Math.abs((parseFloat(t.repeatLength || "0") || 0) - circ) < 0.5);
+          const real = CYLINDER_TOOLS.filter(t => { const w = parseFloat(t.printWidth) || 0; return w >= minCylWidth && w <= machineMaxFilm && Math.abs((parseFloat(t.repeatLength || "0") || 0) - circ) < 0.5; });
           if (real.length > 0) real.forEach(c => list.push({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false, isSpecialSleeve: false }));
           else list.push({ id: `SPECIAL-CYL-${mult}`, code: "SPL", name: `Special Order (${mult}×${effectiveRepeat}mm)`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(circ), isSpecial: true, isSpecialSleeve: false });
         }
@@ -685,8 +706,9 @@ export default function ProductCatalogPage() {
 
         for (const cylinder of cylList) {
           const cylWidthV = parseFloat(cylinder.printWidth);
-          if (cylWidthV < minCylWidth) continue;
+          if (cylWidthV < minCylWidth || cylWidthV > machineMaxFilm) continue;
           const cylCirc = parseFloat(cylinder.repeatLength) || 450;
+          if (!isValidCircumference(cylCirc)) continue;
           const repeatUPS = calcRepeatUPS(cylCirc);
           const totalUPS = acUps * repeatUPS;
           const reqRMT = replanForm.standardQty > 0 ? Math.ceil(replanForm.standardQty / totalUPS) : 1;
@@ -760,8 +782,8 @@ export default function ProductCatalogPage() {
           const isSpecialSleeve = !slv;
           const minCylWidth = sleeveWidthVal + 100;
 
-          // Filter real cylinders by width ≥ minCylWidth; special if none qualify
-          const validRealCyls = cylsByCirc.filter(c => (parseFloat(c.printWidth) || 0) >= minCylWidth);
+          // Filter real cylinders by width within machine range; special if none qualify
+          const validRealCyls = cylsByCirc.filter(c => { const w = parseFloat(c.printWidth) || 0; return w >= minCylWidth && w <= machineMaxFilm; });
           const cylList = validRealCyls.length > 0
             ? validRealCyls
             : [{ id: `SPECIAL-CYL-SLEEVE-R${repeatCount}`, code: "SPL", name: `Special Order (${cylinderCirc}mm = ${sleeveCutLength}×${repeatCount})`, printWidth: String(Math.ceil(minCylWidth)), repeatLength: String(cylinderCirc), isSpecial: true }];
@@ -854,7 +876,7 @@ export default function ProductCatalogPage() {
         const realCyls = CYLINDER_TOOLS_ALL.filter(t => {
           const cylCirc = parseFloat(t.repeatLength || "0") || 0;
           const cylW = parseFloat(t.printWidth) || 0;
-          return Math.abs(cylCirc - circ) < 1 && cylW >= minCylWidth;
+          return Math.abs(cylCirc - circ) < 1 && cylW >= minCylWidth && cylW <= machineMaxFilm;
         }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(circ), isSpecial: false }));
 
         const specialCyl = {
@@ -2053,27 +2075,95 @@ export default function ProductCatalogPage() {
                           </p>
                         )}
                       </div>
-                      {/* Sub Type (was Content Type) */}
+                      {/* Sub Type — image card picker */}
                       {replanForm.categoryId && (() => {
                         const selCat = categories.find(c => c.id === replanForm.categoryId);
-                        const contentOptions = selCat?.contents ?? [];
-                        if (contentOptions.length === 0) return null;
+                        const contentDetails = selCat?.contentDetails ?? [];
+                        if (contentDetails.length === 0) return null;
+                        const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+                        const imgSrc = (href: string) => href.startsWith("http") ? href : `${apiBase}/${href.replace(/^\//, "")}`;
+                        const imgFallback = (e: React.SyntheticEvent<HTMLImageElement>, href: string) => {
+                          const img = e.target as HTMLImageElement;
+                          const pub = `/${href.replace(/^\//, "")}`;
+                          if (img.src !== window.location.origin + pub) { img.src = pub; } else { img.style.display = "none"; }
+                        };
                         return (
                           <div>
-                            <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Sub Type</label>
-                            <select
-                              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                              value={replanForm.content || ""}
-                              onChange={e => { rf("content", e.target.value); setDimValues({}); }}>
-                              <option value="">-- Select Sub Type --</option>
-                              {contentOptions.map(ct => (
-                                <option key={ct} value={ct}>{ct}</option>
-                              ))}
-                            </select>
+                            <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Sub Type (Content)</label>
+                            {/* Trigger button */}
+                            <button
+                              type="button"
+                              onClick={() => setContentPickerOpen(true)}
+                              className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 hover:bg-purple-50 hover:border-purple-300 transition-colors outline-none focus:ring-2 focus:ring-purple-400">
+                              {replanForm.content
+                                ? <span className="text-gray-800 font-medium truncate">{replanForm.content}</span>
+                                : <span className="text-gray-400">Select Content</span>}
+                              <span className="ml-2 flex items-center gap-1 text-purple-600 font-bold shrink-0">
+                                <Plus size={14} /> Select
+                              </span>
+                            </button>
                             {replanForm.content && (
                               <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
                                 <Check size={10} /> {replanForm.content}
                               </p>
+                            )}
+
+                            {/* Content picker modal */}
+                            {contentPickerOpen && (
+                              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40" onClick={() => setContentPickerOpen(false)}>
+                                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                                  {/* Header */}
+                                  <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                                    <div>
+                                      <h3 className="text-base font-bold text-gray-800">Select Content Type</h3>
+                                      <p className="text-xs text-gray-400 mt-0.5">{selCat?.name}</p>
+                                    </div>
+                                    <button onClick={() => setContentPickerOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+                                      <X size={18} />
+                                    </button>
+                                  </div>
+                                  {/* Grid */}
+                                  <div className="overflow-y-auto p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                    {contentDetails.map(cd => {
+                                      const selected = replanForm.content === cd.name;
+                                      return (
+                                        <button
+                                          key={cd.name}
+                                          type="button"
+                                          onClick={() => {
+                                            rf("content", cd.name);
+                                            // Accessories (HasZipper, HasSpout, etc.) are set via
+                                            // the accessory toggle chips below — not derived from name.
+                                            setDimValues({});
+                                            setContentPickerOpen(false);
+                                          }}
+                                          className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                            selected ? "border-purple-500 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-300 hover:bg-purple-50/40"
+                                          }`}>
+                                          {/* Image */}
+                                          <div className="w-24 h-24 flex items-center justify-center bg-gray-50 rounded-xl overflow-hidden">
+                                            {cd.imageUrl ? (
+                                              <img
+                                                src={imgSrc(cd.imageUrl)}
+                                                alt={cd.caption}
+                                                className="w-full h-full object-contain"
+                                                onError={e => imgFallback(e, cd.imageUrl)}
+                                              />
+                                            ) : (
+                                              <div className="text-[10px] text-gray-400 text-center px-1">No Image</div>
+                                            )}
+                                          </div>
+                                          {/* Name */}
+                                          <span className={`text-xs font-semibold text-center leading-tight ${selected ? "text-purple-700" : "text-gray-700"}`}>
+                                            {cd.caption || cd.name}
+                                          </span>
+                                          {selected && <Check size={14} className="text-purple-600" />}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
                             )}
                           </div>
                         );
@@ -2319,12 +2409,89 @@ export default function ProductCatalogPage() {
 
                 </div>
 
+                {/* ── Pouch Accessories — only shown for Pouch content types ── */}
+                {replanForm.content && sTypeGlobal === "Pouch" && (
+                  <div className="border border-purple-200 rounded-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
+                      <Wrench size={14} className="text-white" />
+                      <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+                    </div>
+                    <div className="p-4 bg-purple-50/40">
+                      {/* Toggle chips — each toggles the boolean flag */}
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {([
+                          { key: "hasZipper",     label: "Zipper",      color: "indigo" },
+                          { key: "hasSpout",      label: "Spout",       color: "cyan"   },
+                          { key: "hasValve",      label: "Valve",       color: "orange" },
+                          { key: "hasWindow",     label: "Window",      color: "sky"    },
+                          { key: "hasTearNotch",  label: "Tear Notch",  color: "rose"   },
+                          { key: "hasEuroHole",   label: "Euro Hole",   color: "violet" },
+                          { key: "hasRoundCorner",label: "Round Corner","color": "teal" },
+                        ] as { key: string; label: string; color: string }[]).map(({ key, label, color }) => {
+                          const active = !!(replanForm as any)[key];
+                          const colorMap: Record<string, string> = {
+                            indigo: active ? "bg-indigo-600 text-white border-indigo-600"  : "bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50",
+                            cyan:   active ? "bg-cyan-600 text-white border-cyan-600"      : "bg-white text-cyan-600 border-cyan-300 hover:bg-cyan-50",
+                            orange: active ? "bg-orange-500 text-white border-orange-500"  : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50",
+                            sky:    active ? "bg-sky-600 text-white border-sky-600"        : "bg-white text-sky-600 border-sky-300 hover:bg-sky-50",
+                            rose:   active ? "bg-rose-600 text-white border-rose-600"      : "bg-white text-rose-600 border-rose-300 hover:bg-rose-50",
+                            violet: active ? "bg-violet-600 text-white border-violet-600"  : "bg-white text-violet-600 border-violet-300 hover:bg-violet-50",
+                            teal:   active ? "bg-teal-600 text-white border-teal-600"      : "bg-white text-teal-600 border-teal-300 hover:bg-teal-50",
+                          };
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => rf(key as any, !active)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all ${colorMap[color]}`}>
+                              {active && <Check size={11} />}
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {/* Weight inputs — only for Zipper / Spout */}
+                      {((replanForm as any).hasZipper || (replanForm as any).hasSpout) && (
+                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                          {(replanForm as any).hasZipper && (
+                            <div className="flex flex-col gap-1 min-w-[160px]">
+                              <label className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">Zipper Weight (g)</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 2.5"
+                                value={(replanForm as any).zipperWeight || ""}
+                                onChange={e => rf("zipperWeight" as any, parseFloat(e.target.value) || 0)}
+                                className="w-full text-sm border border-indigo-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
+                            </div>
+                          )}
+                          {(replanForm as any).hasSpout && (
+                            <div className="flex flex-col gap-1 min-w-[160px]">
+                              <label className="text-[10px] font-semibold text-cyan-600 uppercase tracking-wide">Spout Weight (g)</label>
+                              <div className="flex gap-2 items-center">
+                                <input type="number" min={0} step={0.1} placeholder="e.g. 8"
+                                  value={(replanForm as any).spoutWeight || ""}
+                                  onChange={e => rf("spoutWeight" as any, parseFloat(e.target.value) || 0)}
+                                  className="flex-1 text-sm border border-cyan-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-400 font-mono" />
+                                <button type="button" onClick={() => rf("spoutWeight" as any, 8)}
+                                  className="px-2.5 py-2 text-[10px] font-bold bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded-xl border border-cyan-200 whitespace-nowrap transition-colors">
+                                  8g (Std)
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Dimension Input + Live Diagram — hidden for MultiPackShrink (has its own layout section below) ── */}
-                {replanForm.content && CONTENT_TYPE_CONFIG[normalizeContentType(replanForm.content)] && sTypeGlobal !== "MultiPackShrink" && (
+                {replanForm.content && CONTENT_TYPE_CONFIG[getDisplayContentType(replanForm.content)] && sTypeGlobal !== "MultiPackShrink" && (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
+                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
                       <Calculator size={14} className="text-white" />
                       <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {replanForm.content}</p>
+                      {(replanForm as any).hasZipper      && <span className="ml-auto px-2 py-0.5 bg-blue-400/30 text-white rounded-full text-[10px] font-semibold border border-blue-300/40">Zipper</span>}
+                      {(replanForm as any).hasSpout       && <span className="ml-auto px-2 py-0.5 bg-cyan-400/30  text-white rounded-full text-[10px] font-semibold border border-cyan-300/40">Spout</span>}
+                      {(replanForm as any).hasValve       && <span className="ml-auto px-2 py-0.5 bg-orange-400/30 text-white rounded-full text-[10px] font-semibold border border-orange-300/40">Degassing Valve</span>}
+                      {(replanForm as any).hasTearNotch   && <span className="ml-auto px-2 py-0.5 bg-rose-400/30   text-white rounded-full text-[10px] font-semibold border border-rose-300/40">Tear Notch</span>}
+                      {(replanForm as any).hasEuroHole    && <span className="ml-auto px-2 py-0.5 bg-violet-400/30 text-white rounded-full text-[10px] font-semibold border border-violet-300/40">Euro Hole</span>}
                     </div>
 
                     {/* ── Sleeve / Pouch extra fields — auto-shown by content type ── */}
@@ -2435,7 +2602,7 @@ export default function ProductCatalogPage() {
                         <div>
                           <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-2">Packaging Dimensions</p>
                           <DimensionInputPanel
-                            contentType={normalizeContentType(replanForm.content)}
+                            contentType={getDisplayContentType(replanForm.content)}
                             dims={dimValues}
                             colClasses={sTypeGlobal === "Sleeve" ? "grid-cols-2" : undefined}
                             onChange={patch => {
@@ -2527,199 +2694,85 @@ export default function ProductCatalogPage() {
                           </div>
                           {/* ── All 8 directions in 4+4 grid ── */}
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Printed ACROSS the Roll</p>
-                          <div className="grid grid-cols-4 gap-2 mb-3">
+                          <div className="grid grid-cols-4 gap-3 mb-3">
                             {([
-                              {
-                                n: 1, label: "Outside · Across\nTop off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    {/* paper label - flat, coming off roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    {/* bottom line = underline */}
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
-                                    {/* normal text */}
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
-                                    {/* roll circle - side view, on right */}
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    {/* paper tangent lines connecting to roll */}
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* TOP off first — bold arrow UP-RIGHT */}
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="34,0 26,4 30,12" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 2, label: "Inside · Across\nTop off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    {/* Inside: roll on RIGHT, text UPSIDE DOWN */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
-                                    {/* roll circle on right */}
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* TOP off first — arrow UP-RIGHT */}
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="34,0 26,4 30,12" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 3, label: "Outside · Across\nBottom off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    {/* Outside, text normal, BOTTOM arrow, roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* BOTTOM off first — arrow DOWN-RIGHT */}
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="34,64 24,60 30,52" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 4, label: "Inside · Across\nBottom off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    {/* Inside, text UPSIDE DOWN, BOTTOM arrow, roll on right */}
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8" />
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* BOTTOM off first — arrow DOWN-RIGHT */}
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="34,64 24,60 30,52" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                            ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
+                              { n: 1, label: "Outside · Across\nTop off first" },
+                              { n: 2, label: "Inside · Across\nTop off first" },
+                              { n: 3, label: "Outside · Across\nBottom off first" },
+                              { n: 4, label: "Inside · Across\nBottom off first" },
+                            ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
-                                <button key={n} onClick={() => rf("unwindDirection" as any, n)}
-                                  title={label.replace("\n", " ")}
-                                  className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-sm" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  {svg}
-                                  <span className={`text-[11px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                  <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                                </button>
+                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    title="Preview full size">
+                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 mt-1">Printed WITH the Roll</p>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-4 gap-3">
                             {([
-                              {
-                                n: 5, label: "Outside · With Roll\nRight off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    {/* Vertical paper coming off roll at bottom-right. Outside: text -90° (reads bottom→top, right side off first) */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
-                                    {/* roll circle at bottom-right */}
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* RIGHT off first — bold arrow pointing RIGHT */}
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="66,20 56,20 60,28" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 6, label: "Inside · With Roll\nRight off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    {/* Inside: text +90° (upside-down, reads top→bottom), right side off first */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* RIGHT off first arrow */}
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="66,20 56,20 60,28" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 7, label: "Outside · With Roll\nLeft off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    {/* Outside: text +90°, LEFT side off first, roll at bottom-right */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* LEFT off first — arrow pointing LEFT */}
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="0,20 10,18 8,28" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                              {
-                                n: 8, label: "Inside · With Roll\nLeft off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    {/* Inside: text -90° (upside-down), LEFT side off first */}
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2" />
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8" />
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3" />
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1" />
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1" />
-                                    {/* LEFT off first — arrow pointing LEFT */}
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2" />
-                                    <polygon points="0,20 10,18 8,28" fill="#111" />
-                                  </svg>
-                                )
-                              },
-                            ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
+                              { n: 5, label: "Outside · With Roll\nRight off first" },
+                              { n: 6, label: "Inside · With Roll\nRight off first" },
+                              { n: 7, label: "Outside · With Roll\nLeft off first" },
+                              { n: 8, label: "Inside · With Roll\nLeft off first" },
+                            ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
-                                <button key={n} onClick={() => rf("unwindDirection" as any, n)}
-                                  title={label.replace("\n", " ")}
-                                  className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-sm" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  {svg}
-                                  <span className={`text-[11px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                  <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                                </button>
+                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                  </button>
+                                  <button onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    title="Preview full size">
+                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
+                          {/* ── Full-size image preview modal ── */}
+                          {unwindPreview !== null && (
+                            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setUnwindPreview(null)}>
+                              <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <p className="text-sm font-bold text-gray-800">Direction #{unwindPreview}</p>
+                                    <p className="text-xs text-gray-400">{[
+                                      "Outside · Across · Top off first",
+                                      "Inside · Across · Top off first",
+                                      "Outside · Across · Bottom off first",
+                                      "Inside · Across · Bottom off first",
+                                      "Outside · With Roll · Right off first",
+                                      "Inside · With Roll · Right off first",
+                                      "Outside · With Roll · Left off first",
+                                      "Inside · With Roll · Left off first",
+                                    ][unwindPreview - 1]}</p>
+                                  </div>
+                                  <button onClick={() => setUnwindPreview(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all">
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                                <img src={`/images/Unwind_Direction_${unwindPreview}.png`} alt={`Direction ${unwindPreview}`} className="w-full h-auto object-contain rounded-lg border border-gray-100" />
+                                <button onClick={() => { rf("unwindDirection" as any, unwindPreview); setUnwindPreview(null); }}
+                                  className="mt-3 w-full py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-all">
+                                  Select Direction #{unwindPreview}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {(replanForm as any).unwindDirection > 0 && (
                             <p className="mt-1.5 text-[10px] text-orange-600 font-semibold flex items-center gap-1">
                               <Check size={10} /> Direction #{(replanForm as any).unwindDirection} selected — {[
@@ -2736,7 +2789,7 @@ export default function ProductCatalogPage() {
                           )}
                         </div>
                       </div>
-                      <DimensionDiagram contentType={normalizeContentType(replanForm.content)} dims={dimValues} />
+                      <DimensionDiagram contentType={getDisplayContentType(replanForm.content)} dims={dimValues} />
                     </div>
                   </div>
                 )}
@@ -3254,7 +3307,12 @@ export default function ProductCatalogPage() {
                                                     value={ci.itemId}
                                                     onChange={e => {
                                                       const it = filteredItems.find(x => x.id === e.target.value);
-                                                      updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "" });
+                                                      const updates: Record<string, unknown> = { itemId: it?.id ?? "", itemName: it?.name ?? "" };
+                                                      if (ci.itemGroup === "Ink" && it) {
+                                                        updates.gsm = parseFloat(String((it as any).DryGsM ?? 0)) || 0;
+                                                        updates.solidPct = parseFloat(String((it as any).SolidPerc ?? 40)) || 40;
+                                                      }
+                                                      updatePlyConsumable(index, ciIdx, updates);
                                                     }}
                                                     disabled={!ci.itemGroup}>
                                                     <option value="">-- Select Item --</option>
@@ -4080,13 +4138,7 @@ export default function ProductCatalogPage() {
                             {["#", "Ink Item (Master)", "Color Name", "Type", "Pantone Ref"].map(h => (
                               <th key={h} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold">{h}</th>
                             ))}
-                            <th colSpan={3} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold bg-indigo-700">Standard L* A* B*</th>
                             <th className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold">Remarks</th>
-                          </tr>
-                          <tr className="bg-purple-800 text-purple-200 text-[9px]">
-                            {["", "", "", "", ""].map((_, i) => <th key={i} className="border border-purple-700/30" />)}
-                            {["L*", "A*", "B*"].map(h => <th key={`s-${h}`} className="px-2 py-1 border border-purple-700/30 text-center bg-indigo-800/60">{h}</th>)}
-                            <th className="border border-purple-700/30" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
@@ -4141,15 +4193,11 @@ export default function ProductCatalogPage() {
                                 <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
                                 <td className="px-2 py-1.5"><select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as ColorShade["inkType"] } : c))}><option value="Spot">Spot</option><option value="Process">Process</option><option value="Special">Special</option></select></td>
                                 <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
-                                {/* Standard LAB */}
-                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="L*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labL} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labL: e.target.value } : c))} /></td>
-                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="a*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labA} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labA: e.target.value } : c))} /></td>
-                                <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="b*" className="w-24 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labB} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, labB: e.target.value } : c))} /></td>
                                 <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
                               </tr>
                             );
                           })}
-                          {catalogColorShades.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-gray-400 text-xs">No colors. Set No. of Colors in Basic Info tab first.</td></tr>}
+                          {catalogColorShades.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-gray-400 text-xs">No colors. Set No. of Colors in Basic Info tab first.</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -4397,7 +4445,7 @@ export default function ProductCatalogPage() {
               {/* ── Header ── */}
               <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-1">
                 <div>
-                  <div className="text-[20px] font-black tracking-widest" style={{ color: "#1e3a5f" }}>AJ SHRINK</div>
+                  <div className="text-[20px] font-black tracking-widest" style={{ color: "#1e3a5f" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
                   <div className="text-[8px] text-gray-500 font-semibold tracking-wide">FLEXIBLE PACKAGING · GRAVURE PRINTING</div>
                 </div>
                 <div className="text-center px-4">
@@ -4563,9 +4611,6 @@ export default function ProductCatalogPage() {
                       <th style={{ width: "14%" }}>Color Name</th>
                       <th style={{ width: "10%" }}>Type</th>
                       <th style={{ width: "12%" }}>Pantone Ref</th>
-                      <th className="text-center" style={{ width: "6%" }}>L*</th>
-                      <th className="text-center" style={{ width: "6%" }}>A*</th>
-                      <th className="text-center" style={{ width: "6%" }}>B*</th>
                       <th>Remarks</th>
                     </tr>
                   </thead>
@@ -4579,9 +4624,6 @@ export default function ProductCatalogPage() {
                           <td className="font-bold">{cs.colorName || "—"}</td>
                           <td>{cs.inkType || "—"}</td>
                           <td>{cs.pantoneRef || "—"}</td>
-                          <td className="text-center">{cs.labL || "—"}</td>
-                          <td className="text-center">{cs.labA || "—"}</td>
-                          <td className="text-center">{cs.labB || "—"}</td>
                           <td>{cs.remarks || ""}</td>
                         </tr>
                       );
@@ -4597,9 +4639,6 @@ export default function ProductCatalogPage() {
                       <th style={{ width: "14%" }}>Color Name</th>
                       <th style={{ width: "10%" }}>Type</th>
                       <th style={{ width: "12%" }}>Pantone Ref</th>
-                      <th className="text-center">L*</th>
-                      <th className="text-center">A*</th>
-                      <th className="text-center">B*</th>
                       <th>Remarks</th>
                     </tr>
                   </thead>
@@ -4608,7 +4647,7 @@ export default function ProductCatalogPage() {
                       <tr key={i}>
                         <td className="text-center">{i + 1}</td>
                         <td></td><td></td><td></td><td></td>
-                        <td></td><td></td><td></td><td></td>
+                        <td></td>
                       </tr>
                     ))}
                   </tbody>
@@ -4833,6 +4872,7 @@ export default function ProductCatalogPage() {
         // Always trust plan.acUps — planning engine already uses correct laneWidth
         const acUps = plan.acUps as number;
         const contentPrev = (replanForm as any).content || "";
+        const nContentPrev = normalizeContentType(contentPrev);
         const gussetPrev = (replanForm as any).gusset || 0;
         const topSealPrev = (replanForm as any).topSeal || 0;
         const btmSealPrev = (replanForm as any).bottomSeal || 0;
@@ -4859,9 +4899,11 @@ export default function ProductCatalogPage() {
           effRepeat = mpEffRepeat; // effective repeat on cylinder = repeatLength + shrinkage
         } else if (isSleeve) {
           effRepeat = (plan.cylCirc as number) / (plan.repeatUPS as number);
-        } else if (contentPrev === "Pouch — 3 Side Seal" || contentPrev === "Pouch — Center Seal" || contentPrev === "Both Side Gusset Pouch") {
+        } else if (nContentPrev === "3 Side Seal Sachet") {
+          effRepeat = ((replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink) * 2;
+        } else if (nContentPrev === "Center Seal Pouch" || nContentPrev === "Gusset Bag") {
           effRepeat = (replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink;
-        } else if (contentPrev === "Standup Pouch" || contentPrev === "Zipper Pouch" || contentPrev === "3D Pouch / Flat Bottom") {
+        } else if (nContentPrev === "Stand Up Pouch" || nContentPrev === "Flat Bottom Pouch") {
           effRepeat = (replanForm.jobHeight || 0) + topSealPrev + (gussetPrev > 0 ? gussetPrev / 2 : 0) + shrink;
         } else {
           effRepeat = (replanForm.jobHeight || 0) + shrink;
@@ -4873,11 +4915,11 @@ export default function ProductCatalogPage() {
           diagLaneW = acUps > 0 ? filmW / acUps : filmW;
         } else if (isSleeve) {
           diagLaneW = jobW * 2 + slvTransp + slvSeam;
-        } else if (contentPrev === "Pouch — 3 Side Seal" || contentPrev === "Standup Pouch" || contentPrev === "Zipper Pouch") {
+        } else if (nContentPrev === "3 Side Seal Sachet" || nContentPrev === "Stand Up Pouch") {
           diagLaneW = jobW + 2 * sideSealPrev;
-        } else if (contentPrev === "Pouch — Center Seal") {
+        } else if (nContentPrev === "Center Seal Pouch") {
           diagLaneW = jobW * 2 + ctrSealPrev;
-        } else if (contentPrev === "Both Side Gusset Pouch" || contentPrev === "3D Pouch / Flat Bottom") {
+        } else if (nContentPrev === "Gusset Bag" || nContentPrev === "Flat Bottom Pouch") {
           diagLaneW = jobW + 2 * sideGussetPrev;
         } else {
           diagLaneW = jobW;
@@ -5597,14 +5639,14 @@ export default function ProductCatalogPage() {
                               <td className="px-3 py-1.5 text-gray-400 text-[10px]">Top seal added to repeat</td>
                             </tr>
                           )}
-                          {btmSealPrev > 0 && (contentPrev === "Pouch — 3 Side Seal" || contentPrev === "Pouch — Center Seal" || contentPrev === "Both Side Gusset Pouch") && (
+                          {btmSealPrev > 0 && (nContentPrev === "Pouch — 3 Side Seal" || nContentPrev === "Pouch — Center Seal" || nContentPrev === "Both Side Gusset Pouch") && (
                             <tr>
                               <td className="px-3 py-1.5 text-gray-600">+ Bottom Seal</td>
                               <td className="px-3 py-1.5 font-mono font-bold text-orange-600">+{btmSealPrev} mm</td>
                               <td className="px-3 py-1.5 text-gray-400 text-[10px]">Bottom seal added to repeat</td>
                             </tr>
                           )}
-                          {gussetPrev > 0 && (contentPrev === "Standup Pouch" || contentPrev === "Zipper Pouch" || contentPrev === "3D Pouch / Flat Bottom") && (
+                          {gussetPrev > 0 && (nContentPrev === "Standup Pouch" || nContentPrev === "Zipper Pouch" || nContentPrev === "3D Pouch / Flat Bottom") && (
                             <tr>
                               <td className="px-3 py-1.5 text-gray-600">+ Bottom Gusset / 2</td>
                               <td className="px-3 py-1.5 font-mono font-bold text-orange-600">+{gussetPrev / 2} mm</td>

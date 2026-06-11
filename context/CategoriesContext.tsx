@@ -42,10 +42,19 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
 
       // Group contents by CategoryID
       const contentMap: Record<string, string[]> = {};
+      const contentDetailMap: Record<string, { name: string; imageUrl: string; caption: string }[]> = {};
       (data.categoryContents || []).forEach((c: any) => {
         const cid = String(c.CategoryID);
         if (!contentMap[cid]) contentMap[cid] = [];
-        if (c.ContentName) contentMap[cid].push(c.ContentName);
+        if (!contentDetailMap[cid]) contentDetailMap[cid] = [];
+        if (c.ContentName) {
+          contentMap[cid].push(c.ContentName);
+          contentDetailMap[cid].push({
+            name:     c.ContentName || "",
+            imageUrl: c.ContentClosedHref || "",
+            caption:  c.ContentCaption  || c.ContentName || "",
+          });
+        }
       });
 
       // Group ply configs by CategoryID
@@ -67,7 +76,8 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         id:             String(c.CategoryID),
         name:           c.CategoryName || "",
         status:         "Active",
-        contents:       contentMap[String(c.CategoryID)] || [],
+        contents:       contentMap[String(c.CategoryID)]       || [],
+        contentDetails: contentDetailMap[String(c.CategoryID)] || [],
         plyConsumables: plyMap[String(c.CategoryID)]    || [],
       }));
 

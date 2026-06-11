@@ -29,9 +29,9 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err: boolean | string | undefined) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 const SuffixInput = ({ value, onChange, suffix, placeholder, type = "text" }: any) => (
-  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
-    <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} className="flex-1 px-3 py-2 text-sm text-gray-800 outline-none" />
-    <div className="bg-gray-100 px-3 py-2 text-xs text-gray-700 border-l border-gray-300 font-semibold whitespace-nowrap min-w-fit">{suffix}</div>
+  <div className="flex items-center border border-gray-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
+    <input type={type} value={value ?? ""} onChange={onChange} placeholder={placeholder} className="flex-1 min-w-0 px-3 py-2 text-sm text-gray-800 outline-none" />
+    <div className="bg-gray-100 px-3 py-2 text-xs text-gray-700 border-l border-gray-300 font-semibold whitespace-nowrap shrink-0 min-w-[40px] text-center">{suffix}</div>
   </div>
 );
 const PrefixInput = ({ value, onChange, prefix, placeholder, type = "text" }: any) => (

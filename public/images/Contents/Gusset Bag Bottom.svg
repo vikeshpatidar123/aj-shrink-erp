@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <rect width="200" height="240" fill="#fff7ed" rx="8"/>
+  <!-- Main bag body -->
+  <rect x="50" y="50" width="100" height="140" rx="4" fill="#fed7aa" stroke="#f97316" stroke-width="2.5"/>
+  <!-- Bottom gusset -->
+  <ellipse cx="100" cy="190" rx="50" ry="16" fill="#fdba74" stroke="#f97316" stroke-width="2"/>
+  <!-- Bottom gusset fold lines -->
+  <line x1="50" y1="190" x2="50" y2="190" stroke="#ea580c" stroke-width="1"/>
+  <path d="M50,175 Q100,195 150,175" stroke="#ea580c" stroke-width="1.5" fill="none" stroke-dasharray="4,3"/>
+  <!-- Top seal -->
+  <rect x="50" y="50" width="100" height="12" rx="0" fill="#c2410c" opacity="0.8"/>
+  <!-- Side seals -->
+  <rect x="50" y="50" width="8" height="140" fill="#c2410c" opacity="0.5"/>
+  <rect x="142" y="50" width="8" height="140" fill="#c2410c" opacity="0.5"/>
+  <!-- Label -->
+  <rect x="70" y="75" width="60" height="85" rx="4" fill="white" opacity="0.5"/>
+  <text x="100" y="120" text-anchor="middle" font-family="Arial" font-size="8" fill="#7c2d12">PRODUCT</text>
+  <text x="100" y="220" text-anchor="middle" font-family="Arial" font-size="10" fill="#c2410c" font-weight="bold">Gusset Bag - Bottom</text>
+</svg>

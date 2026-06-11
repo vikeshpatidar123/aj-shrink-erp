@@ -77,6 +77,10 @@ function normalizeContentType(content: string): string {
   return content;
 }
 
+// Exact match first → falls back to normalizeContentType (for DimensionInputPanel/Diagram only)
+const getDisplayContentType = (content: string): string =>
+  CONTENT_TYPE_CONFIG[content] ? content : normalizeContentType(content);
+
 // Parses SQL Server datetime strings returned by JavaScriptSerializer.
 // Handles: /Date(1716489600000)/, ISO strings ("2024-05-16"), or "16 May 2024" style.
 // Always returns a "yyyy-MM-dd" string safe for <input type="date"> and new Date().
@@ -154,6 +158,10 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   // Pouch / Sleeve seal geometry
   topSeal: 0, bottomSeal: 0, sideSeal: 0, centerSealWidth: 0,
   sideGusset: 0, gusset: 0, seamingArea: 0, transparentArea: 0,
+  // Pouch accessory flags
+  hasZipper: false, hasSpout: false, hasValve: false,
+  hasWindow: false, hasTearNotch: false, hasEuroHole: false, hasRoundCorner: false,
+  laminationPlies: 0, zipperWeight: 0, spoutWeight: 0,
   // Product identity
   packSize: "", brandName: "", productType: "", skuType: "",
   bottleType: "", addressType: "", artworkName: "", specialSpecs: "",
@@ -162,6 +170,7 @@ const blank: Omit<GravureEstimation, "id" | "estimationNo"> = {
   secondaryLayers: [],
   dryWeightRows: [],
   dryWeightTotal: 0,
+  plyStructureText: "",
   status: "Draft",
   remarks: "",
   salesPerson: "",
@@ -187,13 +196,15 @@ const GROUP_COLORS: Record<string, string> = {
 
 // ─── Auto qty for a process based on its chargeUnit ──────────
 // lengthM = meters of film, areaM2 = m², weightKg = total weight in Kg
+// Handles both raw units ("Kg") and Rate/X format from Process Master ("Rate/Kg")
 function autoProcessQty(chargeUnit: string, lengthM: number, areaM2: number, weightKg: number, noOfColors: number) {
-  if (chargeUnit === "m²")       return areaM2;
-  if (chargeUnit === "m")        return lengthM;
-  if (chargeUnit === "Kg")       return weightKg;
-  if (chargeUnit === "Cylinder") return noOfColors;
-  if (chargeUnit === "1000 Pcs") return lengthM / 1000;
-  if (chargeUnit === "Job")      return 1;
+  const u = (chargeUnit || "").toLowerCase().replace(/\s+/g, "");
+  if (u.includes("kg"))                      return weightKg;
+  if (u.includes("m²") || u.includes("sqm") || u.includes("m2")) return areaM2;
+  if (u === "m" || u === "rate/m" || u === "per m" || u.endsWith("/m")) return lengthM;
+  if (u.includes("cylinder") || u.includes("color") || u.includes("colour")) return noOfColors;
+  if (u.includes("1000pcs") || u.includes("1000 pcs")) return lengthM / 1000;
+  if (u.includes("job"))                     return 1;
   return 0; // unknown / custom → use manual p.qty
 }
 
@@ -505,6 +516,8 @@ export default function GravureEstimationPage() {
           name: c.CylinderName,
           printWidth: String(c.PrintWidth),
           repeatLength: String(c.Circumference),
+          purchaseRate: Number(c.PurchaseRate ?? 0),
+          purchaseUnit: String(c.PurchaseUnit || "SQM"),
           toolType: "Cylinder" as const,
         })).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth))
       : CYLINDER_TOOLS_ALL,
@@ -552,6 +565,7 @@ export default function GravureEstimationPage() {
   const [data, setData]       = useState<GravureEstimation[]>([]);
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving]   = useState(false);
+  const [unwindPreview, setUnwindPreview] = useState<number | null>(null);
 
   // ── Load list from API ─────────────────────────────────────
   const loadList = async () => {
@@ -589,6 +603,7 @@ export default function GravureEstimationPage() {
         remarks:       String(r.Remarks ?? ""),
         salesPerson:   String(r.SalesPerson ?? ""),
         salesType:     String(r.SalesType ?? "Local") as any,
+        plyStructureText: String(r.PlyStructureText ?? ""),
       })));
     } catch {}
     finally { setLoadingData(false); }
@@ -749,6 +764,16 @@ export default function GravureEstimationPage() {
         gusset:          r.Gusset          ?? undefined,
         seamingArea:     r.SeamingArea     ?? undefined,
         transparentArea: r.TransparentArea ?? undefined,
+        hasZipper:       Number(r.HasZipper      ?? 0) === 1,
+        hasSpout:        Number(r.HasSpout       ?? 0) === 1,
+        hasValve:        Number(r.HasValve       ?? 0) === 1,
+        hasWindow:       Number(r.HasWindow      ?? 0) === 1,
+        hasTearNotch:    Number(r.HasTearNotch   ?? 0) === 1,
+        hasEuroHole:     Number(r.HasEuroHole    ?? 0) === 1,
+        hasRoundCorner:  Number(r.HasRoundCorner ?? 0) === 1,
+        laminationPlies: Number(r.LaminationPlies ?? 0),
+        zipperWeight:    Number(r.ZipperWeight   ?? 0),
+        spoutWeight:     Number(r.SpoutWeight    ?? 0),
         packSize:         r.PackSize        ?? undefined,
         brandName:        r.BrandName       ?? undefined,
         productType:      r.ProductType     ?? undefined,
@@ -897,6 +922,9 @@ export default function GravureEstimationPage() {
     remarks:      string;
     createdInMaster?: boolean;
     repeatUse?:   boolean;
+    cylinderMasterID?: string;
+    purchaseRate?: number;
+    purchaseUnit?: string;
   };
   const [cylAllocs, setCylAllocs] = useState<EstCylAlloc[]>([]);
 
@@ -956,6 +984,52 @@ export default function GravureEstimationPage() {
     filmRateMap: apiFilmRateBySubGroupName,
     processMinChargeMap,
   }), [apiFilmRateBySubGroupName, processMinChargeMap]);
+
+  // ── Cylinder cost from ToolMaster (PurchaseRate × SQM area per cylinder) ──
+  const cylCostFromAllocs = useMemo(() => {
+    const billable = cylAllocs.filter(c => !c.repeatUse).map(c => {
+      // Prefer embedded purchaseRate; fallback: look up by cylinderMasterID in CYLINDER_TOOLS_LIVE
+      let rate = c.purchaseRate ?? 0;
+      if (rate === 0 && c.cylinderMasterID) {
+        const master = CYLINDER_TOOLS_LIVE.find(t => t.id === String(c.cylinderMasterID));
+        if (master) rate = master.purchaseRate ?? 0;
+      }
+      // Also try matching by cylinderNo (code) when no ID
+      if (rate === 0 && c.cylinderNo) {
+        const master = CYLINDER_TOOLS_LIVE.find(t => t.code === c.cylinderNo);
+        if (master) rate = master.purchaseRate ?? 0;
+      }
+      return { ...c, resolvedRate: rate };
+    }).filter(c => c.resolvedRate > 0);
+    if (billable.length === 0) return null; // null → fall back to cylinderCostPerColor × noOfColors
+    return parseFloat(billable.reduce((sum, c) => {
+      const pw   = parseFloat(String(c.printWidth   || 0)) / 1000;
+      const circ = parseFloat(String(c.circumference || 0)) / 1000;
+      return sum + c.resolvedRate * pw * circ;
+    }, 0).toFixed(2));
+  }, [cylAllocs, CYLINDER_TOOLS_LIVE]);
+
+  // Cylinder cost breakdown rows (for display)
+  const cylCostBreakdown = useMemo(() =>
+    cylAllocs.map(c => {
+      let rate = c.purchaseRate ?? 0;
+      let unit = c.purchaseUnit ?? "SQM";
+      if (rate === 0 && c.cylinderMasterID) {
+        const master = CYLINDER_TOOLS_LIVE.find(t => t.id === String(c.cylinderMasterID));
+        if (master) { rate = master.purchaseRate ?? 0; unit = master.purchaseUnit ?? "SQM"; }
+      }
+      if (rate === 0 && c.cylinderNo) {
+        const master = CYLINDER_TOOLS_LIVE.find(t => t.code === c.cylinderNo);
+        if (master) { rate = master.purchaseRate ?? 0; unit = master.purchaseUnit ?? "SQM"; }
+      }
+      if (rate === 0) return null;
+      const pw   = parseFloat(String(c.printWidth   || 0)) / 1000;
+      const circ = parseFloat(String(c.circumference || 0)) / 1000;
+      const area = parseFloat((pw * circ).toFixed(4));
+      const cost = parseFloat((rate * area).toFixed(2));
+      return { colorName: c.colorName, cylinderNo: c.cylinderNo, pw: c.printWidth, circ: c.circumference, area, rate, unit, cost, repeatUse: c.repeatUse ?? false };
+    }).filter(Boolean) as { colorName: string; cylinderNo: string; pw: string; circ: string; area: number; rate: number; unit: string; cost: number; repeatUse: boolean }[],
+  [cylAllocs, CYLINDER_TOOLS_LIVE]);
 
   // Auto-correct machineId when PRINT_MACHINES loads from API
   // Saved records may store a dummy/catalog machine ID — resolve to real DB ID by machine name
@@ -1032,11 +1106,12 @@ export default function GravureEstimationPage() {
       interestCost:         ov.interestCost         ?? form.interestCost,
       overheadPct:          ov.overheadPct          ?? form.overheadPct,
       profitPct:            ov.profitPct            ?? form.profitPct,
-      cylinderCostOverride: ov.cylinderCostOverride,
+      // Use ToolMaster-derived cylinder cost if available; per-qty manual override takes precedence
+      cylinderCostOverride: ov.cylinderCostOverride ?? (cylCostFromAllocs !== null ? cylCostFromAllocs : undefined),
       setupCostOverride:    ov.setupCostOverride,
       packingCostOverride:  ov.packingCostOverride,
     }, rateOpts);
-  }), [form, allQtys, qtyOverrides, rateOpts]);
+  }), [form, allQtys, qtyOverrides, rateOpts, cylCostFromAllocs]);
   const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty }, rateOpts)), [form, allQtys, rateOpts]);
   const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
   const activeCosts = allCosts[safeIdx] ?? costs;
@@ -1067,7 +1142,7 @@ export default function GravureEstimationPage() {
       const trim        = form.trimmingSize || 0;
       const shrink      = form.widthShrinkage || 0;
       const sType       = (form as any).structureType || "Label";
-      const estContent  = (form as any).content || "";
+      const estContent  = normalizeContentType((form as any).content || "");
       const estGusset   = (form as any).gusset      || 0;
       const estTopSeal  = (form as any).topSeal     || 0;
       const estBtmSeal  = (form as any).bottomSeal  || 0;
@@ -1109,7 +1184,9 @@ export default function GravureEstimationPage() {
       let effectiveRepeat: number;
       if (sType === "Sleeve") {
         effectiveRepeat = sleeveCutLength;
-      } else if (estContent === "Pouch — 3 Side Seal" || estContent === "Pouch — Center Seal" || estContent === "Both Side Gusset Pouch") {
+      } else if (estContent === "Pouch — 3 Side Seal") {
+        effectiveRepeat = ((form.jobHeight || 0) + estTopSeal + estBtmSeal + shrink) * 2;
+      } else if (estContent === "Pouch — Center Seal" || estContent === "Both Side Gusset Pouch") {
         effectiveRepeat = (form.jobHeight || 0) + estTopSeal + estBtmSeal + shrink;
       } else if (estContent === "Standup Pouch" || estContent === "Zipper Pouch" || estContent === "3D Pouch / Flat Bottom") {
         effectiveRepeat = (form.jobHeight || 0) + estTopSeal + (estGusset > 0 ? estGusset / 2 : 0) + shrink;
@@ -2272,6 +2349,16 @@ export default function GravureEstimationPage() {
       Gusset:          form.gusset          || 0,
       SeamingArea:     form.seamingArea     || 0,
       TransparentArea: form.transparentArea || 0,
+      HasZipper:       (form as any).hasZipper       ? 1 : 0,
+      HasSpout:        (form as any).hasSpout        ? 1 : 0,
+      HasValve:        (form as any).hasValve        ? 1 : 0,
+      HasWindow:       (form as any).hasWindow       ? 1 : 0,
+      HasTearNotch:    (form as any).hasTearNotch    ? 1 : 0,
+      HasEuroHole:     (form as any).hasEuroHole     ? 1 : 0,
+      HasRoundCorner:  (form as any).hasRoundCorner  ? 1 : 0,
+      LaminationPlies: (form as any).laminationPlies ?? 0,
+      ZipperWeight:    (form as any).zipperWeight    ?? 0,
+      SpoutWeight:     (form as any).spoutWeight     ?? 0,
       PackSize:        form.packSize        || "",
       BrandName:       form.brandName       || "",
       ProductType:     form.productType     || "",
@@ -2348,35 +2435,27 @@ export default function GravureEstimationPage() {
     { key: "customerName",  header: "Customer",       sortable: true },
     { key: "jobName",       header: "Job Name" },
     {
-      key: "secondaryLayers", header: "Ply Structure",
-      render: r => r.secondaryLayers.length === 0
-        ? <span className="text-gray-300 text-xs">—</span>
-        : (
-          <div className="space-y-1 min-w-[200px]">
-            {r.secondaryLayers.map((l, i) => (
-              <div key={i} className="flex items-center gap-1 flex-wrap">
-                <span className="px-1.5 py-0.5 bg-purple-600 text-white rounded text-[9px] font-black">P{l.layerNo}</span>
-                <span className={`px-1.5 py-0.5 rounded border text-[9px] font-semibold ${PLY_BADGE_CLS[l.plyType] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-                  {l.plyType || "—"}
-                </span>
-                {l.itemSubGroup && (
-                  <span className="text-[9px] text-gray-700 font-medium">{l.itemSubGroup}</span>
-                )}
-                {l.thickness > 0 && (
-                  <span className="text-[9px] text-gray-400 font-mono">{l.thickness}μ</span>
-                )}
-                {l.gsm > 0 && (
-                  <span className="text-[9px] font-bold text-indigo-600 font-mono">{l.gsm}g</span>
-                )}
-              </div>
+      key: "plyStructureText" as any, header: "Ply Structure",
+      render: r => {
+        const txt = (r as any).plyStructureText as string | undefined;
+        if (!txt) return <span className="text-gray-300 text-xs">—</span>;
+        const plies = txt.split(" / ").filter(Boolean);
+        return (
+          <div className="flex flex-wrap gap-1">
+            {plies.map((p, i) => (
+              <span key={i} className="inline-flex items-center px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded text-[10px] font-semibold whitespace-nowrap">
+                {p}
+              </span>
             ))}
           </div>
-        ),
+        );
+      },
     },
     { key: "noOfColors",    header: "Colors", render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span> },
     { key: "machineName",   header: "Machine", render: r => <span className="text-xs text-gray-600">{r.machineName}</span> },
-    { key: "quantity",      header: "Qty", render: r => <span>{r.quantity.toLocaleString()} {r.unit}</span> },
-    { key: "perMeterRate",  header: "₹/Kg", render: r => <span className="font-semibold">₹{r.perMeterRate}</span> },
+    { key: "quantity",      header: "Qty", render: r => <span>{r.quantity.toLocaleString()}</span> },
+    { key: "unit",          header: "Unit", render: r => <span className="text-xs text-gray-600">{r.unit}</span> },
+    { key: "perMeterRate",  header: "Rate (Rupees)", render: r => <span className="font-semibold">₹{r.perMeterRate}</span> },
     { key: "totalAmount",   header: "Total (₹)", render: r => <span className="font-bold text-gray-800">₹{r.totalAmount.toLocaleString()}</span> },
     { key: "status",        header: "Status", render: r => statusBadge(r.status), sortable: true },
   ];
@@ -2611,10 +2690,8 @@ export default function GravureEstimationPage() {
                      if (c) f("customerName", c.CustomerName);
                    }}
                    options={[
-                     { value: "", label: "-- Select Customer --" },
-                     ...(apiCustomers.length > 0
-                       ? apiCustomers.map(c => ({ value: String(c.LedgerID), label: c.CustomerName }))
-                       : customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name })))
+                     { value: "", label: apiCustomers.length === 0 ? "Loading customers..." : "-- Select Customer --" },
+                     ...apiCustomers.map(c => ({ value: String(c.LedgerID), label: c.CustomerName }))
                    ]}
                  />
                  <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Job / carton description" />
@@ -2641,7 +2718,14 @@ export default function GravureEstimationPage() {
                  <Select
                    label="Select Product Type *"
                    value={form.content || ""}
-                   onChange={e => { f("content", e.target.value); setForm(p => ({ ...p, content: e.target.value, structureType: getStructureType(e.target.value) } as any)); }}
+                   onChange={e => {
+                     const cn = (e.target.value || "").toLowerCase();
+                     setForm(p => ({
+                       ...p,
+                       content: e.target.value,
+                       structureType: getStructureType(e.target.value),
+                     } as any));
+                   }}
                    options={[
                      ...(!form.categoryId ? [] : [{ value: "", label: "-- Select Product Type --" }]),
                      ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx })),
@@ -2812,12 +2896,87 @@ export default function GravureEstimationPage() {
                   />
                 </div>
 
+                {/* ── Pouch Accessories — toggle chips (shown for all Pouch content types) ── */}
+                {form.content && getStructureType(form.content) === "Pouch" && (
+                  <div className="border border-purple-200 rounded-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
+                      <Wrench size={14} className="text-white" />
+                      <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+                    </div>
+                    <div className="p-4 bg-purple-50/40">
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {([
+                          { key: "hasZipper",      label: "Zipper",       color: "indigo" },
+                          { key: "hasSpout",       label: "Spout",        color: "cyan"   },
+                          { key: "hasValve",       label: "Valve",        color: "orange" },
+                          { key: "hasWindow",      label: "Window",       color: "sky"    },
+                          { key: "hasTearNotch",   label: "Tear Notch",   color: "rose"   },
+                          { key: "hasEuroHole",    label: "Euro Hole",    color: "violet" },
+                          { key: "hasRoundCorner", label: "Round Corner", color: "teal"   },
+                        ] as { key: string; label: string; color: string }[]).map(({ key, label, color }) => {
+                          const active = !!(form as any)[key];
+                          const cls: Record<string, string> = {
+                            indigo: active ? "bg-indigo-600 text-white border-indigo-600"  : "bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50",
+                            cyan:   active ? "bg-cyan-600 text-white border-cyan-600"      : "bg-white text-cyan-600 border-cyan-300 hover:bg-cyan-50",
+                            orange: active ? "bg-orange-500 text-white border-orange-500"  : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50",
+                            sky:    active ? "bg-sky-600 text-white border-sky-600"        : "bg-white text-sky-600 border-sky-300 hover:bg-sky-50",
+                            rose:   active ? "bg-rose-600 text-white border-rose-600"      : "bg-white text-rose-600 border-rose-300 hover:bg-rose-50",
+                            violet: active ? "bg-violet-600 text-white border-violet-600"  : "bg-white text-violet-600 border-violet-300 hover:bg-violet-50",
+                            teal:   active ? "bg-teal-600 text-white border-teal-600"      : "bg-white text-teal-600 border-teal-300 hover:bg-teal-50",
+                          };
+                          return (
+                            <button key={key} type="button"
+                              onClick={() => setForm(p => ({ ...p, [key]: !active } as any))}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all ${cls[color]}`}>
+                              {active && <Check size={11} />}
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {((form as any).hasZipper || (form as any).hasSpout) && (
+                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                          {(form as any).hasZipper && (
+                            <div>
+                              <label className="text-[10px] font-semibold text-indigo-600 uppercase block mb-1">Zipper Weight (g)</label>
+                              <input type="number" min={0} step={0.1} placeholder="e.g. 2.5"
+                                value={(form as any).zipperWeight || ""}
+                                onChange={e => setForm(p => ({ ...p, zipperWeight: parseFloat(e.target.value) || 0 } as any))}
+                                className="w-28 text-sm border border-indigo-300 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
+                            </div>
+                          )}
+                          {(form as any).hasSpout && (
+                            <div>
+                              <label className="text-[10px] font-semibold text-cyan-600 uppercase block mb-1">Spout Weight (g)</label>
+                              <div className="flex items-center gap-2">
+                                <input type="number" min={0} step={0.1} placeholder="e.g. 8"
+                                  value={(form as any).spoutWeight || ""}
+                                  onChange={e => setForm(p => ({ ...p, spoutWeight: parseFloat(e.target.value) || 0 } as any))}
+                                  className="w-28 text-sm border border-cyan-300 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-2 focus:ring-cyan-400 font-mono" />
+                                <button type="button" onClick={() => setForm(p => ({ ...p, spoutWeight: 8 } as any))}
+                                  className="text-[10px] px-2 py-1.5 bg-cyan-100 border border-cyan-300 text-cyan-700 rounded-lg font-bold hover:bg-cyan-200">
+                                  8g (Std)
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* ── Dimension Setup block (with live diagram) ── */}
-                {form.content && CONTENT_TYPE_CONFIG[normalizeContentType(form.content)] ? (
+                {form.content && CONTENT_TYPE_CONFIG[getDisplayContentType(form.content)] ? (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
+                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
                       <Calculator size={14} className="text-white" />
                       <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {form.content}</p>
+                      {(form as any).hasZipper      && <span className="ml-2 px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">Zipper</span>}
+                      {(form as any).hasSpout       && <span className="ml-1 px-2 py-0.5 rounded-full bg-cyan-400/80 text-white text-[10px] font-bold">Spout</span>}
+                      {(form as any).hasValve       && <span className="ml-1 px-2 py-0.5 rounded-full bg-orange-400/80 text-white text-[10px] font-bold">Valve</span>}
+                      {(form as any).hasTearNotch   && <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-400/80 text-white text-[10px] font-bold">Tear Notch</span>}
+                      {(form as any).hasEuroHole    && <span className="ml-1 px-2 py-0.5 rounded-full bg-violet-400/80 text-white text-[10px] font-bold">Euro Hole</span>}
                     </div>
                     <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Left: inputs */}
@@ -2825,7 +2984,7 @@ export default function GravureEstimationPage() {
                         <div>
                           <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-2">Packaging Dimensions</p>
                           <DimensionInputPanel
-                            contentType={normalizeContentType(form.content)}
+                            contentType={getDisplayContentType(form.content)}
                             dims={dimValues}
                             onChange={patch => {
                               patchDim(patch);
@@ -3015,161 +3174,85 @@ export default function GravureEstimationPage() {
                             <span className="text-[9px] text-gray-400">As per AJSW Printing &amp; Winding Chart</span>
                           </div>
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Printed ACROSS the Roll</p>
-                          <div className="grid grid-cols-4 gap-2 mb-3">
+                          <div className="grid grid-cols-4 gap-3 mb-3">
                             {([
-                              { n: 1, label: "Outside · Across\nTop off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,0 26,4 30,12" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 2, label: "Inside · Across\nTop off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="22" y1="10" x2="32" y2="2" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,0 26,4 30,12" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 3, label: "Outside · Across\nBottom off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,64 24,60 30,52" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 4, label: "Inside · Across\nBottom off first",
-                                svg: (
-                                  <svg width="84" height="72" viewBox="0 0 84 72">
-                                    <path d="M4,10 Q10,8 16,10 Q22,12 28,10 Q34,8 40,10 L40,52 L4,52 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="4" y1="50" x2="40" y2="50" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="22" y="23" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(180,22,23)">PRINTING</text>
-                                    <text x="22" y="33" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,33)">READS</text>
-                                    <text x="22" y="42" textAnchor="middle" fontFamily="serif" fontSize="6.5" fontStyle="italic" fill="#222" transform="rotate(180,22,42)">This Way</text>
-                                    <circle cx="64" cy="34" r="16" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="64" cy="34" r="5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="40" y1="10" x2="49" y2="19" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="40" y1="52" x2="49" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="22" y1="52" x2="32" y2="62" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="34,64 24,60 30,52" fill="#111"/>
-                                  </svg>
-                                )},
-                            ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
+                              { n: 1, label: "Outside · Across\nTop off first" },
+                              { n: 2, label: "Inside · Across\nTop off first" },
+                              { n: 3, label: "Outside · Across\nBottom off first" },
+                              { n: 4, label: "Inside · Across\nBottom off first" },
+                            ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((form as any).unwindDirection ?? 0) === n;
                               return (
-                                <button key={n} type="button" onClick={() => f("unwindDirection" as any, n)}
-                                  title={label.replace("\n", " ")}
-                                  className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-sm" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  {svg}
-                                  <span className={`text-[11px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                  <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                                </button>
+                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                  </button>
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    title="Preview full size">
+                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
                           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 mt-1">Printed WITH the Roll</p>
-                          <div className="grid grid-cols-4 gap-2">
+                          <div className="grid grid-cols-4 gap-3">
                             {([
-                              { n: 5, label: "Outside · With Roll\nRight off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="66,20 56,20 60,28" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 6, label: "Inside · With Roll\nRight off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="30" x2="64" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="66,20 56,20 60,28" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 7, label: "Outside · With Roll\nLeft off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="0,20 10,18 8,28" fill="#111"/>
-                                  </svg>
-                                )},
-                              { n: 8, label: "Inside · With Roll\nLeft off first",
-                                svg: (
-                                  <svg width="84" height="80" viewBox="0 0 84 80">
-                                    <path d="M10,4 L52,4 L52,56 Q50,62 48,56 Q46,50 44,56 Q42,62 40,56 L10,56 Z" fill="white" stroke="#111" strokeWidth="1.2"/>
-                                    <line x1="10" y1="4" x2="10" y2="56" stroke="#444" strokeWidth="0.8"/>
-                                    <text x="31" y="30" textAnchor="middle" fontFamily="serif" fontSize="7.5" fontStyle="italic" fontWeight="bold" fill="#111" transform="rotate(-90,31,30)">PRINTING</text>
-                                    <text x="31" y="41" textAnchor="middle" fontFamily="serif" fontSize="6" fontStyle="italic" fill="#222" transform="rotate(-90,31,41)">READS This Way</text>
-                                    <circle cx="67" cy="63" r="14" fill="#d8d8d8" stroke="#111" strokeWidth="1.3"/>
-                                    <circle cx="67" cy="63" r="4.5" fill="#aaa" stroke="#555" strokeWidth="1"/>
-                                    <line x1="52" y1="56" x2="54" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="52" y1="4" x2="53" y2="50" stroke="#111" strokeWidth="1.1"/>
-                                    <line x1="10" y1="30" x2="0" y2="22" stroke="#111" strokeWidth="2.2"/>
-                                    <polygon points="0,20 10,18 8,28" fill="#111"/>
-                                  </svg>
-                                )},
-                            ] as { n: number; label: string; svg: React.ReactNode }[]).map(({ n, label, svg }) => {
+                              { n: 5, label: "Outside · With Roll\nRight off first" },
+                              { n: 6, label: "Inside · With Roll\nRight off first" },
+                              { n: 7, label: "Outside · With Roll\nLeft off first" },
+                              { n: 8, label: "Inside · With Roll\nLeft off first" },
+                            ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((form as any).unwindDirection ?? 0) === n;
                               return (
-                                <button key={n} type="button" onClick={() => f("unwindDirection" as any, n)}
-                                  title={label.replace("\n", " ")}
-                                  className={`flex flex-col items-center gap-1 p-1.5 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-sm" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  {svg}
-                                  <span className={`text-[11px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                  <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                                </button>
+                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                  </button>
+                                  <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    title="Preview full size">
+                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                  </button>
+                                </div>
                               );
                             })}
                           </div>
+                          {/* ── Full-size image preview modal ── */}
+                          {unwindPreview !== null && (
+                            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setUnwindPreview(null)}>
+                              <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-3">
+                                  <div>
+                                    <p className="text-sm font-bold text-gray-800">Direction #{unwindPreview}</p>
+                                    <p className="text-xs text-gray-400">{[
+                                      "Outside · Across · Top off first",
+                                      "Inside · Across · Top off first",
+                                      "Outside · Across · Bottom off first",
+                                      "Inside · Across · Bottom off first",
+                                      "Outside · With Roll · Right off first",
+                                      "Inside · With Roll · Right off first",
+                                      "Outside · With Roll · Left off first",
+                                      "Inside · With Roll · Left off first",
+                                    ][unwindPreview - 1]}</p>
+                                  </div>
+                                  <button type="button" onClick={() => setUnwindPreview(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all">
+                                    <X size={16} />
+                                  </button>
+                                </div>
+                                <img src={`/images/Unwind_Direction_${unwindPreview}.png`} alt={`Direction ${unwindPreview}`} className="w-full h-auto object-contain rounded-lg border border-gray-100" />
+                                <button type="button" onClick={() => { f("unwindDirection" as any, unwindPreview); setUnwindPreview(null); }}
+                                  className="mt-3 w-full py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-all">
+                                  Select Direction #{unwindPreview}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {(form as any).unwindDirection > 0 && (
                             <p className="mt-1.5 text-[10px] text-orange-600 font-semibold flex items-center gap-1">
                               <Check size={10}/> Direction #{(form as any).unwindDirection} selected — {[
@@ -3187,7 +3270,7 @@ export default function GravureEstimationPage() {
                         </div>
                       </div>
                       {/* Right: live diagram */}
-                      <DimensionDiagram contentType={normalizeContentType(form.content)} dims={dimValues} />
+                      <DimensionDiagram contentType={getDisplayContentType(form.content)} dims={dimValues} />
                     </div>
                   </div>
                 ) : (
@@ -3473,10 +3556,10 @@ export default function GravureEstimationPage() {
                                                 rate:     masterRate,
                                                 rateUnit: masterUnit,
                                               };
-                                              // For Ink: auto-fill solidPct + dry GSM from static master defaults
-                                              if (ci.itemGroup === "Ink" && (apiIt || staticIt)) {
-                                                if (!ci.gsm || ci.gsm === 0) patch.gsm = (staticIt as any)?.defaultGsm ?? 3.0;
-                                                if (!ci.solidPct) patch.solidPct = (staticIt as any)?.solidPct ?? 35;
+                                              // For Ink: auto-fill DryGsM + SolidPerc from ItemMaster
+                                              if (ci.itemGroup === "Ink" && apiIt) {
+                                                patch.gsm = parseFloat(String(apiIt.DryGsM ?? 0)) || 0;
+                                                patch.solidPct = parseFloat(String(apiIt.SolidPerc ?? 40)) || 40;
                                               }
                                               updatePlyConsumable(index, ciIdx, patch);
                                             }}
@@ -4539,8 +4622,8 @@ export default function GravureEstimationPage() {
             </div>
           </div>
 
-          {/* ── Extra Materials ──────────────────────────────── */}
-          <div>
+          {/* ── Extra Materials — hidden ──────────────────────── */}
+          {false && <div>
             <div className="flex items-center justify-between mb-2">
               <SectionHeader label="Extra Materials (Optional)" />
               <button
@@ -4628,7 +4711,7 @@ export default function GravureEstimationPage() {
                 </table>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* ── Process Cost Breakdown ────────────────────────── */}
           {breakdown.procLines.length > 0 && (
@@ -4923,8 +5006,8 @@ export default function GravureEstimationPage() {
             </div>
           </div>
 
-          {/* ── Packing Cost Breakup ──────────────────────────── */}
-          <div>
+          {/* ── Packing Cost Breakup — hidden ──────────────────── */}
+          {false && <div>
             <SectionHeader label="Packing Cost Breakup" />
             <div className="border border-orange-200 rounded-xl overflow-hidden bg-white">
               {/* Box */}
@@ -5031,7 +5114,7 @@ export default function GravureEstimationPage() {
                 );
               })()}
             </div>
-          </div>
+          </div>}
 
           {/* ── Section 5: Cost Summary — Comparison Table ──── */}
           <div>
@@ -5093,14 +5176,21 @@ export default function GravureEstimationPage() {
                     ) : null)}
                   </tr>
 
-                  {/* Cylinder Cost — editable per qty */}
+                  {/* Cylinder Cost — from ToolMaster PurchaseRate×Area when available */}
                   <tr className="bg-indigo-50/50">
-                    <td className="sticky left-0 z-10 bg-indigo-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-indigo-800">Cylinder ({form.noOfColors}C) (₹)</td>
+                    <td className="sticky left-0 z-10 bg-indigo-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-indigo-800">
+                      Cylinder ({form.noOfColors}C) (₹)
+                      {cylCostFromAllocs !== null && (
+                        <span className="block text-[9px] font-normal text-indigo-500">from ToolMaster rate</span>
+                      )}
+                    </td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
                       <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
                         <input
                           type="number" min={0} step={1}
-                          placeholder={`₹${(form.cylinderCostPerColor * form.noOfColors).toLocaleString()}`}
+                          placeholder={cylCostFromAllocs !== null
+                            ? `₹${cylCostFromAllocs.toLocaleString()}`
+                            : `₹${(form.cylinderCostPerColor * form.noOfColors).toLocaleString()}`}
                           className="w-full text-right text-xs font-semibold text-indigo-800 bg-white border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                           value={qtyOverrides[qi]?.cylinderCostOverride || ""}
                           onChange={e => setQtyOverride(qi, "cylinderCostOverride", !e.target.value || Number(e.target.value) === 0 ? undefined : Number(e.target.value))}
@@ -5108,6 +5198,20 @@ export default function GravureEstimationPage() {
                       </td>
                     ) : null)}
                   </tr>
+                  {/* Cylinder cost breakdown (only shown when ToolMaster rates exist) */}
+                  {cylCostBreakdown.length > 0 && (
+                    <tr className="bg-indigo-50/20">
+                      <td colSpan={allQtys.filter(q => q > 0).length + 1} className="px-3 py-1.5 border-b border-gray-100">
+                        <div className="flex flex-wrap gap-2">
+                          {cylCostBreakdown.map((r, i) => (
+                            <span key={i} className={`text-[9px] px-2 py-0.5 rounded border ${r.repeatUse ? "bg-gray-50 text-gray-400 border-gray-200 line-through" : "bg-indigo-50 text-indigo-700 border-indigo-200"}`}>
+                              {r.colorName} ({r.cylinderNo || "—"}) · {r.pw}×{r.circ}mm · {r.area} SQM · ₹{r.rate}/{r.unit} = ₹{r.cost.toLocaleString()}{r.repeatUse ? " (repeat)" : ""}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
 
                   {/* Other Cost — editable per qty */}
                   <tr className="bg-amber-50/50">
@@ -5598,9 +5702,34 @@ export default function GravureEstimationPage() {
                                     {pCode ? <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold font-mono whitespace-nowrap">{pCode}</span> : <span className="text-gray-400 text-[10px]">Direct</span>}
                                   </td>
                                   <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50" value={ca.colorName} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
-                                  <td className="px-2 py-1.5"><input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white" placeholder="e.g. CUC-001" value={ca.cylinderNo} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderNo: e.target.value } : c))} /></td>
-                                  <td className="px-2 py-1.5"><input type="number" className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 text-center" value={ca.printWidth} onChange={e => setCylAllocs(p => p.map(c => ({ ...c, printWidth: e.target.value })))} /></td>
-                                  <td className="px-2 py-1.5"><input type="number" className="w-20 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 text-center bg-indigo-50/40" value={ca.circumference} onChange={e => setCylAllocs(p => p.map(c => ({ ...c, circumference: e.target.value })))} /></td>
+                                  <td className="px-2 py-1.5">
+                                    <select
+                                      className="w-36 text-xs border border-amber-300 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                                      value={ca.cylinderMasterID || ""}
+                                      onChange={e => {
+                                        const cyl = CYLINDER_TOOLS_LIVE.find(t => t.id === e.target.value);
+                                        setCylAllocs(p => p.map((c, ci) => ci === i ? {
+                                          ...c,
+                                          cylinderMasterID: cyl?.id ?? "",
+                                          cylinderNo:  cyl?.code ?? "",
+                                          printWidth:  cyl ? String(cyl.printWidth) : c.printWidth,
+                                          circumference: cyl ? String(cyl.repeatLength) : c.circumference,
+                                          purchaseRate: cyl?.purchaseRate ?? 0,
+                                          purchaseUnit: cyl?.purchaseUnit ?? "SQM",
+                                        } : c));
+                                      }}>
+                                      <option value="">-- Select Cylinder --</option>
+                                      {CYLINDER_TOOLS_LIVE.map(t => (
+                                        <option key={t.id} value={t.id}>{t.code} — {t.name}</option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className="block text-[10px] font-mono text-gray-500 text-center">{ca.printWidth || "—"}</span>
+                                  </td>
+                                  <td className="px-2 py-1.5">
+                                    <span className="block text-[10px] font-mono text-indigo-600 text-center">{ca.circumference || "—"}</span>
+                                  </td>
                                   <td className="px-2 py-1.5 text-center"><span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[10px] font-bold">{ca.repeatUPS}×</span></td>
                                   <td className="px-2 py-1.5">
                                     <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400" value={ca.cylinderType} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as EstCylAlloc["cylinderType"] } : c))}>
@@ -5616,7 +5745,12 @@ export default function GravureEstimationPage() {
                                   <td className="px-2 py-1.5 text-center bg-green-50/40">
                                     {ca.repeatUse
                                       ? <span className="text-gray-400 text-[10px]">Skip</span>
-                                      : <span className="px-2 py-0.5 bg-green-100 text-green-800 border border-green-200 rounded-lg text-[10px] font-bold font-mono whitespace-nowrap">₹{(form.cylinderCostPerColor || 0).toLocaleString("en-IN")}</span>}
+                                      : (() => {
+                                          const bd = cylCostBreakdown.find(b => b.cylinderNo === ca.cylinderNo || (ca.cylinderMasterID && b.cylinderNo === ca.cylinderNo));
+                                          return bd
+                                            ? <span className="px-2 py-0.5 bg-green-100 text-green-800 border border-green-200 rounded-lg text-[10px] font-bold font-mono whitespace-nowrap" title={`${bd.pw}×${bd.circ}mm = ${bd.area} SQM × ₹${bd.rate}/${bd.unit}`}>₹{bd.cost.toLocaleString("en-IN")}</span>
+                                            : <span className="px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-[10px] font-mono whitespace-nowrap">Select cylinder</span>;
+                                        })()}
                                   </td>
                                   <td className="px-2 py-1.5 text-center">
                                     {ca.createdInMaster
@@ -6208,7 +6342,7 @@ export default function GravureEstimationPage() {
                   <div style={{ borderBottom: "3px solid #7c3aed", paddingBottom: "6px", marginBottom: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#7c3aed", letterSpacing: "1px" }}>AJ SHRINK INDUSTRIES</div>
+                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#7c3aed", letterSpacing: "1px" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
                         <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Printing &amp; Flexible Packaging</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -6550,7 +6684,7 @@ export default function GravureEstimationPage() {
                   {/* ── FOOTER ── */}
                   <div style={{ marginTop: "6px", display: "flex", justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: "4px", fontSize: "6.5pt", color: "#9ca3af" }}>
                     <span>Printed: {new Date().toLocaleString("en-IN")}</span>
-                    <span>AJ Shrink Industries — Gravure Cost Estimation</span>
+                    <span>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"} — Gravure Cost Estimation</span>
                     <span>{est.estimationNo}</span>
                   </div>
 

@@ -1,0 +1,1222 @@
+"use client";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Plus, Pencil, Trash2, Save, List, Check, FlaskConical,
+  ClipboardList, Beaker, X, Search, ChevronDown, AlertCircle, RefreshCw,
+} from "lucide-react";
+import { getCompanyName } from "@/lib/useCompanyName";
+import { DataTable, Column } from "@/components/tables/DataTable";
+import Button from "@/components/ui/Button";
+import { authHeaders } from "@/lib/auth";
+
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
+
+function unwrap(r: unknown): unknown {
+  while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
+  return r;
+}
+
+async function api(path: string, body?: object) {
+  const res = await fetch(`${BASE}/api/inkKitchen/${path}`, {
+    method: body ? "POST" : "GET",
+    headers: authHeaders(),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  return unwrap(await res.text()) as Record<string, unknown>;
+}
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+interface InkItem    { id: string; itemCode: string; itemName: string; shadeName: string; stock: number }
+interface Warehouse  { id: string; name: string; bin: string }
+interface Job        { id: string; jobNo: string; jobName: string; clientName: string }
+interface ShadeName  { shadeName: string }
+
+interface Dropdowns {
+  inkItems: InkItem[];
+  warehouses: Warehouse[];
+  jobs: Job[];
+  shadeNames: ShadeName[];
+  papers: { id: string; itemName: string; quality: string; finish: string }[];
+}
+
+interface Recipe {
+  id: string;
+  ShadeRecipeID: number;
+  ShadeRecipeNo: string;
+  ShadeRecipeName: string;
+  InkCode: string;
+  InkName: string;
+  Reference: string;
+  PaperQuality: string;
+  PaperFinish: string;
+  LabValueL: number;
+  LabValueA: number;
+  LabValueB: number;
+  CreatedDate: string;
+  Ingredients: string;
+  IngCount: number;
+  UsedInProduction: number;
+}
+
+interface RecipeDetail {
+  ShadeRecipeDetailsID: number;
+  SubItemID: number;
+  SubItemCode: string;
+  SubItemName: string;
+  ShadePercentage: number;
+  Stock: number;
+}
+
+interface SPR {
+  SpecialShadeProductionID: number;
+  SPRNo: string;
+  SPRDate: string;
+  RequiredQty: number;
+  ShadeName: string;
+  Reference: string;
+  PaperQuality: string;
+  PaperFinish: string;
+  JobBookingID: number;
+  JobNo: string;
+  JobName: string;
+  ClientName: string;
+  InkID: number;
+  InkCode: string;
+  InkName: string;
+  IsShadeProduced: number;
+  RequiredDate: string;
+  ShadeRecipeID: number;
+  RecipeNo: string;
+}
+
+interface MixSPR extends SPR {
+  RecipeName: string;
+}
+
+interface MixedSPR {
+  SpecialShadeProductionID: number;
+  SPRNo: string;
+  SPRDate: string;
+  ShadeName: string;
+  RequiredQty: number;
+  Reference: string;
+  JobNo: string;
+  JobName: string;
+  ClientName: string;
+  InkCode: string;
+  InkName: string;
+  BatchNo: string;
+  MixedDate: string;
+  ProducedQty: number;
+  RecipeNo: string;
+}
+
+// ── Shared UI ──────────────────────────────────────────────────────────────────
+
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
+const selectCls = inputCls + " bg-white cursor-pointer";
+
+const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+      {label}{required && <span className="text-red-500 ml-1">*</span>}
+    </label>
+    {children}
+  </div>
+);
+
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
+    {title}
+  </h3>
+);
+
+const Tab = ({ label, icon: Icon, active, onClick, count }: {
+  label: string; icon: React.ElementType; active: boolean; onClick: () => void; count?: number;
+}) => (
+  <button
+    onClick={onClick}
+    className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
+      active ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"
+    }`}
+  >
+    <Icon size={15} />
+    {label}
+    {count !== undefined && (
+      <span className={`ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full ${
+        active ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+      }`}>{count}</span>
+    )}
+  </button>
+);
+
+// ── RECIPE FORM ────────────────────────────────────────────────────────────────
+
+const blankRecipeForm = {
+  shadeRecipeName: "",
+  itemId: "",
+  reference: "",
+  paperQuality: "",
+  paperFinish: "",
+  labL: "",
+  labA: "",
+  labB: "",
+};
+
+type IngredientRow = { subItemId: string; subItemCode: string; subItemName: string; percentage: string };
+
+function RecipeForm({
+  editing,
+  form,
+  setForm,
+  ingredients,
+  setIngredients,
+  inkItems,
+  saving,
+  onSave,
+  onBack,
+}: {
+  editing: Recipe | null;
+  form: typeof blankRecipeForm;
+  setForm: (f: typeof blankRecipeForm) => void;
+  ingredients: IngredientRow[];
+  setIngredients: (rows: IngredientRow[]) => void;
+  inkItems: InkItem[];
+  saving: boolean;
+  onSave: () => void;
+  onBack: () => void;
+}) {
+  const f = (k: keyof typeof blankRecipeForm, v: string) => setForm({ ...form, [k]: v });
+  const totalPct = ingredients.reduce((s, r) => s + (parseFloat(r.percentage) || 0), 0);
+
+  const addRow = () =>
+    setIngredients([...ingredients, { subItemId: "", subItemCode: "", subItemName: "", percentage: "" }]);
+
+  const removeRow = (i: number) => setIngredients(ingredients.filter((_, idx) => idx !== i));
+
+  const updateRow = (i: number, patch: Partial<IngredientRow>) =>
+    setIngredients(ingredients.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const setIngredientItem = (i: number, itemId: string) => {
+    const ink = inkItems.find(x => x.id === itemId);
+    if (ink) updateRow(i, { subItemId: itemId, subItemCode: ink.itemCode, subItemName: ink.itemName });
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto pb-10">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div>
+          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
+          <h2 className="text-xl font-bold text-gray-800">Shade Recipe {editing ? "Edit" : "New"}</h2>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onBack}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            <List size={15} /> Back
+          </button>
+          <button onClick={onSave} disabled={saving || !form.shadeRecipeName.trim() || ingredients.length === 0 || Math.abs(totalPct - 100) > 0.01}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
+            <Save size={15} /> {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
+        {editing && (
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs font-semibold text-blue-700">
+            Editing: {editing.ShadeRecipeNo}
+          </div>
+        )}
+
+        <div>
+          <SectionTitle title="Recipe Details" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <Field label="Shade Recipe Name" required>
+              <input type="text" value={form.shadeRecipeName}
+                onChange={e => f("shadeRecipeName", e.target.value)}
+                placeholder="e.g. Pantone 485C Red"
+                className={inputCls} />
+            </Field>
+            <Field label="Target Ink Item" required>
+              <select value={form.itemId} onChange={e => f("itemId", e.target.value)} className={selectCls}>
+                <option value="">— select ink —</option>
+                {inkItems.map((i, ix) => (
+                  <option key={`${i.id}_${ix}`} value={i.id}>{i.itemCode} — {i.itemName}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Reference (Pantone / Sample)">
+              <input type="text" value={form.reference}
+                onChange={e => f("reference", e.target.value)}
+                placeholder="Pantone 485C"
+                className={inputCls} />
+            </Field>
+            <Field label="Paper Quality">
+              <input type="text" value={form.paperQuality}
+                onChange={e => f("paperQuality", e.target.value)}
+                placeholder="e.g. Gloss, Matt"
+                className={inputCls} />
+            </Field>
+            <Field label="Paper Finish">
+              <input type="text" value={form.paperFinish}
+                onChange={e => f("paperFinish", e.target.value)}
+                placeholder="e.g. Glossy, Matte"
+                className={inputCls} />
+            </Field>
+          </div>
+        </div>
+
+        <div>
+          <SectionTitle title="Lab Colour Values (L*a*b*)" />
+          <div className="grid grid-cols-3 gap-4">
+            {(["labL", "labA", "labB"] as const).map((k, i) => (
+              <Field key={k} label={`${["L*", "a*", "b*"][i]}`}>
+                <input type="number" step="0.01" value={form[k]}
+                  onChange={e => f(k, e.target.value)}
+                  className={inputCls} />
+              </Field>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <SectionTitle title="Ink Ingredients (must total 100%)" />
+            <button onClick={addRow}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+              <Plus size={13} /> Add Ink
+            </button>
+          </div>
+
+          <div className={`mb-2 text-xs font-semibold ${Math.abs(totalPct - 100) < 0.01 && ingredients.length > 0 ? "text-green-600" : "text-amber-600"}`}>
+            Total: {totalPct.toFixed(2)}% {ingredients.length > 0 && Math.abs(totalPct - 100) > 0.01 && "(must be 100%)"}
+          </div>
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+                <tr>
+                  <th className="px-3 py-2 text-left">Ink Item</th>
+                  <th className="px-3 py-2 text-right w-32">% Percentage</th>
+                  <th className="px-3 py-2 text-right w-12">Del</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {ingredients.length === 0 && (
+                  <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 text-xs">No ingredients yet. Click "Add Ink" to begin.</td></tr>
+                )}
+                {ingredients.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    <td className="px-3 py-2">
+                      <select value={row.subItemId} onChange={e => setIngredientItem(i, e.target.value)}
+                        className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-400 outline-none">
+                        <option value="">— select —</option>
+                        {inkItems.map((ink, ix) => (
+                          <option key={`${ink.id}_${ix}`} value={ink.id}>{ink.itemCode} — {ink.itemName}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input type="number" step="0.01" min="0" max="100" value={row.percentage}
+                        onChange={e => updateRow(i, { percentage: e.target.value })}
+                        className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-blue-400 outline-none" />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600">
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-between pt-4 border-t border-gray-100">
+          <button onClick={() => { setForm(blankRecipeForm); setIngredients([]); }}
+            className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            Clear
+          </button>
+          <button onClick={onSave}
+            disabled={saving || !form.shadeRecipeName.trim() || ingredients.length === 0 || Math.abs(totalPct - 100) > 0.01}
+            className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
+            <Check size={15} /> {saving ? "Saving…" : "Save Recipe"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SPR FORM ───────────────────────────────────────────────────────────────────
+
+const blankSprForm = {
+  jobBookingId: "",
+  inkId: "",
+  shadeName: "",
+  requiredQty: "",
+  reference: "",
+  paperQuality: "",
+  paperFinish: "",
+  requiredDate: "",
+};
+
+function SprForm({
+  editing,
+  form,
+  setForm,
+  inkItems,
+  jobs,
+  saving,
+  onSave,
+  onBack,
+}: {
+  editing: SPR | null;
+  form: typeof blankSprForm;
+  setForm: (f: typeof blankSprForm) => void;
+  inkItems: InkItem[];
+  jobs: Job[];
+  saving: boolean;
+  onSave: () => void;
+  onBack: () => void;
+}) {
+  const f = (k: keyof typeof blankSprForm, v: string) => setForm({ ...form, [k]: v });
+
+  return (
+    <div className="max-w-2xl mx-auto pb-10">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div>
+          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
+          <h2 className="text-xl font-bold text-gray-800">Production Request {editing ? "Edit" : "New"}</h2>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={onBack}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            <List size={15} /> Back
+          </button>
+          <button onClick={onSave}
+            disabled={saving || !form.inkId || !form.shadeName.trim() || !form.requiredQty}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
+            <Save size={15} /> {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
+        {editing && (
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-semibold text-amber-700">
+            Editing: {editing.SPRNo}
+          </div>
+        )}
+
+        <SectionTitle title="Production Request Details" />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Production Work Order (PWO)">
+            <select value={form.jobBookingId} onChange={e => f("jobBookingId", e.target.value)} className={selectCls}>
+              <option value="">— select PWO —</option>
+              {jobs.map(j => (
+                <option key={j.id} value={j.id}>{j.jobNo} — {j.jobName}</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Ink Item" required>
+            <select value={form.inkId}
+              onChange={e => {
+                const ink = inkItems.find(i => i.id === e.target.value);
+                setForm({ ...form, inkId: e.target.value, shadeName: ink?.shadeName ?? form.shadeName });
+              }}
+              className={selectCls}>
+              <option value="">— select ink —</option>
+              {inkItems.map(i => (
+                <option key={i.id} value={i.id}>{i.itemCode} — {i.itemName}</option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="Shade Name" required>
+            <input type="text" value={form.shadeName}
+              onChange={e => f("shadeName", e.target.value)}
+              placeholder="e.g. Red, Pantone 485C"
+              className={inputCls} />
+          </Field>
+
+          <Field label="Required Qty (kg)" required>
+            <input type="number" step="0.001" min="0" value={form.requiredQty}
+              onChange={e => f("requiredQty", e.target.value)}
+              placeholder="0.000"
+              className={inputCls} />
+          </Field>
+
+          <Field label="Reference">
+            <input type="text" value={form.reference}
+              onChange={e => f("reference", e.target.value)}
+              placeholder="Pantone code / sample ref"
+              className={inputCls} />
+          </Field>
+
+          <Field label="Required Date">
+            <input type="date" value={form.requiredDate}
+              onChange={e => f("requiredDate", e.target.value)}
+              className={inputCls} />
+          </Field>
+
+          <Field label="Paper Quality">
+            <input type="text" value={form.paperQuality}
+              onChange={e => f("paperQuality", e.target.value)}
+              className={inputCls} />
+          </Field>
+
+          <Field label="Paper Finish">
+            <input type="text" value={form.paperFinish}
+              onChange={e => f("paperFinish", e.target.value)}
+              className={inputCls} />
+          </Field>
+        </div>
+
+        <div className="flex justify-between pt-4 border-t border-gray-100">
+          <button onClick={() => setForm(blankSprForm)}
+            className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            Clear
+          </button>
+          <button onClick={onSave}
+            disabled={saving || !form.inkId || !form.shadeName.trim() || !form.requiredQty}
+            className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
+            <Check size={15} /> {saving ? "Saving…" : "Save Request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MIXING MODAL ───────────────────────────────────────────────────────────────
+
+interface MixIngRow { subItemId: number; subItemCode: string; subItemName: string; pct: number; stock: number; qty: string; warehouseId: string; batchNo: string }
+
+function MixingModal({
+  spr,
+  warehouses,
+  inkItems,
+  onClose,
+  onDone,
+}: {
+  spr: MixSPR;
+  warehouses: Warehouse[];
+  inkItems: InkItem[];
+  onClose: () => void;
+  onDone: (batchNo: string) => void;
+}) {
+  const [recipes, setRecipes]   = useState<{ ShadeRecipeID: number; ShadeRecipeNo: string; ShadeRecipeName: string; Ingredients: string }[]>([]);
+  const [selRecipe, setSelRecipe] = useState(spr.ShadeRecipeID ? String(spr.ShadeRecipeID) : "");
+  const [ingRows, setIngRows]   = useState<MixIngRow[]>([]);
+  const [producedQty, setProducedQty] = useState(String(spr.RequiredQty));
+  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? "");
+  const [batchNo, setBatchNo]   = useState("");
+  const [saving, setSaving]     = useState(false);
+  const [loadingRecipes, setLoadingRecipes] = useState(true);
+
+  // Load similar shade recipes
+  useEffect(() => {
+    (async () => {
+      setLoadingRecipes(true);
+      try {
+        const data = await api("shade-recipe/list");
+        setRecipes(Array.isArray(data) ? data.map((r: Recipe) => ({ ...r, id: String(r.ShadeRecipeID) })) : []);
+      } finally { setLoadingRecipes(false); }
+    })();
+  }, [spr.ShadeName, spr.PaperFinish]);
+
+  // Load recipe details when recipe selected
+  useEffect(() => {
+    if (!selRecipe) { setIngRows([]); return; }
+    (async () => {
+      try {
+      const data = await api(`shade-recipe/${selRecipe}/details`) as { details?: RecipeDetail[] };
+      const details = Array.isArray(data?.details) ? data.details : [];
+      const qty = parseFloat(producedQty) || spr.RequiredQty;
+      setIngRows(details.map(d => ({
+        subItemId:   d.SubItemID,
+        subItemCode: d.SubItemCode,
+        subItemName: d.SubItemName,
+        pct:         d.ShadePercentage,
+        stock:       d.Stock,
+        qty:         ((d.ShadePercentage / 100) * qty).toFixed(3),
+        warehouseId: warehouses[0]?.id ?? "",
+        batchNo:     "",
+      })));
+      } catch { setIngRows([]); }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selRecipe]);
+
+  const recalcQty = (newProdQty: string) => {
+    setProducedQty(newProdQty);
+    const qty = parseFloat(newProdQty) || 0;
+    setIngRows(rows => rows.map(r => ({ ...r, qty: ((r.pct / 100) * qty).toFixed(3) })));
+  };
+
+  const updateIng = (i: number, patch: Partial<MixIngRow>) =>
+    setIngRows(rows => rows.map((r, idx) => idx === i ? { ...r, ...patch } : r));
+
+  const canSave = selRecipe && producedQty && warehouseId && ingRows.length > 0;
+
+  const doSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const result = await api("mixing/save", {
+        sprId:        spr.SpecialShadeProductionID,
+        sprNo:        spr.SPRNo,
+        shadeRecipeId: parseInt(selRecipe),
+        producedQty:  parseFloat(producedQty),
+        warehouseId:  parseInt(warehouseId),
+        batchNo,
+        ingredients: ingRows.map(r => ({
+          subItemId:   r.subItemId,
+          subItemName: r.subItemName,
+          quantity:    parseFloat(r.qty) || 0,
+          warehouseId: parseInt(r.warehouseId) || parseInt(warehouseId),
+          batchNo:     r.batchNo,
+        })),
+      }) as { status: string; batchNo?: string; message?: string };
+
+      if (result.status === "success") {
+        onDone(result.batchNo ?? "");
+      } else {
+        alert("Mix failed: " + (result.message ?? "Unknown error"));
+      }
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 overflow-y-auto py-8">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 my-auto">
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div>
+            <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+              <Beaker size={16} className="text-blue-600" />
+              Mix Ink — {spr.SPRNo}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {spr.ShadeName} · {spr.RequiredQty} kg required · Job: {spr.JobNo || "—"}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* Recipe picker */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
+              Shade Recipe *
+            </label>
+            {loadingRecipes ? (
+              <div className="text-xs text-gray-400 py-2">Loading recipes…</div>
+            ) : (
+              <select value={selRecipe} onChange={e => setSelRecipe(e.target.value)} className={selectCls}>
+                <option value="">— select recipe —</option>
+                {recipes.map(r => (
+                  <option key={r.ShadeRecipeID} value={r.ShadeRecipeID}>
+                    {r.ShadeRecipeNo} — {r.ShadeRecipeName}
+                  </option>
+                ))}
+              </select>
+            )}
+            {recipes.length === 0 && !loadingRecipes && (
+              <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <AlertCircle size={11} /> No matching recipes found. Create one in Shade Library first.
+              </p>
+            )}
+          </div>
+
+          {/* Produced qty + warehouse */}
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Produced Qty (kg)" required>
+              <input type="number" step="0.001" min="0"
+                value={producedQty} onChange={e => recalcQty(e.target.value)}
+                className={inputCls} />
+            </Field>
+            <Field label="Output Warehouse" required>
+              <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={selectCls}>
+                <option value="">— select —</option>
+                {warehouses.map(w => (
+                  <option key={w.id} value={w.id}>{w.name}{w.bin ? " / " + w.bin : ""}</option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Batch / Lot No.">
+            <input type="text" value={batchNo} onChange={e => setBatchNo(e.target.value)}
+              placeholder="Auto-assigned if blank"
+              className={inputCls} />
+          </Field>
+
+          {/* Ingredient consumption table */}
+          {ingRows.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-2">
+                Ingredients to Consume
+              </label>
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Ink</th>
+                      <th className="px-2 py-2 text-right w-10">%</th>
+                      <th className="px-2 py-2 text-right w-24">Qty (kg)</th>
+                      <th className="px-2 py-2 text-right w-10">Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {ingRows.map((r, i) => (
+                      <tr key={i} className={parseFloat(r.qty) > r.stock ? "bg-red-50" : ""}>
+                        <td className="px-3 py-2 font-medium text-gray-800">{r.subItemName}</td>
+                        <td className="px-2 py-2 text-right text-gray-500">{r.pct}%</td>
+                        <td className="px-2 py-2">
+                          <input type="number" step="0.001" min="0" value={r.qty}
+                            onChange={e => updateIng(i, { qty: e.target.value })}
+                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-right text-xs focus:ring-1 focus:ring-blue-400 outline-none" />
+                        </td>
+                        <td className={`px-2 py-2 text-right font-medium ${parseFloat(r.qty) > r.stock ? "text-red-600" : "text-green-600"}`}>
+                          {r.stock}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {ingRows.some(r => parseFloat(r.qty) > r.stock) && (
+                <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                  <AlertCircle size={11} /> Some ingredients have insufficient stock.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal footer */}
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+            Cancel
+          </button>
+          <button onClick={doSave} disabled={!canSave || saving}
+            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm">
+            <Beaker size={15} /> {saving ? "Saving…" : "Confirm Mix"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── MAIN PAGE ──────────────────────────────────────────────────────────────────
+
+type MainTab = "recipes" | "spr" | "mixing";
+type RecipeView = "list" | "form";
+type SprView    = "list" | "form";
+
+export default function InkKitchenPage() {
+  const [tab, setTab] = useState<MainTab>("recipes");
+
+  // ─── Dropdowns ───────────────────────────────────────────────────────────────
+  const [drops, setDrops] = useState<Dropdowns>({ inkItems: [], warehouses: [], jobs: [], shadeNames: [], papers: [] });
+  const [dropsLoaded, setDropsLoaded] = useState(false);
+
+  const loadDrops = useCallback(async () => {
+    try {
+      const d = await api("dropdowns") as Partial<Dropdowns>;
+      setDrops({
+        inkItems:   Array.isArray(d?.inkItems)   ? d.inkItems   : [],
+        warehouses: Array.isArray(d?.warehouses) ? d.warehouses : [],
+        jobs:       Array.isArray(d?.jobs)       ? d.jobs       : [],
+        shadeNames: Array.isArray(d?.shadeNames) ? d.shadeNames : [],
+        papers:     Array.isArray(d?.papers)     ? d.papers     : [],
+      });
+    } catch { /* network unavailable, keep empty arrays */ }
+    finally { setDropsLoaded(true); }
+  }, []);
+
+  useEffect(() => { loadDrops(); }, [loadDrops]);
+
+  // ─── Recipes tab ─────────────────────────────────────────────────────────────
+  const [recipeView, setRecipeView]     = useState<RecipeView>("list");
+  const [recipes, setRecipes]           = useState<Recipe[]>([]);
+  const [recipesLoading, setRecipesLoading] = useState(true);
+  const [editingRecipe, setEditingRecipe]   = useState<Recipe | null>(null);
+  const [recipeForm, setRecipeForm]     = useState(blankRecipeForm);
+  const [ingredients, setIngredients]   = useState<IngredientRow[]>([]);
+  const [recipeSaving, setRecipeSaving] = useState(false);
+
+  const loadRecipes = useCallback(async () => {
+    setRecipesLoading(true);
+    try {
+      const data = await api("shade-recipe/list");
+      setRecipes(Array.isArray(data) ? data.map((r: Recipe) => ({ ...r, id: String(r.ShadeRecipeID) })) : []);
+    } catch { /* network unavailable */ } finally { setRecipesLoading(false); }
+  }, []);
+
+  useEffect(() => { loadRecipes(); }, [loadRecipes]);
+
+  const openNewRecipe = () => {
+    setEditingRecipe(null);
+    setRecipeForm(blankRecipeForm);
+    setIngredients([]);
+    setRecipeView("form");
+  };
+
+  const openEditRecipe = async (row: Recipe) => {
+    const data = await api(`shade-recipe/${row.ShadeRecipeID}/details`) as {
+      header: { ItemID: number; ShadeRecipeName: string; Reference: string; PaperQuality: string; PaperFinish: string; LabValueL: number; LabValueA: number; LabValueB: number }[] | null;
+      details: RecipeDetail[];
+    };
+    if (!data.header) return;
+    const h = Array.isArray(data.header) ? data.header[0] : data.header;
+    setEditingRecipe(row);
+    setRecipeForm({
+      shadeRecipeName: h.ShadeRecipeName,
+      itemId:          String(h.ItemID ?? ""),
+      reference:       h.Reference,
+      paperQuality:    h.PaperQuality,
+      paperFinish:     h.PaperFinish,
+      labL:            String(h.LabValueL ?? ""),
+      labA:            String(h.LabValueA ?? ""),
+      labB:            String(h.LabValueB ?? ""),
+    });
+    setIngredients((data.details ?? []).map(d => ({
+      subItemId:   String(d.SubItemID),
+      subItemCode: d.SubItemCode,
+      subItemName: d.SubItemName,
+      percentage:  String(d.ShadePercentage),
+    })));
+    setRecipeView("form");
+  };
+
+  const saveRecipe = async () => {
+    setRecipeSaving(true);
+    try {
+      const payload = {
+        ...recipeForm,
+        itemId: parseInt(recipeForm.itemId) || 0,
+        labL: parseFloat(recipeForm.labL) || 0,
+        labA: parseFloat(recipeForm.labA) || 0,
+        labB: parseFloat(recipeForm.labB) || 0,
+        details: ingredients.map(r => ({
+          subItemId:   parseInt(r.subItemId) || 0,
+          subItemCode: r.subItemCode,
+          subItemName: r.subItemName,
+          percentage:  parseFloat(r.percentage) || 0,
+        })),
+      };
+      const result = editingRecipe
+        ? await api("shade-recipe/update", { shadeRecipeId: editingRecipe.ShadeRecipeID, ...payload })
+        : await api("shade-recipe/save", payload);
+
+      const r = result as { status: string; message?: string };
+      if (r.status === "success") {
+        await loadRecipes();
+        setRecipeView("list");
+      } else {
+        alert(r.message ?? "Save failed");
+      }
+    } finally { setRecipeSaving(false); }
+  };
+
+  const deleteRecipe = async (row: Recipe) => {
+    if (!confirm(`Delete recipe "${row.ShadeRecipeName}"?`)) return;
+    const r = await api("shade-recipe/delete", { shadeRecipeId: row.ShadeRecipeID }) as { status: string; message?: string };
+    if (r.status !== "success") { alert(r.message ?? "Delete failed"); return; }
+    await loadRecipes();
+  };
+
+  // ─── SPR tab ─────────────────────────────────────────────────────────────────
+  const [sprView, setSprView]       = useState<SprView>("list");
+  const [sprs, setSprs]             = useState<SPR[]>([]);
+  const [sprsLoading, setSprsLoading] = useState(true);
+  const [editingSpr, setEditingSpr] = useState<SPR | null>(null);
+  const [sprForm, setSprForm]       = useState(blankSprForm);
+  const [sprSaving, setSprSaving]   = useState(false);
+
+  const loadSprs = useCallback(async () => {
+    setSprsLoading(true);
+    try {
+      const data = await api("spr/list");
+      setSprs(Array.isArray(data) ? data : []);
+    } catch { /* network unavailable */ } finally { setSprsLoading(false); }
+  }, []);
+
+  useEffect(() => { loadSprs(); }, [loadSprs]);
+
+  const openNewSpr = () => {
+    setEditingSpr(null);
+    setSprForm(blankSprForm);
+    setSprView("form");
+  };
+
+  const openEditSpr = (row: SPR) => {
+    setEditingSpr(row);
+    setSprForm({
+      jobBookingId: String(row.JobBookingID || ""),
+      inkId:        String(row.InkID || ""),
+      shadeName:    row.ShadeName,
+      requiredQty:  String(row.RequiredQty),
+      reference:    row.Reference,
+      paperQuality: row.PaperQuality,
+      paperFinish:  row.PaperFinish,
+      requiredDate: row.RequiredDate || "",
+    });
+    setSprView("form");
+  };
+
+  const saveSpr = async () => {
+    setSprSaving(true);
+    try {
+      const payload = {
+        jobBookingId: parseInt(sprForm.jobBookingId) || 0,
+        inkId:        parseInt(sprForm.inkId) || 0,
+        shadeName:    sprForm.shadeName,
+        requiredQty:  parseFloat(sprForm.requiredQty) || 0,
+        reference:    sprForm.reference,
+        paperQuality: sprForm.paperQuality,
+        paperFinish:  sprForm.paperFinish,
+        requiredDate: sprForm.requiredDate,
+      };
+      const result = editingSpr
+        ? await api("spr/update", { sprId: editingSpr.SpecialShadeProductionID, ...payload })
+        : await api("spr/save", payload);
+
+      const r = result as { status: string; message?: string };
+      if (r.status === "success") {
+        await loadSprs();
+        setSprView("list");
+      } else {
+        alert(r.message ?? "Save failed");
+      }
+    } finally { setSprSaving(false); }
+  };
+
+  const deleteSpr = async (row: SPR) => {
+    if (!confirm(`Delete SPR "${row.SPRNo}"?`)) return;
+    const r = await api("spr/delete", { sprId: row.SpecialShadeProductionID }) as { status: string; message?: string };
+    if (r.status !== "success") { alert(r.message ?? "Delete failed"); return; }
+    await loadSprs();
+  };
+
+  // ─── Mixing tab ──────────────────────────────────────────────────────────────
+  const [mixSubTab, setMixSubTab]   = useState<"pending" | "processed">("pending");
+  const [pending, setPending]       = useState<MixSPR[]>([]);
+  const [processed, setProcessed]   = useState<MixedSPR[]>([]);
+  const [mixLoading, setMixLoading] = useState(false);
+  const [mixModal, setMixModal]     = useState<MixSPR | null>(null);
+
+  const loadMixing = useCallback(async () => {
+    setMixLoading(true);
+    try {
+      const [pen, proc] = await Promise.all([
+        api("mixing/pending"),
+        api("mixing/processed"),
+      ]);
+      setPending(Array.isArray(pen) ? pen : []);
+      setProcessed(Array.isArray(proc) ? proc : []);
+    } catch { /* network unavailable */ } finally { setMixLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === "mixing") loadMixing();
+  }, [tab, loadMixing]);
+
+  // ─── Columns ─────────────────────────────────────────────────────────────────
+
+  const recipeColumns: Column<Recipe>[] = [
+    { key: "ShadeRecipeNo", header: "Recipe No", sortable: true,
+      render: r => <span className="font-mono text-xs font-bold text-blue-700">{r.ShadeRecipeNo}</span> },
+    { key: "ShadeRecipeName", header: "Shade Name", sortable: true,
+      render: r => <span className="font-semibold text-gray-800">{r.ShadeRecipeName}</span> },
+    { key: "InkName", header: "Ink", sortable: true,
+      render: r => <span className="text-xs">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName}</span> },
+    { key: "Ingredients", header: "Ingredients",
+      render: r => <span className="text-xs text-gray-500 max-w-[220px] truncate block">{r.Ingredients || "—"}</span> },
+    { key: "PaperFinish", header: "Finish",
+      render: r => r.PaperFinish ? <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{r.PaperFinish}</span> : <span className="text-gray-300">—</span> },
+    { key: "UsedInProduction", header: "Status",
+      render: r => r.UsedInProduction
+        ? <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">Used</span>
+        : <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded-full text-xs">Draft</span> },
+  ];
+
+  const sprColumns: Column<SPR>[] = [
+    { key: "SPRNo", header: "SPR No", sortable: true,
+      render: r => <span className="font-mono text-xs font-bold text-amber-700">{r.SPRNo}</span> },
+    { key: "SPRDate", header: "Date", sortable: true,
+      render: r => <span className="text-xs">{r.SPRDate}</span> },
+    { key: "JobNo", header: "PWO", sortable: true,
+      render: r => <span className="text-xs font-medium">{r.JobNo || "—"}</span> },
+    { key: "ShadeName", header: "Shade", sortable: true },
+    { key: "InkName", header: "Ink",
+      render: r => <span className="text-xs">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName}</span> },
+    { key: "RequiredQty", header: "Req. Qty",
+      render: r => <span className="font-mono text-sm">{r.RequiredQty} kg</span> },
+    { key: "RequiredDate", header: "Req. Date",
+      render: r => <span className="text-xs">{r.RequiredDate}</span> },
+    { key: "IsShadeProduced", header: "Status",
+      render: r => r.IsShadeProduced
+        ? <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded-full text-xs font-medium">Produced</span>
+        : <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">Pending</span> },
+  ];
+
+  const pendingColumns: Column<MixSPR>[] = [
+    { key: "SPRNo", header: "SPR No",
+      render: r => <span className="font-mono text-xs font-bold text-amber-700">{r.SPRNo}</span> },
+    { key: "ShadeName", header: "Shade", sortable: true },
+    { key: "JobNo", header: "PWO",
+      render: r => <span className="text-xs">{r.JobNo || "—"}</span> },
+    { key: "InkName", header: "Ink",
+      render: r => <span className="text-xs">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName || "—"}</span> },
+    { key: "RequiredQty", header: "Req. Qty",
+      render: r => <span className="font-mono text-sm font-semibold">{r.RequiredQty} kg</span> },
+    { key: "RequiredDate", header: "Required By",
+      render: r => <span className="text-xs">{r.RequiredDate}</span> },
+    { key: "RecipeName", header: "Recipe",
+      render: r => r.RecipeNo
+        ? <span className="text-xs font-mono text-blue-700">{r.RecipeNo}</span>
+        : <span className="text-xs text-gray-300">None assigned</span> },
+  ];
+
+  const processedColumns: Column<MixedSPR>[] = [
+    { key: "SPRNo", header: "SPR No",
+      render: r => <span className="font-mono text-xs font-bold text-green-700">{r.SPRNo}</span> },
+    { key: "BatchNo", header: "Batch No",
+      render: r => <span className="font-mono text-xs font-semibold text-blue-700">{r.BatchNo || "—"}</span> },
+    { key: "ShadeName", header: "Shade", sortable: true },
+    { key: "JobNo", header: "PWO",
+      render: r => <span className="text-xs">{r.JobNo || "—"}</span> },
+    { key: "InkName", header: "Ink",
+      render: r => <span className="text-xs">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName || "—"}</span> },
+    { key: "ProducedQty", header: "Produced",
+      render: r => <span className="font-mono text-sm font-semibold text-green-700">{r.ProducedQty} kg</span> },
+    { key: "MixedDate", header: "Mixed On",
+      render: r => <span className="text-xs">{r.MixedDate}</span> },
+    { key: "RecipeNo", header: "Recipe",
+      render: r => <span className="text-xs font-mono text-gray-600">{r.RecipeNo || "—"}</span> },
+  ];
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
+
+  if (!dropsLoaded) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-sm text-gray-400">Loading Ink Kitchen…</div>
+      </div>
+    );
+  }
+
+  // Recipes — form view
+  if (tab === "recipes" && recipeView === "form") {
+    return (
+      <RecipeForm
+        editing={editingRecipe}
+        form={recipeForm}
+        setForm={setRecipeForm}
+        ingredients={ingredients}
+        setIngredients={setIngredients}
+        inkItems={drops.inkItems}
+        saving={recipeSaving}
+        onSave={saveRecipe}
+        onBack={() => setRecipeView("list")}
+      />
+    );
+  }
+
+  // SPR — form view
+  if (tab === "spr" && sprView === "form") {
+    return (
+      <SprForm
+        editing={editingSpr}
+        form={sprForm}
+        setForm={setSprForm}
+        inkItems={drops.inkItems}
+        jobs={drops.jobs}
+        saving={sprSaving}
+        onSave={saveSpr}
+        onBack={() => setSprView("list")}
+      />
+    );
+  }
+
+  // List views
+  return (
+    <>
+      {mixModal && (
+        <MixingModal
+          spr={mixModal}
+          warehouses={drops.warehouses}
+          inkItems={drops.inkItems}
+          onClose={() => setMixModal(null)}
+          onDone={async (batchNo) => {
+            setMixModal(null);
+            alert(`Ink mixed successfully! Batch: ${batchNo}`);
+            await loadMixing();
+          }}
+        />
+      )}
+
+      <div className="max-w-7xl mx-auto space-y-4">
+        {/* Page header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+              <FlaskConical size={20} className="text-blue-600" />
+              Ink Kitchen
+            </h2>
+            <p className="text-sm text-gray-500">Shade recipe library · Production requests · Mixing console</p>
+          </div>
+          <button onClick={() => { loadRecipes(); loadSprs(); loadMixing(); }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+            <RefreshCw size={13} /> Refresh
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="flex border-b border-gray-200 overflow-x-auto">
+            <Tab label="Shade Library" icon={FlaskConical} active={tab === "recipes"} onClick={() => setTab("recipes")} count={recipes.length} />
+            <Tab label="Production Requests" icon={ClipboardList} active={tab === "spr"} onClick={() => setTab("spr")}
+              count={sprs.filter(s => !s.IsShadeProduced).length} />
+            <Tab label="Mixing Console" icon={Beaker} active={tab === "mixing"} onClick={() => setTab("mixing")}
+              count={pending.length} />
+          </div>
+
+          {/* ── RECIPES list ───────────────────────────────────────────────────── */}
+          {tab === "recipes" && (
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm text-gray-500">{recipes.length} shade recipes</p>
+                <button onClick={openNewRecipe}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
+                  <Plus size={15} /> New Recipe
+                </button>
+              </div>
+              {recipesLoading ? (
+                <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+              ) : (
+                <DataTable
+                  data={recipes}
+                  columns={recipeColumns}
+                  searchKeys={["ShadeRecipeNo", "ShadeRecipeName", "InkName", "Ingredients", "Reference"]}
+                  actions={row => (
+                    <div className="flex items-center gap-2 justify-end">
+                      <Button variant="ghost" size="sm" icon={<Pencil size={13} />}
+                        onClick={() => openEditRecipe(row)}>Edit</Button>
+                      <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
+                        onClick={() => deleteRecipe(row)}>Delete</Button>
+                    </div>
+                  )}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ── SPR list ───────────────────────────────────────────────────────── */}
+          {tab === "spr" && (
+            <div className="p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex gap-3">
+                  <p className="text-sm text-gray-500">{sprs.length} requests total</p>
+                  <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-medium">
+                    {sprs.filter(s => !s.IsShadeProduced).length} pending
+                  </span>
+                </div>
+                <button onClick={openNewSpr}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
+                  <Plus size={15} /> New Request
+                </button>
+              </div>
+              {sprsLoading ? (
+                <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+              ) : (
+                <DataTable
+                  data={sprs}
+                  columns={sprColumns}
+                  searchKeys={["SPRNo", "ShadeName", "JobNo", "JobName", "InkCode", "InkName"]}
+                  actions={row => (
+                    <div className="flex items-center gap-2 justify-end">
+                      {!row.IsShadeProduced && (
+                        <Button variant="ghost" size="sm" icon={<Pencil size={13} />}
+                          onClick={() => openEditSpr(row)}>Edit</Button>
+                      )}
+                      {!row.IsShadeProduced && (
+                        <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
+                          onClick={() => deleteSpr(row)}>Delete</Button>
+                      )}
+                    </div>
+                  )}
+                />
+              )}
+            </div>
+          )}
+
+          {/* ── MIXING console ─────────────────────────────────────────────────── */}
+          {tab === "mixing" && (
+            <div className="p-5">
+              {/* Sub-tabs */}
+              <div className="flex gap-1 mb-5 bg-gray-100 rounded-lg p-1 w-fit">
+                {(["pending", "processed"] as const).map(st => (
+                  <button key={st} onClick={() => setMixSubTab(st)}
+                    className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                      mixSubTab === st ? "bg-white text-gray-800 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    }`}>
+                    {st === "pending" ? `Pending (${pending.length})` : `Processed (${processed.length})`}
+                  </button>
+                ))}
+              </div>
+
+              {mixLoading ? (
+                <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
+              ) : mixSubTab === "pending" ? (
+                <>
+                  {pending.length === 0 ? (
+                    <div className="py-12 text-center text-sm text-gray-400">
+                      No pending shade production requests.
+                    </div>
+                  ) : (
+                    <DataTable
+                      data={pending}
+                      columns={pendingColumns}
+                      searchKeys={["SPRNo", "ShadeName", "JobNo", "InkCode", "InkName"]}
+                      actions={row => (
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            onClick={() => setMixModal(row)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 shadow-sm">
+                            <Beaker size={12} /> Mix Ink
+                          </button>
+                        </div>
+                      )}
+                    />
+                  )}
+                </>
+              ) : (
+                <DataTable
+                  data={processed}
+                  columns={processedColumns}
+                  searchKeys={["SPRNo", "BatchNo", "ShadeName", "JobNo", "InkCode", "InkName"]}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">
+  <rect width="200" height="240" fill="#fff7ed" rx="8"/>
+  <!-- Main bag body -->
+  <rect x="55" y="50" width="90" height="150" rx="4" fill="#fed7aa" stroke="#f97316" stroke-width="2.5"/>
+  <!-- Side gussets (expand marks) -->
+  <path d="M55,70 L35,80 L35,180 L55,190" stroke="#ea580c" stroke-width="2" fill="none" stroke-dasharray="5,3"/>
+  <path d="M145,70 L165,80 L165,180 L145,190" stroke="#ea580c" stroke-width="2" fill="none" stroke-dasharray="5,3"/>
+  <!-- Gusset fold lines on bag -->
+  <line x1="55" y1="70" x2="55" y2="190" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="145" y1="70" x2="145" y2="190" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <!-- Top seal -->
+  <rect x="55" y="50" width="90" height="12" rx="0" fill="#c2410c" opacity="0.8"/>
+  <!-- Arrows showing gusset expansion -->
+  <text x="35" y="132" text-anchor="middle" font-family="Arial" font-size="8" fill="#c2410c">←</text>
+  <text x="165" y="132" text-anchor="middle" font-family="Arial" font-size="8" fill="#c2410c">→</text>
+  <!-- Label -->
+  <rect x="70" y="78" width="60" height="90" rx="4" fill="white" opacity="0.5"/>
+  <text x="100" y="126" text-anchor="middle" font-family="Arial" font-size="8" fill="#7c2d12">PRODUCT</text>
+  <text x="100" y="220" text-anchor="middle" font-family="Arial" font-size="10" fill="#c2410c" font-weight="bold">Gusset Bag - Side Gusset</text>
+</svg>

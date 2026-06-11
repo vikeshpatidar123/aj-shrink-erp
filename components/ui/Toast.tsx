@@ -130,11 +130,13 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
   );
 }
 
+let _toastCounter = 0;
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const showToast = useCallback((type: ToastType, title: string, message?: string) => {
-    const id = Date.now();
+    const id = Date.now() * 1000 + (++_toastCounter % 1000);
     setToasts(p => [...p, { id, type, title, message }]);
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), AUTO_DISMISS_MS + 400);
   }, []);

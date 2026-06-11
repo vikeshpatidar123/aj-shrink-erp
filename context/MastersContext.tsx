@@ -16,9 +16,9 @@ export type ApiMachine  = {
 };
 export type ApiProcess  = { ProcessID: string; ProcessName: string; DisplayProcessName: string; TypeofCharges: string; Rate: number; SetupCharges: number; StartUnit: string; EndUnit: string; ProcessModuleType: string; ProcessWastagePercentage: number; ProcessCategory: string; DepartmentName: string; MinimumCharges: number; MinimumQuantityToBeCharged: number; PerHourCostingParameter: number; MachineID: string; MachineMasterName: string; AllocattedMachineID: string };
 export type ApiFilmItem = { ItemID: string; ItemName: string; ItemDisplayName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; Density: number; Thickness: number; WebWidth: number; EstimationRate: number; EstimationUnit: string };
-export type ApiInkItem  = { ItemID: string; ItemName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; InkColour: string; EstimationRate: number; EstimationUnit: string };
+export type ApiInkItem  = { ItemID: string; ItemName: string; ItemCode: string; ItemGroupID: string; ItemGroupName: string; ItemSubGroupID: string; ItemSubGroupName: string; InkColour: string; EstimationRate: number; EstimationUnit: string; SolidPerc: number; DryGsM: number };
 export type ApiVendor   = { LedgerID: string; LedgerName: string; LedgerGroupName: string };
-export type ApiCylinder = { CylinderID: string; CylinderCode: string; CylinderName: string; Circumference: number; PrintWidth: number; RepeatUPS: number; CylinderType: string; CylinderStatus: string };
+export type ApiCylinder = { CylinderID: string; CylinderCode: string; CylinderName: string; Circumference: number; PrintWidth: number; RepeatUPS: number; CylinderType: string; CylinderStatus: string; PurchaseRate: number; PurchaseUnit: string };
 export type ApiSleeveItem = { ItemID: string; ItemCode: string; ItemName: string; ItemDisplayName: string; SizeW: number };
 
 type MastersCtxType = {

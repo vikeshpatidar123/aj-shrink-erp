@@ -161,6 +161,9 @@ const blankWO: Omit<GravureWorkOrder, "id" | "workOrderNo"> = {
   gusset: 0, topSeal: 0, bottomSeal: 0,
   sideSeal: 0, centerSealWidth: 0, sideGusset: 0,
   seamingArea: 0, transparentArea: 0,
+  hasZipper: 0, hasSpout: 0, hasValve: 0,
+  hasWindow: 0, hasTearNotch: 0, hasEuroHole: 0, hasRoundCorner: 0,
+  laminationPlies: 0, zipperWeight: 0, spoutWeight: 0,
   finalRollOD: undefined, rollUnit: "Meter",
   unwindDirection: 0,
   frontColors: 4, backColors: 2,
@@ -181,10 +184,15 @@ const blankWO: Omit<GravureWorkOrder, "id" | "workOrderNo"> = {
 };
 
 // ─── Auto-process qty helper (mirrors estimation) ────────────
+// qty = weightKg (for Kg-based units) or meters (for m-based units)
 function autoProcessQty(chargeUnit: string, qty: number, areaM2: number, colors: number): number {
-  if (chargeUnit === "m²") return parseFloat(areaM2.toFixed(4));
-  if (chargeUnit === "Meter") return qty;
-  if (chargeUnit === "Cylinder") return colors;
+  const u = (chargeUnit || "").toLowerCase().replace(/\s+/g, "");
+  if (u.includes("kg"))                                              return qty;
+  if (u.includes("m²") || u.includes("sqm") || u.includes("m2"))   return parseFloat(areaM2.toFixed(4));
+  if (u === "m" || u === "rate/m" || u === "per m" || u === "meter" || u.endsWith("/m")) return qty;
+  if (u.includes("cylinder") || u.includes("color") || u.includes("colour")) return colors;
+  if (u.includes("1000pcs") || u.includes("1000 pcs"))              return qty / 1000;
+  if (u.includes("job"))                                             return 1;
   return 0;
 }
 
@@ -257,6 +265,7 @@ export default function GravureWorkOrderPage() {
   const [notif, setNotif] = useState<{ type: "success" | "error"; title: string; msg: string } | null>(null);
   const [form, setForm] = useState<Omit<GravureWorkOrder, "id" | "workOrderNo">>(blankWO);
   const [replanOpen, setReplan] = useState(false);
+  const [unwindPreview, setUnwindPreview] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<"basic" | "planning" | "material">("basic");
   const [pendingWOCategoryId, setPendingWOCategoryId] = useState<string | null>(null);
@@ -310,93 +319,41 @@ export default function GravureWorkOrderPage() {
   // Tracks the OrderBookingDetailsID of the line being converted to a WO
   const orderDetIdRef = React.useRef<number>(0);
 
+  // ── Cache helpers (localStorage, 5-min TTL, stale-while-revalidate) ──
+  function cacheGet(key: string) {
+    try {
+      const s = localStorage.getItem(key);
+      if (!s) return null;
+      const { ts, data } = JSON.parse(s);
+      if (Date.now() - ts < 5 * 60_000) return data;
+    } catch { /* ignore */ }
+    return null;
+  }
+  function cacheSet(key: string, data: any) {
+    try { localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data })); } catch { /* ignore */ }
+  }
+  function cacheInvalidate(...keys: string[]) {
+    keys.forEach(k => { try { localStorage.removeItem(k); } catch { /* ignore */ } });
+  }
+
   // ── Load work orders from API on mount; also check sessionStorage pre-fill ──
   useEffect(() => {
-    // Load dropdown prefix
-    apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
-      .then(dd => {
-        if (dd?.prefix) setApiPrefix(dd.prefix);
-        if (Array.isArray(dd?.vendors) && dd.vendors.length > 0)
-          setDbVendors(dd.vendors.map((v: any) => ({ id: String(v.id ?? ""), name: String(v.name ?? "") })));
-      })
-      .catch(() => { });
-
-    apiGet<any[]>("api/gravureWorkOrderShrink/getcylinders")
-      .then(rows => {
-        if (Array.isArray(rows) && rows.length > 0)
-          setDbCylinders(rows.map((r: any) => ({
-            id: String(r.id ?? ""),
-            code: String(r.code ?? ""),
-            name: String(r.name ?? ""),
-            printWidth: String(r.printWidth ?? "0"),
-            circumferenceMM: Number(r.circumferenceMM ?? 0),
-            cylinderType: String(r.cylinderType ?? "New"),
-            shelfLifeMeters: Number(r.shelfLifeMeters ?? 0),
-            usedMeters: Number(r.usedMeters ?? 0),
-            repeatLength: String(r.circumferenceMM ?? "0"),
-          })));
-      })
-      .catch(() => { });
-
-    // Load real DB machines — try getmachinelist first, fallback to getdropdowns
-    const mapMachine = (m: any) => ({
-      id: String(m.MachineID ?? m.id ?? ""),
-      name: String(m.MachineName ?? m.name ?? ""),
-      maxWebWidth: Number(m.MaxRollWidth ?? m.MaxWidth ?? 1300),
-      minWebWidth: Number(m.MinRollWidth ?? m.MinWidth ?? 0),
-      maxCirc: Number(m.MaxCircumference ?? m.MaxLength ?? 9999),
-      minCirc: Number(m.MinCircumference ?? m.MinLength ?? 0),
-      speed: Number(m.Speed ?? 150),
-    });
-    const applyMachines = (mapped: ReturnType<typeof mapMachine>[]) => {
-      setDbMachines(mapped);
-
-      // Auto-fill machineName if form has machineId but empty name
-      setForm(prev => {
-        if (prev.machineId && !prev.machineName) {
-          const found = mapped.find(m => m.id === prev.machineId);
-          if (found) return { ...prev, machineName: found.name };
-        }
-        return prev;
-      });
-    };
-    apiGet<any[]>("api/productcataloggravureShrink/getmachinelist")
-      .then(rows => {
-        if (Array.isArray(rows) && rows.length > 0) {
-          applyMachines(rows.map(mapMachine));
-        } else {
-          // Fallback: pull machines from getdropdowns endpoint
-          apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
-            .then(dd => {
-              if (Array.isArray(dd?.machines) && dd.machines.length > 0)
-                applyMachines(dd.machines.map(mapMachine));
-            })
-            .catch(() => { });
-        }
-      })
-      .catch(() => {
-        apiGet<any>("api/gravureWorkOrderShrink/getdropdowns")
-          .then(dd => {
-            if (Array.isArray(dd?.machines) && dd.machines.length > 0)
-              applyMachines(dd.machines.map(mapMachine));
-          })
-          .catch(() => { });
-      });
-
-    // Load work order list from API
+    // ── Work Orders: show stale immediately, refresh in background ──
+    const cachedWOs = cacheGet("wo_workorders");
+    if (cachedWOs) setWOs(cachedWOs.map(mapApiToWO));
     apiGet<any[]>("api/gravureWorkOrderShrink/getworkorders")
       .then(rows => {
-        if (Array.isArray(rows)) setWOs(rows.map(mapApiToWO));
+        if (Array.isArray(rows)) { setWOs(rows.map(mapApiToWO)); cacheSet("wo_workorders", rows); }
       })
-      .catch((err: any) => {
-        console.error("getworkorders failed:", err?.message || err);
-      });
+      .catch((err: any) => { console.error("getworkorders failed:", err?.message || err); });
 
-    // Load confirmed orders from Order Booking to show as pending in WO
+    // ── Pending Orders: show stale immediately, refresh in background ──
+    const cachedOrders = cacheGet("wo_orders");
+    if (cachedOrders) setOrders(cachedOrders.map(mapApiToOrder));
     apiGet<any>("api/gravureOrderBookingShrink/getorders")
       .then(raw => {
         const rows: any[] = Array.isArray(raw) ? raw : [];
-        if (rows.length > 0) setOrders(rows.map(mapApiToOrder));
+        if (rows.length > 0) { setOrders(rows.map(mapApiToOrder)); cacheSet("wo_orders", rows); }
       })
       .catch(() => { /* keep empty on API error */ });
 
@@ -423,6 +380,55 @@ export default function GravureWorkOrderPage() {
       }
     } catch { /* ignore */ }
   }, []);
+
+  // ── Lazy-load dropdowns/cylinders/machines only when modal first opens ──
+  const dropdownsLoadedRef = React.useRef(false);
+  useEffect(() => {
+    if (!modalOpen || dropdownsLoadedRef.current) return;
+    dropdownsLoadedRef.current = true;
+
+    const mapMachine = (m: any) => ({
+      id: String(m.MachineID ?? m.id ?? ""),
+      name: String(m.MachineName ?? m.name ?? ""),
+      maxWebWidth: Number(m.MaxRollWidth ?? m.MaxWidth ?? 1300),
+      minWebWidth: Number(m.MinRollWidth ?? m.MinWidth ?? 0),
+      maxCirc: Number(m.MaxCircumference ?? m.MaxLength ?? 9999),
+      minCirc: Number(m.MinCircumference ?? m.MinLength ?? 0),
+      speed: Number(m.Speed ?? 150),
+    });
+    const applyMachines = (mapped: ReturnType<typeof mapMachine>[]) => {
+      setDbMachines(mapped);
+      setForm(prev => {
+        if (prev.machineId && !prev.machineName) {
+          const found = mapped.find(m => m.id === prev.machineId);
+          if (found) return { ...prev, machineName: found.name };
+        }
+        return prev;
+      });
+    };
+
+    Promise.all([
+      apiGet<any>("api/gravureWorkOrderShrink/getdropdowns").catch(() => null),
+      apiGet<any[]>("api/gravureWorkOrderShrink/getcylinders").catch(() => null),
+      apiGet<any[]>("api/productcataloggravureShrink/getmachinelist").catch(() => null),
+    ]).then(([dd, cylinders, machines]) => {
+      if (dd?.prefix) setApiPrefix(dd.prefix);
+      if (Array.isArray(dd?.vendors) && dd.vendors.length > 0)
+        setDbVendors(dd.vendors.map((v: any) => ({ id: String(v.id ?? ""), name: String(v.name ?? "") })));
+      if (Array.isArray(cylinders) && cylinders.length > 0)
+        setDbCylinders(cylinders.map((r: any) => ({
+          id: String(r.id ?? ""), code: String(r.code ?? ""), name: String(r.name ?? ""),
+          printWidth: String(r.printWidth ?? "0"), circumferenceMM: Number(r.circumferenceMM ?? 0),
+          cylinderType: String(r.cylinderType ?? "New"), shelfLifeMeters: Number(r.shelfLifeMeters ?? 0),
+          usedMeters: Number(r.usedMeters ?? 0), repeatLength: String(r.circumferenceMM ?? "0"),
+        })));
+      if (Array.isArray(machines) && machines.length > 0) {
+        applyMachines(machines.map(mapMachine));
+      } else if (Array.isArray(dd?.machines) && dd.machines.length > 0) {
+        applyMachines(dd.machines.map(mapMachine));
+      }
+    });
+  }, [modalOpen]);
 
   // ── When pendingPWOOrder is set, fetch all catalog data directly from API ──
   useEffect(() => {
@@ -659,6 +665,16 @@ export default function GravureWorkOrderPage() {
         sideGusset: Number(row.SideGusset ?? row.sideGusset ?? 0),
         transparentArea: Number(row.TransparentArea ?? row.transparentArea ?? 0),
         seamingArea: Number(row.SeamingArea ?? row.seamingArea ?? 0),
+        hasZipper:      Number(row.HasZipper      ?? row.hasZipper      ?? 0),
+        hasSpout:       Number(row.HasSpout       ?? row.hasSpout       ?? 0),
+        hasValve:       Number(row.HasValve       ?? row.hasValve       ?? 0),
+        hasWindow:      Number(row.HasWindow      ?? row.hasWindow      ?? 0),
+        hasTearNotch:   Number(row.HasTearNotch   ?? row.hasTearNotch   ?? 0),
+        hasEuroHole:    Number(row.HasEuroHole    ?? row.hasEuroHole    ?? 0),
+        hasRoundCorner: Number(row.HasRoundCorner ?? row.hasRoundCorner ?? 0),
+        laminationPlies: Number(row.LaminationPlies ?? row.laminationPlies ?? 0),
+        zipperWeight: Number(row.ZipperWeight ?? row.zipperWeight ?? 0),
+        spoutWeight: Number(row.SpoutWeight ?? row.spoutWeight ?? 0),
         machineId: String(row.MachineID ?? row.GrvMachineID ?? row.machineId ?? ""),
         machineName: String(row.MachineName ?? row.GrvMachineName ?? row.machineName ?? ""),
         savedPlanId: String(row.SavedPlanID ?? row.savedPlanId ?? ""),
@@ -941,6 +957,16 @@ export default function GravureWorkOrderPage() {
           sideGusset: Number(catRow.sideGusset || catalogItem?.sideGusset || line.sideGusset || 0),
           transparentArea: Number(catRow.transparentArea || catalogItem?.transparentArea || line.transparentArea || 0),
           seamingArea: Number(catRow.seamingArea || catalogItem?.seamingArea || line.seamingArea || 0),
+          hasZipper:      Number(catRow.hasZipper      || catalogItem?.hasZipper      || 0),
+          hasSpout:       Number(catRow.hasSpout       || catalogItem?.hasSpout       || 0),
+          hasValve:       Number(catRow.hasValve       || catalogItem?.hasValve       || 0),
+          hasWindow:      Number(catRow.hasWindow      || catalogItem?.hasWindow      || 0),
+          hasTearNotch:   Number(catRow.hasTearNotch   || catalogItem?.hasTearNotch   || 0),
+          hasEuroHole:    Number(catRow.hasEuroHole    || catalogItem?.hasEuroHole    || 0),
+          hasRoundCorner: Number(catRow.hasRoundCorner || catalogItem?.hasRoundCorner || 0),
+          laminationPlies: Number(catRow.laminationPlies || catalogItem?.laminationPlies || 0),
+          zipperWeight: Number(catRow.zipperWeight || catalogItem?.zipperWeight || 0),
+          spoutWeight: Number(catRow.spoutWeight || catalogItem?.spoutWeight || 0),
           cylinderCostPerColor: Number(catRow.cylinderCostPerColor || 0),
           overheadPct: Number(catRow.overheadPct || 0),
           profitPct: Number(catRow.profitPct || 0),
@@ -1381,11 +1407,11 @@ export default function GravureWorkOrderPage() {
     let laneWidth: number;
     if (sType === "Sleeve") {
       laneWidth = jobW * 2 + slvTransp + slvSeam;
-    } else if (content === "Pouch — 3 Side Seal" || content === "Standup Pouch" || content === "Zipper Pouch") {
+    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet" || content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Zipper Pouch") {
       laneWidth = jobW + 2 * sideSeal;
-    } else if (content === "Pouch — Center Seal") {
+    } else if (content === "Pouch — Center Seal" || content === "Center Seal Pouch") {
       laneWidth = jobW * 2 + ctrSeal;
-    } else if (content === "Both Side Gusset Pouch" || content === "3D Pouch / Flat Bottom") {
+    } else if (content === "Both Side Gusset Pouch" || content === "Gusset Bag" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch") {
       laneWidth = jobW + 2 * sideGust;
     } else {
       laneWidth = jobW;
@@ -1397,9 +1423,11 @@ export default function GravureWorkOrderPage() {
     let effectiveRepeat: number;
     if (sType === "Sleeve") {
       effectiveRepeat = sleeveCutLength;
-    } else if (content === "Pouch — 3 Side Seal" || content === "Pouch — Center Seal" || content === "Both Side Gusset Pouch") {
+    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet") {
+      effectiveRepeat = (jobH + topSeal + btmSeal + shrink) * 2;
+    } else if (content === "Pouch — Center Seal" || content === "Center Seal Pouch" || content === "Both Side Gusset Pouch" || content === "Gusset Bag") {
       effectiveRepeat = jobH + topSeal + btmSeal + shrink;
-    } else if (content === "Standup Pouch" || content === "Zipper Pouch" || content === "3D Pouch / Flat Bottom") {
+    } else if (content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Zipper Pouch" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch") {
       effectiveRepeat = jobH + topSeal + (gusset > 0 ? gusset / 2 : 0) + shrink;
     } else {
       effectiveRepeat = jobH + shrink;
@@ -2169,6 +2197,16 @@ export default function GravureWorkOrderPage() {
       sideGusset: o.sideGusset || 0,
       seamingArea: o.seamingArea || 0,
       transparentArea: o.transparentArea || 0,
+      hasZipper:      Number(o.hasZipper      || 0),
+      hasSpout:       Number(o.hasSpout       || 0),
+      hasValve:       Number(o.hasValve       || 0),
+      hasWindow:      Number(o.hasWindow      || 0),
+      hasTearNotch:   Number(o.hasTearNotch   || 0),
+      hasEuroHole:    Number(o.hasEuroHole    || 0),
+      hasRoundCorner: Number(o.hasRoundCorner || 0),
+      laminationPlies: Number(o.laminationPlies || 0),
+      zipperWeight: Number(o.zipperWeight || 0),
+      spoutWeight: Number(o.spoutWeight || 0),
       finalRollOD: o.finalRollOD || undefined,
       rollUnit: o.rollUnit || "Meter",
       unwindDirection: o.unwindDirection || 0,
@@ -2374,6 +2412,7 @@ export default function GravureWorkOrderPage() {
                 setWOs(d => [...d, { ...saveForm, id: newId, workOrderNo: newNo }]);
               }
             });
+          cacheInvalidate("wo_workorders", "wo_orders");
           apiGet<any>("api/gravureOrderBookingShrink/getorders")
             .then(raw => {
               const rows: any[] = Array.isArray(raw) ? raw : [];
@@ -2504,7 +2543,6 @@ export default function GravureWorkOrderPage() {
               )}
 
               <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} />
-              <Input label="Substrate" value={form.substrate} onChange={e => f("substrate", e.target.value)} placeholder="e.g. BOPP 20μ" />
               <Input label="Structure" value={form.structure} onChange={e => f("structure", e.target.value)} placeholder="e.g. BOPP + CPP" />
 
               {/* Category — editable for Direct, and also editable for order-linked fallback when catalog mapping is missing */}
@@ -2578,20 +2616,93 @@ export default function GravureWorkOrderPage() {
               <Input label="Quantity" type="number" value={form.quantity || ""} onChange={e => f("quantity", Number(e.target.value))} />
               <Select label="Unit" value={form.unit} onChange={e => { f("unit", e.target.value); }}
                 options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }, { value: "Pcs", label: "Pcs" }]} />
-              <Input label="Cylinder Set" value={form.cylinderSet} onChange={e => f("cylinderSet", e.target.value)} placeholder="e.g. CYL-P001" />
-              <Input label="Wastage %" type="number" value={form.wastagePct ?? 1} onChange={e => f("wastagePct", Number(e.target.value) || 1)} placeholder="1" />
               <Input label="Planned Date" type="date" value={form.plannedDate} onChange={e => f("plannedDate", e.target.value)} />
               <Select label="Status" value={form.status} onChange={e => f("status", e.target.value as typeof form.status)}
                 options={[{ value: "Open", label: "Open" }, { value: "In Progress", label: "In Progress" }, { value: "Completed", label: "Completed" }, { value: "On Hold", label: "On Hold" }]} />
             </div>
           </div>
 
+          {/* ── Pouch Accessories — toggle chips ── */}
+          {form.content && getStructureType(form.content) === "Pouch" && (
+            <div className="border border-purple-200 rounded-2xl overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
+                <Wrench size={14} className="text-white" />
+                <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+              </div>
+              <div className="p-4 bg-purple-50/40">
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {([
+                    { key: "hasZipper",      label: "Zipper",       color: "indigo" },
+                    { key: "hasSpout",       label: "Spout",        color: "cyan"   },
+                    { key: "hasValve",       label: "Valve",        color: "orange" },
+                    { key: "hasWindow",      label: "Window",       color: "sky"    },
+                    { key: "hasTearNotch",   label: "Tear Notch",   color: "rose"   },
+                    { key: "hasEuroHole",    label: "Euro Hole",    color: "violet" },
+                    { key: "hasRoundCorner", label: "Round Corner", color: "teal"   },
+                  ] as { key: string; label: string; color: string }[]).map(({ key, label, color }) => {
+                    const active = !!((form as any)[key]);
+                    const cls: Record<string, string> = {
+                      indigo: active ? "bg-indigo-600 text-white border-indigo-600"  : "bg-white text-indigo-600 border-indigo-300 hover:bg-indigo-50",
+                      cyan:   active ? "bg-cyan-600 text-white border-cyan-600"      : "bg-white text-cyan-600 border-cyan-300 hover:bg-cyan-50",
+                      orange: active ? "bg-orange-500 text-white border-orange-500"  : "bg-white text-orange-600 border-orange-300 hover:bg-orange-50",
+                      sky:    active ? "bg-sky-600 text-white border-sky-600"        : "bg-white text-sky-600 border-sky-300 hover:bg-sky-50",
+                      rose:   active ? "bg-rose-600 text-white border-rose-600"      : "bg-white text-rose-600 border-rose-300 hover:bg-rose-50",
+                      violet: active ? "bg-violet-600 text-white border-violet-600"  : "bg-white text-violet-600 border-violet-300 hover:bg-violet-50",
+                      teal:   active ? "bg-teal-600 text-white border-teal-600"      : "bg-white text-teal-600 border-teal-300 hover:bg-teal-50",
+                    };
+                    return (
+                      <button key={key} type="button"
+                        onClick={() => f(key as any, active ? 0 : 1)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-semibold transition-all ${cls[color]}`}>
+                        {active && <Check size={11} />}
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {((form as any).hasZipper || (form as any).hasSpout) && (
+                  <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                    {(form as any).hasZipper ? (
+                      <div>
+                        <label className="text-[10px] font-semibold text-indigo-600 uppercase block mb-1">Zipper Weight (g)</label>
+                        <input type="number" min={0} step={0.1} placeholder="e.g. 2.5"
+                          value={(form as any).zipperWeight || ""}
+                          onChange={e => f("zipperWeight" as any, parseFloat(e.target.value) || 0)}
+                          className="w-28 text-sm border border-indigo-300 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
+                      </div>
+                    ) : null}
+                    {(form as any).hasSpout ? (
+                      <div>
+                        <label className="text-[10px] font-semibold text-cyan-600 uppercase block mb-1">Spout Weight (g)</label>
+                        <div className="flex items-center gap-2">
+                          <input type="number" min={0} step={0.1} placeholder="e.g. 8"
+                            value={(form as any).spoutWeight || ""}
+                            onChange={e => f("spoutWeight" as any, parseFloat(e.target.value) || 0)}
+                            className="w-28 text-sm border border-cyan-300 rounded-lg px-3 py-1.5 bg-white outline-none focus:ring-2 focus:ring-cyan-400 font-mono" />
+                          <button type="button" onClick={() => f("spoutWeight" as any, 8)}
+                            className="text-[10px] px-2 py-1.5 bg-cyan-100 border border-cyan-300 text-cyan-700 rounded-lg font-bold hover:bg-cyan-200">
+                            8g (Std)
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── Dimension Setup + Live Diagram (when content type is known) ── */}
           {form.content && CONTENT_TYPE_CONFIG[normalizeContentType(form.content)] && (
             <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2">
+              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
                 <Calculator size={14} className="text-white" />
                 <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {form.content}</p>
+                {(form as any).hasZipper      ? <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">Zipper</span> : null}
+                {(form as any).hasSpout       ? <span className="px-2 py-0.5 rounded-full bg-cyan-400/80 text-white text-[10px] font-bold">Spout</span> : null}
+                {(form as any).hasValve       ? <span className="px-2 py-0.5 rounded-full bg-orange-400/80 text-white text-[10px] font-bold">Valve</span> : null}
+                {(form as any).hasTearNotch   ? <span className="px-2 py-0.5 rounded-full bg-rose-400/80 text-white text-[10px] font-bold">Tear Notch</span> : null}
+                {(form as any).hasEuroHole    ? <span className="px-2 py-0.5 rounded-full bg-violet-400/80 text-white text-[10px] font-bold">Euro Hole</span> : null}
                 {(form as any).structureType && (
                   <span className="ml-auto px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase">
                     {(form as any).structureType}
@@ -2716,7 +2827,7 @@ export default function GravureWorkOrderPage() {
                       <span className="text-[9px] text-gray-400">AJSW Printing &amp; Winding Chart</span>
                     </div>
                     <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Printed ACROSS the Roll</p>
-                    <div className="grid grid-cols-4 gap-1.5 mb-2">
+                    <div className="grid grid-cols-4 gap-3 mb-3">
                       {([
                         { n: 1, label: "Outside · Across\nTop off first" },
                         { n: 2, label: "Inside · Across\nTop off first" },
@@ -2725,17 +2836,23 @@ export default function GravureWorkOrderPage() {
                       ]).map(({ n, label }) => {
                         const sel = ((form as any).unwindDirection ?? 0) === n;
                         return (
-                          <button key={n} type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))}
-                            title={label.replace("\n", " ")}
-                            className={`flex flex-col items-center gap-0.5 p-1.5 rounded-xl border-2 text-center transition-all ${sel ? "border-orange-500 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-300"}`}>
-                            <span className={`text-[11px] font-black ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                            <span className={`text-[7px] font-medium leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                          </button>
+                          <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                              <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                              <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                              className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                              title="Preview full size">
+                              <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
                     <p className="text-[9px] font-bold text-gray-500 uppercase tracking-widest mb-1.5">Printed WITH the Roll</p>
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-4 gap-3">
                       {([
                         { n: 5, label: "Outside · With Roll\nRight off first" },
                         { n: 6, label: "Inside · With Roll\nRight off first" },
@@ -2744,15 +2861,51 @@ export default function GravureWorkOrderPage() {
                       ]).map(({ n, label }) => {
                         const sel = ((form as any).unwindDirection ?? 0) === n;
                         return (
-                          <button key={n} type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))}
-                            title={label.replace("\n", " ")}
-                            className={`flex flex-col items-center gap-0.5 p-1.5 rounded-xl border-2 text-center transition-all ${sel ? "border-orange-500 bg-orange-50" : "border-gray-200 bg-white hover:border-orange-300"}`}>
-                            <span className={`text-[11px] font-black ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                            <span className={`text-[7px] font-medium leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
-                          </button>
+                          <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
+                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
+                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
+                              <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                              <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                            </button>
+                            <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
+                              className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                              title="Preview full size">
+                              <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
+                    {/* ── Full-size image preview modal ── */}
+                    {unwindPreview !== null && (
+                      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setUnwindPreview(null)}>
+                        <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="text-sm font-bold text-gray-800">Direction #{unwindPreview}</p>
+                              <p className="text-xs text-gray-400">{[
+                                "Outside · Across · Top off first",
+                                "Inside · Across · Top off first",
+                                "Outside · Across · Bottom off first",
+                                "Inside · Across · Bottom off first",
+                                "Outside · With Roll · Right off first",
+                                "Inside · With Roll · Right off first",
+                                "Outside · With Roll · Left off first",
+                                "Inside · With Roll · Left off first",
+                              ][unwindPreview - 1]}</p>
+                            </div>
+                            <button type="button" onClick={() => setUnwindPreview(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-all">
+                              <X size={16} />
+                            </button>
+                          </div>
+                          <img src={`/images/Unwind_Direction_${unwindPreview}.png`} alt={`Direction ${unwindPreview}`} className="w-full h-auto object-contain rounded-lg border border-gray-100" />
+                          <button type="button" onClick={() => { setForm(p => ({ ...p, unwindDirection: unwindPreview } as any)); setUnwindPreview(null); }}
+                            className="mt-3 w-full py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-all">
+                            Select Direction #{unwindPreview}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {(form as any).unwindDirection > 0 && (
                       <p className="mt-1.5 text-[10px] text-orange-600 font-semibold flex items-center gap-1">
                         <Check size={10} /> Direction #{(form as any).unwindDirection} — {[
@@ -3010,7 +3163,7 @@ export default function GravureWorkOrderPage() {
                 <table className="min-w-full text-xs">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      {["Process", "Charge Unit", "Rate (₹)", "Qty", "Setup (₹)", "Amount (₹)", ""].map(h => (
+                      {["Process", ""].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -3024,22 +3177,10 @@ export default function GravureWorkOrderPage() {
                             {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
                           </select>
                         </td>
-                        <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
-                        <td className="px-3 py-2 w-24"><input type="number" value={pr.rate} onChange={e => updateProcess(i, { rate: Number(e.target.value) })} className={`${cellInput} text-right`} step={0.01} /></td>
-                        <td className="px-3 py-2 w-24"><input type="number" value={pr.qty} onChange={e => updateProcess(i, { qty: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                        <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                        <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">₹{pr.amount.toLocaleString()}</td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-purple-50 border-t border-purple-200">
-                    <tr>
-                      <td colSpan={5} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Total Process Cost</td>
-                      <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{form.processes.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString()}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             ) : (
@@ -3232,10 +3373,15 @@ export default function GravureWorkOrderPage() {
                                           onChange={e => {
                                             const apiIt = filteredApiItems.find(x => String(x.ItemID) === e.target.value);
                                             const staticIt = filteredStaticItems.find(x => x.id === e.target.value);
-                                            updatePlyConsumable(index, ciIdx, {
+                                            const patch: Record<string, unknown> = {
                                               itemId:   e.target.value,
                                               itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
-                                            });
+                                            };
+                                            if (ci.itemGroup === "Ink" && apiIt) {
+                                              patch.gsm = parseFloat(String(apiIt.DryGsM ?? 0)) || 0;
+                                              patch.solidPct = parseFloat(String(apiIt.SolidPerc ?? 40)) || 40;
+                                            }
+                                            updatePlyConsumable(index, ciIdx, patch);
                                           }}
                                           disabled={!ci.itemGroup}>
                                           <option value="">-- Select Item --</option>
@@ -3926,54 +4072,15 @@ export default function GravureWorkOrderPage() {
                 <table className="min-w-full text-[11px] border-collapse">
                   <thead className="bg-purple-700 text-white uppercase tracking-wider">
                     <tr>
-                      {["#", "Ink Item (Master)", "Color Name", "Type", "Pantone Ref"].map(h => (
-                        <th key={h} rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle">{h}</th>
-                      ))}
-                      <th colSpan={3} className="px-2 py-1.5 border border-purple-600/30 text-center text-xs font-semibold bg-blue-900/30 text-blue-200">Standard LAB (Reference)</th>
-                      <th colSpan={3} className="px-2 py-1.5 border border-purple-600/30 text-center text-xs font-semibold bg-green-900/30 text-green-200">Measured LAB (Actual)</th>
-                      <th rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle">
-                        ΔE<div className="text-[9px] font-normal opacity-70 text-green-200">CIE 1976</div>
-                      </th>
-                      <th rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle">
-                        ΔE Tol.<div className="text-[9px] font-normal opacity-70">max allowed</div>
-                      </th>
-                      <th rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle">
-                        QC Result<div className="text-[9px] font-normal opacity-70">PASS/FAIL</div>
-                      </th>
-                      <th rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle min-w-[140px]">
-                        Insight<div className="text-[9px] font-normal opacity-70">color correction</div>
-                      </th>
-                      {["Shade Card Ref", "Status", "Remarks"].map(h => (
-                        <th key={h} rowSpan={2} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold align-middle">{h}</th>
-                      ))}
-                    </tr>
-                    <tr>
-                      {[
-                        { label: "L*", sub: "0–100", cls: "text-blue-300", bg: "bg-blue-900/20" },
-                        { label: "a*", sub: "-128–127", cls: "text-red-300", bg: "bg-blue-900/20" },
-                        { label: "b*", sub: "-128–127", cls: "text-yellow-300", bg: "bg-blue-900/20" },
-                        { label: "L*", sub: "0–100", cls: "text-blue-300", bg: "bg-green-900/20" },
-                        { label: "a*", sub: "-128–127", cls: "text-red-300", bg: "bg-green-900/20" },
-                        { label: "b*", sub: "-128–127", cls: "text-yellow-300", bg: "bg-green-900/20" },
-                      ].map((h, i) => (
-                        <th key={i} className={`px-2 py-1.5 border border-purple-600/30 text-center whitespace-nowrap font-semibold ${h.bg}`}>
-                          <span>{h.label}</span>
-                          <div className={`text-[9px] font-normal opacity-80 ${h.cls}`}>{h.sub}</div>
-                        </th>
+                      {["#", "Ink Item (Master)", "Color Name", "Remarks"].map(h => (
+                        <th key={h} className="px-2 py-2 border border-purple-600/30 text-center whitespace-nowrap font-semibold">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {colorShades.map((cs, i) => {
-                      const dlabs = calculateDeltaLAB(cs.labL, cs.labA, cs.labB, cs.labLMeas, cs.labAMeas, cs.labBMeas);
-                      const qcSt = getStatus(cs.deltaE, cs.deltaETol);
-                      const sev = getSeverity(cs.deltaE);
-                      const insight = getColorInsight(cs.labL, cs.labA, cs.labB, cs.labLMeas, cs.labAMeas, cs.labBMeas);
-                      const fmtD = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(2)}`;
-                      return (
+                    {colorShades.map((cs, i) => (
                         <tr key={i} className="hover:bg-purple-50/20">
                           <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
-                          {/* Ink Item from Item Master */}
                           <td className="px-2 py-1.5 min-w-[180px]">
                             <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
                               value={(cs as any).inkItemId ?? ""}
@@ -3983,179 +4090,18 @@ export default function GravureWorkOrderPage() {
                                   ...c,
                                   inkItemId: ink?.id ?? "",
                                   colorName: ink?.colour || ink?.name || c.colorName,
-                                  pantoneRef: ink?.pantoneNo || c.pantoneRef,
                                 } as any : c));
                               }}>
                               <option value="">-- Select Ink --</option>
                               {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
                             </select>
                           </td>
-                          <td className="px-2 py-1.5"><input className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
-                          <td className="px-2 py-1.5">
-                            <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as ColorShade["inkType"] } : c))}>
-                              <option value="Spot">Spot</option><option value="Process">Process</option><option value="Special">Special</option>
-                            </select>
-                          </td>
-                          <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
-                          <td className="px-2 py-1.5">
-                            <input type="number" step={1} min={0} max={100} placeholder="0–100"
-                              className="w-[72px] text-xs border border-blue-200 bg-blue-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-blue-400 text-blue-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labL}
-                              onChange={e => {
-                                const v = Math.min(100, Math.max(0, Number(e.target.value)));
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(String(v), c.labA, c.labB, c.labLMeas, c.labAMeas, c.labBMeas);
-                                  return { ...c, labL: String(v), deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input type="number" step={1} min={-128} max={127} placeholder="-128–127"
-                              className="w-[72px] text-xs border border-red-200 bg-red-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-red-400 text-red-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labA}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(c.labL, v, c.labB, c.labLMeas, c.labAMeas, c.labBMeas);
-                                  return { ...c, labA: v, deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          <td className="px-2 py-1.5">
-                            <input type="number" step={1} min={-128} max={127} placeholder="-128–127"
-                              className="w-[72px] text-xs border border-yellow-300 bg-yellow-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-yellow-400 text-yellow-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labB}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(c.labL, c.labA, v, c.labLMeas, c.labAMeas, c.labBMeas);
-                                  return { ...c, labB: v, deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          {/* Measured LAB */}
-                          <td className="px-2 py-1.5 bg-green-50/30">
-                            <input type="number" step={1} min={0} max={100} placeholder="0–100"
-                              className="w-[68px] text-xs border border-green-300 bg-green-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-green-400 text-green-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labLMeas}
-                              onChange={e => {
-                                const v = String(Math.min(100, Math.max(0, Number(e.target.value))));
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(c.labL, c.labA, c.labB, v, c.labAMeas, c.labBMeas);
-                                  return { ...c, labLMeas: v, deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          <td className="px-2 py-1.5 bg-green-50/30">
-                            <input type="number" step={1} min={-128} max={127} placeholder="-128–127"
-                              className="w-[68px] text-xs border border-green-300 bg-green-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-green-400 text-green-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labAMeas}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(c.labL, c.labA, c.labB, c.labLMeas, v, c.labBMeas);
-                                  return { ...c, labAMeas: v, deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          <td className="px-2 py-1.5 bg-green-50/30">
-                            <input type="number" step={1} min={-128} max={127} placeholder="-128–127"
-                              className="w-[68px] text-xs border border-green-300 bg-green-50 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-green-400 text-green-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.labBMeas}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setColorShades(p => p.map((c, ci) => {
-                                  if (ci !== i) return c;
-                                  const de = calcDeltaE(c.labL, c.labA, c.labB, c.labLMeas, c.labAMeas, v);
-                                  return { ...c, labBMeas: v, deltaE: de };
-                                }));
-                              }} />
-                          </td>
-                          {/* ΔE auto-computed */}
-                          <td className="px-2 py-1.5 text-center">
-                            {cs.deltaE !== "--" ? (
-                              <div className="flex flex-col items-center gap-0.5">
-                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold font-mono border ${qcSt === "PASS" ? "bg-green-50 text-green-700 border-green-300"
-                                  : qcSt === "WARNING" ? "bg-yellow-50 text-yellow-700 border-yellow-300"
-                                    : "bg-red-50 text-red-600 border-red-300"
-                                  }`}>{cs.deltaE}</span>
-                                {sev && (
-                                  <span className={`text-[9px] font-semibold px-1.5 rounded-full ${sev === "Low" ? "bg-green-100 text-green-700" : sev === "Medium" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700"
-                                    }`}>{sev}</span>
-                                )}
-                                {dlabs && (
-                                  <div className="text-[9px] font-mono text-gray-400 leading-tight mt-0.5">
-                                    <span>ΔL{fmtD(dlabs.dL)}</span>
-                                    <span className="mx-0.5">Δa{fmtD(dlabs.da)}</span>
-                                    <span>Δb{fmtD(dlabs.db)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-300 font-mono">--</span>
-                            )}
-                          </td>
-                          {/* ΔE Tolerance (manual) */}
-                          <td className="px-2 py-1.5">
-                            <input type="number" step={0.1} min={0} max={10} placeholder="1.0"
-                              className="w-[56px] text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-purple-400 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              value={cs.deltaETol}
-                              onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, deltaETol: e.target.value } : c))} />
-                          </td>
-                          {/* QC Result */}
-                          <td className="px-2 py-1.5 text-center">
-                            {qcSt === "NOT MEASURED" ? (
-                              <span className="text-[10px] text-gray-400 font-medium italic">Not Measured</span>
-                            ) : (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${qcSt === "PASS" ? "bg-green-100 text-green-800 border-green-400"
-                                : qcSt === "WARNING" ? "bg-yellow-100 text-yellow-800 border-yellow-400"
-                                  : "bg-red-100 text-red-700 border-red-400"
-                                }`}>
-                                {qcSt === "PASS" ? "✓" : qcSt === "WARNING" ? "⚠" : "✗"} {qcSt}
-                              </span>
-                            )}
-                          </td>
-                          {/* Production Insight — priority-based */}
-                          <td className="px-2 py-1.5 min-w-[160px]">
-                            {!insight.primary ? (
-                              <span className="text-[10px] text-gray-300">
-                                {cs.deltaE === "--" ? "Enter measured LAB" : "Within tolerance ✓"}
-                              </span>
-                            ) : (
-                              <div className="flex flex-col gap-1">
-                                {/* Primary issue — bold, prominent */}
-                                <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${insight.primary.cls}`}>
-                                  <span className="opacity-70">{insight.primary.axis} = {fmtD(insight.primary.val)}</span>
-                                  <span className="mx-1">→</span>
-                                  <span>{insight.primary.suggestion}</span>
-                                  <div className="font-normal opacity-80 mt-0.5">↳ {insight.primary.inkAdj}</div>
-                                </div>
-                                {/* Secondary issues — smaller */}
-                                {insight.secondary.map((s, si) => (
-                                  <span key={si} className={`text-[9px] font-medium px-1.5 py-0.5 rounded border ${s.cls}`}>
-                                    {s.axis} = {fmtD(s.val)} → {s.suggestion}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-2 py-1.5"><input placeholder="SC-001" className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.shadeCardRef} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, shadeCardRef: e.target.value } : c))} /></td>
-                          <td className="px-2 py-1.5">
-                            <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.status} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as ColorShade["status"] } : c))}>
-                              <option value="Pending">Pending</option><option value="Standard Received">Std. Received</option><option value="Approved">Approved</option><option value="Rejected">Rejected</option>
-                            </select>
-                          </td>
-                          <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
+                          <td className="px-2 py-1.5"><input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
+                          <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
                         </tr>
-                      );
-                    })}
+                      ))}
                     {colorShades.length === 0 && (
-                      <tr><td colSpan={18} className="p-6 text-center text-gray-400 text-xs">No colors. Set No. of Colors in Basic Info tab first.</td></tr>
+                      <tr><td colSpan={4} className="p-6 text-center text-gray-400 text-xs">No colors. Set No. of Colors in Basic Info tab first.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -4651,7 +4597,7 @@ export default function GravureWorkOrderPage() {
                 <table className="min-w-full text-xs">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
-                      {["Process", "Charge Unit", "Rate (₹)", "Qty", "Setup (₹)", "Amount (₹)", ""].map(h => (
+                      {["Process", ""].map(h => (
                         <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -4665,22 +4611,10 @@ export default function GravureWorkOrderPage() {
                             {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
                           </select>
                         </td>
-                        <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
-                        <td className="px-3 py-2 w-24"><input type="number" value={pr.rate} onChange={e => updateProcess(i, { rate: Number(e.target.value) })} className={`${cellInput} text-right`} step={0.01} /></td>
-                        <td className="px-3 py-2 w-24"><input type="number" value={pr.qty} onChange={e => updateProcess(i, { qty: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                        <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                        <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">₹{pr.amount.toLocaleString()}</td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                       </tr>
                     ))}
                   </tbody>
-                  <tfoot className="bg-purple-50 border-t border-purple-200">
-                    <tr>
-                      <td colSpan={5} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Total Process Cost</td>
-                      <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{form.processes.reduce((s, p) => s + (p.amount || 0), 0).toLocaleString()}</td>
-                      <td />
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             ) : (
@@ -4815,7 +4749,7 @@ export default function GravureWorkOrderPage() {
                   <div style={{ borderBottom: "3px solid #1e3a8a", paddingBottom: "6px", marginBottom: "8px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                       <div>
-                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#1e3a8a", letterSpacing: "1px" }}>AJ SHRINK INDUSTRIES</div>
+                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#1e3a8a", letterSpacing: "1px" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
                         <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Printing &amp; Flexible Packaging</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -5087,7 +5021,7 @@ export default function GravureWorkOrderPage() {
                   {/* ── FOOTER ── */}
                   <div style={{ marginTop: "6px", display: "flex", justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: "4px", fontSize: "6.5pt", color: "#9ca3af" }}>
                     <span>Printed: {new Date().toLocaleString("en-IN")}</span>
-                    <span>AJ Shrink Industries — Gravure Production Job Card</span>
+                    <span>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"} — Gravure Production Job Card</span>
                     <span>{wo.workOrderNo}</span>
                   </div>
 

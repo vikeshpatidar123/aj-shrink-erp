@@ -16,6 +16,8 @@ type ApiCatalogRow = {
   PerMeterRate: number; TrimmingSize: number; WidthShrinkage: number;
   StructureType: string; GussetSize: number; SeamingArea: number; TransparentArea: number;
   Gusset: number; SealSize: number; HasZipper: number;
+  HasSpout: number; HasValve: number; LaminationPlies: number;
+  ZipperWeight: number; SpoutWeight: number;
   TopSeal: number; BottomSeal: number; SideSeal: number; CenterSealWidth: number;
   SideGusset: number; RepeatLength: number; RepeatShrinkage: number;
   PackWidth: number; PackHeight: number; HMargin: number; VMargin: number;
@@ -86,6 +88,11 @@ function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
     gusset: Number(r.Gusset ?? 0),
     sealSize: Number(r.SealSize ?? 0),
     hasZipper: Number(r.HasZipper ?? 0) === 1,
+    hasSpout: Number(r.HasSpout ?? 0) === 1,
+    hasValve: Number(r.HasValve ?? 0) === 1,
+    laminationPlies: Number(r.LaminationPlies ?? 0),
+    zipperWeight: Number(r.ZipperWeight ?? 0),
+    spoutWeight: Number(r.SpoutWeight ?? 0),
     topSeal: Number(r.TopSeal ?? 0),
     bottomSeal: Number(r.BottomSeal ?? 0),
     sideSeal: Number(r.SideSeal ?? 0),
@@ -269,6 +276,11 @@ export function ProductCatalogProvider({ children }: { children: ReactNode }) {
         Gusset: item.gusset ?? 0,
         SealSize: item.sealSize ?? 0,
         HasZipper: item.hasZipper ? 1 : 0,
+        HasSpout: item.hasSpout ? 1 : 0,
+        HasValve: item.hasValve ? 1 : 0,
+        LaminationPlies: item.laminationPlies ?? 0,
+        ZipperWeight: item.zipperWeight ?? 0,
+        SpoutWeight: item.spoutWeight ?? 0,
         TopSeal: item.topSeal ?? 0,
         BottomSeal: item.bottomSeal ?? 0,
         SideSeal: item.sideSeal ?? 0,
@@ -311,6 +323,38 @@ export function ProductCatalogProvider({ children }: { children: ReactNode }) {
         SavedCylAllocs: JSON.stringify(item.savedCylAllocs ?? []),
         AttachmentsBase64: JSON.stringify(item.attachmentsBase64 ?? []),
         ExistingAttachmentIDs: JSON.stringify(item.existingAttachmentIDs ?? []),
+        // Explicit SavedLayersJSON so backend stores all consumables (not a truncated FOR JSON PATH)
+        SavedLayersJSON: JSON.stringify((item.secondaryLayers ?? []).map((l: any, li: number) => ({
+          layerNo: l.layerNo || li + 1,
+          itemId: l.ItemID ?? l.itemId ?? "",
+          itemName: l.itemName ?? l.ItemName ?? "",
+          itemSubGroup: l.itemSubGroup ?? l.ItemSubGroup ?? "",
+          plyType: l.PlyType ?? l.plyType ?? "Film",
+          gsm: l.FilmGSM ?? l.filmGSM ?? l.gsm ?? 0,
+          filmGSM: l.FilmGSM ?? l.filmGSM ?? l.gsm ?? 0,
+          filmRate: l.FilmRate ?? l.filmRate ?? l.rate ?? 0,
+          density: l.density ?? 0,
+          thickness: l.thickness ?? 0,
+          storedSubGroup: l.itemSubGroup ?? l.ItemSubGroup ?? "",
+          consumableItems: (l.Consumables ?? l.consumables ?? l.consumableItems ?? []).map((c: any) => ({
+            consumableId: c.consumableId ?? c.ConsumableID ?? "",
+            consumableType: c.consumableType ?? c.itemGroup ?? "",
+            itemId: c.itemId ?? "",
+            itemGroupId: c.itemGroupId ?? "",
+            itemGroupName: c.itemGroupName ?? c.itemGroup ?? "",
+            itemSubGroupId: c.itemSubGroupId ?? "",
+            itemSubGroupName: c.itemSubGroupName ?? c.itemSubGroup ?? "",
+            itemName: c.itemName ?? "",
+            dryGSM: c.dryGSM ?? c.gsm ?? 0,
+            gsm: c.dryGSM ?? c.gsm ?? 0,
+            solidPercentage: c.solidPercentage ?? c.solidPct ?? 0,
+            solidPct: c.solidPercentage ?? c.solidPct ?? 0,
+            liquidGSM: c.liquidGSM ?? 0,
+            ratioPct: c.ratioPct ?? 0,
+            itemGroup: c.itemGroup ?? c.consumableType ?? c.itemGroupName ?? "",
+            itemSubGroup: c.itemSubGroup ?? c.itemSubGroupName ?? "",
+          })),
+        }))),
         SecondaryLayers: (item.secondaryLayers ?? []).map((l: any, li: number) => ({
           layerNo: l.layerNo || li + 1,
           itemId: l.ItemID ?? l.itemId ?? "",
@@ -333,12 +377,25 @@ export function ProductCatalogProvider({ children }: { children: ReactNode }) {
             ratioPct: c.ratioPct ?? 0,
           })),
         })),
-        Processes: (item.processes ?? []).map((p: any) => ({
-          processId: p.id ?? p.processId ?? "",
-          rate: p.rate ?? 0,
-          qty: p.qty ?? p.quantity ?? 0,
-          amount: p.amount ?? 0,
-        })),
+        Processes: (() => {
+          const all = item.processes ?? [];
+          const valid = all.filter((p: any) => {
+            const id = String(p.id ?? p.processId ?? "");
+            return /^\d+$/.test(id) && parseInt(id, 10) > 0;
+          }).map((p: any) => ({
+            processId: parseInt(String(p.id ?? p.processId), 10),
+            rate: p.rate ?? 0,
+            qty: p.qty ?? p.quantity ?? 0,
+            amount: p.amount ?? 0,
+          }));
+          if (all.length > 0 && valid.length === 0) {
+            console.warn("[Catalog] All processes filtered out — non-numeric IDs. Raw:", all);
+          }
+          if (valid.length > 0) {
+            console.log("[Catalog] Sending processes:", valid);
+          }
+          return valid;
+        })(),
       };
       const endpoint = isDbGuid(item.id ?? "")
         ? `${API}/updatecatalogdata`

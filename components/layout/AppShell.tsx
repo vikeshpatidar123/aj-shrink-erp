@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { usePathname } from "next/navigation";
@@ -39,6 +39,9 @@ const pageTitles: Record<string, string> = {
   "/gravure/workorder": "Gravure Work Order",
   "/production": "Production Entry",
   "/gravure/production": "Gravure Production",
+  "/gravure/artwork-management":          "Artwork Library",
+  "/gravure/artwork-management/designer": "Designer Tab",
+  "/gravure/artwork-management/manager":  "Manager Tab",
   "/dispatch": "Dispatch",
   "/tool-inventory/stock-summary":         "Tool Stock Summary",
   "/tool-inventory/purchase-requisition":  "Tool Purchase Requisition",
@@ -58,7 +61,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [desktopOpen, setDesktopOpen] = useState(true);    // desktop in-layout
 
   const pathname = usePathname();
-  const title    = pageTitles[pathname] || "AJ Shrink ERP";
+  const [title, setTitle] = useState(pageTitles[pathname] ?? "ERP");
+  useEffect(() => {
+    setTitle(pageTitles[pathname] || localStorage.getItem("companyName") || "ERP");
+  }, [pathname]);
 
   if (AUTH_PATHS.includes(pathname)) {
     return <>{children}</>;

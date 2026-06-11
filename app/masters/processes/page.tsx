@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, Check, List } from "lucide-react";
+import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { inputCls } from "@/lib/styles";
 import { authHeaders } from "@/lib/auth";
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Types ────────────────────────────────────────────────────────────────────
 type SelectOpt = { value: string; label: string };
 
 type ProcessRow = {
@@ -97,7 +98,7 @@ const blank: FormState = {
   selectedMachineIds: [],
 };
 
-// â”€â”€â”€ Helper components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Helper components ─────────────────────────────────────────────────────────
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -131,7 +132,7 @@ function toBool(v: any): boolean {
   return false;
 }
 
-// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Page ──────────────────────────────────────────────────────────────────────
 export default function ProcessMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<ProcessRow[]>([]);
@@ -328,14 +329,14 @@ export default function ProcessMasterPage() {
   const deptMachines = allMachines.filter(m => String(m.DepartmentID) === form.DepartmentID);
   const selectedDeptName = departments.find(d => d.value === form.DepartmentID)?.label ?? "";
 
-  // â”€â”€ FORM VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── FORM VIEW ──────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
             <h2 className="text-xl font-bold text-gray-800">Process Master</h2>
           </div>
           <div className="flex items-center gap-3">
@@ -373,7 +374,7 @@ export default function ProcessMasterPage() {
 
           <div className="p-8">
 
-            {/* â”€â”€ PROCESS DETAIL TAB (includes costing) â”€â”€ */}
+            {/* ── PROCESS DETAIL TAB (includes costing) ── */}
             {activeTab === "detail" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
 
@@ -434,8 +435,8 @@ export default function ProcessMasterPage() {
                         {units.map((u, i) => <option key={`${i}-${u.value}`} value={u.value}>{u.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="Rate (â‚¹)">
-                      <PrefixInput value={form.Rate} onChange={(e: any) => f("Rate", e.target.value)} prefix="â‚¹" placeholder="0.00" type="number" />
+                    <Field label="Rate (₹)">
+                      <PrefixInput value={form.Rate} onChange={(e: any) => f("Rate", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
                     </Field>
                   </div>
                 </div>
@@ -446,8 +447,8 @@ export default function ProcessMasterPage() {
                     <Field label="Process Waste %">
                       <SuffixInput value={form.ProcessWastagePercentage} onChange={(e: any) => f("ProcessWastagePercentage", e.target.value)} suffix="%" placeholder="e.g. 3" type="number" />
                     </Field>
-                    <Field label="Process Waste Flat (â‚¹)">
-                      <PrefixInput value={form.ProcessFlatWastageValue} onChange={(e: any) => f("ProcessFlatWastageValue", e.target.value)} prefix="â‚¹" placeholder="0.00" type="number" />
+                    <Field label="Process Waste Flat (₹)">
+                      <PrefixInput value={form.ProcessFlatWastageValue} onChange={(e: any) => f("ProcessFlatWastageValue", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
                     </Field>
                   </div>
                 </div>
@@ -459,7 +460,7 @@ export default function ProcessMasterPage() {
               </div>
             )}
 
-            {/* â”€â”€ MACHINE ALLOCATION TAB â”€â”€ */}
+            {/* ── MACHINE ALLOCATION TAB ── */}
             {activeTab === "machines" && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div>
@@ -517,7 +518,7 @@ export default function ProcessMasterPage() {
     );
   }
 
-  // â”€â”€ LIST VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── LIST VIEW ──────────────────────────────────────────────────────────────
   const deptNames = Array.from(new Set(data.map(r => r.DepartmentName).filter(Boolean)));
   const filteredData = filterDept === "All" ? data : data.filter(r => r.DepartmentName === filterDept);
 
@@ -529,7 +530,7 @@ export default function ProcessMasterPage() {
       render: (r) => <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.DepartmentName}</span>,
     },
     { key: "TypeofCharges", header: "Charge Type", render: (r) => r.TypeofCharges || <span className="text-gray-400">—</span> },
-    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `â‚¹ ${r.Rate}` : "—" },
+    { key: "Rate", header: "Rate", render: (r) => r.Rate ? `₹ ${r.Rate}` : "—" },
     { key: "ProcessWastagePercentage", header: "Waste %", render: (r) => r.ProcessWastagePercentage ? `${r.ProcessWastagePercentage}%` : "—" },
   ];
 

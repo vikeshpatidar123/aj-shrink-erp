@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AJ Shrink ERP",
-  description: "Flexible Packaging ERP – Extrusion & Rotogravure",
+  title: "Indus Analytics ERP",
+  description: "Indus Analytics ERP – Extrusion & Rotogravure",
 };
 
 export default function RootLayout({

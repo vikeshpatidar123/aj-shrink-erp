@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { Plus, X, Search, Check, List, ChevronRight, RefreshCw, Trash2, Download } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
+import { getCompanyName } from "@/lib/useCompanyName";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -479,7 +480,7 @@ export default function PurchaseRequisitionPage() {
         {/* Header ribbon */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
             <div className="flex flex-wrap items-center gap-2 mt-0.5">
               <h2 className="text-lg font-bold text-gray-800">Purchase Requisition</h2>
               {editTxnID && (

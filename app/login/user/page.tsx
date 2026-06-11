@@ -66,8 +66,8 @@ export default function UserLoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 shadow-lg mb-4">
             <span className="text-white text-2xl font-extrabold tracking-tight">AJ</span>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">AJ Shrink ERP</h1>
-          <p className="text-slate-400 text-sm mt-1">Flexible Packaging Management System</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">{companyName || "Indus Analytics ERP"}</h1>
+          <p className="text-slate-400 text-sm mt-1">Indus Analytics ERP</p>
         </div>
 
         {/* Card */}
@@ -158,7 +158,7 @@ export default function UserLoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-5">
-          v2.0 &copy; 2024 AJ Shrink ERP &mdash; Flexible Packaging
+          v2.0 &copy; 2024 {companyName || "Indus Analytics ERP"}
         </p>
       </div>
     </div>

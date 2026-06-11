@@ -10,7 +10,7 @@ export type Column<T> = {
   width?: string;
 };
 
-interface DataTableProps<T extends { id: string }> {
+interface DataTableProps<T> {
   data: T[];
   columns: Column<T>[];
   searchKeys?: (keyof T)[];
@@ -18,7 +18,7 @@ interface DataTableProps<T extends { id: string }> {
   actions?: (row: T) => React.ReactNode;
 }
 
-export function DataTable<T extends { id: string }>({
+export function DataTable<T>({
   data, columns, searchKeys = [], pageSize = 10, actions,
 }: DataTableProps<T>) {
   const [search,      setSearch]      = useState("");
@@ -179,7 +179,7 @@ export function DataTable<T extends { id: string }>({
               </tr>
             ) : (
               paged.map((row, idx) => (
-                <tr key={row.id ?? idx} className="erp-table-row transition-colors">
+                <tr key={(row as Record<string, unknown>)["id"] as string ?? idx} className="erp-table-row transition-colors">
                   {columns.map(col => (
                     <td key={String(col.key)} className="px-3 py-2.5 text-gray-700 text-sm">
                       {getCellValue(row, col)}
@@ -203,7 +203,7 @@ export function DataTable<T extends { id: string }>({
           </div>
         ) : (
           paged.map((row, idx) => (
-            <div key={row.id ?? idx} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <div key={(row as Record<string, unknown>)["id"] as string ?? idx} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
               <div
                 className="px-4 py-2.5 flex items-center justify-between gap-3"
                 style={{ background: "var(--erp-primary-light)", borderBottom: "1px solid #c8dded" }}

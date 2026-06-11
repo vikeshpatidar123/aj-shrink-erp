@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, List, Check } from "lucide-react";
+import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
@@ -167,7 +168,7 @@ export default function ItemGroupPage() {
         {/* Header Ribbon */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">AJ Shrink Wrap Pvt Ltd</p>
+            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
             <h2 className="text-xl font-bold text-gray-800">Item Group Master</h2>
           </div>
           <div className="flex items-center gap-3">

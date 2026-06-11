@@ -235,7 +235,7 @@ export default function LedgerMasterPage() {
 
       setFormFields(fields);
 
-      // Initialize values — "false"/"null" bad defaults â†' "" for non-checkbox fields
+      // Initialize values — "false"/"null" bad defaults ←' "" for non-checkbox fields
       const defaults: Record<string, any> = { ISLedgerActive: "true" };
       fields.forEach((f: any) => {
         let dv = prefill?.[f.FieldName] ?? f.FieldDefaultValue ?? "";
@@ -330,7 +330,7 @@ export default function LedgerMasterPage() {
       const { LedgerGroupID: _lgid, ...formValuesWithoutGroupID } = formValues;
       const masterRecord: Record<string, any> = { ...formValuesWithoutGroupID };
 
-      // Sanitize — same pattern as ItemMaster to avoid varcharâ†'bigint/real errors
+      // Sanitize — same pattern as ItemMaster to avoid varchar←'bigint/real errors
       formFields.forEach((f: any) => {
         const v = masterRecord[f.FieldName];
         if (f.FieldType === "checkbox") {
@@ -403,11 +403,26 @@ export default function LedgerMasterPage() {
     if (filteredGridData.length === 0) return [];
     const skip = new Set(["CompanyID", "FYear", "UserID", "CreatedBy", "ModifiedBy",
       "IsDeletedTransaction", "DeletedBy", "DeletedDate", "ModifiedDate", "IsLocked"]);
-    return Object.keys(filteredGridData[0])
-      .filter(k => !skip.has(k))
-      .slice(0, 7)
-      .map(k => ({ key: k, header: k.replace(/([A-Z])/g, " $1").trim(), sortable: true }));
-  }, [filteredGridData]);
+    const keys = Object.keys(filteredGridData[0]).filter(k => !skip.has(k));
+
+    // Derive the display header for LedgerName from the active group
+    // e.g. active group "Employee" → "Employee Name", "Client" → "Client Name"
+    const activeGroup = allGroups.find(g => g.LedgerGroupID === activeGroupID);
+    const groupDisplay = activeGroup?.LedgerGroupNameDisplay || activeGroup?.LedgerGroupName || "";
+    const ledgerNameHeader = groupDisplay ? `${groupDisplay} Name` : "Name";
+
+    // Always put LedgerName first — do NOT use endsWith("name") which would pick DepartmentName
+    const hasLedgerName = keys.includes("LedgerName");
+    const priority = hasLedgerName ? ["LedgerName"] : [];
+    const rest = keys.filter(k => k !== "LedgerName");
+    const ordered = [...priority, ...rest].slice(0, 7);
+
+    return ordered.map(k => ({
+      key: k,
+      header: k === "LedgerName" ? ledgerNameHeader : k.replace(/([A-Z])/g, " $1").trim(),
+      sortable: true,
+    }));
+  }, [filteredGridData, activeGroupID, allGroups]);
 
   // â"€â"€ FORM VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (view === "form") {
@@ -476,7 +491,7 @@ export default function LedgerMasterPage() {
               </span>
               <button onClick={() => setFormStep("select-group")}
                 className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-                ← Change Group
+                ← Change Group
               </button>
             </div>
 
@@ -551,7 +566,7 @@ export default function LedgerMasterPage() {
                   <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
                     <button onClick={() => setFormStep("select-group")}
                       className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      ← Change Group
+                      ← Change Group
                     </button>
                     <button onClick={saveLedger} disabled={formSaving}
                       className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
