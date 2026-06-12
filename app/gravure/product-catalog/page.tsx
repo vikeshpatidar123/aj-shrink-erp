@@ -1656,53 +1656,44 @@ export default function ProductCatalogPage() {
   const stats = { pending: pendingOrders.length, processed: processedCatalog.length };
 
   return (
-    <div className="space-y-5">
+    <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <BookMarked size={18} className="text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Product Catalog</h2>
-          </div>
-          <p className="text-sm text-gray-500">
-            {stats.pending} orders pending · {stats.processed} in catalog
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button icon={<Plus size={14} />} onClick={openDirectCreate}
-            className="bg-purple-600 text-white hover:bg-purple-700 border-0">
-            Create Direct Catalog
-          </Button>
-        </div>
-      </div>
+      {/* ══ CONTENT AREA ══════════════════════════════════════════ */}
+      <div className="flex-1 overflow-hidden flex flex-col">
 
-
-      {/* ── Tabs ── */}
-      <div className="flex bg-gray-100 p-1 rounded-xl gap-1 w-fit">
-        {([
-          { key: "pending", label: "Pending", Icon: Clock, count: stats.pending },
-          { key: "processed", label: "Processed", Icon: CheckCircle2, count: stats.processed },
-        ] as const).map(t => (
-          <button key={t.key} onClick={() => setCatalogTab(t.key)}
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all
-              ${catalogTab === t.key ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
-            <t.Icon size={14} />
-            {t.label}
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold
-              ${catalogTab === t.key ? "bg-purple-100 text-purple-700" : "bg-gray-200 text-gray-600"}`}>
-              {t.count}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* ══ PENDING TAB ═══════════════════════════════════════════ */}
+      {/* ── PENDING TAB ─────────────────────────────────────────── */}
       {catalogTab === "pending" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
+          {/* Toolbar row — mirrors DataTable search-bar row */}
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 flex-1 sm:max-w-xs shadow-sm">
+              <Clock size={14} className="text-orange-500 flex-shrink-0" />
+              <span className="text-sm text-gray-400 select-none">Pending orders</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+                <button onClick={() => setCatalogTab("pending")}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-orange-600">
+                  <Clock size={12} />Pending
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-600">{stats.pending}</span>
+                </button>
+                <button onClick={() => setCatalogTab("processed")}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
+                  <CheckCircle2 size={12} />Processed
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.processed}</span>
+                </button>
+              </div>
+              <Button icon={<Plus size={13} />} onClick={openDirectCreate}
+                className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
+                Create Direct Catalog
+              </Button>
+            </div>
+          </div>
+          {/* List container */}
+          <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           {pendingOrders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-              <CheckCircle2 size={40} className="text-green-400 mb-3" />
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <CheckCircle2 size={36} className="text-green-400 mb-3" />
               <p className="font-semibold text-gray-600">All orders have catalog entries!</p>
               <p className="text-sm mt-1">Every order has been converted to a product catalog.</p>
             </div>
@@ -1713,50 +1704,48 @@ export default function ProductCatalogPage() {
                 const line = order.orderLines?.[0];
                 return (
                   <div key={order.id}
-                    className="flex items-start gap-4 px-5 py-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex-shrink-0 mt-0.5">
-                      <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
-                        <ShoppingCart size={18} className="text-teal-600" />
+                    className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                        <ShoppingCart size={14} className="text-teal-600" />
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-0.5">
                         <p className="font-semibold text-gray-800 text-sm truncate">
                           {line?.productName || order.jobName || "—"}
                         </p>
                         <span className="text-xs text-gray-400 font-mono flex-shrink-0">{order.orderNo}</span>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
                         <span className="font-medium text-gray-700">{order.customerName}</span>
                         {(line?.substrate || order.substrate) && (
-                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">
+                          <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px]">
                             {line?.substrate || order.substrate}
                           </span>
                         )}
                         <span>{line?.noOfColors || order.noOfColors || 0}C · {line?.printType || order.printType || "—"}</span>
                         <span>{(line?.orderQty || order.quantity || 0).toLocaleString()} {line?.unit || order.unit || "Meter"}</span>
                         <span className="text-gray-400">{order.date}</span>
-                      </div>
-                      <div className="mt-1.5">
                         {wo ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-xs font-semibold">
-                            <CheckCircle2 size={10} />Work Order: {wo.workOrderNo} — Planning ready
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-50 text-green-700 border border-green-200 rounded-full text-[10px] font-semibold">
+                            <CheckCircle2 size={9} />WO: {wo.workOrderNo}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-xs">
-                            <AlertCircle size={10} />No Work Order — basic catalog from order data
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[10px]">
+                            <AlertCircle size={9} />No WO
                           </span>
                         )}
                       </div>
                     </div>
                     {order.totalAmount > 0 && (
-                      <div className="flex-shrink-0 text-right">
-                        <p className="text-[10px] text-gray-400">Order Total</p>
-                        <p className="font-bold text-gray-800 text-sm">₹{order.totalAmount.toLocaleString()}</p>
+                      <div className="flex-shrink-0 text-right hidden sm:block">
+                        <p className="text-[10px] text-gray-400">Total</p>
+                        <p className="font-bold text-gray-800 text-xs">₹{order.totalAmount.toLocaleString()}</p>
                       </div>
                     )}
                     <div className="flex-shrink-0">
-                      <Button icon={<BookMarked size={14} />} onClick={() => openCreate(order)}>
+                      <Button size="sm" icon={<BookMarked size={13} />} onClick={() => openCreate(order)}>
                         Create Catalog
                       </Button>
                     </div>
@@ -1765,26 +1754,27 @@ export default function ProductCatalogPage() {
               })}
             </div>
           )}
+          </div>
         </div>
       )}
 
-      {/* ══ PROCESSED TAB ═════════════════════════════════════════ */}
+      {/* ── PROCESSED TAB ───────────────────────────────────────── */}
       {catalogTab === "processed" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
           {catalogLoading ? (
-            <div className="flex items-center justify-center py-16 text-gray-400 gap-3">
+            <div className="flex items-center justify-center flex-1 text-gray-400 gap-3">
               <RefreshCw size={20} className="animate-spin text-purple-500" />
               <p className="text-sm font-medium text-gray-500">Loading catalog...</p>
             </div>
           ) : catalogError ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 gap-3">
+            <div className="flex flex-col items-center justify-center flex-1 text-gray-400 gap-3">
               <AlertCircle size={36} className="text-red-400" />
               <p className="font-semibold text-red-600">Failed to load catalog</p>
               <p className="text-sm text-gray-500 max-w-md text-center">{catalogError}</p>
               <Button icon={<RefreshCw size={14} />} onClick={refreshCatalog} className="mt-2">Retry</Button>
             </div>
           ) : processedCatalog.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+            <div className="flex flex-col items-center justify-center flex-1 text-gray-400">
               <BookMarked size={40} className="text-gray-300 mb-3" />
               <p className="font-semibold text-gray-600">No catalog entries yet</p>
               <p className="text-sm mt-1">Click "Create Direct Catalog" to add your first entry.</p>
@@ -1794,6 +1784,28 @@ export default function ProductCatalogPage() {
               data={processedCatalog}
               columns={processedCols}
               searchKeys={["catalogNo", "productName", "customerName", "sourceOrderNo"]}
+              stickyHeader
+              scrollContainerClass="flex-1"
+              toolbar={
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+                    <button onClick={() => setCatalogTab("pending")}
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
+                      <Clock size={12} />Pending
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.pending}</span>
+                    </button>
+                    <button onClick={() => setCatalogTab("processed")}
+                      className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-purple-700">
+                      <CheckCircle2 size={12} />Processed
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{stats.processed}</span>
+                    </button>
+                  </div>
+                  <Button icon={<Plus size={13} />} onClick={openDirectCreate}
+                    className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
+                    Create Direct Catalog
+                  </Button>
+                </div>
+              }
               actions={row => (
                 <div className="flex items-center gap-1.5 justify-end flex-wrap">
                   <Button variant="ghost" size="sm" icon={<Eye size={13} />}
@@ -1852,6 +1864,8 @@ export default function ProductCatalogPage() {
           )}
         </div>
       )}
+
+      </div>
 
       {/* ══ CREATE CATALOG MODAL ══════════════════════════════════ */}
       {createOpen && sourceOrder && (
@@ -2686,8 +2700,11 @@ export default function ProductCatalogPage() {
                             </div>
                           </div>
                         </div>
-                        {/* ── Unwind Direction (Pifa) — AJSW Printing & Winding Design Chart ── */}
-                        <div className="border-t border-indigo-100 pt-3">
+                      </div>
+                      <DimensionDiagram contentType={getDisplayContentType(replanForm.content)} dims={dimValues} />
+                    </div>
+                    {/* Unwind Direction — full width */}
+                    <div className="border-t border-indigo-100 px-4 pt-3 pb-4">
                           <div className="flex items-center gap-2 mb-3">
                             <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-widest">Unwind Direction (Pifa)</p>
                             <span className="text-[9px] text-gray-400">As per AJSW Printing &amp; Winding Chart</span>
@@ -2703,16 +2720,18 @@ export default function ProductCatalogPage() {
                             ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
-                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full block">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                                    <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                      <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                      <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                    </div>
                                   </button>
                                   <button onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                                     title="Preview full size">
-                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                    <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                                   </button>
                                 </div>
                               );
@@ -2728,16 +2747,18 @@ export default function ProductCatalogPage() {
                             ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((replanForm as any).unwindDirection ?? 0) === n;
                               return (
-                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                                  <button onClick={() => rf("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full block">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                                    <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                      <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                      <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                    </div>
                                   </button>
                                   <button onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                                     title="Preview full size">
-                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                    <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                                   </button>
                                 </div>
                               );
@@ -2787,9 +2808,6 @@ export default function ProductCatalogPage() {
                               ][((replanForm as any).unwindDirection ?? 1) - 1]}
                             </p>
                           )}
-                        </div>
-                      </div>
-                      <DimensionDiagram contentType={getDisplayContentType(replanForm.content)} dims={dimValues} />
                     </div>
                   </div>
                 )}

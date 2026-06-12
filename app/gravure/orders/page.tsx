@@ -1598,36 +1598,31 @@ export default function GravureOrdersPage() {
   // LIST VIEW
   // ════════════════════════════════════════════════════════════
   return (
-    <div className="space-y-5">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <ShoppingCart size={18} className="text-teal-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Gravure Order Booking</h2>
-          </div>
-          <p className="text-sm text-gray-500">
-            {data.length} orders · ₹{totalRevenue.toLocaleString()} revenue
-          </p>
-        </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Order</Button>
-      </div>
+    <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        {loadingList && (
-          <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
+      {/* ══ CONTENT ═══════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-hidden flex flex-col p-4">
+        {loadingList ? (
+          <div className="flex items-center justify-center flex-1 text-gray-400 text-sm gap-2">
             <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
             Loading orders…
           </div>
-        )}
-        {!loadingList && <DataTable
+        ) : (
+        <DataTable
           data={data}
           columns={columns}
           searchKeys={["orderNo", "customerName", "poNo", "salesPerson"]}
+          stickyHeader
+          scrollContainerClass="flex-1"
+          toolbar={
+            <Button icon={<Plus size={13} />} onClick={openAdd}
+              className="bg-teal-600 text-white hover:bg-teal-700 border-0 text-xs py-1.5 px-3">
+              New Order
+            </Button>
+          }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
@@ -1683,8 +1678,9 @@ export default function GravureOrdersPage() {
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDelId(row.id)}>Delete</Button>
             </div>
           )}
-        />}
-      </div>
+        />
+        )}
+      </div>{/* end scrollable content */}
 
       {/* View Modal */}
       {viewRow && (

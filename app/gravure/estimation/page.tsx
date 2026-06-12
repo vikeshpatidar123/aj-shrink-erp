@@ -270,10 +270,22 @@ function calcCosts(form: typeof blank, opts?: RateOptions) {
     }, 0).toFixed(2)
   );
 
-  // 3. Cylinder — always full cost (quotation assumes fresh production); per-qty override supported
+  // 3. Cylinder — area-based (rate/sqin × area × colors) when rate is set; else per-color fixed rate
+  const cylinderCostByArea = (() => {
+    const rate = (form as any).cylinderRatePerSqInch ?? 0;
+    if (rate <= 0) return 0;
+    const w    = (form as any).actualWidth || form.jobWidth || 0;
+    // repeatLength is the cylinder circumference; fall back to jobHeight if not set
+    const circ = (form as any).repeatLength || form.jobHeight || 0;
+    if (w <= 0 || circ <= 0) return 0;
+    const areaSqInch = parseFloat(((w * circ) / 645.16).toFixed(4));
+    return parseFloat((areaSqInch * rate * form.noOfColors).toFixed(2));
+  })();
   const cylinderCost = form.cylinderCostOverride !== undefined && form.cylinderCostOverride > 0
     ? form.cylinderCostOverride
-    : form.cylinderCostPerColor * form.noOfColors;
+    : cylinderCostByArea > 0
+      ? cylinderCostByArea
+      : form.cylinderCostPerColor * form.noOfColors;
 
   // 4. Machine setup cost; per-qty override supported
   const setupCostCalc = form.setupTime > 0 && form.machineCostPerHour > 0
@@ -1095,29 +1107,8 @@ export default function GravureEstimationPage() {
   }, [apiInkItems]);
 
   // Derived costs (live)
-  const costs     = useMemo(() => calcCosts(form, rateOpts), [form, rateOpts]);
-  const allQtys   = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
-  const allCosts      = useMemo(() => allQtys.map((qty, qi) => {
-    const ov = qtyOverrides[qi] ?? {};
-    return calcCosts({
-      ...form, quantity: qty,
-      labourCost:           ov.labourCost           ?? form.labourCost,
-      transportationCost:   ov.transportationCost   ?? form.transportationCost,
-      interestCost:         ov.interestCost         ?? form.interestCost,
-      overheadPct:          ov.overheadPct          ?? form.overheadPct,
-      profitPct:            ov.profitPct            ?? form.profitPct,
-      // Use ToolMaster-derived cylinder cost if available; per-qty manual override takes precedence
-      cylinderCostOverride: ov.cylinderCostOverride ?? (cylCostFromAllocs !== null ? cylCostFromAllocs : undefined),
-      setupCostOverride:    ov.setupCostOverride,
-      packingCostOverride:  ov.packingCostOverride,
-    }, rateOpts);
-  }), [form, allQtys, qtyOverrides, rateOpts, cylCostFromAllocs]);
-  const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty }, rateOpts)), [form, allQtys, rateOpts]);
-  const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
-  const activeCosts = allCosts[safeIdx] ?? costs;
-  const activeQty   = allQtys[safeIdx] ?? form.quantity;
-  // breakdown always reflects the ACTIVE quantity row (Q1/Q2/Q3)
-  const breakdown = useMemo(() => getCostBreakdown({ ...form, quantity: activeQty }, rateOpts), [form, activeQty, rateOpts]);
+  const costs   = useMemo(() => calcCosts(form, rateOpts), [form, rateOpts]);
+  const allQtys = useMemo(() => [form.quantity, ...extraQtys.filter(q => q > 0)], [form.quantity, extraQtys]);
 
   // ── Production plan rows (Tab 2) ────────────────────────
   const totalPlyGSM = useMemo(() =>
@@ -1401,6 +1392,37 @@ export default function GravureEstimationPage() {
   }, [form.machineId, form.jobHeight, form.actualWidth, form.trimmingSize, form.widthShrinkage, form.quantity, form.noOfColors, form.cylinderCostPerColor, form.cylinderRatePerSqInch, totalPlyGSM, costs.processCost, (form as any).structureType, (form as any).content, (form as any).gusset, (form as any).topSeal, (form as any).bottomSeal, (form as any).sideSeal, (form as any).centerSealWidth, (form as any).sideGusset, (form as any).seamingArea, (form as any).transparentArea, SLEEVE_TOOLS_LIVE, CYLINDER_TOOLS_LIVE, apiFilmItems, form.secondaryLayers]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedPlan = useMemo(() => allPlans.find(p => p.planId === selectedPlanId) ?? overridePlan ?? null, [allPlans, selectedPlanId, overridePlan]);
+
+  // Cylinder cost derived from selected plan's actual cylinder dimensions (most accurate)
+  const cylCostFromPlan = useMemo(() => {
+    const rate = form.cylinderRatePerSqInch ?? 0;
+    if (rate <= 0 || !selectedPlan) return null;
+    const areaSqIn = (selectedPlan as any).cylAreaSqInch ?? 0;
+    if (areaSqIn <= 0) return null;
+    return parseFloat((areaSqIn * rate * form.noOfColors).toFixed(2));
+  }, [form.cylinderRatePerSqInch, form.noOfColors, selectedPlan]);
+
+  // allCosts declared here (after selectedPlan + cylCostFromPlan) so plan dims can override cylinder cost
+  const allCosts      = useMemo(() => allQtys.map((qty, qi) => {
+    const ov = qtyOverrides[qi] ?? {};
+    return calcCosts({
+      ...form, quantity: qty,
+      labourCost:           ov.labourCost           ?? form.labourCost,
+      transportationCost:   ov.transportationCost   ?? form.transportationCost,
+      interestCost:         ov.interestCost         ?? form.interestCost,
+      overheadPct:          ov.overheadPct          ?? form.overheadPct,
+      profitPct:            ov.profitPct            ?? form.profitPct,
+      // Priority: manual override → ToolMaster alloc rates → selected plan area × rate → per-color fallback
+      cylinderCostOverride: ov.cylinderCostOverride ?? (cylCostFromAllocs !== null ? cylCostFromAllocs : undefined) ?? (cylCostFromPlan !== null ? cylCostFromPlan : undefined),
+      setupCostOverride:    ov.setupCostOverride,
+      packingCostOverride:  ov.packingCostOverride,
+    }, rateOpts);
+  }), [form, allQtys, qtyOverrides, rateOpts, cylCostFromAllocs, cylCostFromPlan]);
+  const allBreakdowns = useMemo(() => allQtys.map(qty => getCostBreakdown({ ...form, quantity: qty }, rateOpts)), [form, allQtys, rateOpts]);
+  const safeIdx     = Math.min(activeQtyIdx, allCosts.length - 1);
+  const activeCosts = allCosts[safeIdx] ?? costs;
+  const activeQty   = allQtys[safeIdx] ?? form.quantity;
+  const breakdown   = useMemo(() => getCostBreakdown({ ...form, quantity: activeQty }, rateOpts), [form, activeQty, rateOpts]);
 
   const visiblePlans = useMemo(() => {
     let rows = allPlans;
@@ -2464,43 +2486,36 @@ export default function GravureEstimationPage() {
   const cellInput = "w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:ring-1 focus:ring-purple-400 bg-white";
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <Calculator size={18} className="text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Gravure Estimation</h2>
-          </div>
-          <p className="text-sm text-gray-500">{stats.total} estimations · ₹{stats.totalAmt.toLocaleString()} total value</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {loadingData && <span className="text-xs text-gray-400 flex items-center gap-1"><RefreshCw size={12} className="animate-spin" /> Loading…</span>}
-          <Button icon={<RefreshCw size={14} />} variant="secondary" onClick={loadList} disabled={loadingData}>Refresh</Button>
-          <Button icon={<Plus size={16} />} onClick={openAdd}>New Estimation</Button>
-        </div>
-      </div>
+    <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "Total",          val: stats.total,    cls: "bg-blue-50 text-blue-700 border-blue-200" },
-          { label: "Draft",          val: stats.draft,    cls: "bg-gray-50 text-gray-600 border-gray-200" },
-          { label: "Approved",       val: stats.approved, cls: "bg-green-50 text-green-700 border-green-200" },
-          { label: "Sent/Accepted",  val: stats.sent,     cls: "bg-purple-50 text-purple-700 border-purple-200" },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.cls}`}>
-            <p className="text-xs font-medium">{s.label}</p>
-            <p className="text-2xl font-bold mt-1">{s.val}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      {/* ══ CONTENT ═══════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-hidden flex flex-col p-4">
         <DataTable
           data={data}
           columns={columns}
           searchKeys={["estimationNo", "customerName", "jobName"]}
+          stickyHeader
+          scrollContainerClass="flex-1"
+          toolbar={
+            <div className="flex items-center gap-2">
+              {[
+                { label: "Draft",    val: stats.draft,    cls: "bg-gray-100 text-gray-600" },
+                { label: "Approved", val: stats.approved, cls: "bg-green-100 text-green-700" },
+                { label: "Sent",     val: stats.sent,     cls: "bg-purple-100 text-purple-700" },
+              ].map(s => (
+                <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
+                  {s.label} {s.val}
+                </span>
+              ))}
+              {loadingData && <RefreshCw size={13} className="animate-spin text-gray-400" />}
+              <Button icon={<RefreshCw size={13} />} variant="secondary" onClick={loadList} disabled={loadingData}
+                className="text-xs py-1.5 px-3">Refresh</Button>
+              <Button icon={<Plus size={13} />} onClick={openAdd}
+                className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
+                New Estimation
+              </Button>
+            </div>
+          }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
@@ -3167,8 +3182,12 @@ export default function GravureEstimationPage() {
                           </div>
                         </div>
 
-                        {/* ── Unwind Direction (Pifa 1–8) ── */}
-                        <div className="border-t border-indigo-100 pt-3">
+                      </div>
+                      {/* Right: live diagram */}
+                      <DimensionDiagram contentType={getDisplayContentType(form.content)} dims={dimValues} />
+                    </div>
+                    {/* Unwind Direction — full width */}
+                    <div className="border-t border-indigo-100 px-4 pt-3 pb-4">
                           <div className="flex items-center gap-2 mb-3">
                             <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-widest">Unwind Direction (Pifa)</p>
                             <span className="text-[9px] text-gray-400">As per AJSW Printing &amp; Winding Chart</span>
@@ -3183,16 +3202,18 @@ export default function GravureEstimationPage() {
                             ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((form as any).unwindDirection ?? 0) === n;
                               return (
-                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full block">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                                    <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                      <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                      <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                    </div>
                                   </button>
                                   <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                                     title="Preview full size">
-                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                    <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                                   </button>
                                 </div>
                               );
@@ -3208,16 +3229,18 @@ export default function GravureEstimationPage() {
                             ] as { n: number; label: string }[]).map(({ n, label }) => {
                               const sel = ((form as any).unwindDirection ?? 0) === n;
                               return (
-                                <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                                    <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                                    <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                                  <button type="button" onClick={() => f("unwindDirection" as any, n)} title={label.replace("\n", " ")} className="w-full block">
+                                    <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                                    <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                      <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                      <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                                    </div>
                                   </button>
                                   <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                                    className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                                    className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                                     title="Preview full size">
-                                    <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                                    <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                                   </button>
                                 </div>
                               );
@@ -3267,10 +3290,6 @@ export default function GravureEstimationPage() {
                               ][((form as any).unwindDirection ?? 1) - 1]}
                             </p>
                           )}
-                        </div>
-                      </div>
-                      {/* Right: live diagram */}
-                      <DimensionDiagram contentType={getDisplayContentType(form.content)} dims={dimValues} />
                     </div>
                   </div>
                 ) : (
@@ -3954,10 +3973,7 @@ export default function GravureEstimationPage() {
               })()}
 
               {/* Cylinder cost fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-                <Input label="Cylinder Cost / Color (₹)" type="number"
-                  value={form.cylinderCostPerColor}
-                  onChange={e => f("cylinderCostPerColor", Number(e.target.value))} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <Input label="Cylinder Rate (₹/sq.inch)" type="number"
                   value={form.cylinderRatePerSqInch ?? ""}
                   onChange={e => f("cylinderRatePerSqInch", Number(e.target.value))}
@@ -3966,13 +3982,9 @@ export default function GravureEstimationPage() {
 
               {/* Summary badges */}
               <div className="flex flex-wrap gap-2 mb-3">
-                {(form.cylinderRatePerSqInch ?? 0) > 0 ? (
+                {(form.cylinderRatePerSqInch ?? 0) > 0 && (
                   <span className="text-xs px-3 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-semibold">
                     Cylinder costing: area × ₹{form.cylinderRatePerSqInch}/sq.in × {form.noOfColors} colors — shown per plan row
-                  </span>
-                ) : (
-                  <span className="text-xs px-3 py-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full font-semibold">
-                    Cylinder Cost (per color): ₹{(form.cylinderCostPerColor * form.noOfColors).toLocaleString()} ({form.noOfColors}C × ₹{form.cylinderCostPerColor})
                   </span>
                 )}
                 {form.setupTime > 0 && (
@@ -5180,17 +5192,40 @@ export default function GravureEstimationPage() {
                   <tr className="bg-indigo-50/50">
                     <td className="sticky left-0 z-10 bg-indigo-50 border-b border-r-2 border-gray-200 px-3 py-1.5 font-medium text-indigo-800">
                       Cylinder ({form.noOfColors}C) (₹)
-                      {cylCostFromAllocs !== null && (
-                        <span className="block text-[9px] font-normal text-indigo-500">from ToolMaster rate</span>
-                      )}
+                      {cylCostFromAllocs !== null
+                        ? <span className="block text-[9px] font-normal text-indigo-500">from ToolMaster rate</span>
+                        : (form.cylinderRatePerSqInch ?? 0) > 0
+                          ? (() => {
+                              const rate = form.cylinderRatePerSqInch ?? 0;
+                              const w = (selectedPlan as any)?.cylinderWidthVal || (form as any).actualWidth || form.jobWidth || 0;
+                              const circ = (selectedPlan as any)?.cylCirc || (form as any).repeatLength || form.jobHeight || 0;
+                              const areaSqIn = w > 0 && circ > 0 ? parseFloat(((w * circ) / 645.16).toFixed(2)) : 0;
+                              const perCyl = areaSqIn > 0 ? parseFloat((areaSqIn * rate).toFixed(2)) : 0;
+                              return (
+                                <span className="block text-[9px] font-normal text-indigo-500">
+                                  ₹{rate}/sq.in × {areaSqIn > 0 ? `${areaSqIn} sq.in × ${form.noOfColors} cyl` : `area × ${form.noOfColors} cyl`}
+                                  {perCyl > 0 && <span className="ml-1 text-indigo-400">(₹{perCyl.toLocaleString()}/cyl)</span>}
+                                </span>
+                              );
+                            })()
+                          : null}
                     </td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
                       <td key={qi} className="border-b border-r border-gray-100 px-2 py-1">
                         <input
                           type="number" min={0} step={1}
-                          placeholder={cylCostFromAllocs !== null
-                            ? `₹${cylCostFromAllocs.toLocaleString()}`
-                            : `₹${(form.cylinderCostPerColor * form.noOfColors).toLocaleString()}`}
+                          placeholder={(() => {
+                            if (cylCostFromAllocs !== null) return `₹${cylCostFromAllocs.toLocaleString()}`;
+                            const rate = form.cylinderRatePerSqInch ?? 0;
+                            if (rate > 0) {
+                              const w = (selectedPlan as any)?.cylinderWidthVal || (form as any).actualWidth || form.jobWidth || 0;
+                              const circ = (selectedPlan as any)?.cylCirc || (form as any).repeatLength || form.jobHeight || 0;
+                              const areaSqIn = w > 0 && circ > 0 ? parseFloat(((w * circ) / 645.16).toFixed(4)) : 0;
+                              const areaCost = areaSqIn > 0 ? parseFloat((areaSqIn * rate * form.noOfColors).toFixed(2)) : 0;
+                              if (areaCost > 0) return `₹${areaCost.toLocaleString()}`;
+                            }
+                            return `₹${(form.cylinderCostPerColor * form.noOfColors).toLocaleString()}`;
+                          })()}
                           className="w-full text-right text-xs font-semibold text-indigo-800 bg-white border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-400"
                           value={qtyOverrides[qi]?.cylinderCostOverride || ""}
                           onChange={e => setQtyOverride(qi, "cylinderCostOverride", !e.target.value || Number(e.target.value) === 0 ? undefined : Number(e.target.value))}

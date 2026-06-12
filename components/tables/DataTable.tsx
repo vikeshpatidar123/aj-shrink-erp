@@ -16,10 +16,17 @@ interface DataTableProps<T> {
   searchKeys?: (keyof T)[];
   pageSize?: number;
   actions?: (row: T) => React.ReactNode;
+  /** When true, thead sticks and the table body scrolls inside the container */
+  stickyHeader?: boolean;
+  /** Passed as the scrollable table wrapper's className (e.g. "flex-1 overflow-y-auto") */
+  scrollContainerClass?: string;
+  /** Extra content rendered on the right side of the search bar (e.g. action buttons) */
+  toolbar?: React.ReactNode;
 }
 
 export function DataTable<T>({
   data, columns, searchKeys = [], pageSize = 10, actions,
+  stickyHeader = false, scrollContainerClass, toolbar,
 }: DataTableProps<T>) {
   const [search,      setSearch]      = useState("");
   const [sortKey,     setSortKey]     = useState<string | null>(null);
@@ -36,14 +43,12 @@ export function DataTable<T>({
 
   const filtered = useMemo(() => {
     let rows = data;
-    // global search
     if (search.trim()) {
       const q = search.toLowerCase();
       rows = rows.filter(row =>
         searchKeys.some(k => String(row[k] ?? "").toLowerCase().includes(q))
       );
     }
-    // per-column filters (match against raw value only, not rendered JSX)
     Object.entries(colFilters).forEach(([key, val]) => {
       if (!val.trim()) return;
       const q = val.toLowerCase();
@@ -80,11 +85,15 @@ export function DataTable<T>({
   const titleCol    = columns[0];
   const bodyColumns = columns.slice(1);
 
-  return (
-    <div className="flex flex-col gap-3">
+  const tableWrapClass = stickyHeader
+    ? `overflow-x-auto overflow-y-auto rounded-lg border border-gray-200 shadow-sm ${scrollContainerClass ?? ""}`
+    : "hidden lg:block overflow-x-auto rounded-lg border border-gray-200 shadow-sm";
 
-      {/* ── Global search + clear ──────────────────────────── */}
-      <div className="flex items-center gap-2">
+  return (
+    <div className={`flex flex-col gap-3 ${stickyHeader ? "h-full min-h-0" : ""}`}>
+
+      {/* ── Search row + optional toolbar ─────────────────── */}
+      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
         <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 flex-1 sm:max-w-xs shadow-sm">
           <Search size={14} style={{ color: "var(--erp-primary)" }} className="flex-shrink-0" />
           <input
@@ -110,12 +119,13 @@ export function DataTable<T>({
             {sorted.length} / {data.length} rows
           </span>
         )}
+        {toolbar && <div className="ml-auto flex items-center gap-2 flex-shrink-0">{toolbar}</div>}
       </div>
 
       {/* ══ DESKTOP table ══════════════════════════════════════ */}
-      <div className="hidden lg:block overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+      <div className={tableWrapClass} style={stickyHeader ? { flex: 1, minHeight: 0 } : {}}>
         <table className="min-w-full text-sm">
-          <thead>
+          <thead className={stickyHeader ? "sticky top-0 z-10" : ""}>
             {/* ── Column headers ── */}
             <tr style={{ background: "var(--erp-primary)" }}>
               {columns.map(col => (
@@ -196,44 +206,46 @@ export function DataTable<T>({
       </div>
 
       {/* ══ MOBILE / TABLET cards ══════════════════════════════ */}
-      <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3">
-        {paged.length === 0 ? (
-          <div className="col-span-full text-center py-16 text-gray-400 bg-white rounded-lg border border-gray-200 text-sm">
-            No records found.
-          </div>
-        ) : (
-          paged.map((row, idx) => (
-            <div key={(row as Record<string, unknown>)["id"] as string ?? idx} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-              <div
-                className="px-4 py-2.5 flex items-center justify-between gap-3"
-                style={{ background: "var(--erp-primary-light)", borderBottom: "1px solid #c8dded" }}
-              >
-                <span className="text-sm font-semibold text-gray-900 truncate">
-                  {getCellValue(row, titleCol)}
-                </span>
-                {actions && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">{actions(row)}</div>
-                )}
-              </div>
-              <div className="divide-y divide-gray-50">
-                {bodyColumns.map(col => (
-                  <div key={String(col.key)} className="flex items-start px-4 py-2.5 gap-3">
-                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 flex-shrink-0 pt-0.5">
-                      {col.header}
-                    </span>
-                    <span className="text-sm text-gray-800 flex-1 min-w-0 break-words">
-                      {getCellValue(row, col)}
-                    </span>
-                  </div>
-                ))}
-              </div>
+      {!stickyHeader && (
+        <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+          {paged.length === 0 ? (
+            <div className="col-span-full text-center py-16 text-gray-400 bg-white rounded-lg border border-gray-200 text-sm">
+              No records found.
             </div>
-          ))
-        )}
-      </div>
+          ) : (
+            paged.map((row, idx) => (
+              <div key={(row as Record<string, unknown>)["id"] as string ?? idx} className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+                <div
+                  className="px-4 py-2.5 flex items-center justify-between gap-3"
+                  style={{ background: "var(--erp-primary-light)", borderBottom: "1px solid #c8dded" }}
+                >
+                  <span className="text-sm font-semibold text-gray-900 truncate">
+                    {getCellValue(row, titleCol)}
+                  </span>
+                  {actions && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">{actions(row)}</div>
+                  )}
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {bodyColumns.map(col => (
+                    <div key={String(col.key)} className="flex items-start px-4 py-2.5 gap-3">
+                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide w-28 flex-shrink-0 pt-0.5">
+                        {col.header}
+                      </span>
+                      <span className="text-sm text-gray-800 flex-1 min-w-0 break-words">
+                        {getCellValue(row, col)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
 
       {/* ── Pagination ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between text-xs text-gray-500 flex-wrap gap-2">
+      <div className="flex items-center justify-between text-xs text-gray-500 flex-wrap gap-2 flex-shrink-0">
         <span>
           Showing {paged.length === 0 ? 0 : (page - 1) * pageSize + 1}–{Math.min(page * pageSize, sorted.length)} of {sorted.length}
         </span>

@@ -2820,8 +2820,12 @@ export default function GravureWorkOrderPage() {
                       </div>
                     </div>
                   </div>
-                  {/* Unwind Direction */}
-                  <div className="border-t border-indigo-100 pt-3">
+                </div>
+                {/* Right: live diagram */}
+                <DimensionDiagram contentType={normalizeContentType(form.content)} dims={dimValues} />
+              </div>
+              {/* Unwind Direction — full width */}
+              <div className="border-t border-indigo-100 px-4 pt-3 pb-4">
                     <div className="flex items-center gap-2 mb-2">
                       <p className="text-[10px] font-semibold text-orange-500 uppercase tracking-widest">Unwind Direction (Pifa)</p>
                       <span className="text-[9px] text-gray-400">AJSW Printing &amp; Winding Chart</span>
@@ -2836,16 +2840,18 @@ export default function GravureWorkOrderPage() {
                       ]).map(({ n, label }) => {
                         const sel = ((form as any).unwindDirection ?? 0) === n;
                         return (
-                          <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                              <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                              <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                          <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full block">
+                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                              <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                              </div>
                             </button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                              className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                              className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                               title="Preview full size">
-                              <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                              <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                             </button>
                           </div>
                         );
@@ -2861,16 +2867,18 @@ export default function GravureWorkOrderPage() {
                       ]).map(({ n, label }) => {
                         const sel = ((form as any).unwindDirection ?? 0) === n;
                         return (
-                          <div key={n} className={`relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${sel ? "border-orange-500 bg-orange-50 shadow-md" : "border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/40"}`}>
-                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full flex flex-col items-center gap-1">
-                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className="w-full h-24 object-contain" />
-                              <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
-                              <span className={`text-[8px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                          <div key={n} className={`relative rounded-xl border-2 overflow-hidden transition-all ${sel ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-orange-300"}`}>
+                            <button type="button" onClick={() => setForm(p => ({ ...p, unwindDirection: n } as any))} title={label.replace("\n", " ")} className="w-full block">
+                              <img src={`/images/Unwind_Direction_${n}.png`} alt={`Direction ${n}`} className={`w-full h-40 object-contain ${sel ? "bg-orange-50" : "bg-gray-50"}`} />
+                              <div className={`px-1 pb-2 pt-1 flex flex-col items-center gap-0.5 ${sel ? "bg-orange-50" : "bg-white"}`}>
+                                <span className={`text-[12px] font-black leading-none ${sel ? "text-orange-600" : "text-gray-700"}`}>#{n}</span>
+                                <span className={`text-[7.5px] font-medium text-center leading-tight whitespace-pre-line ${sel ? "text-orange-500" : "text-gray-400"}`}>{label}</span>
+                              </div>
                             </button>
                             <button type="button" onClick={(e) => { e.stopPropagation(); setUnwindPreview(n); }}
-                              className="absolute top-1.5 right-1.5 p-0.5 rounded-md bg-white/80 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all"
+                              className="absolute top-1.5 right-1.5 p-1 rounded-md bg-white/90 hover:bg-orange-100 border border-gray-200 hover:border-orange-300 transition-all shadow-sm"
                               title="Preview full size">
-                              <Eye size={12} className="text-gray-500 hover:text-orange-500" />
+                              <Eye size={11} className="text-gray-500 hover:text-orange-500" />
                             </button>
                           </div>
                         );
@@ -2916,10 +2924,6 @@ export default function GravureWorkOrderPage() {
                         ][((form as any).unwindDirection ?? 1) - 1]}
                       </p>
                     )}
-                  </div>
-                </div>
-                {/* Right: live diagram */}
-                <DimensionDiagram contentType={normalizeContentType(form.content)} dims={dimValues} />
               </div>
             </div>
           )}
@@ -4396,121 +4400,134 @@ export default function GravureWorkOrderPage() {
   );
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <ClipboardList size={18} className="text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Gravure Production Work Order</h2>
-          </div>
-          <p className="text-sm text-gray-500">{stats.pending} pending · {workOrders.length} work orders</p>
-        </div>
-      </div>
+    <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: "Pending Orders", val: stats.pending, cls: "bg-orange-50 text-orange-700 border-orange-200" },
-          { label: "Open WOs", val: stats.open, cls: "bg-gray-50 text-gray-600 border-gray-200" },
-          { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-          { label: "Completed", val: stats.completed, cls: "bg-green-50 text-green-700 border-green-200" },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.cls}`}>
-            <p className="text-xs font-medium">{s.label}</p>
-            <p className="text-2xl font-bold mt-1">{s.val}</p>
-          </div>
-        ))}
-      </div>
+      {/* ══ CONTENT AREA ══════════════════════════════════════════ */}
+      <div className="flex-1 overflow-hidden flex flex-col">
 
-      {/* ── Page Tabs ── */}
-      <div className="flex overflow-x-auto bg-gray-100 p-1.5 rounded-xl gap-1.5">
-        <button onClick={() => setPageTab("pending")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${pageTab === "pending" ? "bg-white shadow text-orange-600" : "text-gray-500 hover:text-gray-700"}`}>
-          <Clock size={15} />
-          Pending Orders
-          {stats.pending > 0 && (
-            <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500 text-white">{stats.pending}</span>
-          )}
-        </button>
-        <button onClick={() => setPageTab("workorders")}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${pageTab === "workorders" ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
-          <Printer size={15} />
-          Work Orders
-          <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-600">{workOrders.length}</span>
-        </button>
-      </div>
-
-      {/* ── PENDING ORDERS TAB ──────────────────────────────────── */}
+      {/* ── Tab switcher snippet (reused in both toolbar slots) ── */}
+      {/* ── PENDING ORDERS TAB ─────────────────────────────────── */}
       {pageTab === "pending" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
+          {/* Toolbar row — mirrors DataTable search-bar row */}
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 flex-1 sm:max-w-xs shadow-sm">
+              <Clock size={14} className="text-orange-500 flex-shrink-0" />
+              <span className="text-sm text-gray-400 select-none">Pending orders</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+                <button onClick={() => setPageTab("pending")}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-orange-600">
+                  <Clock size={12} />Pending
+                  {stats.pending > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-600">{stats.pending}</span>}
+                </button>
+                <button onClick={() => setPageTab("workorders")}
+                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
+                  <Printer size={12} />Work Orders
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{workOrders.length}</span>
+                </button>
+              </div>
+              {[
+                { label: "Open",        val: stats.open,       cls: "bg-gray-100 text-gray-600" },
+                { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-100 text-yellow-700" },
+                { label: "Completed",   val: stats.completed,  cls: "bg-green-100 text-green-700" },
+              ].map(s => (
+                <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
+                  {s.label} {s.val}
+                </span>
+              ))}
+            </div>
+          </div>
+          {/* List container */}
+          <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           {pendingOrders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-              <CheckCircle2 size={40} className="text-green-400 mb-3" />
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <CheckCircle2 size={36} className="text-green-400 mb-3" />
               <p className="font-semibold text-gray-600">All orders have work orders!</p>
               <p className="text-sm mt-1">No pending orders waiting for production planning.</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {pendingOrders.map(order => (
-                <div key={order.id} className="flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition-colors">
-                  {/* Source badge */}
+                <div key={order.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
                   <div className="flex-shrink-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center
                       ${order.sourceType === "Estimation" ? "bg-blue-100" : order.sourceType === "Catalog" ? "bg-purple-100" : "bg-gray-100"}`}>
-                      {order.sourceType === "Estimation" ? <Calculator size={18} className="text-blue-600" />
-                        : order.sourceType === "Catalog" ? <BookMarked size={18} className="text-purple-600" />
-                          : <Edit3 size={18} className="text-gray-500" />}
+                      {order.sourceType === "Estimation" ? <Calculator size={14} className="text-blue-600" />
+                        : order.sourceType === "Catalog" ? <BookMarked size={14} className="text-purple-600" />
+                          : <Edit3 size={14} className="text-gray-500" />}
                     </div>
                   </div>
-
-                  {/* Order info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-0.5">
                       <p className="font-semibold text-gray-800 text-sm truncate">{order.jobName}</p>
                       <span className="text-xs text-gray-400 font-mono flex-shrink-0">{order.orderNo}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                       <span>{order.customerName}</span>
-                      {order.substrate && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded">{order.substrate}</span>}
+                      {order.substrate && <span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px]">{order.substrate}</span>}
                       <span>{order.noOfColors}C · {order.printType}</span>
                       <span>{order.quantity.toLocaleString()} {order.unit}</span>
                       {order.deliveryDate && <span className="text-orange-600 font-medium">Due: {order.deliveryDate}</span>}
                       {order.sourceType === "Estimation" && order.processes.length > 0 && (
-                        <span className="text-green-600">{order.processes.length} processes ready</span>
+                        <span className="text-green-600">{order.processes.length} processes</span>
                       )}
                     </div>
                   </div>
-
-                  {/* Amount */}
                   {order.totalAmount > 0 && (
-                    <div className="flex-shrink-0 text-right">
-                      <p className="text-xs text-gray-400">Amount</p>
-                      <p className="font-bold text-gray-800">₹{order.totalAmount.toLocaleString()}</p>
-                      {order.perMeterRate > 0 && <p className="text-xs text-green-600">₹{order.perMeterRate.toFixed(2)}/Kg</p>}
+                    <div className="flex-shrink-0 text-right hidden sm:block">
+                      <p className="text-[10px] text-gray-400">Amount</p>
+                      <p className="font-bold text-gray-800 text-xs">₹{order.totalAmount.toLocaleString()}</p>
                     </div>
                   )}
-
-                  {/* Action */}
                   <div className="flex-shrink-0">
-                    <Button icon={<ArrowRight size={14} />} onClick={() => convertToWO(order)}>
-                      Create Work Order
+                    <Button size="sm" icon={<ArrowRight size={13} />} onClick={() => convertToWO(order)}>
+                      Create WO
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
           )}
+          </div>
         </div>
       )}
 
-      {/* ── WORK ORDERS TAB ─────────────────────────────────────── */}
+      {/* ── WORK ORDERS TAB ────────────────────────────────────── */}
       {pageTab === "workorders" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div className="flex-1 overflow-hidden flex flex-col p-4">
           <DataTable
             data={workOrders}
             columns={woColumns}
             searchKeys={["workOrderNo", "customerName", "jobName", "machineName"]}
+            stickyHeader
+            scrollContainerClass="flex-1"
+            toolbar={
+              <div className="flex items-center gap-2">
+                <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+                  <button onClick={() => setPageTab("pending")}
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
+                    <Clock size={12} />Pending
+                    {stats.pending > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.pending}</span>}
+                  </button>
+                  <button onClick={() => setPageTab("workorders")}
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-purple-700">
+                    <Printer size={12} />Work Orders
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{workOrders.length}</span>
+                  </button>
+                </div>
+                {[
+                  { label: "Open",        val: stats.open,       cls: "bg-gray-100 text-gray-600" },
+                  { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-100 text-yellow-700" },
+                  { label: "Completed",   val: stats.completed,  cls: "bg-green-100 text-green-700" },
+                ].map(s => (
+                  <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
+                    {s.label} {s.val}
+                  </span>
+                ))}
+              </div>
+            }
             actions={row => (
               <div className="flex items-center gap-1.5 justify-end flex-wrap">
                 <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
@@ -4525,6 +4542,8 @@ export default function GravureWorkOrderPage() {
           />
         </div>
       )}
+
+      </div>
 
       {/* ══ CREATE / EDIT MODAL ═══════════════════════════════════ */}
       <Modal open={modalOpen} onClose={() => {
