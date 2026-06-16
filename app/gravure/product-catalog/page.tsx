@@ -22,6 +22,14 @@ import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { useMasters } from "@/context/MastersContext";
 import { useToast } from "@/components/ui/Toast";
 import { apiGet, apiPost } from "@/lib/api";
+import { authHeaders } from "@/lib/auth";
+
+const CLDN_BASE_CAT = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+async function fetchSignatureCat() {
+  const res = await fetch(`${CLDN_BASE_CAT}/api/cloudinary/sign`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Could not get upload signature");
+  return res.json() as Promise<{ signature: string; timestamp: number; cloudName: string; apiKey: string }>;
+}
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -1326,22 +1334,28 @@ export default function ProductCatalogPage() {
     // Existing server attachments (no fileObj) — preserve these IDs on update
     const existingAttachmentIDs = replanAttachments.filter(a => !a.fileObj).map(a => a.id);
 
-    // Convert new uploaded attachments to base64
-    const attachmentsBase64 = await Promise.all(
-      replanAttachments.filter(a => a.fileObj).map(async a => {
-        return new Promise<{ name: string; label: string; mimeType: string; base64: string }>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve({
-            name: a.name,
-            label: a.label || "Attachment",
-            mimeType: a.mimeType,
-            base64: (reader.result as string).split(',')[1] // remove data:image/png;base64, prefix
-          });
-          reader.onerror = reject;
-          reader.readAsDataURL(a.fileObj!);
-        });
-      })
-    );
+    // Upload new attachments to Cloudinary
+    const newAttachments = replanAttachments.filter(a => a.fileObj);
+    let attachmentsCloudinary: { name: string; label: string; mimeType: string; secureUrl: string }[] = [];
+    if (newAttachments.length > 0) {
+      const sig = await fetchSignatureCat();
+      attachmentsCloudinary = await Promise.all(
+        newAttachments.map(async a => {
+          const fd = new FormData();
+          fd.append("file", a.fileObj!);
+          fd.append("api_key", sig.apiKey);
+          fd.append("timestamp", String(sig.timestamp));
+          fd.append("signature", sig.signature);
+          const uploadRes = await fetch(
+            `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
+            { method: "POST", body: fd }
+          );
+          if (!uploadRes.ok) throw new Error("Cloudinary upload failed for " + a.name);
+          const data = await uploadRes.json();
+          return { name: a.name, label: a.label || "Attachment", mimeType: a.mimeType, secureUrl: data.secure_url };
+        })
+      );
+    }
 
     const n = catalog.length + 1;
     // Resolve any code-based processIds (e.g. "PR003" from old static data) to numeric DB IDs
@@ -1373,7 +1387,7 @@ export default function ProductCatalogPage() {
       ...(replanSelPlanId && { savedPlanId: replanSelPlanId, savedPlan: replanSelectedPlan }),
       ...(catalogColorShades.length > 0 && { savedColorShades: catalogColorShades }),
       ...(catalogCylAllocs.length > 0 && { savedCylAllocs: catalogCylAllocs }),
-      ...(attachmentsBase64.length > 0 && { attachmentsBase64 }),
+      ...(attachmentsCloudinary.length > 0 && { attachmentsCloudinary }),
       existingAttachmentIDs,
     };
     const productMasterID = await saveCatalogItem(updated);

@@ -12,6 +12,14 @@ import {
   gravureEstimations, employees, ledgers,
 } from "@/data/dummyData";
 import { apiGet, apiPost } from "@/lib/api";
+import { authHeaders } from "@/lib/auth";
+
+const CLDN_BASE_ORDERS = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+async function fetchSignatureOrders() {
+  const res = await fetch(`${CLDN_BASE_ORDERS}/api/cloudinary/sign`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Could not get upload signature");
+  return res.json() as Promise<{ signature: string; timestamp: number; cloudName: string; apiKey: string }>;
+}
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
@@ -693,12 +701,16 @@ export default function GravureOrdersPage() {
       quantity: 0, unit: "Kg", deliveryDate: "", cylinderSet: "", perMeterRate: 0,
       machineId: "", machineName: "", secondaryLayers: [], processes: [], overheadPct: 12, profitPct: 15,
     });
-    // Restore saved reference image
+    // Restore saved reference image (Cloudinary URL or legacy base64)
     const savedImg = (row as any).referenceImageDataUrl as string | undefined;
     if (savedImg) {
-      const mime = savedImg.match(/^data:([^;]+);/)?.[1] ?? "image/jpeg";
-      const ext = mime.split("/")[1] || "jpg";
-      setOrderImage({ name: `reference-image.${ext}`, url: savedImg, mimeType: mime, size: 0 });
+      if (savedImg.startsWith("http")) {
+        setOrderImage({ name: "reference-image", url: savedImg, mimeType: "image/jpeg", size: 0 });
+      } else {
+        const mime = savedImg.match(/^data:([^;]+);/)?.[1] ?? "image/jpeg";
+        const ext = mime.split("/")[1] || "jpg";
+        setOrderImage({ name: `reference-image.${ext}`, url: savedImg, mimeType: mime, size: 0 });
+      }
     } else {
       setOrderImage(null);
     }
@@ -769,17 +781,26 @@ export default function GravureOrdersPage() {
       transporter: d.transporter || "",
     }));
 
-    // Resolve image: new upload → read as data URL; existing server image → already a data URL
+    // Resolve image: upload to Cloudinary if new file; existing Cloudinary URL → use as-is; old base64 → pass through
     let imageDataUrl = "";
     if (orderImage?.fileObj) {
-      imageDataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(orderImage.fileObj!);
-      });
+      const sig = await fetchSignatureOrders();
+      const fd = new FormData();
+      fd.append("file", orderImage.fileObj);
+      fd.append("api_key", sig.apiKey);
+      fd.append("timestamp", String(sig.timestamp));
+      fd.append("signature", sig.signature);
+      const uploadRes = await fetch(
+        `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
+        { method: "POST", body: fd }
+      );
+      if (!uploadRes.ok) throw new Error("Image upload to Cloudinary failed");
+      const imgData = await uploadRes.json();
+      imageDataUrl = imgData.secure_url;
+    } else if (orderImage?.url?.startsWith("http")) {
+      imageDataUrl = orderImage.url; // already a Cloudinary URL
     } else if (orderImage?.url?.startsWith("data:")) {
-      imageDataUrl = orderImage.url;
+      imageDataUrl = orderImage.url; // legacy base64, backward compat
     }
 
     const apiPayload = {

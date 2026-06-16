@@ -8,7 +8,7 @@ import {
   Printer, BookOpen, Barcode, Tag, Workflow, Wrench, Boxes, Building2,
   Warehouse, ShoppingBag, ReceiptText, PackageCheck, ArrowLeftRight, ClipboardCheck, PackageMinus, ArrowRightLeft,
   Package, BookMarked, Layers, RotateCcw, Shuffle, ScanSearch, PackagePlus, ClipboardSignature,
-  ChevronLeft, Beaker, ImageIcon, Palette, Users,
+  ChevronLeft, Beaker, ImageIcon, Palette, Calendar, ShieldCheck,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useUnit } from "@/context/UnitContext";
@@ -40,16 +40,17 @@ const navItems: NavItem[] = [
   { label: "Order Booking",    href: "/gravure/orders",            icon: ShoppingCart,   badge: "GRV" },
   { label: "Work Order",       href: "/extrusion/workorder",       icon: Printer,        badge: "EXT" },
   { label: "Work Order",       href: "/gravure/workorder",         icon: Printer,        badge: "GRV" },
-  { label: "Production",       href: "/production",                icon: PlayCircle,     badge: "EXT" },
-  { label: "Ink Kitchen",       href: "/gravure/ink-kitchen",       icon: Beaker,         badge: "GRV" },
+  { label: "Job Schedule Release", href: "/gravure/job-schedule-release", icon: Calendar,  badge: "GRV" },
   {
-    label: "Artwork Mgmt", icon: ImageIcon, badge: "GRV", children: [
-      { label: "Artwork Library", href: "/gravure/artwork-management",          icon: Palette },
-      { label: "Designer Tab",    href: "/gravure/artwork-management/designer", icon: Users },
-      { label: "Manager Tab",     href: "/gravure/artwork-management/manager",  icon: ClipboardList },
+    label: "Production", icon: PlayCircle, badge: "GRV" as NavBadge,
+    children: [
+      { label: "Job Production", href: "/gravure/production/job-production", icon: PlayCircle },
+      { label: "QC & Packing",   href: "/gravure/production/qc-packing",    icon: ShieldCheck },
     ],
   },
-  { label: "Production",       href: "/gravure/production",        icon: PlayCircle,     badge: "GRV" },
+  { label: "Ink Kitchen",       href: "/gravure/ink-kitchen",       icon: Beaker,         badge: "GRV" },
+  { label: "Content Gang",     href: "/gravure/content-gang",      icon: Layers,         badge: "GRV" },
+  { label: "Artwork Mgmt", href: "/gravure/artwork-management", icon: ImageIcon, badge: "GRV" },
   { label: "Dispatch",         href: "/dispatch",                  icon: Truck,          badge: null },
   {
     label: "Masters", icon: Settings2, children: [

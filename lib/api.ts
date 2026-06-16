@@ -5,6 +5,7 @@
 import { authHeaders } from "@/lib/auth";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+export const API_BASE = BASE;
 
 // The .NET controllers return Ok(JsonConvert.SerializeObject(data.Message))
 // which wraps the JSON in an extra string layer — double-parse to get the object.
@@ -55,6 +56,21 @@ export async function apiPost<T = unknown>(path: string, body: unknown): Promise
     method: "POST",
     headers: getAuthHeaders(),
     body: JSON.stringify(body),
+  });
+  if (res.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
+  return parseResponse<T>(res);
+}
+
+// For multipart file uploads — omits Content-Type so browser sets the boundary
+export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
+  const { "Content-Type": _, ...headers } = getAuthHeaders();
+  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+    method: "POST",
+    headers,
+    body: formData,
   });
   if (res.status === 401 && typeof window !== "undefined") {
     window.location.href = "/login";

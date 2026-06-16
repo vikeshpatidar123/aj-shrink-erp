@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Plus, Pencil, Trash2, Save, List, Check, FlaskConical,
   ClipboardList, Beaker, X, Search, ChevronDown, AlertCircle, RefreshCw,
+  LayoutDashboard, TrendingUp, Package, Clock, CheckCircle2,
 } from "lucide-react";
 import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -37,7 +38,7 @@ interface Dropdowns {
   warehouses: Warehouse[];
   jobs: Job[];
   shadeNames: ShadeName[];
-  papers: { id: string; itemName: string; quality: string; finish: string }[];
+  films: FilmItem[];
 }
 
 interface Recipe {
@@ -166,6 +167,11 @@ const blankRecipeForm = {
 
 type IngredientRow = { subItemId: string; subItemCode: string; subItemName: string; percentage: string };
 
+type FilmItem = {
+  id: string; itemName: string; quality: string; finish: string;
+  sizeW: number; thickness: number; density: number; manufacturer: string;
+};
+
 function RecipeForm({
   editing,
   form,
@@ -173,6 +179,7 @@ function RecipeForm({
   ingredients,
   setIngredients,
   inkItems,
+  films,
   saving,
   onSave,
   onBack,
@@ -183,6 +190,7 @@ function RecipeForm({
   ingredients: IngredientRow[];
   setIngredients: (rows: IngredientRow[]) => void;
   inkItems: InkItem[];
+  films: FilmItem[];
   saving: boolean;
   onSave: () => void;
   onBack: () => void;
@@ -253,17 +261,28 @@ function RecipeForm({
                 placeholder="Pantone 485C"
                 className={inputCls} />
             </Field>
-            <Field label="Paper Quality">
-              <input type="text" value={form.paperQuality}
-                onChange={e => f("paperQuality", e.target.value)}
-                placeholder="e.g. Gloss, Matt"
-                className={inputCls} />
+            <Field label="Film Item">
+              <select value={form.paperQuality}
+                onChange={e => {
+                  const item = films.find(p => p.itemName === e.target.value);
+                  setForm({ ...form, paperQuality: e.target.value, paperFinish: item?.finish ?? "" });
+                }}
+                className={selectCls}>
+                <option value="">— select film —</option>
+                {films.map(p => (
+                  <option key={p.id} value={p.itemName}>
+                    {p.itemName}{p.sizeW ? ` — ${p.sizeW}mm` : ""}{p.thickness ? ` × ${p.thickness}µ` : ""}
+                  </option>
+                ))}
+              </select>
             </Field>
-            <Field label="Paper Finish">
-              <input type="text" value={form.paperFinish}
-                onChange={e => f("paperFinish", e.target.value)}
-                placeholder="e.g. Glossy, Matte"
-                className={inputCls} />
+            <Field label="Film Finish">
+              <select value={form.paperFinish} onChange={e => f("paperFinish", e.target.value)} className={selectCls}>
+                <option value="">— select finish —</option>
+                {[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => (
+                  <option key={fin} value={fin}>{fin}</option>
+                ))}
+              </select>
             </Field>
           </div>
         </div>
@@ -313,6 +332,10 @@ function RecipeForm({
                       <select value={row.subItemId} onChange={e => setIngredientItem(i, e.target.value)}
                         className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-400 outline-none">
                         <option value="">— select —</option>
+                        {/* Fallback: show saved item even if not in inkItems list */}
+                        {row.subItemId && !inkItems.find(ink => ink.id === row.subItemId) && (
+                          <option value={row.subItemId}>{row.subItemCode} — {row.subItemName}</option>
+                        )}
                         {inkItems.map((ink, ix) => (
                           <option key={`${ink.id}_${ix}`} value={ink.id}>{ink.itemCode} — {ink.itemName}</option>
                         ))}
@@ -371,6 +394,7 @@ function SprForm({
   setForm,
   inkItems,
   jobs,
+  films,
   saving,
   onSave,
   onBack,
@@ -380,6 +404,7 @@ function SprForm({
   setForm: (f: typeof blankSprForm) => void;
   inkItems: InkItem[];
   jobs: Job[];
+  films: FilmItem[];
   saving: boolean;
   onSave: () => void;
   onBack: () => void;
@@ -467,16 +492,25 @@ function SprForm({
               className={inputCls} />
           </Field>
 
-          <Field label="Paper Quality">
-            <input type="text" value={form.paperQuality}
-              onChange={e => f("paperQuality", e.target.value)}
-              className={inputCls} />
+          <Field label="Film Item">
+            <select value={form.paperQuality}
+              onChange={e => {
+                const item = films.find(p => p.itemName === e.target.value);
+                setForm({ ...form, paperQuality: e.target.value, paperFinish: item?.finish ?? "" });
+              }}
+              className={selectCls}>
+              <option value="">— select film —</option>
+              {films.map(p => <option key={p.id} value={p.itemName}>{p.itemName}</option>)}
+            </select>
           </Field>
 
-          <Field label="Paper Finish">
-            <input type="text" value={form.paperFinish}
-              onChange={e => f("paperFinish", e.target.value)}
-              className={inputCls} />
+          <Field label="Film Finish">
+            <select value={form.paperFinish} onChange={e => f("paperFinish", e.target.value)} className={selectCls}>
+              <option value="">— select finish —</option>
+              {[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => (
+                <option key={fin} value={fin}>{fin}</option>
+              ))}
+            </select>
           </Field>
         </div>
 
@@ -723,15 +757,15 @@ function MixingModal({
 
 // ── MAIN PAGE ──────────────────────────────────────────────────────────────────
 
-type MainTab = "recipes" | "spr" | "mixing";
+type MainTab = "dashboard" | "recipes" | "spr" | "mixing";
 type RecipeView = "list" | "form";
 type SprView    = "list" | "form";
 
 export default function InkKitchenPage() {
-  const [tab, setTab] = useState<MainTab>("recipes");
+  const [tab, setTab] = useState<MainTab>("dashboard");
 
   // ─── Dropdowns ───────────────────────────────────────────────────────────────
-  const [drops, setDrops] = useState<Dropdowns>({ inkItems: [], warehouses: [], jobs: [], shadeNames: [], papers: [] });
+  const [drops, setDrops] = useState<Dropdowns>({ inkItems: [], warehouses: [], jobs: [], shadeNames: [], films: [] });
   const [dropsLoaded, setDropsLoaded] = useState(false);
 
   const loadDrops = useCallback(async () => {
@@ -742,7 +776,7 @@ export default function InkKitchenPage() {
         warehouses: Array.isArray(d?.warehouses) ? d.warehouses : [],
         jobs:       Array.isArray(d?.jobs)       ? d.jobs       : [],
         shadeNames: Array.isArray(d?.shadeNames) ? d.shadeNames : [],
-        papers:     Array.isArray(d?.papers)     ? d.papers     : [],
+        films:      Array.isArray(d?.films)      ? d.films      : [],
       });
     } catch { /* network unavailable, keep empty arrays */ }
     finally { setDropsLoaded(true); }
@@ -933,8 +967,10 @@ export default function InkKitchenPage() {
   }, []);
 
   useEffect(() => {
-    if (tab === "mixing") loadMixing();
+    if (tab === "mixing" || tab === "dashboard") loadMixing();
   }, [tab, loadMixing]);
+
+  useEffect(() => { loadMixing(); }, [loadMixing]); // load on mount for dashboard KPIs
 
   // ─── Columns ─────────────────────────────────────────────────────────────────
 
@@ -947,7 +983,7 @@ export default function InkKitchenPage() {
       render: r => <span className="text-xs">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName}</span> },
     { key: "Ingredients", header: "Ingredients",
       render: r => <span className="text-xs text-gray-500 max-w-[220px] truncate block">{r.Ingredients || "—"}</span> },
-    { key: "PaperFinish", header: "Finish",
+    { key: "PaperFinish", header: "Film Finish",
       render: r => r.PaperFinish ? <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{r.PaperFinish}</span> : <span className="text-gray-300">—</span> },
     { key: "UsedInProduction", header: "Status",
       render: r => r.UsedInProduction
@@ -1031,6 +1067,7 @@ export default function InkKitchenPage() {
         ingredients={ingredients}
         setIngredients={setIngredients}
         inkItems={drops.inkItems}
+        films={drops.films}
         saving={recipeSaving}
         onSave={saveRecipe}
         onBack={() => setRecipeView("list")}
@@ -1047,6 +1084,7 @@ export default function InkKitchenPage() {
         setForm={setSprForm}
         inkItems={drops.inkItems}
         jobs={drops.jobs}
+        films={drops.films}
         saving={sprSaving}
         onSave={saveSpr}
         onBack={() => setSprView("list")}
@@ -1090,12 +1128,128 @@ export default function InkKitchenPage() {
         {/* Tabs */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="flex border-b border-gray-200 overflow-x-auto">
+            <Tab label="Dashboard" icon={LayoutDashboard} active={tab === "dashboard"} onClick={() => setTab("dashboard")} />
             <Tab label="Shade Library" icon={FlaskConical} active={tab === "recipes"} onClick={() => setTab("recipes")} count={recipes.length} />
             <Tab label="Production Requests" icon={ClipboardList} active={tab === "spr"} onClick={() => setTab("spr")}
-              count={sprs.filter(s => !s.IsShadeProduced).length} />
+              count={sprs.length} />
             <Tab label="Mixing Console" icon={Beaker} active={tab === "mixing"} onClick={() => setTab("mixing")}
               count={pending.length} />
           </div>
+
+          {/* ── DASHBOARD ─────────────────────────────────────────────────────── */}
+          {tab === "dashboard" && (() => {
+            const totalProducedKg = processed.reduce((s, r) => s + Number(r.ProducedQty || 0), 0);
+            const pendingSprCount = sprs.filter(s => !s.IsShadeProduced).length;
+            return (
+              <div className="p-5 space-y-6">
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  {[
+                    { label: "Shade Recipes",    val: recipes.length,    icon: FlaskConical,  color: "text-blue-700",   bg: "bg-blue-50",   border: "border-blue-100" },
+                    { label: "Pending Requests", val: pendingSprCount,   icon: Clock,         color: "text-amber-700",  bg: "bg-amber-50",  border: "border-amber-100" },
+                    { label: "Ink Produced (kg)",val: totalProducedKg.toFixed(2), icon: TrendingUp, color: "text-green-700", bg: "bg-green-50", border: "border-green-100" },
+                    { label: "Batches Mixed",    val: processed.length,  icon: CheckCircle2,  color: "text-indigo-700", bg: "bg-indigo-50", border: "border-indigo-100" },
+                    { label: "Pending Mixing",   val: pending.length,    icon: Package,       color: "text-red-700",    bg: "bg-red-50",    border: "border-red-100" },
+                  ].map(k => (
+                    <div key={k.label} className={`${k.bg} border ${k.border} rounded-xl p-4 flex flex-col gap-2`}>
+                      <div className="flex items-center gap-2">
+                        <k.icon size={14} className={k.color} />
+                        <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{k.label}</span>
+                      </div>
+                      <p className={`text-2xl font-black ${k.color}`}>{mixLoading ? "…" : k.val}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pending Production Requests */}
+                {pendingSprCount > 0 && (
+                  <div>
+                    <h3 className="text-xs font-bold text-amber-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                      <Clock size={12}/> Pending Production Requests
+                    </h3>
+                    <div className="border border-amber-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-amber-50 text-amber-700">
+                          <tr>
+                            {["SPR No","Date","Shade","Ink Item","Req. Qty","Required By","PWO / Job"].map(h => (
+                              <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-100">
+                          {sprs.filter(s => !s.IsShadeProduced).map(r => (
+                            <tr key={r.SpecialShadeProductionID} className="hover:bg-amber-50/50">
+                              <td className="px-3 py-2 font-mono font-bold text-amber-700">{r.SPRNo}</td>
+                              <td className="px-3 py-2 text-gray-500">{r.SPRDate}</td>
+                              <td className="px-3 py-2 font-medium text-gray-800">{r.ShadeName}</td>
+                              <td className="px-3 py-2 text-gray-600">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName || "—"}</td>
+                              <td className="px-3 py-2 font-mono font-semibold text-gray-800">{r.RequiredQty} kg</td>
+                              <td className="px-3 py-2 text-gray-500">{r.RequiredDate || "—"}</td>
+                              <td className="px-3 py-2 text-gray-600">{r.JobNo || "—"}{r.JobName ? ` / ${r.JobName}` : ""}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Ink Production History */}
+                <div>
+                  <h3 className="text-xs font-bold text-green-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <TrendingUp size={12}/> Ink Production History — {processed.length} batches · {totalProducedKg.toFixed(2)} kg total
+                  </h3>
+                  {mixLoading ? (
+                    <div className="py-8 text-center text-sm text-gray-400">Loading…</div>
+                  ) : processed.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-gray-400">No ink batches produced yet.</div>
+                  ) : (
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-800 text-white">
+                          <tr>
+                            {["Batch No","SPR No","Mixed On","Shade Name","Ink Item","Recipe No","Produced (kg)","PWO / Job","Client"].map(h => (
+                              <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {processed.map((r, i) => (
+                            <tr key={r.SpecialShadeProductionID} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                              <td className="px-3 py-2">
+                                <span className="font-mono font-bold text-blue-700">{r.BatchNo || "—"}</span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="font-mono text-green-700">{r.SPRNo}</span>
+                              </td>
+                              <td className="px-3 py-2 text-gray-500">{r.MixedDate}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-800">{r.ShadeName}</td>
+                              <td className="px-3 py-2 text-gray-600">{r.InkCode ? `${r.InkCode} — ` : ""}{r.InkName || "—"}</td>
+                              <td className="px-3 py-2">
+                                <span className="font-mono text-purple-700">{r.RecipeNo || "—"}</span>
+                              </td>
+                              <td className="px-3 py-2">
+                                <span className="font-mono font-black text-green-700 text-sm">{r.ProducedQty} kg</span>
+                              </td>
+                              <td className="px-3 py-2 text-gray-600">{r.JobNo || "—"}{r.JobName ? ` / ${r.JobName}` : ""}</td>
+                              <td className="px-3 py-2 text-gray-500">{r.ClientName || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-green-50 border-t-2 border-green-200">
+                          <tr>
+                            <td colSpan={6} className="px-3 py-2 text-xs font-bold text-green-700 uppercase tracking-wide">Total Produced</td>
+                            <td className="px-3 py-2 font-mono font-black text-green-700 text-sm">{totalProducedKg.toFixed(2)} kg</td>
+                            <td colSpan={2}/>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── RECIPES list ───────────────────────────────────────────────────── */}
           {tab === "recipes" && (
