@@ -2628,7 +2628,7 @@ export type GravureProductCatalog = {
   savedColorShades?: any[];
   savedCylAllocs?: any[];
   attachments?: { id: string; name: string; label: string; url: string; mimeType: string; size: number }[];
-  attachmentsBase64?: { name: string; label: string; mimeType: string; base64: string }[];
+  attachmentsCloudinary?: { name: string; label: string; mimeType: string; secureUrl: string }[];
   existingAttachmentIDs?: string[];
 };
 

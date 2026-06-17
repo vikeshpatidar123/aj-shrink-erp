@@ -76,9 +76,11 @@ export default function CloudinaryUpload({
       fd.append("timestamp", String(sig.timestamp));
       fd.append("signature", sig.signature);
 
-      // "auto" lets Cloudinary detect image vs raw (pdf)
+      // PDFs must use "raw" so Cloudinary preserves the original bytes and serves with correct Content-Type.
+      // Images use "image" resource type.
+      const resourceType = isPdf ? "raw" : "image";
       const uploadRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
+        `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`,
         { method: "POST", body: fd }
       );
       if (!uploadRes.ok) {

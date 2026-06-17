@@ -1341,13 +1341,15 @@ export default function ProductCatalogPage() {
       const sig = await fetchSignatureCat();
       attachmentsCloudinary = await Promise.all(
         newAttachments.map(async a => {
+          const isPdf = a.fileObj!.type === "application/pdf" || a.name.toLowerCase().endsWith(".pdf");
+          const resourceType = isPdf ? "raw" : "image";
           const fd = new FormData();
           fd.append("file", a.fileObj!);
           fd.append("api_key", sig.apiKey);
           fd.append("timestamp", String(sig.timestamp));
           fd.append("signature", sig.signature);
           const uploadRes = await fetch(
-            `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
+            `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`,
             { method: "POST", body: fd }
           );
           if (!uploadRes.ok) throw new Error("Cloudinary upload failed for " + a.name);
@@ -1438,6 +1440,7 @@ export default function ProductCatalogPage() {
     setReplanOpen(false);
     setReplanForm(null);
     if (isNewCatalog) { setIsNewCatalog(false); setCatalogTab("processed"); }
+    refreshCatalog();
   };
 
   // ── Derived lists ─────────────────────────────────────────
@@ -1788,10 +1791,16 @@ export default function ProductCatalogPage() {
               <Button icon={<RefreshCw size={14} />} onClick={refreshCatalog} className="mt-2">Retry</Button>
             </div>
           ) : processedCatalog.length === 0 ? (
-            <div className="flex flex-col items-center justify-center flex-1 text-gray-400">
-              <BookMarked size={40} className="text-gray-300 mb-3" />
-              <p className="font-semibold text-gray-600">No catalog entries yet</p>
-              <p className="text-sm mt-1">Click "Create Direct Catalog" to add your first entry.</p>
+            <div className="flex flex-col items-center justify-center flex-1 text-gray-400 gap-4">
+              <BookMarked size={40} className="text-gray-300" />
+              <div className="text-center">
+                <p className="font-semibold text-gray-600">No catalog entries yet</p>
+                <p className="text-sm mt-1 text-gray-400">Create your first product catalog entry to get started.</p>
+              </div>
+              <Button icon={<Plus size={14} />} onClick={openDirectCreate}
+                className="bg-purple-600 text-white hover:bg-purple-700 border-0 px-5 py-2">
+                Create Direct Catalog
+              </Button>
             </div>
           ) : (
             <DataTable
@@ -4764,9 +4773,19 @@ export default function ProductCatalogPage() {
             {previewAttachment.mimeType.startsWith("image/") ? (
               <img src={previewAttachment.url} alt={previewAttachment.name}
                 className="max-w-full max-h-[70vh] object-contain rounded-xl shadow-lg" />
-            ) : previewAttachment.mimeType === "application/pdf" ? (
-              <iframe src={previewAttachment.url} title={previewAttachment.name}
-                className="w-full rounded-xl border border-gray-200 shadow" style={{ height: "70vh" }} />
+            ) : previewAttachment.mimeType === "application/pdf" || previewAttachment.url.toLowerCase().endsWith(".pdf") ? (
+              <div className="w-full flex flex-col gap-3" style={{ height: "70vh" }}>
+                <iframe
+                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAttachment.url)}&embedded=true`}
+                  title={previewAttachment.name}
+                  className="w-full flex-1 rounded-xl border border-gray-200 shadow"
+                  style={{ height: "calc(70vh - 48px)" }}
+                />
+                <a href={previewAttachment.url} target="_blank" rel="noreferrer"
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition">
+                  ↗ Open PDF in new tab
+                </a>
+              </div>
             ) : (
               <div className="flex flex-col items-center gap-4 py-16 text-center">
                 <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center">

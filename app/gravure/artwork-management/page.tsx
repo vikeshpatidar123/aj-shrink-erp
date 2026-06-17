@@ -290,13 +290,15 @@ export default function ArtworkManagementPage() {
     setUploadingFile(true);
     try {
       const sig = await fetchSignature();
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const resourceType = isPdf ? "raw" : "image";
       const fd = new FormData();
       fd.append("file", file);
       fd.append("api_key", sig.apiKey);
       fd.append("timestamp", String(sig.timestamp));
       fd.append("signature", sig.signature);
       const uploadRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
+        `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`,
         { method: "POST", body: fd }
       );
       if (!uploadRes.ok) throw new Error("Cloudinary upload failed");

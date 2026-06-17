@@ -321,7 +321,7 @@ export function ProductCatalogProvider({ children }: { children: ReactNode }) {
         SavedPlan: JSON.stringify(item.savedPlan || null),
         SavedColorShades: JSON.stringify(item.savedColorShades ?? []),
         SavedCylAllocs: JSON.stringify(item.savedCylAllocs ?? []),
-        AttachmentsBase64: JSON.stringify(item.attachmentsBase64 ?? []),
+        AttachmentsCloudinary: JSON.stringify(item.attachmentsCloudinary ?? []),
         ExistingAttachmentIDs: JSON.stringify(item.existingAttachmentIDs ?? []),
         // Explicit SavedLayersJSON so backend stores all consumables (not a truncated FOR JSON PATH)
         SavedLayersJSON: JSON.stringify((item.secondaryLayers ?? []).map((l: any, li: number) => ({
