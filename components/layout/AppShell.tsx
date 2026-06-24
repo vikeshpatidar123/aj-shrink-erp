@@ -10,6 +10,7 @@ import { ProductCatalogProvider } from "@/context/ProductCatalogContext";
 import { ExtrusionCatalogProvider } from "@/context/ExtrusionCatalogContext";
 import { MastersProvider } from "@/context/MastersContext";
 import { ToastProvider } from "@/components/ui/Toast";
+import ERPChatBot from "@/components/gravure/ERPChatBot";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -103,6 +104,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </main>
         </div>
       </div>
+      <ERPChatBot />
     </UnitProvider>
     </CategoriesProvider>
     </EnquiryProvider>

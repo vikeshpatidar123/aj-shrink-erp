@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermasterShrink`;
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -187,9 +187,24 @@ export default function UserMasterPage() {
   // ── load list ─────────────────────────────────────────────────────────────────
   const loadList = useCallback(() => {
     setLoading(true);
+    setError("");
     apiFetch(`${BASE}/getuser`)
-      .then(raw => setData(Array.isArray(raw) ? raw.map((r: any) => ({ ...r, id: String(r.UserID) })) : []))
-      .catch(() => setData([]))
+      .then(raw => {
+        if (Array.isArray(raw)) {
+          setData(raw.map((r: any) => ({ ...r, id: String(r.UserID) })));
+        } else {
+          // Non-array means the request didn't return the user list — surface the
+          // real reason instead of silently showing an empty grid.
+          setData([]);
+          const msg = raw && typeof raw === "object" && raw.Message ? raw.Message : JSON.stringify(raw);
+          setError(`Could not load users — ${msg}. Check that you are logged in and NEXT_PUBLIC_API_URL points to a reachable backend.`);
+          console.warn("[UserMaster] unexpected getuser response:", raw);
+        }
+      })
+      .catch((e: any) => {
+        setData([]);
+        setError(`Network error loading users: ${e?.message ?? e}`);
+      })
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => { loadList(); }, [loadList]);
@@ -505,8 +520,8 @@ export default function UserMasterPage() {
             {!editing && tabs.map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 rounded-t transition-colors ${activeTab === t.id
-                    ? "border-blue-600 text-blue-600 bg-white"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  ? "border-blue-600 text-blue-600 bg-white"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   }`}>
                 {t.icon}{t.label}
               </button>
@@ -514,8 +529,8 @@ export default function UserMasterPage() {
             {editing && tabs.map(t => (
               <button key={t.id} onClick={() => setActiveTab(t.id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 rounded-t transition-colors ${activeTab === t.id
-                    ? "border-blue-600 text-blue-600 bg-white"
-                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  ? "border-blue-600 text-blue-600 bg-white"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   }`}>
                 {t.icon}{t.label}
               </button>
@@ -784,6 +799,10 @@ export default function UserMasterPage() {
           <Plus size={16} /> Add User
         </button>
       </div>
+
+      {error && (
+        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <DataTable

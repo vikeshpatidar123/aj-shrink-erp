@@ -57,9 +57,10 @@ function normalizeContentType(content: string): string {
 
   // ── Pouch types (specific before generic) ─────────────────────────────
   if (c.includes("both side") && c.includes("gusset"))                  return "Both Side Gusset Pouch";
+  if (c.includes("gusset") && c.includes("bag"))                        return "Both Side Gusset Pouch";
   if ((c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))) return "3D Pouch / Flat Bottom";
-  if (c.includes("3 side") || c.includes("three side"))                return "Pouch — 3 Side Seal";
-  if (c.includes("center seal") || c.includes("centre seal"))          return "Pouch — Center Seal";
+  if (c.includes("3 side") || c.includes("three side") || c.includes("sachet")) return "Pouch — 3 Side Seal";
+  if (c.includes("center seal") || c.includes("centre seal"))           return "Pouch — Center Seal";
   if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Standup Pouch";
   if (c.includes("zipper"))                                              return "Zipper Pouch";
   if (c.includes("pouch") || c.includes("doy"))                         return "Pouch — 3 Side Seal";
@@ -70,7 +71,7 @@ function normalizeContentType(content: string): string {
   if (c.includes("roll form") || c.includes("roll") || c.includes("film")) return "Laminate Roll";
 
   // ── Generic keyword fallbacks ─────────────────────────────────────────
-  if (c.includes("bag") || c.includes("sack"))                          return "Pouch — 3 Side Seal";
+  if (c.includes("bag") || c.includes("sack"))                          return "Both Side Gusset Pouch";
   if (c.includes("label") || c.includes("sticker") || c.includes("tag")) return "Wrap Around Labels";
 
   // Return as-is — may already be an exact CONTENT_TYPE_CONFIG key
@@ -1176,7 +1177,7 @@ export default function GravureEstimationPage() {
       if (sType === "Sleeve") {
         effectiveRepeat = sleeveCutLength;
       } else if (estContent === "Pouch — 3 Side Seal") {
-        effectiveRepeat = ((form.jobHeight || 0) + estTopSeal + estBtmSeal + shrink) * 2;
+        effectiveRepeat = (form.jobHeight || 0) + estTopSeal + estBtmSeal + shrink;
       } else if (estContent === "Pouch — Center Seal" || estContent === "Both Side Gusset Pouch") {
         effectiveRepeat = (form.jobHeight || 0) + estTopSeal + estBtmSeal + shrink;
       } else if (estContent === "Standup Pouch" || estContent === "Zipper Pouch" || estContent === "3D Pouch / Flat Bottom") {

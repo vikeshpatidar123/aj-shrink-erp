@@ -15,7 +15,7 @@ export type ContentTypeDef = {
 
 export const CONTENT_TYPE_CONFIG: Record<string, ContentTypeDef> = {
   "Pouch — 3 Side Seal":  { fields: ["width", "height", "topSeal", "bottomSeal", "sideSeal"],            labels: { width: "Pouch Width (mm)", height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", bottomSeal: "Bottom Seal (mm)", sideSeal: "Side Seal (mm)" },                                 diagramType: "threeside"      },
-  "Pouch — Center Seal":  { fields: ["width", "height", "topSeal", "bottomSeal", "centerSealWidth"],     labels: { width: "Half Width (mm)",  height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", bottomSeal: "Bottom Seal (mm)", centerSealWidth: "Center Seal (mm)" },                          diagramType: "centerseal"     },
+  "Pouch — Center Seal":  { fields: ["width", "height", "topSeal", "bottomSeal", "centerSealWidth"],     labels: { width: "Panel Width / Face Width (mm)",  height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", bottomSeal: "Bottom Seal (mm)", centerSealWidth: "Center Seal (mm)" },                          diagramType: "centerseal"     },
   "Standup Pouch":        { fields: ["width", "height", "topSeal", "sideSeal", "gusset"],               labels: { width: "Pouch Width (mm)", height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", sideSeal: "Side Seal (mm)", gusset: "Bottom Gusset (mm)" },                                     diagramType: "standup"        },
   "Zipper Pouch":         { fields: ["width", "height", "topSeal", "sideSeal", "gusset"],               labels: { width: "Pouch Width (mm)", height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", sideSeal: "Side Seal (mm)", gusset: "Bottom Gusset (mm)" },                                     diagramType: "standup"        },
   "Both Side Gusset Pouch": { fields: ["width", "height", "topSeal", "bottomSeal", "sideGusset"],       labels: { width: "Pouch Width (mm)", height: "Pouch Height (mm)", topSeal: "Top Seal (mm)", bottomSeal: "Bottom Seal (mm)", sideGusset: "Side Gusset (mm)" },                               diagramType: "bothsidegusset" },
@@ -56,7 +56,7 @@ export const CONTENT_TYPE_CONFIG: Record<string, ContentTypeDef> = {
   "Laminated Pouch - 3 Ply":         { fields: ["width","height","topSeal","bottomSeal","sideSeal"],   labels: { width:"Pouch Width (mm)",  height:"Pouch Height (mm)",  topSeal:"Top Seal (mm)",    bottomSeal:"Bottom Seal (mm)", sideSeal:"Side Seal (mm)"    }, diagramType:"threeside"      },
   "Laminated Pouch - Retort":        { fields: ["width","height","topSeal","bottomSeal","sideSeal"],   labels: { width:"Pouch Width (mm)",  height:"Pouch Height (mm)",  topSeal:"Top Seal (mm)",    bottomSeal:"Bottom Seal (mm)", sideSeal:"Side Seal (mm)"    }, diagramType:"threeside"      },
   // ── Canonical 5-pouch names (post-ContentMaster cleanup) ──────────────────
-  "Center Seal Pouch":  { fields: ["width","height","topSeal","bottomSeal","centerSealWidth"], labels: { width:"Half Width (mm)",   height:"Pouch Height (mm)", topSeal:"Top Seal (mm)", bottomSeal:"Bottom Seal (mm)", centerSealWidth:"Center Seal (mm)" }, diagramType:"centerseal"     },
+  "Center Seal Pouch":  { fields: ["width","height","topSeal","bottomSeal","centerSealWidth"], labels: { width:"Panel Width / Face Width (mm)",   height:"Pouch Height (mm)", topSeal:"Top Seal (mm)", bottomSeal:"Bottom Seal (mm)", centerSealWidth:"Center Seal (mm)" }, diagramType:"centerseal"     },
   "Stand Up Pouch":     { fields: ["width","height","topSeal","sideSeal","gusset"],           labels: { width:"Pouch Width (mm)",  height:"Pouch Height (mm)", topSeal:"Top Seal (mm)", sideSeal:"Side Seal (mm)",    gusset:"Bottom Gusset (mm)"        }, diagramType:"standup"        },
   "3 Side Seal Sachet": { fields: ["width","height","topSeal","bottomSeal","sideSeal"],       labels: { width:"Sachet Width (mm)", height:"Sachet Height (mm)",topSeal:"Top Seal (mm)", bottomSeal:"Bottom Seal (mm)",sideSeal:"Side Seal (mm)"            }, diagramType:"threeside"      },
   "Gusset Bag":         { fields: ["width","height","topSeal","bottomSeal","sideGusset"],     labels: { width:"Bag Width (mm)",    height:"Bag Height (mm)",   topSeal:"Top Seal (mm)", bottomSeal:"Bottom Seal (mm)",sideGusset:"Side Gusset (mm)"        }, diagramType:"bothsidegusset" },
@@ -100,20 +100,42 @@ export function calcDimensions(
   if (cfg?.diagramType === "sleeve") {
     repeatLength = w * 2 + shrink;
     filmJobWidth = w; // sleeve: no side trim
-  } else if (contentType === "Pouch — 3 Side Seal") {
-    repeatLength = h + topSeal + bottomSeal;
+  } else if (
+    contentType === "Pouch — 3 Side Seal" ||
+    contentType === "3 Side Seal Sachet" ||
+    contentType === "3-Side Seal Sachet - Standard" ||
+    contentType === "3-Side Seal Sachet - Tear Notch"
+  ) {
+    repeatLength = h + topSeal + bottomSeal + shrink;
     filmJobWidth = w + 2 * sideSeal;
-  } else if (contentType === "Pouch — Center Seal") {
-    repeatLength = h + topSeal + bottomSeal;
-    filmJobWidth = w * 2 + centerSealW; // w = half-width
-  } else if (contentType === "Standup Pouch" || contentType === "Zipper Pouch") {
-    repeatLength = h + topSeal + (gusset > 0 ? gusset / 2 : 0);
+  } else if (contentType === "Pouch — Center Seal" || contentType === "Center Seal Pouch") {
+    repeatLength = h + topSeal + bottomSeal + shrink;
+    filmJobWidth = w * 2 + centerSealW; // w = panel width (one face)
+  } else if (
+    contentType === "Standup Pouch" || contentType === "Zipper Pouch" ||
+    contentType === "Stand Up Pouch" ||
+    contentType === "Stand Up Pouch - No Zipper" ||
+    contentType === "Stand Up Pouch - With Zipper" ||
+    contentType === "Stand Up Pouch - With Spout" ||
+    contentType === "Gusset Bag - Bottom Gusset"
+  ) {
+    repeatLength = h + topSeal + (gusset > 0 ? gusset / 2 : 0) + shrink;
     filmJobWidth = w + 2 * sideSeal;
-  } else if (contentType === "Both Side Gusset Pouch") {
-    repeatLength = h + topSeal + bottomSeal;
+  } else if (
+    contentType === "Both Side Gusset Pouch" ||
+    contentType === "Gusset Bag" ||
+    contentType === "Gusset Bag - Side Gusset"
+  ) {
+    repeatLength = h + topSeal + bottomSeal + shrink;
     filmJobWidth = w + 2 * sideGusset;
-  } else if (contentType === "3D Pouch / Flat Bottom") {
-    repeatLength = h + topSeal + (gusset > 0 ? gusset / 2 : 0);
+  } else if (
+    contentType === "3D Pouch / Flat Bottom" ||
+    contentType === "Flat Bottom Pouch" ||
+    contentType === "Flat Bottom Pouch - Standard" ||
+    contentType === "Flat Bottom Pouch - With Zipper" ||
+    contentType === "Flat Bottom Pouch - With Valve"
+  ) {
+    repeatLength = h + topSeal + (gusset > 0 ? gusset / 2 : 0) + shrink;
     filmJobWidth = w + 2 * sideGusset;
   }
 
@@ -289,17 +311,24 @@ function StandupDiagram({ dims }: { dims: DimValues }) {
       {/* Body */}
       <rect x={ox+ssPx} y={oy+tsPx} width={dw-2*ssPx} height={bodyH} fill="#e0e7ff" stroke="#6366f1" strokeWidth={0.8} opacity={0.5} />
       <text x={ox+dw/2} y={oy+tsPx+bodyH/2+3} textAnchor="middle" fontSize={8} fill="#3730a3" fontWeight="600">BODY</text>
-      {/* Bottom gusset */}
+      {/* Bottom gusset — shows full gusset, only half contributes to repeat */}
       {gusPx > 0 && <>
         <rect x={ox} y={oy+dh-gusPx} width={dw} height={gusPx} fill="#a5f3fc" stroke="#0891b2" strokeWidth={1} opacity={0.6} />
-        <text x={ox+dw/2} y={oy+dh-gusPx/2+3} textAnchor="middle" fontSize={7} fill="#0e7490">GUSSET {gus}mm</text>
+        <text x={ox+dw/2} y={oy+dh-gusPx/2-1} textAnchor="middle" fontSize={6.5} fill="#0e7490" fontWeight="600">GUSSET {gus}mm total</text>
+        <text x={ox+dw/2} y={oy+dh-gusPx/2+9} textAnchor="middle" fontSize={6} fill="#0e7490">(½ = {gus/2}mm added to repeat)</text>
       </>}
-      {/* Dim lines */}
-      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+16} x2={ox+dw} y2={oy+dh+16} label={`${totalW}mm`} />}
-      {w > 0     && <DimLine x1={ox+ssPx} y1={oy+dh+26} x2={ox+dw-ssPx} y2={oy+dh+26} label={`W:${w}mm`} color="#818cf8" />}
-      {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} />}
+      {/* Dim lines — width: breakdown formula */}
+      {totalW > 0 && sideSeal > 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${sideSeal} + ${w} + ${sideSeal} = ${totalW}mm`} color="#6366f1" />}
+      {totalW > 0 && sideSeal === 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${totalW}mm`} color="#6366f1" />}
+      {ssPx > 0 && <DimLine x1={ox} y1={oy+dh+25} x2={ox+ssPx} y2={oy+dh+25} label={`${sideSeal}`} color="#818cf8" />}
+      {w > 0 && <DimLine x1={ox+ssPx} y1={oy+dh+25} x2={ox+dw-ssPx} y2={oy+dh+25} label={`${w}mm`} color="#818cf8" />}
+      {ssPx > 0 && <DimLine x1={ox+dw-ssPx} y1={oy+dh+25} x2={ox+dw} y2={oy+dh+25} label={`${sideSeal}`} color="#818cf8" />}
+      {/* Dim lines — height */}
+      {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} color="#6366f1" />}
       {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH} label={`H:${h}mm`} color="#818cf8" />}
-      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Standup / Zipper Pouch</text>
+      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Stand Up Pouch — front &amp; back = separate webs</text>
     </svg>
   );
 }
@@ -349,66 +378,144 @@ function ThreeSideDiagram({ dims }: { dims: DimValues }) {
         <rect x={ox+ssPx} y={oy+tsPx+bodyH} width={dw-2*ssPx} height={bsPx} fill="#86efac" stroke="#16a34a" strokeWidth={1} opacity={0.8} />
         <text x={ox+dw/2} y={oy+dh-3} textAnchor="middle" fontSize={7} fill="#15803d">BTM SEAL {bottomSeal}mm</text>
       </>}
-      {/* Dim lines */}
-      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+16} x2={ox+dw} y2={oy+dh+16} label={`${totalW}mm`} color="#16a34a" />}
-      {w > 0     && <DimLine x1={ox+ssPx} y1={oy+dh+26} x2={ox+dw-ssPx} y2={oy+dh+26} label={`W:${w}mm`} color="#4ade80" />}
+      {/* Dim lines — width: Row 1 = total formula, Row 2 = per-segment */}
+      {totalW > 0 && sideSeal > 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${sideSeal} + ${w} + ${sideSeal} = ${totalW}mm`} color="#16a34a" />}
+      {totalW > 0 && sideSeal === 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${totalW}mm`} color="#16a34a" />}
+      {ssPx > 0 && <DimLine x1={ox} y1={oy+dh+25} x2={ox+ssPx} y2={oy+dh+25} label={`${sideSeal}`} color="#4ade80" />}
+      {w > 0 && <DimLine x1={ox+ssPx} y1={oy+dh+25} x2={ox+dw-ssPx} y2={oy+dh+25} label={`${w}mm`} color="#4ade80" />}
+      {ssPx > 0 && <DimLine x1={ox+dw-ssPx} y1={oy+dh+25} x2={ox+dw} y2={oy+dh+25} label={`${sideSeal}`} color="#4ade80" />}
+      {/* Dim lines — height */}
       {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} color="#16a34a" />}
       {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH} label={`H:${h}mm`} color="#4ade80" />}
-      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">3-Side Seal Pouch</text>
+      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">3-Side Seal Pouch / Sachet</text>
     </svg>
   );
 }
 
 // ── Center Seal ──
-// Film layout: [SIDE A = W] [center seal = centerSealWidth] [SIDE B = W], repeat = H + topSeal + bottomSeal
+// Flat film: [FRONT panel = W] [CENTER SEAL = centerSealWidth] [BACK panel = W]
+// Repeat = H + topSeal + bottomSeal + shrinkage
+// When formed into tube, the center seal folds to the back of the pouch
 function CenterSealDiagram({ dims }: { dims: DimValues }) {
-  const w           = dims.width ?? 0;  // half-width (one side)
+  const w           = dims.width ?? 0;        // panel width (one face)
   const h           = dims.height ?? 0;
   const topSeal     = dims.topSeal ?? 0;
   const bottomSeal  = dims.bottomSeal ?? 0;
   const centerSealW = dims.centerSealWidth ?? 0;
+  const shrink      = dims.widthShrinkage ?? 0;   // repeat-length shrinkage
 
-  const totalW = w * 2 + centerSealW;
-  const totalH = h + topSeal + bottomSeal;
-  const { dw, dh, scale } = scaleToCanvas(totalW || w * 2 || 100, totalH || h || 100);
-  const ox = (VW - dw) / 2; const oy = PAD + 6;
+  const totalW     = w * 2 + centerSealW;
+  const baseRepeat = h + topSeal + bottomSeal;
+  const fullRepeat = baseRepeat + shrink;
 
-  const csPx = centerSealW > 0 ? Math.max(centerSealW * scale, 8) : 8;
-  const tsPx = topSeal     > 0 ? Math.max(topSeal     * scale, 8) : 0;
-  const bsPx = bottomSeal  > 0 ? Math.max(bottomSeal  * scale, 8) : 0;
-  const bodyH = dh - tsPx - bsPx;
-  const sideW = (dw - csPx) / 2;
+  const { dw, dh, scale } = scaleToCanvas(totalW || w * 2 || 100, fullRepeat || baseRepeat || h || 100);
+  const ox = (VW - dw) / 2;
+  const oy = PAD + 2;
+
+  const csPx     = centerSealW > 0 ? Math.max(centerSealW * scale, 8) : 8;
+  const tsPx     = topSeal     > 0 ? Math.max(topSeal     * scale, 8) : 0;
+  const bsPx     = bottomSeal  > 0 ? Math.max(bottomSeal  * scale, 8) : 0;
+  const shrinkPx = shrink      > 0 ? Math.max(shrink      * scale, 6) : 0;
+  const bodyH    = dh - tsPx - bsPx - shrinkPx;
+  const sideW    = (dw - csPx) / 2;
+
+  // Repeat breakdown string, e.g. "220 + 10 + 8 + 1.5 = 239.5mm"
+  const repeatParts = [
+    h > 0        ? `${h}`                       : "",
+    topSeal > 0  ? `${topSeal}`                 : "",
+    bottomSeal > 0 ? `${bottomSeal}`            : "",
+    shrink > 0   ? `${shrink}`                  : "",
+  ].filter(Boolean).join(" + ");
+  const fullRepeatStr = fullRepeat > 0
+    ? `${fullRepeat % 1 === 0 ? fullRepeat : fullRepeat.toFixed(1)}mm`
+    : "";
 
   return (
     <svg width={VW} height={VH} className="w-full">
-      {/* SIDE A */}
-      <rect x={ox} y={oy} width={sideW} height={dh} fill="#fdf4ff" stroke="#a855f7" strokeWidth={1.5} rx={2} />
-      <text x={ox+sideW/2} y={oy+tsPx+bodyH/2+3} textAnchor="middle" fontSize={8} fill="#7e22ce" fontWeight="600">SIDE A</text>
-      {/* SIDE B */}
-      <rect x={ox+sideW+csPx} y={oy} width={sideW} height={dh} fill="#fdf4ff" stroke="#a855f7" strokeWidth={1.5} rx={2} />
-      <text x={ox+sideW+csPx+sideW/2} y={oy+tsPx+bodyH/2+3} textAnchor="middle" fontSize={8} fill="#7e22ce" fontWeight="600">SIDE B</text>
-      {/* Center seal */}
-      <rect x={ox+sideW} y={oy} width={csPx} height={dh} fill="#c4b5fd" stroke="#a855f7" strokeWidth={1} opacity={0.9} />
-      {csPx > 10 && <text x={ox+sideW+csPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#6b21a8" fontWeight="700" transform={`rotate(-90,${ox+sideW+csPx/2},${oy+dh/2})`}>SEAL {centerSealW}mm</text>}
-      {/* Top seal band */}
+      {/* ── Fold-edge indicators: outer dashed lines show where the tube seam forms ── */}
+      <line x1={ox} y1={oy-8} x2={ox} y2={oy+dh-shrinkPx+2}
+        stroke="#7c3aed" strokeWidth={1} strokeDasharray="3 2" opacity={0.45} />
+      <line x1={ox+dw} y1={oy-8} x2={ox+dw} y2={oy+dh-shrinkPx+2}
+        stroke="#7c3aed" strokeWidth={1} strokeDasharray="3 2" opacity={0.45} />
+      <text x={ox}    y={oy-10} textAnchor="middle" fontSize={6} fill="#7c3aed" fontWeight="700">FOLD</text>
+      <text x={ox+dw} y={oy-10} textAnchor="middle" fontSize={6} fill="#7c3aed" fontWeight="700">FOLD</text>
+
+      {/* ── FRONT Panel ── */}
+      <rect x={ox} y={oy} width={sideW} height={dh-shrinkPx} fill="#fdf4ff" stroke="#a855f7" strokeWidth={1.5} rx={2} />
+      <rect x={ox} y={oy+tsPx} width={sideW} height={bodyH} fill="#f3e8ff" stroke="none" />
+      <text x={ox+sideW/2} y={oy+tsPx+bodyH/2-4} textAnchor="middle" fontSize={8} fill="#7e22ce" fontWeight="700">FRONT</text>
+      <text x={ox+sideW/2} y={oy+tsPx+bodyH/2+8} textAnchor="middle" fontSize={6.5} fill="#9333ea">Face Width</text>
+
+      {/* ── CENTER SEAL (back center when tube is formed) ── */}
+      <rect x={ox+sideW} y={oy} width={csPx} height={dh-shrinkPx} fill="#7c3aed" stroke="#6d28d9" strokeWidth={1.5} />
+      {csPx >= 8 && (
+        <text x={ox+sideW+csPx/2} y={oy+(dh-shrinkPx)/2}
+          textAnchor="middle" fontSize={5.5} fill="#fff" fontWeight="800"
+          transform={`rotate(-90,${ox+sideW+csPx/2},${oy+(dh-shrinkPx)/2})`}>
+          BACK CENTER SEAL {centerSealW}mm
+        </text>
+      )}
+
+      {/* ── BACK Panel ── */}
+      <rect x={ox+sideW+csPx} y={oy} width={sideW} height={dh-shrinkPx} fill="#ede9fe" stroke="#a855f7" strokeWidth={1.5} rx={2} />
+      <rect x={ox+sideW+csPx} y={oy+tsPx} width={sideW} height={bodyH} fill="#ddd6fe" stroke="none" />
+      <text x={ox+sideW+csPx+sideW/2} y={oy+tsPx+bodyH/2-4} textAnchor="middle" fontSize={8} fill="#6d28d9" fontWeight="700">BACK</text>
+      <text x={ox+sideW+csPx+sideW/2} y={oy+tsPx+bodyH/2+8} textAnchor="middle" fontSize={6.5} fill="#7c3aed">Face Width</text>
+
+      {/* ── Top Seal ── */}
       {tsPx > 0 && <>
-        <rect x={ox} y={oy} width={dw} height={tsPx} fill="#e9d5ff" stroke="#a855f7" strokeWidth={1} opacity={0.7} />
+        <rect x={ox} y={oy} width={dw} height={tsPx} fill="#e9d5ff" stroke="#a855f7" strokeWidth={1} opacity={0.8} />
         <text x={ox+dw/2} y={oy+tsPx-2} textAnchor="middle" fontSize={7} fill="#7e22ce">TOP SEAL {topSeal}mm</text>
       </>}
-      {/* Bottom seal band */}
+
+      {/* ── Bottom Seal ── */}
       {bsPx > 0 && <>
-        <rect x={ox} y={oy+dh-bsPx} width={dw} height={bsPx} fill="#e9d5ff" stroke="#a855f7" strokeWidth={1} opacity={0.7} />
-        <text x={ox+dw/2} y={oy+dh-3} textAnchor="middle" fontSize={7} fill="#7e22ce">BTM SEAL {bottomSeal}mm</text>
+        <rect x={ox} y={oy+tsPx+bodyH} width={dw} height={bsPx} fill="#e9d5ff" stroke="#a855f7" strokeWidth={1} opacity={0.8} />
+        <text x={ox+dw/2} y={oy+tsPx+bodyH+bsPx-2} textAnchor="middle" fontSize={7} fill="#7e22ce">BTM SEAL {bottomSeal}mm</text>
       </>}
-      {/* Fold line in center of each side */}
-      <line x1={ox} y1={oy+tsPx} x2={ox+sideW} y2={oy+tsPx} stroke="#a855f7" strokeWidth={0.8} strokeDasharray="3 2" />
-      <line x1={ox+sideW+csPx} y1={oy+tsPx} x2={ox+dw} y2={oy+tsPx} stroke="#a855f7" strokeWidth={0.8} strokeDasharray="3 2" />
-      {/* Dim lines */}
-      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+16} x2={ox+dw} y2={oy+dh+16} label={`${totalW}mm`} color="#a855f7" />}
-      {w > 0     && <DimLine x1={ox} y1={oy+dh+26} x2={ox+sideW} y2={oy+dh+26} label={`W:${w}mm`} color="#c084fc" />}
-      {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} color="#a855f7" />}
-      {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH} label={`H:${h}mm`} color="#c084fc" />}
-      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Center Seal Pouch</text>
+
+      {/* ── Repeat-length shrinkage band ── */}
+      {shrinkPx > 0 && <>
+        <rect x={ox} y={oy+dh-shrinkPx} width={dw} height={shrinkPx}
+          fill="#f0abfc" fillOpacity={0.7} stroke="#c026d3" strokeWidth={1} />
+        <text x={ox+dw/2} y={oy+dh-shrinkPx/2+3}
+          textAnchor="middle" fontSize={6} fill="#86198f" fontWeight="700">
+          +{shrink}mm REPEAT SHRINK
+        </text>
+      </>}
+
+      {/* ── Width breakdown dim lines ── */}
+      {/* Row 1: total */}
+      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+13} x2={ox+dw} y2={oy+dh+13}
+        label={`${w} + ${centerSealW} + ${w} = ${totalW}mm`} color="#7c3aed" />}
+      {/* Row 2: per-segment */}
+      {w > 0 && <DimLine x1={ox} y1={oy+dh+24} x2={ox+sideW} y2={oy+dh+24}
+        label={`${w}mm`} color="#c084fc" />}
+      {centerSealW > 0 && csPx >= 10 && (
+        <DimLine x1={ox+sideW} y1={oy+dh+24} x2={ox+sideW+csPx} y2={oy+dh+24}
+          label={`${centerSealW}`} color="#6d28d9" />
+      )}
+      {w > 0 && <DimLine x1={ox+sideW+csPx} y1={oy+dh+24} x2={ox+dw} y2={oy+dh+24}
+        label={`${w}mm`} color="#c084fc" />}
+
+      {/* ── Height dim lines ── */}
+      {fullRepeat > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh}
+        label={fullRepeatStr} color="#a855f7" />}
+      {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH}
+        label={`H:${h}mm`} color="#c084fc" />}
+
+      {/* ── Repeat breakdown formula ── */}
+      {fullRepeat > 0 && repeatParts && (
+        <text x={VW/2} y={VH-14} textAnchor="middle" fontSize={7.5} fill="#6b21a8" fontWeight="600">
+          Repeat: {repeatParts} = {fullRepeatStr}
+        </text>
+      )}
+
+      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={7.5} fill="#6b7280">
+        Center Seal Pouch — seal folds to back center
+      </text>
     </svg>
   );
 }
@@ -444,8 +551,8 @@ function BothSideGussetDiagram({ dims }: { dims: DimValues }) {
         <line x1={ox+sgPx/2} y1={oy} x2={ox+sgPx/2} y2={oy+dh} stroke="#ea580c" strokeWidth={0.8} strokeDasharray="3 2" />
         <line x1={ox+dw-sgPx/2} y1={oy} x2={ox+dw-sgPx/2} y2={oy+dh} stroke="#ea580c" strokeWidth={0.8} strokeDasharray="3 2" />
         {sgPx > 12 && <>
-          <text x={ox+sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#c2410c" transform={`rotate(-90,${ox+sgPx/2},${oy+dh/2})`}>GUSSET {sideGusset}mm</text>
-          <text x={ox+dw-sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#c2410c" transform={`rotate(-90,${ox+dw-sgPx/2},${oy+dh/2})`}>GUSSET {sideGusset}mm</text>
+          <text x={ox+sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#c2410c" transform={`rotate(-90,${ox+sgPx/2},${oy+dh/2})`}>SIDE GUSSET {sideGusset}mm</text>
+          <text x={ox+dw-sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#c2410c" transform={`rotate(-90,${ox+dw-sgPx/2},${oy+dh/2})`}>SIDE GUSSET {sideGusset}mm</text>
         </>}
       </>}
       {/* Top seal */}
@@ -461,12 +568,18 @@ function BothSideGussetDiagram({ dims }: { dims: DimValues }) {
         <rect x={ox+sgPx} y={oy+tsPx+bodyH} width={dw-2*sgPx} height={bsPx} fill="#fdba74" stroke="#ea580c" strokeWidth={1} opacity={0.8} />
         <text x={ox+dw/2} y={oy+dh-3} textAnchor="middle" fontSize={7} fill="#9a3412">BTM SEAL {bottomSeal}mm</text>
       </>}
-      {/* Dim lines */}
-      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+16} x2={ox+dw} y2={oy+dh+16} label={`${totalW}mm`} color="#ea580c" />}
-      {w > 0 && <DimLine x1={ox+sgPx} y1={oy+dh+26} x2={ox+dw-sgPx} y2={oy+dh+26} label={`W:${w}mm`} color="#fb923c" />}
+      {/* Dim lines — width: breakdown formula */}
+      {totalW > 0 && sideGusset > 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${sideGusset} + ${w} + ${sideGusset} = ${totalW}mm`} color="#ea580c" />}
+      {totalW > 0 && sideGusset === 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${totalW}mm`} color="#ea580c" />}
+      {sgPx > 0 && <DimLine x1={ox} y1={oy+dh+25} x2={ox+sgPx} y2={oy+dh+25} label={`${sideGusset}`} color="#fb923c" />}
+      {w > 0 && <DimLine x1={ox+sgPx} y1={oy+dh+25} x2={ox+dw-sgPx} y2={oy+dh+25} label={`${w}mm`} color="#fb923c" />}
+      {sgPx > 0 && <DimLine x1={ox+dw-sgPx} y1={oy+dh+25} x2={ox+dw} y2={oy+dh+25} label={`${sideGusset}`} color="#fb923c" />}
+      {/* Dim lines — height */}
       {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} color="#ea580c" />}
       {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH} label={`H:${h}mm`} color="#fb923c" />}
-      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Both Side Gusset Pouch</text>
+      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Gusset Bag — single-web, side gussets folded in</text>
     </svg>
   );
 }
@@ -501,8 +614,8 @@ function FlatBottomDiagram({ dims }: { dims: DimValues }) {
         <line x1={ox+sgPx/2} y1={oy} x2={ox+sgPx/2} y2={oy+dh} stroke="#059669" strokeWidth={0.8} strokeDasharray="3 2" />
         <line x1={ox+dw-sgPx/2} y1={oy} x2={ox+dw-sgPx/2} y2={oy+dh} stroke="#059669" strokeWidth={0.8} strokeDasharray="3 2" />
         {sgPx > 12 && <>
-          <text x={ox+sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#065f46" transform={`rotate(-90,${ox+sgPx/2},${oy+dh/2})`}>SIDE {sideGusset}mm</text>
-          <text x={ox+dw-sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#065f46" transform={`rotate(-90,${ox+dw-sgPx/2},${oy+dh/2})`}>SIDE {sideGusset}mm</text>
+          <text x={ox+sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#065f46" transform={`rotate(-90,${ox+sgPx/2},${oy+dh/2})`}>SIDE GUSSET {sideGusset}mm</text>
+          <text x={ox+dw-sgPx/2} y={oy+dh/2} textAnchor="middle" fontSize={6} fill="#065f46" transform={`rotate(-90,${ox+dw-sgPx/2},${oy+dh/2})`}>SIDE GUSSET {sideGusset}mm</text>
         </>}
       </>}
       {/* Top seal */}
@@ -513,18 +626,25 @@ function FlatBottomDiagram({ dims }: { dims: DimValues }) {
       {/* Body */}
       <rect x={ox+sgPx} y={oy+tsPx} width={dw-2*sgPx} height={bodyH} fill="#d1fae5" stroke="#059669" strokeWidth={0.8} opacity={0.5} />
       <text x={ox+dw/2} y={oy+tsPx+bodyH/2+3} textAnchor="middle" fontSize={8} fill="#064e3b" fontWeight="600">BODY</text>
-      {/* Bottom gusset (flat bottom fold) */}
+      {/* Bottom panel (flat bottom fold — full panel, half adds to repeat) */}
       {bgPx > 0 && <>
         <rect x={ox} y={oy+dh-bgPx} width={dw} height={bgPx} fill="#6ee7b7" stroke="#059669" strokeWidth={1} opacity={0.8} />
         <line x1={ox} y1={oy+dh-bgPx/2} x2={ox+dw} y2={oy+dh-bgPx/2} stroke="#059669" strokeWidth={0.8} strokeDasharray="3 2" />
-        <text x={ox+dw/2} y={oy+dh-3} textAnchor="middle" fontSize={7} fill="#065f46">BTM GUSSET/2 = {(btmGusset/2).toFixed(0)}mm</text>
+        <text x={ox+dw/2} y={oy+dh-bgPx/2-2} textAnchor="middle" fontSize={6.5} fill="#065f46" fontWeight="600">BTM PANEL/2 = {(btmGusset/2).toFixed(0)}mm</text>
+        <text x={ox+dw/2} y={oy+dh-bgPx/2+8} textAnchor="middle" fontSize={6} fill="#065f46">(adds to repeat)</text>
       </>}
-      {/* Dim lines */}
-      {totalW > 0 && <DimLine x1={ox} y1={oy+dh+16} x2={ox+dw} y2={oy+dh+16} label={`${totalW}mm`} color="#059669" />}
-      {w > 0 && <DimLine x1={ox+sgPx} y1={oy+dh+26} x2={ox+dw-sgPx} y2={oy+dh+26} label={`W:${w}mm`} color="#34d399" />}
+      {/* Dim lines — width: breakdown formula */}
+      {totalW > 0 && sideGusset > 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${sideGusset} + ${w} + ${sideGusset} = ${totalW}mm`} color="#059669" />}
+      {totalW > 0 && sideGusset === 0 && <DimLine x1={ox} y1={oy+dh+14} x2={ox+dw} y2={oy+dh+14}
+        label={`${totalW}mm`} color="#059669" />}
+      {sgPx > 0 && <DimLine x1={ox} y1={oy+dh+25} x2={ox+sgPx} y2={oy+dh+25} label={`${sideGusset}`} color="#34d399" />}
+      {w > 0 && <DimLine x1={ox+sgPx} y1={oy+dh+25} x2={ox+dw-sgPx} y2={oy+dh+25} label={`${w}mm`} color="#34d399" />}
+      {sgPx > 0 && <DimLine x1={ox+dw-sgPx} y1={oy+dh+25} x2={ox+dw} y2={oy+dh+25} label={`${sideGusset}`} color="#34d399" />}
+      {/* Dim lines — height */}
       {totalH > 0 && <DimLine x1={ox-20} y1={oy} x2={ox-20} y2={oy+dh} label={`${totalH}mm`} color="#059669" />}
       {h > 0 && <DimLine x1={ox-32} y1={oy+tsPx} x2={ox-32} y2={oy+tsPx+bodyH} label={`H:${h}mm`} color="#34d399" />}
-      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">3D / Flat Bottom Pouch</text>
+      <text x={VW/2} y={VH-4} textAnchor="middle" fontSize={8} fill="#6b7280">Flat Bottom Pouch — front &amp; back = separate webs</text>
     </svg>
   );
 }

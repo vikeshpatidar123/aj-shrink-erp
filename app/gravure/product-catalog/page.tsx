@@ -619,7 +619,7 @@ export default function ProductCatalogPage() {
     if (sType === "Sleeve") {
       effectiveRepeat = sleeveCutLength;
     } else if (nContent === "3 Side Seal Sachet") {
-      effectiveRepeat = (jobH + topSeal + bottomSeal + shrink) * 2;  // front + back stacked in repeat direction
+      effectiveRepeat = jobH + topSeal + bottomSeal + shrink;
     } else if (nContent === "Center Seal Pouch" || nContent === "Gusset Bag") {
       effectiveRepeat = jobH + topSeal + bottomSeal + shrink;
     } else if (nContent === "Stand Up Pouch" || nContent === "Flat Bottom Pouch") {
@@ -4951,7 +4951,7 @@ export default function ProductCatalogPage() {
         } else if (isSleeve) {
           effRepeat = (plan.cylCirc as number) / (plan.repeatUPS as number);
         } else if (nContentPrev === "3 Side Seal Sachet") {
-          effRepeat = ((replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink) * 2;
+          effRepeat = (replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink;
         } else if (nContentPrev === "Center Seal Pouch" || nContentPrev === "Gusset Bag") {
           effRepeat = (replanForm.jobHeight || 0) + topSealPrev + btmSealPrev + shrink;
         } else if (nContentPrev === "Stand Up Pouch" || nContentPrev === "Flat Bottom Pouch") {
@@ -5690,18 +5690,25 @@ export default function ProductCatalogPage() {
                               <td className="px-3 py-1.5 text-gray-400 text-[10px]">Top seal added to repeat</td>
                             </tr>
                           )}
-                          {btmSealPrev > 0 && (nContentPrev === "Pouch — 3 Side Seal" || nContentPrev === "Pouch — Center Seal" || nContentPrev === "Both Side Gusset Pouch") && (
+                          {btmSealPrev > 0 && (nContentPrev === "Pouch — 3 Side Seal" || nContentPrev === "3 Side Seal Sachet" || nContentPrev === "Pouch — Center Seal" || nContentPrev === "Center Seal Pouch" || nContentPrev === "Both Side Gusset Pouch" || nContentPrev === "Gusset Bag") && (
                             <tr>
                               <td className="px-3 py-1.5 text-gray-600">+ Bottom Seal</td>
                               <td className="px-3 py-1.5 font-mono font-bold text-orange-600">+{btmSealPrev} mm</td>
                               <td className="px-3 py-1.5 text-gray-400 text-[10px]">Bottom seal added to repeat</td>
                             </tr>
                           )}
-                          {gussetPrev > 0 && (nContentPrev === "Standup Pouch" || nContentPrev === "Zipper Pouch" || nContentPrev === "3D Pouch / Flat Bottom") && (
+                          {gussetPrev > 0 && (nContentPrev === "Standup Pouch" || nContentPrev === "Zipper Pouch" || nContentPrev === "Stand Up Pouch") && (
                             <tr>
                               <td className="px-3 py-1.5 text-gray-600">+ Bottom Gusset / 2</td>
                               <td className="px-3 py-1.5 font-mono font-bold text-orange-600">+{gussetPrev / 2} mm</td>
                               <td className="px-3 py-1.5 text-gray-400 text-[10px]">Bottom gusset folds into repeat (half depth)</td>
+                            </tr>
+                          )}
+                          {gussetPrev > 0 && (nContentPrev === "3D Pouch / Flat Bottom" || nContentPrev === "Flat Bottom Pouch") && (
+                            <tr>
+                              <td className="px-3 py-1.5 text-gray-600">+ Bottom Panel / 2</td>
+                              <td className="px-3 py-1.5 font-mono font-bold text-orange-600">+{gussetPrev / 2} mm</td>
+                              <td className="px-3 py-1.5 text-gray-400 text-[10px]">Bottom panel folds into repeat (half depth)</td>
                             </tr>
                           )}
                           {shrink > 0 && (

@@ -1407,11 +1407,11 @@ export default function GravureWorkOrderPage() {
     let laneWidth: number;
     if (sType === "Sleeve") {
       laneWidth = jobW * 2 + slvTransp + slvSeam;
-    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet" || content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Zipper Pouch") {
+    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet" || content === "3-Side Seal Sachet - Standard" || content === "3-Side Seal Sachet - Tear Notch" || content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Stand Up Pouch - No Zipper" || content === "Stand Up Pouch - With Zipper" || content === "Stand Up Pouch - With Spout" || content === "Zipper Pouch") {
       laneWidth = jobW + 2 * sideSeal;
     } else if (content === "Pouch — Center Seal" || content === "Center Seal Pouch") {
       laneWidth = jobW * 2 + ctrSeal;
-    } else if (content === "Both Side Gusset Pouch" || content === "Gusset Bag" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch") {
+    } else if (content === "Both Side Gusset Pouch" || content === "Gusset Bag" || content === "Gusset Bag - Side Gusset" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch" || content === "Flat Bottom Pouch - Standard" || content === "Flat Bottom Pouch - With Zipper" || content === "Flat Bottom Pouch - With Valve") {
       laneWidth = jobW + 2 * sideGust;
     } else {
       laneWidth = jobW;
@@ -1423,11 +1423,9 @@ export default function GravureWorkOrderPage() {
     let effectiveRepeat: number;
     if (sType === "Sleeve") {
       effectiveRepeat = sleeveCutLength;
-    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet") {
-      effectiveRepeat = (jobH + topSeal + btmSeal + shrink) * 2;
-    } else if (content === "Pouch — Center Seal" || content === "Center Seal Pouch" || content === "Both Side Gusset Pouch" || content === "Gusset Bag") {
+    } else if (content === "Pouch — 3 Side Seal" || content === "3 Side Seal Sachet" || content === "3-Side Seal Sachet - Standard" || content === "3-Side Seal Sachet - Tear Notch" || content === "Pouch — Center Seal" || content === "Center Seal Pouch" || content === "Both Side Gusset Pouch" || content === "Gusset Bag" || content === "Gusset Bag - Side Gusset") {
       effectiveRepeat = jobH + topSeal + btmSeal + shrink;
-    } else if (content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Zipper Pouch" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch") {
+    } else if (content === "Standup Pouch" || content === "Stand Up Pouch" || content === "Stand Up Pouch - No Zipper" || content === "Stand Up Pouch - With Zipper" || content === "Stand Up Pouch - With Spout" || content === "Zipper Pouch" || content === "3D Pouch / Flat Bottom" || content === "Flat Bottom Pouch" || content === "Flat Bottom Pouch - Standard" || content === "Flat Bottom Pouch - With Zipper" || content === "Flat Bottom Pouch - With Valve") {
       effectiveRepeat = jobH + topSeal + (gusset > 0 ? gusset / 2 : 0) + shrink;
     } else {
       effectiveRepeat = jobH + shrink;
@@ -2740,11 +2738,16 @@ export default function GravureWorkOrderPage() {
                   const sS = (form as any).sideSeal || 0; const cS = (form as any).centerSealWidth || 0;
                   const sG = (form as any).sideGusset || 0; const gus = (form as any).gusset || 0;
                   let lane = jW, repeat = jH;
-                  if (c === "Pouch — 3 Side Seal" || c === "Standup Pouch" || c === "Zipper Pouch") lane = jW + 2 * sS;
-                  else if (c === "Pouch — Center Seal") lane = jW * 2 + cS;
-                  else if (c === "Both Side Gusset Pouch" || c === "3D Pouch / Flat Bottom") lane = jW + 2 * sG;
-                  if (c === "Pouch — 3 Side Seal" || c === "Pouch — Center Seal" || c === "Both Side Gusset Pouch") repeat = jH + tS + bS;
-                  else if (c === "Standup Pouch" || c === "Zipper Pouch" || c === "3D Pouch / Flat Bottom") repeat = jH + tS + (gus > 0 ? gus / 2 : 0);
+                  const is3Side = c === "Pouch — 3 Side Seal" || c === "3 Side Seal Sachet" || c === "3-Side Seal Sachet - Standard" || c === "3-Side Seal Sachet - Tear Notch";
+                  const isCenter = c === "Pouch — Center Seal" || c === "Center Seal Pouch";
+                  const isStandup = c === "Standup Pouch" || c === "Stand Up Pouch" || c === "Stand Up Pouch - No Zipper" || c === "Stand Up Pouch - With Zipper" || c === "Stand Up Pouch - With Spout" || c === "Zipper Pouch";
+                  const isGusset = c === "Both Side Gusset Pouch" || c === "Gusset Bag" || c === "Gusset Bag - Side Gusset";
+                  const isFlatBottom = c === "3D Pouch / Flat Bottom" || c === "Flat Bottom Pouch" || c === "Flat Bottom Pouch - Standard" || c === "Flat Bottom Pouch - With Zipper" || c === "Flat Bottom Pouch - With Valve";
+                  if (is3Side || isStandup) lane = jW + 2 * sS;
+                  else if (isCenter) lane = jW * 2 + cS;
+                  else if (isGusset || isFlatBottom) lane = jW + 2 * sG;
+                  if (is3Side || isCenter || isGusset) repeat = jH + tS + bS;
+                  else if (isStandup || isFlatBottom) repeat = jH + tS + (gus > 0 ? gus / 2 : 0);
                   return (
                     <div className="px-4 pt-3">
                       <div className="flex flex-wrap items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-xl text-[10px]">
