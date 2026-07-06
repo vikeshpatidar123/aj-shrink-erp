@@ -8,7 +8,7 @@ import {
   Printer, BookOpen, Barcode, Tag, Workflow, Wrench, Boxes, Building2,
   Warehouse, ShoppingBag, ReceiptText, PackageCheck, ArrowLeftRight, ClipboardCheck, PackageMinus, ArrowRightLeft,
   Package, BookMarked, Layers, RotateCcw, Shuffle, ScanSearch, PackagePlus, ClipboardSignature,
-  ChevronLeft, Beaker, ImageIcon, Palette, Calendar, ShieldCheck,
+  ChevronLeft, Beaker, ImageIcon, Palette, Calendar, ShieldCheck, BarChart2, ListChecks, DoorOpen, LogIn, Cylinder,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useUnit } from "@/context/UnitContext";
@@ -30,7 +30,8 @@ type GroupItem = { label: string; icon: React.ElementType; badge?: NavBadge; chi
 type NavItem   = FlatItem | GroupItem;
 
 const navItems: NavItem[] = [
-  { label: "Dashboard",        href: "/dashboard",                 icon: LayoutDashboard },
+  { label: "Dashboard",          href: "/dashboard",                 icon: LayoutDashboard },
+  { label: "Gravure Dashboard", href: "/gravure/dashboard",         icon: BarChart2,      badge: "GRV" },
   { label: "Enquiry",          href: "/extrusion/enquiry",         icon: ClipboardList,  badge: "EXT" },
   { label: "Enquiry",          href: "/enquiry",                   icon: ClipboardList,  badge: "GRV" },
   { label: "Estimation",       href: "/cost-estimation",           icon: Calculator,     badge: "EXT" },
@@ -44,14 +45,22 @@ const navItems: NavItem[] = [
   {
     label: "Production", icon: PlayCircle, badge: "GRV" as NavBadge,
     children: [
-      { label: "Job Production", href: "/gravure/production/job-production", icon: PlayCircle },
-      { label: "QC & Packing",   href: "/gravure/production/qc-packing",    icon: ShieldCheck },
+      { label: "Job Production",        href: "/gravure/production/job-production",        icon: PlayCircle },
+      { label: "QC & Packing",          href: "/gravure/production/qc-packing",            icon: ShieldCheck },
+      { label: "Job Status Modification", href: "/gravure/production/job-status-modification", icon: ListChecks },
     ],
   },
   { label: "Ink Kitchen",       href: "/gravure/ink-kitchen",       icon: Beaker,         badge: "GRV" },
   { label: "Content Gang",     href: "/gravure/content-gang",      icon: Layers,         badge: "GRV" },
-  { label: "Artwork Mgmt", href: "/gravure/artwork-management", icon: ImageIcon, badge: "GRV" },
-  { label: "Dispatch",         href: "/dispatch",                  icon: Truck,          badge: null },
+  { label: "Artwork Mgmt",    href: "/gravure/artwork-management",    icon: ImageIcon,  badge: "GRV" },
+  { label: "Cylinder Mgmt",  href: "/gravure/cylinder-management",  icon: Cylinder,   badge: "GRV" },
+  { label: "Dispatch",        href: "/gravure/dispatch",             icon: Truck,      badge: "GRV" },
+  {
+    label: "Gate Management", icon: DoorOpen, children: [
+      { label: "Gate Pass Entry", href: "/gate-pass-entry", icon: DoorOpen },
+      { label: "Gate Entry",      href: "/gate-entry",      icon: LogIn },
+    ],
+  },
   {
     label: "Masters", icon: Settings2, children: [
       { label: "Product Category Master", href: "/masters/categories",  icon: Boxes },

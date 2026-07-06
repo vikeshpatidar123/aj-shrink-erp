@@ -220,6 +220,11 @@ export default function ProductCatalogPage() {
   const [replanTab, setReplanTab] = useState<"info" | "planning" | "material">("info");
   const [isNewCatalog, setIsNewCatalog] = useState(false);
 
+  // ── Artwork picker ─────────────────────────────────────────
+  type ArtworkPickerItem = { ArtworkID: string; ArtworkNo: string; ProductName: string; ClientName: string; LedgerID: string; CategoryID: string; CategoryName: string; TypeOfProduct: string; Content: string; PackSize: string; BrandName: string; ProductType: string; SkuType: string; BottleType: string; AddressType: string; ArtworkName: string; SpecialSpecs: string; };
+  const [artworkList, setArtworkList] = useState<ArtworkPickerItem[]>([]);
+  const [selectedArtworkId, setSelectedArtworkId] = useState("");
+
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
   type MaterialAlloc = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
@@ -302,7 +307,7 @@ export default function ProductCatalogPage() {
     });
   };
 
-  type CatalogAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string; fileObj?: File };
+  type CatalogAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string; fileObj?: File; preUploaded?: boolean };
   const [replanAttachments, setReplanAttachments] = useState<CatalogAttachment[]>([]);
   const [editingAttachLabel, setEditingAttachLabel] = useState<string | null>(null); // att.id being edited
 
@@ -378,6 +383,17 @@ export default function ProductCatalogPage() {
   // Otherwise fall back to the structural-group key from normalizeContentType.
   const getDisplayContentType = (content: string): string =>
     CONTENT_TYPE_CONFIG[content] ? content : normalizeContentType(content);
+
+  // Load artwork list whenever the modal opens
+  useEffect(() => {
+    if (!replanOpen) { setSelectedArtworkId(""); return; }
+    if (artworkList.length > 0) return;
+    apiGet<unknown>("api/artworkManagement/listForPicker").then(raw => {
+      let d = raw;
+      while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
+      setArtworkList(Array.isArray(d) ? d : []);
+    }).catch(() => {});
+  }, [replanOpen]); // eslint-disable-line
 
   const rf =<K extends keyof GravureProductCatalog>(k: K, v: GravureProductCatalog[K]) => {
     setReplanForm(p => {
@@ -1156,6 +1172,7 @@ export default function ProductCatalogPage() {
 
   const openReplan = (row: GravureProductCatalog) => {
     setIsNewCatalog(false);
+    setSelectedArtworkId(String(row.artworkId || ""));
     const hydratedLayers = (row.secondaryLayers || []).map(l => {
       if (l.itemId && (!l.thickness || !l.density)) {
         const fi = items.find((x: any) => x.id === l.itemId);
@@ -1331,15 +1348,42 @@ export default function ProductCatalogPage() {
   const saveReplan = async () => {
     if (!replanForm) return;
 
-    // Existing server attachments (no fileObj) — preserve these IDs on update
-    const existingAttachmentIDs = replanAttachments.filter(a => !a.fileObj).map(a => a.id);
+    // ── Validation ────────────────────────────────────────────
+    if (!replanForm.machineId || !replanForm.machineName) {
+      showToast("error", "Validation Error", "Please select a Machine before saving.");
+      return;
+    }
+    if (!replanForm.processes || replanForm.processes.length === 0) {
+      showToast("error", "Validation Error", "Please add at least one Process before saving.");
+      return;
+    }
+    if (!replanSelPlanId) {
+      showToast("error", "Validation Error", "Please select a Production Plan before saving.");
+      return;
+    }
+    if (catalogCylAllocs.length > 0) {
+      const missingCode = catalogCylAllocs.find(ca => !ca.cylinderNo?.trim());
+      if (missingCode) {
+        showToast("error", "Validation Error", "All cylinder allocations must have a Cylinder Code before saving.");
+        return;
+      }
+    }
+    // ─────────────────────────────────────────────────────────
+
+    // Existing server attachments from this product catalog (no fileObj, not pre-uploaded from artwork)
+    const existingAttachmentIDs = replanAttachments.filter(a => !a.fileObj && !a.preUploaded).map(a => a.id);
+
+    // Pre-uploaded artwork attachments — already on Cloudinary, just pass URL directly
+    const preUploadedAtts = replanAttachments.filter(a => a.preUploaded);
 
     // Upload new attachments to Cloudinary
     const newAttachments = replanAttachments.filter(a => a.fileObj);
-    let attachmentsCloudinary: { name: string; label: string; mimeType: string; secureUrl: string }[] = [];
+    let attachmentsCloudinary: { name: string; label: string; mimeType: string; secureUrl: string }[] = [
+      ...preUploadedAtts.map(a => ({ name: a.name, label: a.label || "Artwork Ref", mimeType: a.mimeType, secureUrl: a.url })),
+    ];
     if (newAttachments.length > 0) {
       const sig = await fetchSignatureCat();
-      attachmentsCloudinary = await Promise.all(
+      const uploaded = await Promise.all(
         newAttachments.map(async a => {
           const isPdf = a.fileObj!.type === "application/pdf" || a.name.toLowerCase().endsWith(".pdf");
           const resourceType = isPdf ? "raw" : "image";
@@ -1357,6 +1401,7 @@ export default function ProductCatalogPage() {
           return { name: a.name, label: a.label || "Attachment", mimeType: a.mimeType, secureUrl: data.secure_url };
         })
       );
+      attachmentsCloudinary = [...attachmentsCloudinary, ...uploaded];
     }
 
     const n = catalog.length + 1;
@@ -1389,7 +1434,7 @@ export default function ProductCatalogPage() {
       ...(replanSelPlanId && { savedPlanId: replanSelPlanId, savedPlan: replanSelectedPlan }),
       ...(catalogColorShades.length > 0 && { savedColorShades: catalogColorShades }),
       ...(catalogCylAllocs.length > 0 && { savedCylAllocs: catalogCylAllocs }),
-      ...(attachmentsCloudinary.length > 0 && { attachmentsCloudinary }),
+      ...(attachmentsCloudinary.length > 0 ? { attachmentsCloudinary } : {}),
       existingAttachmentIDs,
     };
     const productMasterID = await saveCatalogItem(updated);
@@ -1429,6 +1474,17 @@ export default function ProductCatalogPage() {
       } catch (e: any) {
         showToast("warning", "Cylinder Allocation Warning", e?.message ?? "Cylinder allocation could not be saved.");
       }
+    }
+
+    // If artwork was selected, link this catalog back to the artwork master
+    if (selectedArtworkId && productMasterID && isNewCatalog) {
+      try {
+        await apiPost("api/artworkManagement/linkProductMaster", {
+          ArtworkID: selectedArtworkId,
+          ProductMasterID: productMasterID,
+        });
+      } catch { /* non-critical */ }
+      setSelectedArtworkId("");
     }
 
     showToast(
@@ -2047,6 +2103,75 @@ export default function ProductCatalogPage() {
             {replanTab === "info" && (
               <div className="space-y-4">
                 <SH label="Product Details" />
+
+                {/* Artwork Picker — auto-fills Product Name, Customer, Category */}
+                {(
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+                    <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block mb-1.5">
+                      Link Artwork Master (optional — auto-fills fields below)
+                    </label>
+                    <select
+                      value={selectedArtworkId}
+                      onChange={e => {
+                        const aw = artworkList.find(a => String(a.ArtworkID) === e.target.value);
+                        setSelectedArtworkId(e.target.value);
+                        if (aw) {
+                          rf("productName", aw.ProductName || "");
+                          const ledgerId = String(aw.LedgerID);
+                          const catId    = String(aw.CategoryID);
+                          const c = customers.find(x => String(x.id) === ledgerId);
+                          rf("customerId", ledgerId as any);
+                          rf("customerName", c?.name ?? aw.ClientName ?? "");
+                          rf("categoryId",   catId   as any);
+                          rf("categoryName", aw.CategoryName || "");
+                          if (aw.Content) rf("content", aw.Content);
+                          rf("packSize"    as any, aw.PackSize    || "");
+                          rf("brandName"   as any, aw.BrandName   || "");
+                          rf("productType" as any, aw.ProductType || "");
+                          rf("skuType"     as any, aw.SkuType     || "");
+                          rf("bottleType"  as any, aw.BottleType  || "");
+                          rf("addressType" as any, aw.AddressType || "");
+                          rf("artworkName" as any, aw.ArtworkName || "");
+                          rf("specialSpecs" as any, aw.SpecialSpecs || "");
+                          // Load artwork attachments into the Attachments section
+                          const artBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+                          fetch(`${artBase}/api/artworkManagement/attachments/${aw.ArtworkID}`, { headers: authHeaders() })
+                            .then(r => r.json())
+                            .then((raw: unknown) => {
+                              let d = raw;
+                              while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
+                              const atts = Array.isArray(d) ? d as { FileID: string; AttachedFileName: string; AttachedFileRemark: string }[] : [];
+                              const mapped: CatalogAttachment[] = atts.map(a => ({
+                                id: a.FileID || Math.random().toString(36).slice(2),
+                                name: a.AttachedFileName?.split("/").pop() || a.AttachedFileName || "",
+                                size: 0,
+                                url: a.AttachedFileName || "",
+                                mimeType: /\.(jpe?g|png|gif|webp|svg)$/i.test(a.AttachedFileName || "")
+                                  ? "image/jpeg"
+                                  : (a.AttachedFileName || "").toLowerCase().endsWith(".pdf")
+                                  ? "application/pdf" : "application/octet-stream",
+                                label: "From Artwork",
+                                preUploaded: true,
+                              }));
+                              setReplanAttachments(mapped);
+                            })
+                            .catch(() => {});
+                        } else {
+                          setReplanAttachments([]);
+                        }
+                      }}
+                      className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500">
+                      <option value="">-- Select Artwork (optional) --</option>
+                      {artworkList.map(a => (
+                        <option key={a.ArtworkID} value={a.ArtworkID}>
+                          {a.ArtworkNo} — {a.ProductName} ({a.ClientName})
+                        </option>
+                      ))}
+                    </select>
+
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <div className="sm:col-span-2 lg:col-span-3">
                     <Input label="Product Name *" value={replanForm.productName}
@@ -4776,12 +4901,12 @@ export default function ProductCatalogPage() {
             ) : previewAttachment.mimeType === "application/pdf" || previewAttachment.url.toLowerCase().endsWith(".pdf") ? (
               <div className="w-full flex flex-col gap-3" style={{ height: "70vh" }}>
                 <iframe
-                  src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewAttachment.url)}&embedded=true`}
+                  src={`/api/pdf-proxy?url=${encodeURIComponent(previewAttachment.url)}`}
                   title={previewAttachment.name}
                   className="w-full flex-1 rounded-xl border border-gray-200 shadow"
                   style={{ height: "calc(70vh - 48px)" }}
                 />
-                <a href={previewAttachment.url} target="_blank" rel="noreferrer"
+                <a href={`/api/pdf-proxy?url=${encodeURIComponent(previewAttachment.url)}`} target="_blank" rel="noreferrer"
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition">
                   ↗ Open PDF in new tab
                 </a>

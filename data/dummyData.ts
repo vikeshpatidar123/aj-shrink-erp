@@ -2620,6 +2620,7 @@ export type GravureProductCatalog = {
   addressType?: "Single" | "Multi" | "QR Code";
   specialSpecs?: string;
   artworkName?: string;
+  artworkId?: string;
   status: "Active" | "Inactive";
   remarks: string;
   // ── Saved prep data (color shades, cylinders, plan) ──

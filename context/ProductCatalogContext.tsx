@@ -32,6 +32,7 @@ type ApiCatalogRow = {
   IsActive: number; IsActiveReason: string;
   SavedPlanID: string; SavedColorShadesJSON?: string; SavedCylAllocsJSON?: string; SavedLayersJSON?: string;
   SavedProcessesJSON?: string; SavedAttachmentsJSON?: string;
+  LinkedArtworkID?: string;
   StandardQty: number; StandardUnit: string; Remarks: string;
   GrvPlanSleeveID?: string;
   GrvPlanSleeveName?: string;
@@ -120,6 +121,7 @@ function mapApiRow(r: ApiCatalogRow): GravureProductCatalog {
     addressType: (r.AddressType as any) ?? undefined,
     specialSpecs: r.SpecialSpecs ?? "",
     artworkName: r.ArtworkName ?? "",
+    artworkId: r.LinkedArtworkID ?? "",
     sourceEstimationId: String(r.SourceEstimationID ?? ""),
     sourceEstimationNo: r.SourceEstimationNo ?? "",
     sourceOrderId: String(r.SourceOrderID ?? ""),
