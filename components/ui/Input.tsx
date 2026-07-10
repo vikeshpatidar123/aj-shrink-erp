@@ -46,7 +46,7 @@ export function Select({ label, error, options, value, onChange, disabled, class
   const placeholder = options[0]?.value === "" ? options[0].label : "-- Select --";
 
   const filtered = options.filter(o =>
-    o.label.toLowerCase().includes(search.toLowerCase())
+    (o.label ?? "").toLowerCase().includes((search ?? "").toLowerCase())
   );
 
   useEffect(() => {

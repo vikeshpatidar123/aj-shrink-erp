@@ -13,7 +13,6 @@ import Modal from "@/components/ui/Modal";
 // ─── API ─────────────────────────────────────────────────────────────────────
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
 const ART  = `${BASE}/api/artworkManagement`;
-const CLDN = `${BASE}/api/cloudinary/sign`;
 
 function unwrap(v: unknown): unknown {
   let r = v;
@@ -35,19 +34,24 @@ async function apiPost<T>(url: string, body: unknown): Promise<T> {
   return unwrap(await res.json()) as T;
 }
 
-// ─── Cloudinary upload ────────────────────────────────────────────────────────
+// ─── S3 upload ────────────────────────────────────────────────────────────────
 async function uploadFile(file: File) {
-  const { signature, timestamp, cloudName, apiKey } = await (await fetch(CLDN, { headers: authHeaders() })).json();
-  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  const resourceType = isPdf ? "raw" : "image";
+  const { "Content-Type": _ct, ...hdrs } = authHeaders();
   const fd = new FormData();
-  fd.append("file", file);
-  fd.append("api_key", apiKey);
-  fd.append("timestamp", String(timestamp));
-  fd.append("signature", signature);
-  const r = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`, { method: "POST", body: fd });
-  const data = await r.json();
-  return { url: data.secure_url as string, name: file.name, mimeType: file.type || (isPdf ? "application/pdf" : "image/png") };
+  fd.append("file", file, file.name);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  } catch (e: any) {
+    throw new Error(`[Network] ${e.message} — ${BASE}/api/s3/upload`);
+  }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => res.statusText);
+    throw new Error(`[HTTP ${res.status}] ${errText}`);
+  }
+  const { publicUrl } = await res.json();
+  return { url: publicUrl as string, name: file.name, mimeType: file.type };
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -116,6 +120,8 @@ type AttachmentItem = {
   mimeType: string;
   remark: string;
   fileObj?: File;
+  uploading?: boolean;
+  uploadError?: boolean;
 };
 
 type DropdownData = {
@@ -192,6 +198,35 @@ function AttCard({ att, onRemove, onPreview }: {
 }) {
   const isPdf = att.mimeType === "application/pdf" || att.url?.toLowerCase().endsWith(".pdf");
   const isImg = att.mimeType?.startsWith("image/");
+
+  if (att.uploading) {
+    return (
+      <div className="relative rounded-xl border border-orange-200 bg-orange-50 overflow-hidden">
+        <div className="h-24 flex flex-col items-center justify-center gap-2">
+          <Loader2 size={22} className="animate-spin text-orange-400" />
+          <span className="text-[10px] text-orange-500 font-medium">Uploading…</span>
+        </div>
+        <div className="px-2 py-1.5">
+          <p className="text-[11px] text-gray-500 truncate" title={att.name}>{att.name}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (att.uploadError) {
+    return (
+      <div className="relative rounded-xl border border-red-200 bg-red-50 overflow-hidden">
+        <div className="h-24 flex flex-col items-center justify-center gap-1 px-2">
+          <X size={22} className="text-red-400" />
+          <span className="text-[10px] text-red-500 font-medium text-center leading-tight">Remove & re-upload</span>
+        </div>
+        <div className="px-2 py-1.5 flex items-center justify-between">
+          <p className="text-[11px] text-gray-500 truncate" title={att.name}>{att.name}</p>
+          <button onClick={onRemove} className="p-0.5 text-red-400 hover:text-red-600"><X size={11} /></button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative group rounded-xl border border-gray-200 bg-gray-50 overflow-hidden">
@@ -412,31 +447,38 @@ export default function ArtworkManagementPage() {
       const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
         `${ART}/attachments/${row.ArtworkID}`
       );
-      setAttachments((Array.isArray(atts) ? atts : []).map(a => ({
-        _id: a.FileID,
-        name: a.AttachedFileName,
-        url: a.AttachedFileName,
-        mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
-                : /\.(jpe?g|png|gif|webp)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
-        remark: a.AttachedFileRemark,
-      })));
+      setAttachments((Array.isArray(atts) ? atts : []).map(a => {
+        const isBroken = a.AttachedFileName.startsWith("blob:");
+        const name = a.AttachedFileName.startsWith("http")
+          ? decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName)
+          : isBroken ? "(broken — re-upload)" : a.AttachedFileName;
+        return {
+          _id: a.FileID,
+          name,
+          url: a.AttachedFileName,
+          mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
+                  : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+          remark: a.AttachedFileRemark,
+          uploadError: isBroken,
+        };
+      }));
     } catch { setAttachments([]); }
     setShowModal(true);
   };
 
   // ─── Upload files ─────────────────────────────────────────────────────────
-  const addFiles = async (files: FileList | null) => {
+  const addFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    setUploading(true);
-    const newAtts: AttachmentItem[] = [];
-    for (const file of Array.from(files)) {
-      try {
-        const { url, name, mimeType } = await uploadFile(file);
-        newAtts.push({ _id: Math.random().toString(36).slice(2), name, url, mimeType, remark: "" });
-      } catch { /* skip failed */ }
-    }
-    setAttachments(p => [...p, ...newAtts]);
-    setUploading(false);
+    // Store locally only — S3 upload happens on Save
+    const newItems: AttachmentItem[] = Array.from(files).map(file => ({
+      _id:      Math.random().toString(36).slice(2),
+      name:     file.name,
+      url:      URL.createObjectURL(file),
+      mimeType: file.type,
+      remark:   "",
+      fileObj:  file,
+    }));
+    setAttachments(p => [...p, ...newItems]);
   };
 
   // ─── Save ─────────────────────────────────────────────────────────────────
@@ -446,12 +488,33 @@ export default function ArtworkManagementPage() {
     if (!form.CategoryID) { setFormError("Category is required."); return; }
 
     setSaving(true); setFormError("");
-    const payload = {
-      ...form,
-      Attachments: attachments.map(a => ({ AttachedFileName: a.url, AttachedFileRemark: a.remark })),
-    };
-
     try {
+      // Upload only new files (fileObj present) to S3; existing server URLs stay as-is
+      // Blob URLs without fileObj (broken records) are skipped entirely
+      const resolvedAtts = (await Promise.all(
+        attachments.map(async (a) => {
+          if (a.fileObj) {
+            try {
+              const { "Content-Type": _ct, ...hdrs } = authHeaders();
+              const fd = new FormData();
+              fd.append("file", a.fileObj, a.fileObj.name);
+              const res = await fetch(`${BASE}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+              if (res.ok) {
+                const { publicUrl } = await res.json();
+                URL.revokeObjectURL(a.url);
+                return { AttachedFileName: publicUrl as string, AttachedFileRemark: a.remark };
+              }
+            } catch { /* skip on error */ }
+            return null;
+          }
+          // Skip broken blob URLs that have no fileObj (invalid local URLs)
+          if (a.url.startsWith("blob:")) return null;
+          return { AttachedFileName: a.url, AttachedFileRemark: a.remark };
+        })
+      )).filter((a): a is { AttachedFileName: string; AttachedFileRemark: string } => a !== null);
+
+      const payload = { ...form, Attachments: resolvedAtts };
+
       const res = await apiPost<{ Status: string; ArtworkID: string; ArtworkNo: string } | string>(
         `${ART}/${editMode ? "update" : "save"}`, payload
       );
@@ -1192,11 +1255,6 @@ export default function ArtworkManagementPage() {
               <div>
                 <SH label="Basic Information" />
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className={lCls}>Product Name *</label>
-                    <input value={form.JobName} onChange={e => rf("JobName", e.target.value)}
-                      placeholder="e.g. Parle-G 100g Biscuit" className={iCls} />
-                  </div>
                   <div>
                     <label className={lCls}>Client / Customer *</label>
                     <select value={form.LedgerID} onChange={e => rf("LedgerID", e.target.value)} className={iCls}>
@@ -1289,18 +1347,6 @@ export default function ArtworkManagementPage() {
                     <textarea value={form.ArtWorkDescription} onChange={e => rf("ArtWorkDescription", e.target.value)}
                       rows={2} placeholder="Describe the artwork…" className={iCls} />
                   </div>
-                  <div>
-                    <label className={lCls}>Artwork Cost (₹)</label>
-                    <input type="number" value={form.ArtworkCost} onChange={e => rf("ArtworkCost", e.target.value)}
-                      placeholder="0.00" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Design Side</label>
-                    <select value={form.DesignSide} onChange={e => rf("DesignSide", e.target.value)} className={iCls}>
-                      <option value="Single Side">Single Side</option>
-                      <option value="Double Side">Double Side</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 
@@ -1319,113 +1365,80 @@ export default function ArtworkManagementPage() {
                 </div>
               </div>
 
-              {/* ── Document Reference ── */}
-              <div>
-                <SH label="Document Reference" />
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className={lCls}>Document Type</label>
-                    <select value={form.DocumentType} onChange={e => rf("DocumentType", e.target.value)} className={iCls}>
-                      <option value="Direct">Direct</option>
-                      <option value="Quotation">Quotation</option>
-                      <option value="ProductionWorkOrder">Work Order</option>
-                      <option value="Order">Order</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Document No.</label>
-                    <input value={form.DocumentNo} onChange={e => rf("DocumentNo", e.target.value)}
-                      placeholder="Doc. reference no." className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Document Date</label>
-                    <input type="date" value={form.DocumentDate} onChange={e => rf("DocumentDate", e.target.value)} className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Job Details ── */}
-              <div>
-                <SH label="Job Details" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Job Quantity</label>
-                    <input value={form.JobQty} onChange={e => rf("JobQty", e.target.value)}
-                      placeholder="e.g. 5000 pcs" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Job Size</label>
-                    <input value={form.JobSize} onChange={e => rf("JobSize", e.target.value)}
-                      placeholder="e.g. 200mm x 300mm" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Paper / Substrate Details</label>
-                    <input value={form.PaperDetails} onChange={e => rf("PaperDetails", e.target.value)}
-                      placeholder="e.g. BOPP 20μm" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Machine Name</label>
-                    <input value={form.MachineName} onChange={e => rf("MachineName", e.target.value)}
-                      placeholder="Machine to be used" className={iCls} />
-                  </div>
-                </div>
-              </div>
-
               {/* ── Product Details ── */}
               <div>
                 <SH label="Product Details" />
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className={lCls}>Type of Product</label>
-                    <select value={form.TypeOfProduct} onChange={e => rf("TypeOfProduct", e.target.value)} className={iCls}>
-                      <option value="">-- Select Type --</option>
-                      {dropData.categories.map(c => <option key={c.CategoryID} value={c.CategoryName}>{c.CategoryName}</option>)}
-                      {form.TypeOfProduct && !dropData.categories.some(c => c.CategoryName === form.TypeOfProduct) && (
-                        <option value={form.TypeOfProduct}>{form.TypeOfProduct}</option>
-                      )}
-                    </select>
-                  </div>
-                  <div>
                     <label className={lCls}>Pack Size</label>
-                    <select value={form.PackSize} onChange={e => rf("PackSize", e.target.value)} className={iCls}>
+                    <select value={form.PackSize} onChange={e => {
+                      const v = e.target.value;
+                      rf("PackSize", v);
+                      rf("JobName", [form.BrandName, form.ProductType, v, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select Pack Size --</option>
                       {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={lCls}>Brand Name</label>
-                    <select value={form.BrandName} onChange={e => rf("BrandName", e.target.value)} className={iCls}>
+                    <select value={form.BrandName} onChange={e => {
+                      const v = e.target.value;
+                      rf("BrandName", v);
+                      rf("JobName", [v, form.ProductType, form.PackSize, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select Brand --</option>
                       {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={lCls}>Product Type</label>
-                    <select value={form.ProductType} onChange={e => rf("ProductType", e.target.value)} className={iCls}>
+                    <select value={form.ProductType} onChange={e => {
+                      const v = e.target.value;
+                      rf("ProductType", v);
+                      rf("JobName", [form.BrandName, v, form.PackSize, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select Product Type --</option>
                       {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={lCls}>SKU Type</label>
-                    <select value={form.SkuType} onChange={e => rf("SkuType", e.target.value)} className={iCls}>
+                    <select value={form.SkuType} onChange={e => {
+                      const v = e.target.value;
+                      rf("SkuType", v);
+                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, v, form.BottleType, form.AddressType].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select SKU Type --</option>
                       {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={lCls}>Bottle Type</label>
-                    <select value={form.BottleType} onChange={e => rf("BottleType", e.target.value)} className={iCls}>
+                    <select value={form.BottleType} onChange={e => {
+                      const v = e.target.value;
+                      rf("BottleType", v);
+                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, form.SkuType, v, form.AddressType].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select Bottle Type --</option>
                       {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className={lCls}>Address Type</label>
-                    <select value={form.AddressType} onChange={e => rf("AddressType", e.target.value)} className={iCls}>
+                    <select value={form.AddressType} onChange={e => {
+                      const v = e.target.value;
+                      rf("AddressType", v);
+                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, form.SkuType, form.BottleType, v].filter(Boolean).join(" "));
+                    }} className={iCls}>
                       <option value="">-- Select Address Type --</option>
                       {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Product Name *</label>
+                    <input value={form.JobName} readOnly
+                      className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
                   </div>
                   <div>
                     <label className={lCls}>Artwork Name</label>
@@ -1488,11 +1501,11 @@ export default function ArtworkManagementPage() {
             ) : preview.mimeType === "application/pdf" || preview.url?.toLowerCase().endsWith(".pdf") ? (
               <div className="w-full flex flex-col gap-3" style={{ height: "70vh" }}>
                 <iframe
-                  src={`/api/pdf-proxy?url=${encodeURIComponent(preview.url)}`}
+                  src={preview.url.startsWith("blob:") ? preview.url : `/api/pdf-proxy?url=${encodeURIComponent(preview.url)}`}
                   title={preview.name}
                   className="w-full flex-1 rounded-xl border border-gray-200 shadow"
                   style={{ height: "calc(70vh - 48px)" }} />
-                <a href={`/api/pdf-proxy?url=${encodeURIComponent(preview.url)}`} target="_blank" rel="noreferrer"
+                <a href={preview.url.startsWith("blob:") ? preview.url : `/api/pdf-proxy?url=${encodeURIComponent(preview.url)}`} target="_blank" rel="noreferrer"
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition">
                   ↗ Open PDF in new tab
                 </a>

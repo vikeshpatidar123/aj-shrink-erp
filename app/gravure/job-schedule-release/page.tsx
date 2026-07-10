@@ -216,6 +216,7 @@ const readonlyCls =
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function JobScheduleReleasePage() {
+  const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
   const { showToast } = useToast();
 
   // ── Job List State ─────────────────────────────────────────────────────────
@@ -667,6 +668,7 @@ export default function JobScheduleReleasePage() {
             data={jobs.map(j => ({ ...j, id: String(j.JobBookingJobCardContentsID) }))}
             columns={jobColumns}
             searchKeys={["JobName", "LedgerName", "JobBookingNo", "JobCardContentNo", "PlanContName"]}
+            initialSearch={initSearch}
             actions={(row) => (
               <Button variant="primary" size="sm" onClick={() => openScheduleModal(row as unknown as Job)}>
                 Schedule Release

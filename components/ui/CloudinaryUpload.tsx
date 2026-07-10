@@ -3,36 +3,36 @@ import { useState, useRef, useCallback } from "react";
 import { Upload, X, FileText, Loader2 } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
 
 export interface CloudinaryUploadResult {
-  secureUrl: string;
-  publicId: string;
-  resourceType: string;
-  format: string;
+  secureUrl:        string;
+  publicId:         string;
+  resourceType:     string;
+  format:           string;
   originalFilename: string;
-  bytes: number;
+  bytes:            number;
 }
 
 interface Props {
-  onUpload: (result: CloudinaryUploadResult) => void;
-  onClear?: () => void;
-  accept?: "image" | "pdf" | "both";
-  label?: string;
+  onUpload:    (result: CloudinaryUploadResult) => void;
+  onClear?:    () => void;
+  accept?:     "image" | "pdf" | "both";
+  label?:      string;
   currentUrl?: string;
-  disabled?: boolean;
-  maxSizeMB?: number;
+  disabled?:   boolean;
+  maxSizeMB?:  number;
 }
 
-async function fetchSignature() {
-  const res = await fetch(`${BASE_URL}/api/cloudinary/sign`, { headers: authHeaders() });
-  if (!res.ok) throw new Error("Failed to get upload signature");
-  return res.json() as Promise<{
-    signature: string;
-    timestamp: number;
-    cloudName: string;
-    apiKey: string;
-  }>;
+async function uploadToS3(file: File): Promise<string> {
+  const { "Content-Type": _ct, ...hdrs } = authHeaders();
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+
+  const res = await fetch(`${BASE_URL}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`);
+  const { publicUrl } = await res.json();
+  return publicUrl as string;
 }
 
 export default function CloudinaryUpload({
@@ -68,35 +68,15 @@ export default function CloudinaryUpload({
     setFileName(file.name);
 
     try {
-      const sig = await fetchSignature();
-
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("api_key", sig.apiKey);
-      fd.append("timestamp", String(sig.timestamp));
-      fd.append("signature", sig.signature);
-
-      // PDFs must use "raw" so Cloudinary preserves the original bytes and serves with correct Content-Type.
-      // Images use "image" resource type.
-      const resourceType = isPdf ? "raw" : "image";
-      const uploadRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`,
-        { method: "POST", body: fd }
-      );
-      if (!uploadRes.ok) {
-        const err = await uploadRes.json().catch(() => ({}));
-        throw new Error((err as any)?.error?.message ?? "Cloudinary upload failed");
-      }
-
-      const data = await uploadRes.json();
-      setPreview(data.secure_url);
+      const publicUrl = await uploadToS3(file);
+      setPreview(publicUrl);
       onUpload({
-        secureUrl: data.secure_url,
-        publicId:  data.public_id,
-        resourceType: data.resource_type,
-        format: data.format ?? "",
+        secureUrl:        publicUrl,
+        publicId:         publicUrl,
+        resourceType:     isPdf ? "raw" : "image",
+        format:           file.name.split(".").pop() ?? "",
         originalFilename: file.name,
-        bytes: data.bytes ?? file.size,
+        bytes:            file.size,
       });
     } catch (e: any) {
       setError(e?.message ?? "Upload failed. Please try again.");
@@ -113,7 +93,6 @@ export default function CloudinaryUpload({
 
   return (
     <div className="space-y-2">
-      {/* Upload button */}
       <button
         type="button"
         onClick={() => !disabled && inputRef.current?.click()}
@@ -143,30 +122,19 @@ export default function CloudinaryUpload({
         </p>
       )}
 
-      {/* Preview */}
       {preview && (
         <div className="relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50">
           {isPdfPreview ? (
             <div className="flex items-center gap-3 px-3 py-2.5">
               <FileText size={20} className="text-red-500 flex-shrink-0" />
-              <a
-                href={preview}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-blue-600 hover:underline truncate flex-1"
-              >
+              <a href={preview} target="_blank" rel="noreferrer"
+                className="text-xs text-blue-600 hover:underline truncate flex-1">
                 {fileName || "View PDF"}
               </a>
             </div>
           ) : (
-            <img
-              src={preview}
-              alt="preview"
-              className="w-full max-h-48 object-contain"
-            />
+            <img src={preview} alt="preview" className="w-full max-h-48 object-contain" />
           )}
-
-          {/* Clear button */}
           <button
             type="button"
             onClick={handleClear}

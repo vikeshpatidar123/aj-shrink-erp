@@ -388,14 +388,31 @@ export default function LedgerMasterPage() {
   };
 
   // â"€â"€ Open edit form â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-  const openEdit = (row: any) => {
+  const openEdit = async (row: any) => {
     setEditing(row);
     setFormGroupID(activeGroupID);
     const grp = allGroups.find(g => g.LedgerGroupID === activeGroupID);
     setFormGroupName(grp?.LedgerGroupNameDisplay || grp?.LedgerGroupName || "");
     setFormStep("select-group");
     setView("form");
-    loadFormFields(activeGroupID, grp?.LedgerGroupNameDisplay || "", row);
+    // Grid row only carries the columns of the group's SelectQuery. Missing pieces:
+    //  (a) detail field-values → master-grid-loaded-data proc
+    //  (b) LedgerMaster date COLUMNS (DateOfBirth/DateOfJoining/DateOfLeaving), which
+    //      save writes as datetime but neither the grid nor the proc surfaces as yyyy-mm-dd.
+    const ledgerID = row.LedgerID ?? row.id;
+    let full: any = row;
+    try {
+      const res = await fetch(`${BASE_URL}/api/ledgermasterShrink/master-grid-loaded-data/${activeGroupID}/${ledgerID}`, { headers: authHeaders() });
+      const data: any = unwrap(await res.text());
+      if (Array.isArray(data) && data.length > 0) full = { ...full, ...data[0] };
+    } catch { /* fall back to grid row */ }
+    try {
+      const res2 = await fetch(`${BASE_URL}/api/ledgermasterShrink/ledger-date-fields/${ledgerID}`, { headers: authHeaders() });
+      const dates: any = unwrap(await res2.text());
+      if (Array.isArray(dates) && dates.length > 0) full = { ...full, ...dates[0] };
+    } catch { /* ignore */ }
+    setEditing(full);
+    loadFormFields(activeGroupID, grp?.LedgerGroupNameDisplay || "", full);
   };
 
   // â"€â"€ Grid columns — dynamic from backend data â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€

@@ -14,11 +14,16 @@ import {
 import { apiGet, apiPost } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
 
-const CLDN_BASE_ORDERS = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
-async function fetchSignatureOrders() {
-  const res = await fetch(`${CLDN_BASE_ORDERS}/api/cloudinary/sign`, { headers: authHeaders() });
-  if (!res.ok) throw new Error("Could not get upload signature");
-  return res.json() as Promise<{ signature: string; timestamp: number; cloudName: string; apiKey: string }>;
+const BASE_ORDERS = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+
+async function uploadImageToS3(file: File): Promise<string> {
+  const { "Content-Type": _ct, ...hdrs } = authHeaders();
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  const res = await fetch(`${BASE_ORDERS}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  if (!res.ok) throw new Error(`Image upload failed (${res.status})`);
+  const { publicUrl } = await res.json();
+  return publicUrl as string;
 }
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -209,6 +214,7 @@ function CS({ value, onChange, options, cls = "" }: {
 export default function GravureOrdersPage() {
   const { catalog } = useProductCatalog();
   const router = useRouter();
+  const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
 
   const [data, setData] = useState<GravureOrder[]>([]);
   const [loadingList, setLoadingList] = useState(true);
@@ -294,7 +300,9 @@ export default function GravureOrdersPage() {
       prePressRemark: String(l.prePressRemark ?? ""),
       productRemark: String(l.productRemark ?? ""),
       expectedDeliveryDate: String(l.expectedDeliveryDate ?? l.deliveryDate ?? ""),
-    }));
+      isBooked: Number(l.isBooked ?? 0),
+      bookedJobBookingId: Number(l.bookedJobBookingId ?? 0),
+    } as any));
   };
 
   const ORDERS_CACHE_KEY = "grv_orders_list";
@@ -433,6 +441,55 @@ export default function GravureOrdersPage() {
         setFormOpen(true);
       } catch { }
     }
+
+    // Pre-fill from estimation "Book Order" button
+    const rawEst = localStorage.getItem("ajsw_order_from_estimation");
+    if (rawEst) {
+      try {
+        const est = JSON.parse(rawEst);
+        localStorage.removeItem("ajsw_order_from_estimation");
+        if (est.customerId && est.customerName) {
+          setApiCustomers(prev =>
+            prev.some(c => c.id === String(est.customerId))
+              ? prev
+              : [{ id: String(est.customerId), name: est.customerName, stateTinNo: 0 }, ...prev]
+          );
+        }
+        const prefillLine = computeLine({
+          ...blankLine(),
+          lineNo: 1,
+          sourceType: "Estimation",
+          estimationId:  est.estimationId  || "",
+          estimationNo:  est.estimationNo  || "",
+          productCode:   est.estimationNo  || "",
+          productName:   est.jobName       || "",
+          categoryId:    est.categoryId    || "",
+          categoryName:  est.categoryName  || "",
+          substrate:     est.substrate     || "",
+          jobWidth:      est.jobWidth      || 0,
+          jobHeight:     est.jobHeight     || 0,
+          noOfColors:    est.noOfColors    || 6,
+          printType:     est.printType     || "Surface Print",
+          orderQty:      est.quantity      || 0,
+          unit:          est.unit          || "Kg",
+          minQuotedQty:  est.quantity      || 0,
+          approvedCost:  est.perMeterRate  || 0,
+          rate:          est.perMeterRate  || 0,
+          cylinderStatus: "New",
+          division: "Gravure", jobType: "New",
+        });
+        setForm(p => ({
+          ...blankForm(),
+          customerId:   est.customerId   || "",
+          customerName: est.customerName || "",
+          salesPerson:  est.salesPerson  || "",
+          salesType:    est.salesType    || "Local",
+          date: p.date,
+          obLines: [prefillLine],
+        }));
+        setFormOpen(true);
+      } catch { }
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-correct GST split (CGST+SGST vs IGST) when company and customer TIN info loads
@@ -461,6 +518,7 @@ export default function GravureOrdersPage() {
   const [enquirySearch, setEnquirySearch] = useState("");
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [viewRefRow, setViewRefRow] = useState<any | null>(null);
+  const [apiEstimationsList, setApiEstimationsList] = useState<any[]>([]);
 
   // Hold modal state
   const [holdTarget, setHoldTarget] = useState<GravureOrder | null>(null);
@@ -472,10 +530,53 @@ export default function GravureOrdersPage() {
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(p => ({ ...p, [k]: v }));
 
+  // Load real estimations list once on mount (for "Product Reference" panel)
+  useEffect(() => {
+    apiGet<any[]>("api/gravureestimationShrink/getestimationlist")
+      .then(rows => { if (Array.isArray(rows)) setApiEstimationsList(rows); })
+      .catch(() => {});
+  }, []);
+
+  // Estimation IDs already booked — merged from localStorage + loaded orders data
+  const bookedEstIds = useMemo(() => {
+    const ids = new Set<string>();
+    // From localStorage (immediate, no rebuild needed)
+    try {
+      const stored = JSON.parse(localStorage.getItem("grv_booked_est_ids") ?? "[]");
+      if (Array.isArray(stored)) stored.forEach((id: string) => ids.add(id));
+    } catch {}
+    // From orders data (accurate after backend rebuild)
+    data.forEach(o => {
+      (o.orderLines || []).forEach((l: any) => {
+        const eid = String(l.estimationId ?? "");
+        if (eid && eid !== "0") ids.add(eid);
+      });
+    });
+    return ids;
+  }, [data]);
+
   // ── Customer records ────────────────────────────────────────
   const custGrvEstimations = useMemo(() =>
-    gravureEstimations.filter(e => e.customerId === form.customerId),
-    [form.customerId]
+    apiEstimationsList
+      .filter(r => String(r.CustomerID ?? "") === String(form.customerId))
+      .map(r => ({
+        id:            String(r.GrvEstimationID ?? r.BookingID ?? ""),
+        estimationNo:  String(r.GrvEstimationCode ?? ""),
+        jobName:       String(r.JobName ?? ""),
+        categoryId:    String(r.CategoryID ?? ""),
+        categoryName:  String(r.CategoryName ?? ""),
+        substrate:     String(r.SubstrateName ?? ""),
+        jobWidth:      Number(r.JobWidth ?? 0),
+        jobHeight:     Number(r.JobHeight ?? 0),
+        noOfColors:    Number(r.NoOfColors ?? r.GrvNoOfColors ?? 0),
+        printType:     String(r.GrvPrintType ?? "Surface Print"),
+        quantity:      Number(r.Quantity ?? 0),
+        unit:          String(r.EstimationUnit ?? "Kg"),
+        perMeterRate:  Number(r.PerMeterRate ?? r.TotalAmount ?? 0),
+        salesPerson:   String(r.SalesPerson ?? ""),
+        salesType:     String(r.SalesType ?? "Local"),
+      })),
+    [apiEstimationsList, form.customerId]
   );
   const custCatalog = useMemo(() =>
     catalog.filter(c => c.customerId === form.customerId && c.status === "Active"),
@@ -534,7 +635,7 @@ export default function GravureOrdersPage() {
   // ── Add from enquiry ────────────────────────────────────────
   const addFromEnquiry = (row: typeof enquiryRows[0]) => {
     if (row.type === "Estimation") {
-      const est = gravureEstimations.find(e => e.id === row.id);
+      const est = custGrvEstimations.find(e => e.id === row.id);
       if (!est) return;
       const newLine = computeLine({
         ...blankLine(),
@@ -544,7 +645,7 @@ export default function GravureOrdersPage() {
         productCode: est.estimationNo,
         productName: est.jobName,
         categoryId: est.categoryId || "", categoryName: est.categoryName || "",
-        substrate: est.substrateName || "",
+        substrate: est.substrate || "",
         jobWidth: est.jobWidth, jobHeight: est.jobHeight,
         noOfColors: est.noOfColors,
         orderQty: est.quantity, unit: est.unit,
@@ -557,6 +658,12 @@ export default function GravureOrdersPage() {
       });
       f("obLines", [...form.obLines, newLine]);
       setAddedIds(prev => new Set([...prev, row.id]));
+      // Persist to localStorage so estimation page disables the button immediately
+      try {
+        const stored = JSON.parse(localStorage.getItem("grv_booked_est_ids") ?? "[]");
+        const merged = Array.isArray(stored) ? [...new Set([...stored, est.id])] : [est.id];
+        localStorage.setItem("grv_booked_est_ids", JSON.stringify(merged));
+      } catch {}
     } else {
       const cat = custCatalog.find(c => c.id === row.id);
       if (!cat) return;
@@ -781,24 +888,12 @@ export default function GravureOrdersPage() {
       transporter: d.transporter || "",
     }));
 
-    // Resolve image: upload to Cloudinary if new file; existing Cloudinary URL → use as-is; old base64 → pass through
+    // Resolve image: upload to S3 if new file; existing URL → use as-is; old base64 → pass through
     let imageDataUrl = "";
     if (orderImage?.fileObj) {
-      const sig = await fetchSignatureOrders();
-      const fd = new FormData();
-      fd.append("file", orderImage.fileObj);
-      fd.append("api_key", sig.apiKey);
-      fd.append("timestamp", String(sig.timestamp));
-      fd.append("signature", sig.signature);
-      const uploadRes = await fetch(
-        `https://api.cloudinary.com/v1_1/${sig.cloudName}/auto/upload`,
-        { method: "POST", body: fd }
-      );
-      if (!uploadRes.ok) throw new Error("Image upload to Cloudinary failed");
-      const imgData = await uploadRes.json();
-      imageDataUrl = imgData.secure_url;
+      imageDataUrl = await uploadImageToS3(orderImage.fileObj);
     } else if (orderImage?.url?.startsWith("http")) {
-      imageDataUrl = orderImage.url; // already a Cloudinary URL
+      imageDataUrl = orderImage.url;
     } else if (orderImage?.url?.startsWith("data:")) {
       imageDataUrl = orderImage.url; // legacy base64, backward compat
     }
@@ -1061,7 +1156,11 @@ export default function GravureOrdersPage() {
                                   <Eye size={11} />View
                                 </button>
                               )}
-                              {isAdded ? (
+                              {row.type === "Estimation" && bookedEstIds.has(row.id) ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 border border-green-300 rounded-lg text-[11px] font-semibold">
+                                  <Check size={11} />Order Booked
+                                </span>
+                              ) : isAdded ? (
                                 <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
                                   <Check size={11} />Added
                                 </span>
@@ -1636,6 +1735,7 @@ export default function GravureOrdersPage() {
           data={data}
           columns={columns}
           searchKeys={["orderNo", "customerName", "poNo", "salesPerson"]}
+          initialSearch={initSearch}
           stickyHeader
           scrollContainerClass="flex-1"
           toolbar={
@@ -1664,38 +1764,47 @@ export default function GravureOrdersPage() {
                   <Check size={12} />Unhold
                 </button>
               )}
-              <button
-                onClick={() => {
-                  const firstLine = row.orderLines?.[0];
-                  const matchedCatalog =
-                    catalog.find(c => c.id === String(firstLine?.catalogId || row.catalogId || "")) ||
-                    catalog.find(c => c.catalogNo === String(firstLine?.catalogNo || row.catalogNo || "")) ||
-                    catalog.find(c =>
-                      String(c.customerId || "") === String(row.customerId || "") &&
-                      String(c.productName || "").trim().toLowerCase() === String(firstLine?.productName || row.jobName || "").trim().toLowerCase()
-                    );
-                  sessionStorage.setItem("createPWOFromOrder", JSON.stringify({
-                    orderId: row.id,
-                    orderNo: row.orderNo,
-                    customerId: row.customerId,
-                    customerName: row.customerName,
-                    salesType: row.salesType ?? "",
-                    catalogId: firstLine?.catalogId ?? row.catalogId ?? "",
-                    catalogNo: firstLine?.catalogNo ?? row.catalogNo ?? "",
-                    productName: firstLine?.productName ?? row.jobName ?? "",
-                    categoryId: row.categoryId ?? "",
-                    categoryName: row.categoryName ?? "",
-                    content: row.content ?? "",
-                    structureType: (row as any).structureType ?? "",
-                    catalogSnapshot: matchedCatalog ?? null,
-                    orderLines: row.orderLines ?? [],
-                  }));
-                  router.push("/gravure/workorder");
-                }}
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
-              >
-                <ClipboardList size={12} />Create PWO
-              </button>
+              {(() => {
+                const isPwoCreated = (row.orderLines ?? []).some((l: any) => Number(l.isBooked ?? 0) > 0 || Number(l.bookedJobBookingId ?? 0) > 0);
+                return isPwoCreated ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-green-300 bg-green-50 text-green-700 cursor-not-allowed">
+                    <Check size={12} />Job Card Created
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const firstLine = row.orderLines?.[0];
+                      const matchedCatalog =
+                        catalog.find(c => c.id === String(firstLine?.catalogId || row.catalogId || "")) ||
+                        catalog.find(c => c.catalogNo === String(firstLine?.catalogNo || row.catalogNo || "")) ||
+                        catalog.find(c =>
+                          String(c.customerId || "") === String(row.customerId || "") &&
+                          String(c.productName || "").trim().toLowerCase() === String(firstLine?.productName || row.jobName || "").trim().toLowerCase()
+                        );
+                      sessionStorage.setItem("createPWOFromOrder", JSON.stringify({
+                        orderId: row.id,
+                        orderNo: row.orderNo,
+                        customerId: row.customerId,
+                        customerName: row.customerName,
+                        salesType: row.salesType ?? "",
+                        catalogId: firstLine?.catalogId ?? row.catalogId ?? "",
+                        catalogNo: firstLine?.catalogNo ?? row.catalogNo ?? "",
+                        productName: firstLine?.productName ?? row.jobName ?? "",
+                        categoryId: row.categoryId ?? "",
+                        categoryName: row.categoryName ?? "",
+                        content: row.content ?? "",
+                        structureType: (row as any).structureType ?? "",
+                        catalogSnapshot: matchedCatalog ?? null,
+                        orderLines: row.orderLines ?? [],
+                      }));
+                      router.push("/gravure/workorder");
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
+                  >
+                    <ClipboardList size={12} />Create PWO
+                  </button>
+                );
+              })()}
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDelId(row.id)}>Delete</Button>
             </div>
           )}

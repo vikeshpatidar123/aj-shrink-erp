@@ -28,7 +28,7 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
 
   return (
     <header
-      className="bg-white px-3 md:px-4 py-0 flex items-center justify-between sticky top-0 z-10 gap-2"
+      className="bg-white px-3 md:px-4 py-0 flex items-center justify-between sticky top-0 z-50 gap-2"
       style={{ borderBottom: "1px solid #dde3ed", minHeight: "52px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
     >
 
@@ -123,8 +123,8 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
 
           {dropOpen && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setDropOpen(false)} />
-              <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-lg shadow-lg border border-gray-200 z-20 overflow-hidden">
+              <div className="fixed inset-0 z-50" onClick={() => setDropOpen(false)} />
+              <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-lg shadow-lg border border-gray-200 z-[60] overflow-hidden">
                 <div className="px-4 py-3" style={{ borderBottom: "1px solid #f3f4f6" }}>
                   <p className="text-xs font-semibold text-gray-800">Admin User</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">admin@ajshrink.com</p>

@@ -25,10 +25,15 @@ import { apiGet, apiPost } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
 
 const CLDN_BASE_CAT = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
-async function fetchSignatureCat() {
-  const res = await fetch(`${CLDN_BASE_CAT}/api/cloudinary/sign`, { headers: authHeaders() });
-  if (!res.ok) throw new Error("Could not get upload signature");
-  return res.json() as Promise<{ signature: string; timestamp: number; cloudName: string; apiKey: string }>;
+
+async function uploadAttachmentToS3(file: File): Promise<string> {
+  const { "Content-Type": _ct, ...hdrs } = authHeaders();
+  const fd = new FormData();
+  fd.append("file", file, file.name);
+  const res = await fetch(`${CLDN_BASE_CAT}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  if (!res.ok) throw new Error(`S3 upload failed for ${file.name} (${res.status})`);
+  const { publicUrl } = await res.json();
+  return publicUrl as string;
 }
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
@@ -1376,29 +1381,16 @@ export default function ProductCatalogPage() {
     // Pre-uploaded artwork attachments — already on Cloudinary, just pass URL directly
     const preUploadedAtts = replanAttachments.filter(a => a.preUploaded);
 
-    // Upload new attachments to Cloudinary
+    // Upload new attachments to S3
     const newAttachments = replanAttachments.filter(a => a.fileObj);
     let attachmentsCloudinary: { name: string; label: string; mimeType: string; secureUrl: string }[] = [
       ...preUploadedAtts.map(a => ({ name: a.name, label: a.label || "Artwork Ref", mimeType: a.mimeType, secureUrl: a.url })),
     ];
     if (newAttachments.length > 0) {
-      const sig = await fetchSignatureCat();
       const uploaded = await Promise.all(
         newAttachments.map(async a => {
-          const isPdf = a.fileObj!.type === "application/pdf" || a.name.toLowerCase().endsWith(".pdf");
-          const resourceType = isPdf ? "raw" : "image";
-          const fd = new FormData();
-          fd.append("file", a.fileObj!);
-          fd.append("api_key", sig.apiKey);
-          fd.append("timestamp", String(sig.timestamp));
-          fd.append("signature", sig.signature);
-          const uploadRes = await fetch(
-            `https://api.cloudinary.com/v1_1/${sig.cloudName}/${resourceType}/upload`,
-            { method: "POST", body: fd }
-          );
-          if (!uploadRes.ok) throw new Error("Cloudinary upload failed for " + a.name);
-          const data = await uploadRes.json();
-          return { name: a.name, label: a.label || "Attachment", mimeType: a.mimeType, secureUrl: data.secure_url };
+          const url = await uploadAttachmentToS3(a.fileObj!);
+          return { name: a.name, label: a.label || "Attachment", mimeType: a.mimeType, secureUrl: url };
         })
       );
       attachmentsCloudinary = [...attachmentsCloudinary, ...uploaded];

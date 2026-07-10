@@ -40,6 +40,7 @@ const pageTitles: Record<string, string> = {
   "/gravure/workorder": "Gravure Work Order",
   "/production": "Production Entry",
   "/gravure/production": "Gravure Production",
+  "/masters/categories":                  "Finish Goods Category Master",
   "/gravure/artwork-management":          "Artwork Library",
   "/gravure/cylinder-management":         "Cylinder Management",
   "/gravure/artwork-management/designer": "Designer Tab",

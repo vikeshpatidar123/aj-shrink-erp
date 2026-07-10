@@ -203,6 +203,7 @@ const SH = ({ label }: { label: string }) => (
 
 
 export default function GravureWorkOrderPage() {
+  const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
   const { inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw, filmItems: apiFilmItems } = useMasters();
@@ -764,11 +765,128 @@ export default function GravureWorkOrderPage() {
     }
 
     const srcCatalogId = String(src.catalogId || line.catalogId || "");
+    // enquiryId returned by updated getorders API; fallback to estimationId for older responses
+    const srcEstimationId = String(line.enquiryId || line.estimationId || "");
     Promise.all([
       apiGet<any>(`api/gravureWorkOrderShrink/getpwoinitdata/${line.id}`).catch(() => null),
       srcCatalogId ? apiGet<any>(`api/productcataloggravureShrink/getcatalogbyid/${srcCatalogId}`).catch(() => null) : Promise.resolve(null),
+      (srcEstimationId && !srcCatalogId) ? apiGet<any>(`api/gravureEnquiryShrink/getenquirybyid/${srcEstimationId}`).catch(() => null) : Promise.resolve(null),
     ])
-      .then(([cat, catalogByIdRaw]) => {
+      .then(([cat, catalogByIdRaw, enqRaw]) => {
+        // ── Estimation-sourced order: map estimation data into form ──
+        if (srcEstimationId && !srcCatalogId && enqRaw) {
+          const enq = typeof enqRaw === "string" ? (() => { try { return JSON.parse(enqRaw); } catch { return enqRaw; } })() : enqRaw;
+          const apiPlys: any[] = enq?.Plys ?? [];
+          const apiProcs: any[] = enq?.Processes ?? [];
+
+          const estimationLayers = safeNormalizeLayers(apiPlys.map((ply: any, i: number) => ({
+            layerNo: Number(ply.LayerNo ?? i + 1),
+            plyType: String(ply.PlyType ?? "Film"),
+            itemSubGroup: String(ply.FilmSubGroup ?? ""),
+            density: Number(ply.Density ?? 0),
+            thickness: Number(ply.Thickness ?? 0),
+            gsm: Number(ply.FilmGSM ?? 0),
+            itemId: String(ply.ItemID ?? ""),
+            itemName: String(ply.ItemName ?? ""),
+            consumableItems: (ply.Consumables ?? []).map((c: any, ci: number) => ({
+              consumableId: `enq-${i + 1}-con-${ci + 1}`,
+              fieldDisplayName: String(c.FieldDisplayName ?? ""),
+              itemGroup: String(c.ItemGroup ?? ""),
+              itemSubGroup: String(c.ItemSubGroup ?? ""),
+              itemId: String(c.ItemID ?? ""),
+              itemName: String(c.ItemName ?? ""),
+              gsm: Number(c.GSM ?? 0),
+              rate: Number(c.Rate ?? 0),
+              coveragePct: Number(c.CoveragePct ?? 100),
+            })),
+          })));
+
+          const estimationProcs = safeNormalizeProcesses(apiProcs.map((p: any) => ({
+            processId: String(p.ProcessID ?? ""),
+            processName: String(p.ProcessName ?? ""),
+            chargeUnit: "",
+            rate: 0,
+            qty: 0,
+            setupCharge: 0,
+            amount: 0,
+          })));
+
+          const enqJobWidth    = Number(enq?.GrvPlanWidth    ?? enq?.GrvWidth ?? 0);
+          const enqJobHeight   = Number(enq?.GrvPlanHeight   ?? 0);
+          const enqTopSeal     = Number(enq?.GrvTopSeal      ?? 0);
+          const enqBottomSeal  = Number(enq?.GrvBottomSeal   ?? 0);
+          const enqSideSeal    = Number(enq?.GrvSideSeal     ?? 0);
+          const enqCenterSeal  = Number(enq?.GrvCenterSeal   ?? 0);
+          const enqGusset      = Number(enq?.GrvGusset       ?? 0);
+          const enqSideGusset  = Number(enq?.GrvSideGusset   ?? 0);
+          const enqSeamingArea = Number(enq?.GrvSeamingArea  ?? 0);
+          const enqTranspArea  = Number(enq?.GrvTransparentArea ?? 0);
+          const enqNoOfColors  = Number(enq?.GrvNoOfColors   ?? 0);
+          const enqContent     = String(enq?.GrvSelectedContent ?? "");
+          const enqSubstrate   = String(enq?.GrvSubstrate    ?? "");
+          const enqPrintType   = String(enq?.GrvPrintType    ?? "Surface Print");
+          const enqStructure   = String(enq?.GrvStructureType ?? "");
+
+          setForm(f => ({
+            ...f,
+            sourceOrderType: "Estimation" as any,
+            content: enqContent || f.content,
+            structureType: ((enqStructure || f.structureType) as any),
+            structure: enqStructure || f.structure,
+            substrate: enqSubstrate || f.substrate,
+            jobWidth: enqJobWidth || f.jobWidth,
+            jobHeight: enqJobHeight || f.jobHeight,
+            noOfColors: enqNoOfColors || f.noOfColors,
+            printType: ((enqPrintType || f.printType) as any),
+            topSeal: enqTopSeal,
+            bottomSeal: enqBottomSeal,
+            sideSeal: enqSideSeal,
+            centerSealWidth: enqCenterSeal,
+            gusset: enqGusset,
+            sideGusset: enqSideGusset,
+            seamingArea: enqSeamingArea,
+            transparentArea: enqTranspArea,
+            secondaryLayers: estimationLayers.length > 0 ? (estimationLayers as any) : f.secondaryLayers,
+            processes: estimationProcs.length > 0 ? estimationProcs : f.processes,
+          } as any));
+
+          setDimValues({
+            width: enqJobWidth || undefined,
+            height: enqJobHeight || undefined,
+            topSeal: enqTopSeal || undefined,
+            bottomSeal: enqBottomSeal || undefined,
+            sideSeal: enqSideSeal || undefined,
+            centerSealWidth: enqCenterSeal || undefined,
+            gusset: enqGusset || undefined,
+            sideGusset: enqSideGusset || undefined,
+            seamingArea: enqSeamingArea || undefined,
+            transparentArea: enqTranspArea || undefined,
+            layflatWidth: enqJobWidth || undefined,
+            cutHeight: enqJobHeight || undefined,
+          });
+
+          // Auto-apply estimation's saved plan if backend returned GrvPlanJSON
+          try {
+            const rawEstPlan = (enq as any)?.GrvPlanJSON;
+            if (rawEstPlan) {
+              const sp = typeof rawEstPlan === "string" ? JSON.parse(rawEstPlan) : rawEstPlan;
+              if (sp?.planId) {
+                const woId = sp.planId.startsWith("CP-") ? "WO-" + sp.planId.slice(3)
+                  : sp.planId.startsWith("SLEEVE-") ? "WO-SLEEVE-" + sp.planId.slice(7)
+                  : sp.planId;
+                setCatalogSavedPlan({
+                  ...sp, planId: woId,
+                  isBest: true, isFromCatalog: false,
+                  isSpecial: false, isSpecialSleeve: false,
+                });
+              }
+            }
+          } catch { /* ignore parse error */ }
+
+          pendingPWOOrderRef.current = null;
+          setPendingPWOOrder(null);
+          return;
+        }
         const catalogByIdRows = parseNestedJson(catalogByIdRaw);
         const catalogById = mapCatalogApiRow(Array.isArray(catalogByIdRows) ? catalogByIdRows[0] : catalogByIdRows);
         const catRow = cat || {};
@@ -1049,6 +1167,7 @@ export default function GravureWorkOrderPage() {
     }
     const firstLine = lines[0] || {};
     const hasCatalog = lines.some((l: any) => l.catalogId && String(l.catalogId) !== "0" && String(l.catalogId) !== "");
+    const hasEstimation = lines.some((l: any) => l.estimationId && String(l.estimationId) !== "0" && String(l.estimationId) !== "");
     return {
       id: String(r.orderId || r.OrderBookingID || ""),
       orderNo: String(r.orderNo || r.SalesOrderNo || r.OrderBookingNo || ""),
@@ -1070,7 +1189,7 @@ export default function GravureWorkOrderPage() {
       quantity: Number(r.quantity || firstLine.orderQty || 0),
       unit: String(r.unit || firstLine.unit || "Kg"),
       deliveryDate: String(r.deliveryDate || firstLine.deliveryDate || ""),
-      sourceType: (r.sourceType || (hasCatalog ? "Catalog" : "Direct")) as any,
+      sourceType: (r.sourceType || (hasCatalog ? "Catalog" : hasEstimation ? "Estimation" : "Direct")) as any,
       totalAmount: Number(r.totalAmount || r.TotalAmount || 0),
       perMeterRate: Number(r.perMeterRate || 0),
       processes: [],
@@ -1462,8 +1581,10 @@ export default function GravureWorkOrderPage() {
 
       const generateForFilmWidth = (filmWidth: number, acUps: number) => {
         if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return;
-        const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
-        const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+        // Prefer narrowest sleeve that fully covers filmWidth; fall back to nearest within 50mm
+        let slvCandidates = SLEEVE_TOOLS_LIVE.filter(s => parseFloat(s.printWidth) >= filmWidth).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
+        if (slvCandidates.length === 0) slvCandidates = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 50).sort((a, b) => Math.abs(parseFloat(a.printWidth) - filmWidth) - Math.abs(parseFloat(b.printWidth) - filmWidth));
+        const slv = slvCandidates.length > 0 ? slvCandidates[0] : null;
         const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
         const sleeveCode = slv ? slv.code : "SPL-S";
         const sleeveName = slv ? slv.name : "Special Order Sleeve";
@@ -1550,8 +1671,10 @@ export default function GravureWorkOrderPage() {
         }).map(c => ({ id: c.id, code: c.code, name: c.name, printWidth: c.printWidth, repeatLength: c.repeatLength || String(cylinderCirc), isSpecial: false }));
 
         const pushPlan = (acUps: number, filmWidth: number, deadMargin: number) => {
-          const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
-          const slv = matchSlv.length > 0 ? matchSlv[0] : null;
+          // Prefer narrowest sleeve that fully covers filmWidth; fall back to nearest within 50mm
+          let slvCandidates = SLEEVE_TOOLS_LIVE.filter(s => parseFloat(s.printWidth) >= filmWidth).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth));
+          if (slvCandidates.length === 0) slvCandidates = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 50).sort((a, b) => Math.abs(parseFloat(a.printWidth) - filmWidth) - Math.abs(parseFloat(b.printWidth) - filmWidth));
+          const slv = slvCandidates.length > 0 ? slvCandidates[0] : null;
           const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
           const sleeveCode = slv ? slv.code : "SPL-S";
           const sleeveName = slv ? slv.name : "Special Order Sleeve";
@@ -1668,7 +1791,8 @@ export default function GravureWorkOrderPage() {
     // When a catalog saved plan exists → show only that 1 plan (no full plan list)
     if (catalogSavedPlan) return [catalogSavedPlan];
 
-    let rows = allPlans;
+    // Show all plans — same as product catalog (includes special cylinder plans)
+    let rows = [...allPlans];
     const q = planSearch.trim().toLowerCase();
     if (q) rows = rows.filter(r => r.machineName.toLowerCase().includes(q) || String(r.cylCirc).includes(q) || String(r.totalUPS).includes(q) || String(r.filmSize).includes(q));
     // Apply column filters (Excel-style, mirrors estimation)
@@ -2233,6 +2357,123 @@ export default function GravureWorkOrderPage() {
       widthShrinkage: o.widthShrinkage || undefined,
     });
     setModal(true);
+
+    // If this is an estimation-sourced order, fetch estimation detail and overlay planning data
+    const firstEstimationId = String(firstLine.estimationId || "");
+    if (firstEstimationId && firstEstimationId !== "0") {
+      apiGet<any>(`api/gravureEnquiryShrink/getenquirybyid/${firstEstimationId}`)
+        .then(enqRaw => {
+          if (!enqRaw) return;
+          const enq = typeof enqRaw === "string"
+            ? (() => { try { return JSON.parse(enqRaw); } catch { return null; } })()
+            : enqRaw;
+          if (!enq) return;
+          const apiPlys: any[] = enq.Plys ?? [];
+          const apiProcs: any[] = enq.Processes ?? [];
+
+          const estimationLayers: any[] = apiPlys.map((ply: any, i: number) => ({
+            id: `ply-${i + 1}`,
+            layerNo: Number(ply.LayerNo ?? i + 1),
+            plyType: String(ply.PlyType ?? "Film"),
+            itemSubGroup: String(ply.FilmSubGroup ?? ""),
+            density: Number(ply.Density ?? 0),
+            thickness: Number(ply.Thickness ?? 0),
+            gsm: Number(ply.FilmGSM ?? 0),
+            filmGSM: Number(ply.FilmGSM ?? 0),
+            filmRate: 0,
+            itemId: String(ply.ItemID ?? ""),
+            itemName: String(ply.ItemName ?? ""),
+            consumableItems: (ply.Consumables ?? []).map((c: any, ci: number) => ({
+              consumableId: `enq-${i + 1}-con-${ci + 1}`,
+              fieldDisplayName: String(c.FieldDisplayName ?? ""),
+              itemGroup: String(c.ItemGroup ?? ""),
+              itemGroupName: String(c.ItemGroup ?? ""),
+              itemSubGroup: String(c.ItemSubGroup ?? ""),
+              itemSubGroupName: String(c.ItemSubGroup ?? ""),
+              itemId: String(c.ItemID ?? ""),
+              itemName: String(c.ItemName ?? ""),
+              gsm: Number(c.GSM ?? 0),
+              dryGSM: Number(c.GSM ?? 0),
+              rate: Number(c.Rate ?? 0),
+              coveragePct: Number(c.CoveragePct ?? 100),
+              solidPct: Number(c.CoveragePct ?? 100),
+              solidPercentage: Number(c.CoveragePct ?? 100),
+              itemGroupId: "",
+              itemSubGroupId: "",
+            })),
+          }));
+
+          const estimationProcs = apiProcs.map((p: any) => {
+            const procId = String(p.ProcessID ?? "");
+            const procName = String(p.ProcessName ?? "");
+            const pm = ROTO_PROCESSES.find((r: any) => r.id === procId);
+            return {
+              processId: pm?.id ?? procId,
+              processName: (pm?.name ?? procName) || procId,
+              chargeUnit: pm?.chargeUnit ?? "",
+              rate: parseFloat((pm as any)?.rate ?? "0") || 0,
+              qty: 0,
+              setupCharge: (pm as any)?.makeSetupCharges ? parseFloat((pm as any).setupChargeAmount || "0") || 0 : 0,
+              amount: 0,
+            };
+          }).filter((p: any) => p.processId);
+
+          const enqJobWidth    = Number(enq.GrvPlanWidth    ?? enq.GrvWidth ?? 0);
+          const enqJobHeight   = Number(enq.GrvPlanHeight   ?? 0);
+          const enqTopSeal     = Number(enq.GrvTopSeal      ?? 0);
+          const enqBottomSeal  = Number(enq.GrvBottomSeal   ?? 0);
+          const enqSideSeal    = Number(enq.GrvSideSeal     ?? 0);
+          const enqCenterSeal  = Number(enq.GrvCenterSeal   ?? 0);
+          const enqGusset      = Number(enq.GrvGusset       ?? 0);
+          const enqSideGusset  = Number(enq.GrvSideGusset   ?? 0);
+          const enqSeamingArea = Number(enq.GrvSeamingArea  ?? 0);
+          const enqTranspArea  = Number(enq.GrvTransparentArea ?? 0);
+          const enqNoOfColors  = Number(enq.GrvNoOfColors   ?? 0);
+          const enqContent     = String(enq.GrvSelectedContent ?? "");
+          const enqSubstrate   = String(enq.GrvSubstrate    ?? "");
+          const enqPrintType   = String(enq.GrvPrintType    ?? "Surface Print");
+          const enqStructure   = String(enq.GrvStructureType ?? "");
+
+          setForm(f => ({
+            ...f,
+            sourceOrderType: "Estimation" as any,
+            content: enqContent || f.content,
+            structureType: ((enqStructure || f.structureType) as any),
+            structure: enqStructure || f.structure,
+            substrate: enqSubstrate || f.substrate,
+            jobWidth: enqJobWidth || f.jobWidth,
+            jobHeight: enqJobHeight || f.jobHeight,
+            noOfColors: enqNoOfColors || f.noOfColors,
+            printType: ((enqPrintType || f.printType) as any),
+            topSeal: enqTopSeal,
+            bottomSeal: enqBottomSeal,
+            sideSeal: enqSideSeal,
+            centerSealWidth: enqCenterSeal,
+            gusset: enqGusset,
+            sideGusset: enqSideGusset,
+            seamingArea: enqSeamingArea,
+            transparentArea: enqTranspArea,
+            secondaryLayers: estimationLayers.length > 0 ? estimationLayers : f.secondaryLayers,
+            processes: estimationProcs.length > 0 ? estimationProcs : f.processes,
+          } as any));
+
+          setDimValues({
+            width: enqJobWidth || undefined,
+            height: enqJobHeight || undefined,
+            topSeal: enqTopSeal || undefined,
+            bottomSeal: enqBottomSeal || undefined,
+            sideSeal: enqSideSeal || undefined,
+            centerSealWidth: enqCenterSeal || undefined,
+            gusset: enqGusset || undefined,
+            sideGusset: enqSideGusset || undefined,
+            seamingArea: enqSeamingArea || undefined,
+            transparentArea: enqTranspArea || undefined,
+            layflatWidth: enqJobWidth || undefined,
+            cutHeight: enqJobHeight || undefined,
+          });
+        })
+        .catch(() => { /* modal already open with basic order data */ });
+    }
   };
 
 
@@ -4504,6 +4745,7 @@ export default function GravureWorkOrderPage() {
             data={workOrders}
             columns={woColumns}
             searchKeys={["workOrderNo", "customerName", "jobName", "machineName"]}
+            initialSearch={initSearch}
             stickyHeader
             scrollContainerClass="flex-1"
             toolbar={

@@ -342,10 +342,12 @@ export default function NotificationPanel() {
 
       {/* Panel */}
       {open && (
-        <div
-          className="absolute right-0 mt-2 rounded-2xl shadow-2xl border border-gray-200 bg-white flex flex-col z-50"
-          style={{ width: 400, maxHeight: "82vh" }}
-        >
+        <>
+          <div className="fixed inset-0 z-50" onClick={() => setOpen(false)} />
+          <div
+            className="absolute right-0 mt-2 rounded-2xl shadow-2xl border border-gray-200 bg-white flex flex-col z-[60]"
+            style={{ width: 400, maxHeight: "82vh" }}
+          >
           {/* Header */}
           <div className="px-5 pt-4 pb-3 flex items-center gap-3"
             style={{ borderBottom: "1px solid #f1f5f9" }}>
@@ -427,6 +429,7 @@ export default function NotificationPanel() {
             </button>
           </div>
         </div>
+        </>
       )}
     </div>
   );

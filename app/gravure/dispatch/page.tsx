@@ -8,6 +8,8 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
+import CoaTab from "./CoaTab";
+import InvoiceTab from "./InvoiceTab";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const API = "api/dispatchShrink";
@@ -136,6 +138,9 @@ function lineCalc(l: Line) {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function DispatchPage() {
   const { showToast } = useToast();
+
+  // ── Module tab (Delivery Note / Challan · Certificate of Analysis · Invoice) ──
+  const [moduleTab, setModuleTab]   = useState<"deliverynote" | "coa" | "invoice">("deliverynote");
 
   // ── List state ─────────────────────────────────────────────────────────────
   const [tab, setTab]               = useState<"pending" | "processed">("pending");
@@ -441,6 +446,29 @@ export default function DispatchPage() {
   return (
     <div className="space-y-4">
 
+      {/* ── Module tabs ── */}
+      <div className="flex gap-1 p-1 rounded-lg bg-gray-100 w-fit border border-gray-200">
+        {([
+          ["deliverynote", "Delivery Note / Challan"],
+          ["coa", "Certificate of Analysis"],
+          ["invoice", "Invoice"],
+        ] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setModuleTab(key)}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+              moduleTab === key ? "bg-blue-600 text-white shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {moduleTab === "coa" && <CoaTab />}
+
+      {moduleTab === "invoice" && <InvoiceTab />}
+
+      {moduleTab === "deliverynote" && (
+      <>
+
       {/* ── Header: Tabs + Filter ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 p-1 rounded-lg bg-gray-100 w-fit">
@@ -734,6 +762,9 @@ export default function DispatchPage() {
           </div>
         )}
       </Modal>
+
+      </>
+      )}
 
     </div>
   );

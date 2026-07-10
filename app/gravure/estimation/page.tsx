@@ -1,10 +1,11 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronRight, ChevronLeft, Plus, X, Save, FileText, Settings,
   Trash2, Edit, Search, Eye, Filter, Download, MoreHorizontal, Check,
   Calculator, Pencil, ArrowRight, RefreshCw, Wrench, Archive, Palette,
-  Eye as EyeIcon, Printer,
+  Eye as EyeIcon, Printer, ShoppingCart, BookCheck,
 } from "lucide-react";
 import {
   gravureEstimations as initData, customers, items, machines, processMasters,
@@ -18,7 +19,8 @@ import { useEnquiries }      from "@/context/EnquiryContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { useMasters }        from "@/context/MastersContext";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
-import { apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost, API_BASE } from "@/lib/api";
+import { authHeaders } from "@/lib/auth";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
@@ -415,6 +417,7 @@ const FILM_SUBGROUPS = Array.from(
 
 
 export default function GravureEstimationPage() {
+  const router = useRouter();
   const { categories } = useCategories();
   const { enquiries: allEnquiries } = useEnquiries();
   const { catalog: productCatalog } = useProductCatalog();
@@ -579,10 +582,46 @@ export default function GravureEstimationPage() {
   const [loadingData, setLoadingData] = useState(false);
   const [saving, setSaving]   = useState(false);
   const [unwindPreview, setUnwindPreview] = useState<number | null>(null);
+  const [bookedEstIds, setBookedEstIds] = useState<Set<string>>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("grv_booked_est_ids") ?? "[]");
+      return new Set<string>(Array.isArray(stored) ? stored : []);
+    } catch { return new Set<string>(); }
+  });
+
+  const markEstimationBooked = (id: string) => {
+    setBookedEstIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      try { localStorage.setItem("grv_booked_est_ids", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   // ── Load list from API ─────────────────────────────────────
   const loadList = async () => {
     setLoadingData(true);
+    // Sync booked IDs from orders API (merge with localStorage set)
+    apiGet<any[]>("api/gravureOrderBookingShrink/getorders").then(orders => {
+      if (!Array.isArray(orders)) return;
+      const ids = new Set<string>();
+      orders.forEach((o: any) => {
+        const lines: any[] = (() => {
+          try { return JSON.parse(o.linesJSON ?? o.lines ?? "[]"); } catch { return []; }
+        })();
+        lines.forEach((l: any) => {
+          const eid = String(l.estimationId ?? l.EnquiryID ?? "");
+          if (eid && eid !== "0") ids.add(eid);
+        });
+      });
+      if (ids.size > 0) {
+        setBookedEstIds(prev => {
+          const merged = new Set([...prev, ...ids]);
+          try { localStorage.setItem("grv_booked_est_ids", JSON.stringify([...merged])); } catch {}
+          return merged;
+        });
+      }
+    }).catch(() => {});
     try {
       const rows = await apiGet<any[]>("api/gravureestimationShrink/getestimationlist");
       if (!Array.isArray(rows)) return;
@@ -913,6 +952,8 @@ export default function GravureEstimationPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [catalogPickerOpen, setCatalogPickerOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [enquiryPickerOpen, setEnquiryPickerOpen] = useState(false);
+  const [enquiryPickerSearch, setEnquiryPickerSearch] = useState("");
   const [loadedFromCatalog, setLoadedFromCatalog] = useState<string>("");   // catalogNo
   const [upsPreviewPlan, setUpsPreviewPlan] = useState<any>(null);
   const [dimValues, setDimValues] = useState<DimValues>({});
@@ -948,7 +989,7 @@ export default function GravureEstimationPage() {
     shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected";
     remarks: string; inkItemId?: string; inkGsm?: number;
   };
-  type EstAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string };
+  type EstAttachment = { id: string; name: string; size: number; mimeType: string; url: string; label?: string; fileObj?: File };
   const [colorShades, setColorShades] = useState<EstColorShade[]>([]);
   const [attachments, setAttachments] = useState<EstAttachment[]>([]);
   const [editingAttachLabel, setEditingAttachLabel] = useState<string | null>(null);
@@ -1477,11 +1518,17 @@ export default function GravureEstimationPage() {
       name: file.name, size: file.size, mimeType: file.type,
       url: URL.createObjectURL(file),
       label: attachments.length === 0 && i === 0 ? "Master File" : undefined,
+      fileObj: file,
     }));
     setAttachments(p => [...p, ...newItems]);
   };
+
   const removeAttachment = (id: string) => {
-    setAttachments(p => { const item = p.find(x => x.id === id); if (item) URL.revokeObjectURL(item.url); return p.filter(x => x.id !== id); });
+    setAttachments(p => {
+      const item = p.find(x => x.id === id);
+      if (item?.url?.startsWith("blob:")) URL.revokeObjectURL(item.url);
+      return p.filter(x => x.id !== id);
+    });
   };
 
   // ── Init color shades from noOfColors ──────────────────────
@@ -2211,6 +2258,126 @@ export default function GravureEstimationPage() {
     updateProcess(i, { machineId, machineName: m?.name || "" });
   };
 
+  // ── Apply enquiry data to form ────────────────────────
+  const applyEnquiry = async (enq: (typeof gravureEnqList)[0]) => {
+    setEnquiryPickerOpen(false);
+    setEnquiryPickerSearch("");
+
+    // Fetch full details (plys + consumables + processes) from detail endpoint
+    let fullData: any = null;
+    try {
+      fullData = await apiGet<any>(`api/gravureEnquiryShrink/getenquirybyid/${enq.id}`);
+    } catch { /* fallback to header-only data */ }
+
+    const apiPlys: any[]  = fullData?.Plys      ?? [];
+    const apiProcs: any[] = fullData?.Processes  ?? [];
+
+    // Build secondaryLayers from fetched ply data
+    const secondaryLayers: SecondaryLayer[] = apiPlys.map((ply: any, i: number) => ({
+      id: Math.random().toString(),
+      layerNo: i + 1,
+      plyType: String(ply.PlyType || "Film"),
+      itemSubGroup: String(ply.FilmSubGroup || ""),
+      density: Number(ply.Density) || 0,
+      thickness: Number(ply.Thickness) || 0,
+      gsm: Number(ply.FilmGSM) || 0,
+      itemId: String(ply.ItemID || ""),
+      itemName: String(ply.ItemName || ""),
+      consumableItems: (ply.Consumables ?? []).map((c: any) => ({
+        consumableId: Math.random().toString(),
+        fieldDisplayName: String(c.FieldDisplayName || ""),
+        itemGroup: String(c.ItemGroup || ""),
+        itemSubGroup: String(c.ItemSubGroup || ""),
+        itemId: String(c.ItemID || ""),
+        itemName: String(c.ItemName || ""),
+        gsm: Number(c.GSM) || 0,
+        rate: Number(c.Rate) || 0,
+        coveragePct: Number(c.CoveragePct) || 100,
+      })),
+    }));
+
+    // Build process rows — match fetched processes by ID against ROTO_PROCESSES
+    const processRows: GravureEstimationProcess[] = apiProcs
+      .map((p: any) => {
+        const procId = String(p.ProcessID || "");
+        const pm = ROTO_PROCESSES.find(r => r.id === procId);
+        if (!pm) return null;
+        const pmMachineIds: string[] = (pm as any).machineIds || [];
+        const autoMachineId = pmMachineIds.length === 1
+          ? pmMachineIds[0]
+          : (pmMachineIds.length === 0 ? ((pm as any).machineId || "") : "");
+        const autoMachine = PRINT_MACHINES.find((m: any) => m.id === autoMachineId);
+        return {
+          processId: pm.id,
+          processName: pm.name,
+          chargeUnit: pm.chargeUnit,
+          rate: parseFloat(pm.rate) || 0,
+          qty: 0,
+          setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0,
+          amount: 0,
+          machineId: autoMachineId,
+          machineName: autoMachine?.name || (pm as any).machineMasterName || "",
+          machineIds: pmMachineIds,
+        } as GravureEstimationProcess;
+      })
+      .filter((x): x is GravureEstimationProcess => x !== null);
+
+    const totalColors = (enq.frontColors || 0) + (enq.backColors || 0) || enq.noOfColors;
+    const cat = categories.find(c => c.id === enq.categoryId);
+    const contentType = getDisplayContentType(enq.selectedContent || "");
+    const isSleeve = contentType.toLowerCase().includes("sleeve");
+
+    // Fill dimension panel
+    patchDim({
+      topSeal:         enq.topSeal         || 0,
+      bottomSeal:      enq.bottomSeal      || 0,
+      sideSeal:        enq.sideSeal        || 0,
+      centerSealWidth: enq.centerSeal      || 0,
+      gusset:          enq.gusset          || 0,
+      sideGusset:      enq.sideGusset      || 0,
+      sealWidth:       enq.sealWidth       || 0,
+      seamingArea:     enq.seamingArea     || 0,
+      transparentArea: enq.transparentArea || 0,
+      ...(isSleeve
+        ? { layflatWidth: enq.planWidth || 0, cutHeight: enq.planHeight || 0 }
+        : { width: enq.planWidth || enq.width || 0, height: enq.planHeight || 0 }),
+    });
+
+    setForm(p => ({
+      ...p,
+      enquiryId: enq.id,
+      enquiryNo: enq.enquiryNo,
+      customerId: enq.customerId,
+      customerName: enq.customerName,
+      jobName: enq.jobName,
+      categoryId: enq.categoryId,
+      categoryName: enq.categoryName || cat?.name || "",
+      content: enq.selectedContent || "",
+      jobWidth: enq.planWidth || enq.width || 0,
+      jobHeight: enq.planHeight || 0,
+      width: enq.planWidth || enq.width || 0,
+      actualWidth: enq.planWidth || enq.width || 0,
+      actualHeight: enq.planHeight || 0,
+      noOfColors: totalColors,
+      printType: (["Surface Print", "Reverse Print", "Combination"].includes(enq.printType) ? enq.printType : "Surface Print") as "Surface Print" | "Reverse Print" | "Combination",
+      quantity: enq.quantity,
+      unit: enq.uom,
+      salesPerson: enq.salesPersonName || "",
+      salesType: enq.salesType === "Domestic" ? "Local" : enq.salesType === "Exporter" ? "Export" : enq.salesType || "Local",
+      concernPerson: enq.concernPerson || "",
+      topSeal:         enq.topSeal         || 0,
+      bottomSeal:      enq.bottomSeal      || 0,
+      sideSeal:        enq.sideSeal        || 0,
+      centerSealWidth: enq.centerSeal      || 0,
+      gusset:          enq.gusset          || 0,
+      sideGusset:      enq.sideGusset      || 0,
+      seamingArea:     enq.seamingArea     || 0,
+      transparentArea: enq.transparentArea || 0,
+      secondaryLayers: secondaryLayers.length > 0 ? secondaryLayers : p.secondaryLayers,
+      processes: processRows.length > 0 ? processRows : p.processes,
+    }));
+  };
+
   // ── Category auto-load ────────────────────────────────
   /** Apply a category: auto-build ply rows from its plyConsumables definition */
   const applyCategory = (categoryId: string) => {
@@ -2402,6 +2569,7 @@ export default function GravureEstimationPage() {
       ConcernPerson:   form.concernPerson   || "",
       EstimationDate:  form.date            || new Date().toISOString().slice(0, 10),
       SourceProductMasterID: loadedFromCatalog || "",
+      Attachments: [] as { name: string; mimeType: string; url: string; label: string }[],
       SecondaryLayers: form.secondaryLayers,
       Processes:       form.processes,
       ColorShades:     colorShades,
@@ -2412,6 +2580,26 @@ export default function GravureEstimationPage() {
 
     setSaving(true);
     try {
+      // Upload new attachments (with fileObj) to S3, keep existing S3 URLs as-is
+      const uploadedAttachments = await Promise.all(
+        attachments.map(async (a) => {
+          if (a.fileObj) {
+            try {
+              const { "Content-Type": _ct, ...hdrs } = authHeaders();
+              const fd = new FormData();
+              fd.append("file", a.fileObj, a.fileObj.name);
+              const uploadRes = await fetch(`${API_BASE}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+              if (uploadRes.ok) {
+                const { publicUrl } = await uploadRes.json();
+                return { name: a.name, mimeType: a.mimeType, url: publicUrl, label: a.label ?? "" };
+              }
+            } catch { /* keep existing url on error */ }
+          }
+          return { name: a.name, mimeType: a.mimeType, url: a.url, label: a.label ?? "" };
+        })
+      );
+      payload.Attachments = uploadedAttachments;
+
       let res: any;
       if (editing) {
         payload.BookingID        = editing.id;
@@ -2480,7 +2668,19 @@ export default function GravureEstimationPage() {
     { key: "unit",          header: "Unit", render: r => <span className="text-xs text-gray-600">{r.unit}</span> },
     { key: "perMeterRate",  header: "Rate (Rupees)", render: r => <span className="font-semibold">₹{r.perMeterRate}</span> },
     { key: "totalAmount",   header: "Total (₹)", render: r => <span className="font-bold text-gray-800">₹{r.totalAmount.toLocaleString()}</span> },
-    { key: "status",        header: "Status", render: r => statusBadge(r.status), sortable: true },
+    {
+      key: "status" as any, header: "Status", sortable: true,
+      render: r => (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {statusBadge(r.status)}
+          {bookedEstIds.has(r.id) && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-green-100 text-green-700 border border-green-300 rounded text-[9px] font-bold whitespace-nowrap">
+              <BookCheck size={9} /> Order Booked
+            </span>
+          )}
+        </div>
+      ),
+    },
   ];
 
   // ── Inline table cell style ───────────────────────────────
@@ -2521,6 +2721,42 @@ export default function GravureEstimationPage() {
             <div className="flex items-center gap-1.5 justify-end">
               <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
               <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintRow(row)}>Print</Button>
+              {bookedEstIds.has(row.id) ? (
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-green-700 bg-green-100 border border-green-300 rounded-lg whitespace-nowrap cursor-not-allowed">
+                  <BookCheck size={11} /> Order Booked
+                </span>
+              ) : (
+                <button
+                  title="Book Order"
+                  onClick={() => {
+                    markEstimationBooked(row.id);
+                    localStorage.setItem("ajsw_order_from_estimation", JSON.stringify({
+                      estimationId:   row.id,
+                      estimationNo:   row.estimationNo,
+                      customerId:     row.customerId,
+                      customerName:   row.customerName,
+                      jobName:        row.jobName,
+                      categoryId:     row.categoryId,
+                      categoryName:   row.categoryName,
+                      content:        row.content,
+                      substrate:      row.substrateName,
+                      jobWidth:       row.jobWidth,
+                      jobHeight:      row.jobHeight,
+                      noOfColors:     row.noOfColors,
+                      printType:      row.printType,
+                      quantity:       row.quantity,
+                      unit:           row.unit,
+                      perMeterRate:   row.perMeterRate,
+                      salesPerson:    row.salesPerson,
+                      salesType:      row.salesType,
+                    }));
+                    router.push("/gravure/orders");
+                  }}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition whitespace-nowrap"
+                >
+                  <ShoppingCart size={11} /> Book Order
+                </button>
+              )}
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEditFromApi(row)}>Edit</Button>
               <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
             </div>
@@ -2561,8 +2797,18 @@ export default function GravureEstimationPage() {
                </div>
                <div>
                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest block mb-1">Estimation Date</label>
-                 <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 select-none">
-                   {(() => { const dt = new Date(form.date || new Date()); return isNaN(dt.getTime()) ? new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); })()}
+                 <div className="flex items-center gap-2">
+                   <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 select-none">
+                     {(() => { const dt = new Date(form.date || new Date()); return isNaN(dt.getTime()) ? new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); })()}
+                   </div>
+                   <button
+                     type="button"
+                     onClick={() => { setEnquiryPickerSearch(""); setEnquiryPickerOpen(true); }}
+                     title="Pick from Enquiry"
+                     className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition shadow-sm whitespace-nowrap"
+                   >
+                     <FileText size={13} /> Enquiry
+                   </button>
                  </div>
                </div>
              </div>
@@ -2612,88 +2858,7 @@ export default function GravureEstimationPage() {
                    onChange={e => {
                      const enq = gravureEnqList.find(x => x.id === e.target.value);
                      if (!enq) { f("enquiryId", ""); return; }
-
-                     // ── Category & consumables helper (needs categories from context) ──
-                     const plyTypeMap: Record<string, string> = {
-                       film: "Film", ink: "Printing", adhesive: "Lamination",
-                     };
-
-                     // Build SecondaryLayers from enquiry plys (empty consumableItems — user adds manually)
-                     const secondaryLayers: SecondaryLayer[] = (enq.plys || []).map((ply, i) => {
-                       const plyType = plyTypeMap[ply.itemQuality] || "Film";
-                       return {
-                         id: Math.random().toString(),
-                         layerNo: i + 1,
-                         plyType,
-                         itemSubGroup: "",
-                         density: 0,
-                         thickness: ply.thickness || 0,
-                         gsm: ply.gsm || 0,
-                         consumableItems: [],
-                       };
-                     });
-
-                     // Build process rows from enquiry process names
-                     const processRows: GravureEstimationProcess[] = (enq.processes || [])
-                       .map(name => {
-                         const pm = ROTO_PROCESSES.find(p => p.name === name);
-                         if (!pm) return null;
-                         const pmMachineIds: string[] = (pm as any).machineIds || [];
-                         const autoMachineId = pmMachineIds.length === 1
-                           ? pmMachineIds[0]
-                           : (pmMachineIds.length === 0 ? ((pm as any).machineId || "") : "");
-                         const autoMachine = PRINT_MACHINES.find((m: any) => m.id === autoMachineId);
-                         return {
-                           processId: pm.id,
-                           processName: pm.name,
-                           chargeUnit: pm.chargeUnit,
-                           rate: parseFloat(pm.rate) || 0,
-                           qty: 0,
-                           setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0,
-                           amount: 0,
-                           machineId:   autoMachineId,
-                           machineName: autoMachine?.name || (pm as any).machineMasterName || "",
-                           machineIds:  pmMachineIds,
-                         } as GravureEstimationProcess;
-                       })
-                       .filter((x): x is GravureEstimationProcess => x !== null);
-
-                     // Total colors from plan window (fallback to noOfColors)
-                     const totalColors = (enq.frontColors || 0) + (enq.backColors || 0) || enq.noOfColors;
-
-                     const cat = categories.find(c => c.id === enq.categoryId);
-
-                     setForm(p => ({
-                       ...p,
-                       enquiryId: enq.id,
-                       enquiryNo: enq.enquiryNo,
-                       customerId: enq.customerId,
-                       customerName: enq.customerName,
-                       jobName: enq.jobName,
-                       // Category & Content
-                       categoryId: enq.categoryId,
-                       categoryName: enq.categoryName || cat?.name || "",
-                       content: enq.selectedContent || "",
-                       // Dimensions
-                       jobWidth: enq.planWidth || enq.width || 0,
-                       jobHeight: enq.planHeight || 0,
-                       width: enq.planWidth || enq.width || 0,
-                       actualWidth: (enq.planWidth || enq.width || 0),
-                       actualHeight: (enq.planHeight || 0),
-                       // Print info
-                       noOfColors: totalColors,
-                       printType: (["Surface Print", "Reverse Print", "Combination"].includes(enq.printType) ? enq.printType : "Surface Print") as "Surface Print" | "Reverse Print" | "Combination",
-                       // Quantity
-                       quantity: enq.quantity,
-                       unit: enq.uom,
-                       // Sales info
-                       salesPerson: enq.salesPersonName || "",
-                       salesType: enq.salesType === "Domestic" ? "Local" : enq.salesType === "Exporter" ? "Export" : enq.salesType || "Local",
-                       concernPerson: enq.concernPerson || "",
-                       // Allocation
-                       secondaryLayers,
-                       processes: processRows,
-                     }));
+                     applyEnquiry(enq);
                    }}
                    options={[{ value: "", label: "-- Direct Estimation --" }, ...gravureEnqList.map(e => ({ value: e.id, label: `${e.enquiryNo} – ${e.customerName}` }))]}
                  />
@@ -7060,6 +7225,94 @@ export default function GravureEstimationPage() {
           </Modal>
         );
       })()}
+
+      {/* ══ ENQUIRY PICKER MODAL ════════════════════════════════ */}
+      <Modal open={enquiryPickerOpen} onClose={() => setEnquiryPickerOpen(false)} title="Select Enquiry" size="xl">
+        <div className="mb-3">
+          <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl bg-gray-50">
+            <Search size={14} className="text-gray-400" />
+            <input
+              autoFocus
+              value={enquiryPickerSearch}
+              onChange={e => setEnquiryPickerSearch(e.target.value)}
+              placeholder="Search by enquiry no, customer, job name…"
+              className="flex-1 text-sm bg-transparent outline-none text-gray-700 placeholder-gray-400"
+            />
+            {enquiryPickerSearch && (
+              <button onClick={() => setEnquiryPickerSearch("")}><X size={13} className="text-gray-400" /></button>
+            )}
+          </div>
+        </div>
+
+        <div className="overflow-auto max-h-[60vh]">
+          <table className="min-w-full text-xs">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                {["Enquiry No", "Date", "Customer", "Job Name", "Colors", "Qty", "Status", ""].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap border-b border-gray-200">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {gravureEnqList
+                .filter(e => {
+                  if (!enquiryPickerSearch.trim()) return true;
+                  const q = enquiryPickerSearch.toLowerCase();
+                  return (
+                    e.enquiryNo.toLowerCase().includes(q) ||
+                    e.customerName.toLowerCase().includes(q) ||
+                    e.jobName.toLowerCase().includes(q)
+                  );
+                })
+                .map(enq => (
+                  <tr
+                    key={enq.id}
+                    className="hover:bg-purple-50 cursor-pointer transition"
+                    onClick={() => applyEnquiry(enq)}
+                  >
+                    <td className="px-3 py-2.5">
+                      <span className="font-mono font-bold text-purple-700 text-[11px]">{enq.enquiryNo}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-gray-500">{enq.date}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-800">{enq.customerName}</td>
+                    <td className="px-3 py-2.5 text-gray-700">{enq.jobName}</td>
+                    <td className="px-3 py-2.5">
+                      {enq.noOfColors > 0 && (
+                        <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full font-semibold">{enq.noOfColors}C</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-gray-700">
+                      {enq.quantity > 0 ? `${Number(enq.quantity).toLocaleString()} ${enq.uom}` : "—"}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        enq.status === "Pending"   ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
+                        enq.status === "Estimated" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                        enq.status === "Converted" ? "bg-green-50 text-green-700 border-green-200" :
+                        "bg-red-50 text-red-600 border-red-200"
+                      }`}>{enq.status}</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <button
+                        onClick={e => { e.stopPropagation(); applyEnquiry(enq); }}
+                        className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition whitespace-nowrap"
+                      >
+                        <ArrowRight size={11} /> Select
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              {gravureEnqList.length === 0 && (
+                <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400 text-xs">No gravure enquiries found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
+          <span className="text-xs text-gray-400">{gravureEnqList.length} gravure enquiries</span>
+          <Button variant="secondary" onClick={() => setEnquiryPickerOpen(false)}>Cancel</Button>
+        </div>
+      </Modal>
 
       {/* ══ CATALOG PICKER MODAL ════════════════════════════════ */}
       <Modal open={catalogPickerOpen} onClose={() => setCatalogPickerOpen(false)} title="Pick from Product Catalog" size="xl">

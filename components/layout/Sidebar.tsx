@@ -63,7 +63,7 @@ const navItems: NavItem[] = [
   },
   {
     label: "Masters", icon: Settings2, children: [
-      { label: "Product Category Master", href: "/masters/categories",  icon: Boxes },
+      { label: "Finish Goods Category Master", href: "/masters/categories",  icon: Boxes },
       { label: "Item Master",             href: "/masters/items",        icon: FlaskConical },
       { label: "Ledger Master",           href: "/masters/employees",    icon: UserCheck },
       { label: "Process Master",          href: "/masters/processes",    icon: Workflow },

@@ -383,7 +383,7 @@ export default function CategoryMasterPage() {
   // Ã¢"â‚¬Ã¢"â‚¬ Save Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const saveCategory = async () => {
     setSubmitAttempted(true);
-    if (!form.CategoryName.trim()) { setError("Category Name is required."); return; }
+    if (!form.CategoryName.trim()) { setError("Finish Goods Category Name is required."); return; }
     setSaving(true);
     setError("");
     try {
@@ -579,7 +579,7 @@ export default function CategoryMasterPage() {
   // Ã¢"â‚¬Ã¢"â‚¬ FORM VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   if (view === "form") {
     const tabs = [
-      { key: "detail" as const, label: "Category Detail" },
+      { key: "detail" as const, label: "Finish Goods Category Detail" },
       { key: "content" as const, label: "Content Allocation" },
       { key: "coa" as const, label: "COA Parameters" },
       { key: "ply" as const, label: "Ply Configuration" },
@@ -592,8 +592,8 @@ export default function CategoryMasterPage() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div>
-              <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Category Master</p>
-              <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Category" : "New Category"}</h2>
+              <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Finish Goods Category Master</p>
+              <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Finish Goods Category" : "New Finish Goods Category"}</h2>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
@@ -602,7 +602,7 @@ export default function CategoryMasterPage() {
               <button onClick={saveCategory} disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                Save Category
+                Save Finish Goods Category
               </button>
             </div>
           </div>
@@ -641,10 +641,10 @@ export default function CategoryMasterPage() {
                   {activeTab === "detail" && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div>
-                        <SectionTitle title="Category Identity" />
+                        <SectionTitle title="Finish Goods Category Identity" />
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="md:col-span-2">
-                            <Field label="Category Name" required>
+                            <Field label="Finish Goods Category Name" required>
                               <input type="text" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
                                 placeholder="e.g. Gravure - Solvent Base 2 Ply" className={ic(submitAttempted && !form.CategoryName.trim())} />
                             </Field>
@@ -1033,7 +1033,7 @@ export default function CategoryMasterPage() {
                           <button onClick={saveCategory} disabled={saving}
                             className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                            Save Category
+                            Save Finish Goods Category
                           </button>
                         </div>
                       </div>
@@ -1052,14 +1052,7 @@ export default function CategoryMasterPage() {
   // Ã¢"â‚¬Ã¢"â‚¬ LIST VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
   const columns: Column<CategoryRow>[] = [
     { key: "CategoryID", header: "ID", sortable: true },
-    { key: "CategoryName", header: "Category Name", sortable: true },
-    {
-      key: "SegmentName", header: "Segment",
-      render: r => r.SegmentName
-        ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.SegmentName}</span>
-        : <span className="text-gray-400">—</span>,
-    },
-    { key: "Layer", header: "Ply", render: r => r.Layer || <span className="text-gray-400">—</span> },
+    { key: "CategoryName", header: "Finish Goods Category Name", sortable: true },
     { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">—</span> },
   ];
 
@@ -1067,36 +1060,22 @@ export default function CategoryMasterPage() {
     <div className="max-w-6xl mx-auto space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Category Master</h2>
+          <h2 className="text-xl font-bold text-gray-800">Finish Goods Category Master</h2>
           <p className="text-sm text-gray-500">
             {loading ? "Loading..." : `${filtered.length} of ${categories.length} categories`}
           </p>
         </div>
         <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Category
+          <Plus size={16} /> Add Finish Goods Category
         </button>
       </div>
 
-      {/* Segment filter pills */}
-      {uniqueSegments.length > 1 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Segment</span>
-            {uniqueSegments.map(s => (
-              <button key={s} onClick={() => setFilterSegment(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterSegment === s ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                {s === "All" ? "All Segments" : s}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <DataTable
           data={filtered}
           columns={columns}
-          searchKeys={["CategoryName", "SegmentName"]}
+          searchKeys={["CategoryName"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
               <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>

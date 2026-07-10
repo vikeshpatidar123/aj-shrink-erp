@@ -39,37 +39,66 @@ interface SessionCtx {
 type ChatMode = "all" | "manager" | "production" | "dispatch" | "sales";
 interface UserCtx { userName: string; isAdmin: boolean; roleName: string; }
 
+// FlexiBot suggestions
+interface SuggestionItem {
+  text: string;
+  query: string;
+}
+interface SuggestionGroup {
+  category: string;
+  label: string;
+  icon: string;
+  items: SuggestionItem[];
+}
+
 // ─── Quick prompt catalog ─────────────────────────────────────────────────────
 
 interface QuickPrompt { icon: string; label: string; query: string; group: string }
 
 const ALL_PROMPTS: QuickPrompt[] = [
-  { group: "Orders",     icon: "📦", label: "Pending Orders",       query: "Show pending orders"              },
-  { group: "Orders",     icon: "🕐", label: "Recent Orders",        query: "Show recent orders"               },
-  { group: "Orders",     icon: "🔄", label: "Pending Production",   query: "Orders pending production dikhao" },
-  { group: "Job Cards",  icon: "🔧", label: "Open Job Cards",       query: "Show pending job cards"           },
-  { group: "Job Cards",  icon: "✅", label: "Released Jobs",        query: "Released jobs dikhao"             },
-  { group: "Job Cards",  icon: "📅", label: "Unreleased Jobs",      query: "Pending schedule release dikhao"  },
-  { group: "Estimation", icon: "📝", label: "Pending Estimations",  query: "Pending estimations dikhao"       },
-  { group: "Estimation", icon: "🆕", label: "Recent Estimations",   query: "Recent estimations dikhao"        },
-  { group: "Catalog",    icon: "📋", label: "Search Catalog",       query: "catalog"                          },
-  { group: "Catalog",    icon: "👤", label: "Client Catalog",       query: "catalog by client"                },
-  { group: "Artwork",    icon: "🎨", label: "Pending Artwork",      query: "Pending artwork dikhao"           },
-  { group: "Dispatch",   icon: "🚚", label: "Dispatch Pending",     query: "Dispatch pending dikhao"          },
-  { group: "Dispatch",   icon: "📬", label: "Recent Dispatches",    query: "Recent dispatches dikhao"         },
-  { group: "Ink",        icon: "🖌️", label: "Pending Ink SPR",     query: "Pending ink SPR dikhao"           },
-  { group: "Inventory",  icon: "📊", label: "Check Stock",          query: "stock"                            },
-  { group: "Inventory",  icon: "🏭", label: "All Machines",         query: "All machines dikhao"              },
-  { group: "Workflow",   icon: "🔗", label: "Orders No Job Card",   query: "Orders without job card dikhao"   },
-  { group: "Workflow",   icon: "⚡", label: "Dispatch Ready Jobs",  query: "Dispatch ready completed jobs"    },
-  { group: "Workflow",   icon: "🔍", label: "Job Workflow",         query: "job workflow"                     },
-  { group: "Workflow",   icon: "📈", label: "Order Workflow",       query: "order workflow"                   },
-  { group: "Manager",    icon: "📊", label: "Ops Dashboard",        query: "Aaj ka operations summary dikhao" },
-  { group: "Manager",    icon: "🏆", label: "Top Active Clients",   query: "Top active clients dikhao"        },
-  { group: "Manager",    icon: "🖨️", label: "Machine Load",        query: "Machine load summary dikhao"      },
-  { group: "Manager",    icon: "🕰️", label: "Oldest Open Orders",  query: "Oldest open orders dikhao"        },
-  { group: "Manager",    icon: "🚨", label: "Stuck / Overdue Jobs", query: "Stuck overdue jobs dikhao"        },
-  { group: "Manager",    icon: "📅", label: "Await Schedule",       query: "Jobs awaiting schedule dikhao"    },
+  // Orders
+  { group: "Orders",     icon: "📦", label: "Pending Orders",    query: "Show pending orders"               },
+  { group: "Orders",     icon: "🕐", label: "Recent Orders",     query: "Show recent orders"                },
+  { group: "Orders",     icon: "🔄", label: "Pend. Production",  query: "Show orders pending production"    },
+  { group: "Orders",     icon: "🔗", label: "No Job Card",       query: "Show orders without job card"      },
+  // Job Cards
+  { group: "Job Cards",  icon: "🔧", label: "Open Job Cards",   query: "Show pending job cards"            },
+  { group: "Job Cards",  icon: "✅", label: "Released Jobs",    query: "Show released jobs"                },
+  { group: "Job Cards",  icon: "📅", label: "Await Schedule",   query: "Show jobs awaiting schedule"       },
+  { group: "Job Cards",  icon: "🚨", label: "Stuck / Overdue",  query: "Show stuck overdue jobs"           },
+  // Estimation
+  { group: "Estimation", icon: "📝", label: "Pending Ests.",    query: "Show pending estimations"          },
+  { group: "Estimation", icon: "🆕", label: "Recent Ests.",     query: "Show recent estimations"           },
+  // Catalog
+  { group: "Catalog",    icon: "📋", label: "All Catalogs",     query: "Show all catalogs"                 },
+  { group: "Catalog",    icon: "👤", label: "By Client",        query: "catalog for client"                },
+  // Artwork
+  { group: "Artwork",    icon: "🎨", label: "Pending Artwork",  query: "Show pending artwork"              },
+  { group: "Artwork",    icon: "⏳", label: "Shade Production", query: "Show pending shade production"     },
+  // Dispatch
+  { group: "Dispatch",   icon: "🚚", label: "Dispatch Pending", query: "Show dispatch pending"             },
+  { group: "Dispatch",   icon: "📬", label: "Recent Dispatches",query: "Show recent dispatches"            },
+  { group: "Dispatch",   icon: "⚡", label: "Dispatch Ready",   query: "Show dispatch ready completed jobs"},
+  // Ink
+  { group: "Ink",        icon: "🖌️", label: "Pending Ink SPR", query: "Show pending ink SPR"              },
+  { group: "Ink",        icon: "⏳", label: "Shade Production", query: "Show pending shade production"     },
+  // Inventory
+  { group: "Inventory",  icon: "📊", label: "Browse Stock",     query: "Show stock items"                  },
+  { group: "Inventory",  icon: "🏭", label: "All Machines",     query: "Show all machines"                 },
+  // Workflow — cross-cutting status views (no entity number needed)
+  { group: "Workflow",   icon: "🔗", label: "No Job Card",      query: "Show orders without job card"      },
+  { group: "Workflow",   icon: "⚡", label: "Dispatch Ready",   query: "Show dispatch ready completed jobs"},
+  { group: "Workflow",   icon: "📅", label: "Await Schedule",   query: "Show jobs awaiting schedule"       },
+  { group: "Workflow",   icon: "🚨", label: "Stuck / Overdue",  query: "Show stuck overdue jobs"           },
+  { group: "Workflow",   icon: "🎨", label: "Pending Artwork",  query: "Show pending artwork"              },
+  { group: "Workflow",   icon: "🖨️", label: "Machine Load",    query: "Show machine load summary"         },
+  // Manager — 6 daily-use prompts (3 rows, fits visible area without scrolling)
+  { group: "Manager",    icon: "📊", label: "Ops Dashboard",      query: "Show operations summary"           },
+  { group: "Manager",    icon: "⚡", label: "Dispatch Ready",     query: "Show dispatch ready completed jobs"},
+  { group: "Manager",    icon: "🔧", label: "Open Job Cards",    query: "Show pending job cards"            },
+  { group: "Manager",    icon: "🎨", label: "Pending Artwork",    query: "Show pending artwork"              },
+  { group: "Manager",    icon: "🖨️", label: "Machine Load",      query: "Show machine load summary"         },
+  { group: "Manager",    icon: "🏆", label: "Top Clients",        query: "Show top active clients"           },
 ];
 
 const PROMPT_GROUPS = ["Manager", "Orders", "Job Cards", "Estimation", "Catalog", "Artwork", "Dispatch", "Ink", "Inventory", "Workflow"];
@@ -77,7 +106,7 @@ const PROMPT_GROUPS = ["Manager", "Orders", "Job Cards", "Estimation", "Catalog"
 // Phase 6 — mode → visible group subset
 const MODE_GROUPS: Record<ChatMode, string[]> = {
   all:        ["Manager", "Orders", "Job Cards", "Estimation", "Catalog", "Artwork", "Dispatch", "Ink", "Inventory", "Workflow"],
-  manager:    ["Manager", "Workflow", "Orders", "Job Cards", "Dispatch"],
+  manager:    ["Manager", "Workflow", "Orders", "Job Cards", "Dispatch", "Artwork", "Ink"],
   production: ["Job Cards", "Artwork", "Ink", "Inventory", "Workflow"],
   dispatch:   ["Dispatch", "Inventory", "Job Cards"],
   sales:      ["Orders", "Estimation", "Catalog"],
@@ -99,6 +128,96 @@ function downloadCSV(data: Record<string, unknown>[], filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function copyResultText(data: Record<string, unknown>[], intent: string) {
+  const s = (v: unknown) => String(v ?? "—");
+  let lines: string[];
+  if (intent === "ops.machineLoad") {
+    lines = data.map(r => `${s(r.MachineName)}: ${s(r.ActiveJobCount)} active, ${s(r.InProgressCount)} in-progress`);
+  } else if (intent === "ops.topClients") {
+    lines = data.map(r => `${s(r.CustomerName)}: ${s(r.ActiveJobCount)} jobs, ${s(r.DispatchReadyCount)} dispatch-ready`);
+  } else if (intent.includes("order") || intent === "ops.oldestOrders" || intent === "ops.noJobCard") {
+    lines = data.map(r => `${s(r.SalesOrderNo)} | ${s(r.CustomerName)} | ${s(r.Status ?? r.OrderStatus)} | ${s(r.OrderDate)}`);
+  } else if (intent.startsWith("jobcard") || intent === "ops.stuckJobs" || intent === "ops.awaitSchedule"
+          || intent === "ops.dispatchReady" || intent === "dispatch.pending") {
+    lines = data.map(r => `${s(r.JobBookingNo ?? r.JobCardNo)} | ${s(r.CustomerName)} | ${s(r.JobStatus ?? r.Status)} | ${s(r.PlannedDate ?? r.OrderDate ?? "")}`);
+  } else {
+    lines = data.map(r => Object.values(r).slice(0, 4).map(v => s(v)).join(" | "));
+  }
+  try { navigator.clipboard.writeText(lines.join("\n")); } catch { /* ignore — clipboard API may be unavailable */ }
+}
+
+// ─── ERP navigation contract ─────────────────────────────────────────────────
+// Maps chatbot intent + result row → filtered ERP page URL.
+// All navigation logic lives here — no ad-hoc routing in individual cards.
+function buildERPLink(intent: string, row: Record<string, unknown>): string | null {
+  const enc = (v: string) => encodeURIComponent(v);
+  const order   = String(row.SalesOrderNo ?? row.OrderNo ?? "").trim();
+  const job     = String(row.JobBookingNo ?? row.JobCardNo ?? "").trim();
+  const client  = String(row.CustomerName ?? "").trim();
+  const cat     = String(row.CatalogNo ?? "").trim();
+  const machine = String(row.MachineName ?? "").trim();
+
+  // Orders
+  if (intent.startsWith("order") || intent === "ops.oldestOrders" || intent === "ops.noJobCard" || intent === "client.orders") {
+    if (order)  return `/gravure/orders?search=${enc(order)}`;
+    if (client) return `/gravure/orders?search=${enc(client)}`;
+    return "/gravure/orders";
+  }
+  // Schedule release — awaiting schedule or released jobs → job-schedule-release page
+  if (intent === "ops.awaitSchedule" || intent === "schedule.released") {
+    if (job) return `/gravure/job-schedule-release?search=${enc(job)}`;
+    if (client) return `/gravure/job-schedule-release?search=${enc(client)}`;
+    return "/gravure/job-schedule-release";
+  }
+  // Work orders / job cards
+  if (intent.startsWith("jobcard") || intent === "ops.stuckJobs" || intent === "ops.dispatchReady"
+   || intent === "client.activeJobs" || intent === "client.dispatchReady"
+   || intent === "machine.activeJobs" || intent === "catalog.activeJobs") {
+    if (job)     return `/gravure/workorder?search=${enc(job)}`;
+    if (order)   return `/gravure/workorder?search=${enc(order)}`;
+    if (machine) return `/gravure/workorder?search=${enc(machine)}`;
+    if (client)  return `/gravure/workorder?search=${enc(client)}`;
+    return "/gravure/workorder";
+  }
+  // Artwork
+  if (intent.startsWith("artwork") || intent === "order.artworkStatus" || intent === "ops.artworkPending" || intent === "client.artworkPending") {
+    if (job)    return `/gravure/artwork-management?search=${enc(job)}`;
+    if (order)  return `/gravure/artwork-management?search=${enc(order)}`;
+    if (client) return `/gravure/artwork-management?search=${enc(client)}`;
+    return "/gravure/artwork-management";
+  }
+  // Dispatch
+  if (intent.startsWith("dispatch")) {
+    return "/gravure/dispatch";
+  }
+  // Catalog
+  if (intent.startsWith("catalog")) {
+    if (cat)    return `/gravure/product-catalog?search=${enc(cat)}`;
+    if (client) return `/gravure/product-catalog?search=${enc(client)}`;
+    return "/gravure/product-catalog";
+  }
+  // Estimation
+  if (intent.startsWith("estimation")) {
+    if (client) return `/gravure/estimation?search=${enc(client)}`;
+    return "/gravure/estimation";
+  }
+  // Ink / Shade
+  if (intent.startsWith("ink")) {
+    return "/gravure/ink-kitchen";
+  }
+  // Machine load → show machine's active jobs in workorder page
+  if (intent === "ops.machineLoad" || intent === "master.machine") {
+    if (machine) return `/gravure/workorder?search=${enc(machine)}`;
+    return "/gravure/workorder";
+  }
+  // Top clients → client's orders
+  if (intent === "ops.topClients") {
+    if (client) return `/gravure/orders?search=${enc(client)}`;
+    return "/gravure/orders";
+  }
+  return null;
 }
 
 // ─── Shared sub-components ────────────────────────────────────────────────────
@@ -127,7 +246,7 @@ function StageBadge({ stage }: { stage: string }) {
 
 // ─── Result card components ───────────────────────────────────────────────────
 
-function OrderCard({ row }: { row: Record<string, unknown> }) {
+function OrderCard({ row, erpUrl }: { row: Record<string, unknown>; erpUrl?: string }) {
   const status = String(row.Status ?? "");
   return (
     <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs shadow-sm">
@@ -145,11 +264,14 @@ function OrderCard({ row }: { row: Record<string, unknown> }) {
           {Number(row.LineCount ?? 0) > 0 && <span>{Number(row.LineCount)} item{Number(row.LineCount) > 1 ? "s" : ""}</span>}
           {String(row.PONo ?? "") && <span>PO: {String(row.PONo)}</span>}
         </div>
-        {Number(row.AgeDays ?? 0) > 0 && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${Number(row.AgeDays) > 30 ? "bg-red-100 text-red-600" : Number(row.AgeDays) > 14 ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
-            {Number(row.AgeDays)}d old
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {Number(row.AgeDays ?? 0) > 0 && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${Number(row.AgeDays) > 30 ? "bg-red-100 text-red-600" : Number(row.AgeDays) > 14 ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-500"}`}>
+              {Number(row.AgeDays)}d old
+            </span>
+          )}
+          {erpUrl && <Link href={erpUrl} className="text-[9px] text-teal-600 hover:text-teal-800 font-semibold">Open →</Link>}
+        </div>
       </div>
     </div>
   );
@@ -191,7 +313,7 @@ function ClientCard({ row }: { row: Record<string, unknown> }) {
   );
 }
 
-function JobCardCard({ row }: { row: Record<string, unknown> }) {
+function JobCardCard({ row, erpUrl }: { row: Record<string, unknown>; erpUrl?: string }) {
   const status = String(row.Status ?? "Open");
   return (
     <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs shadow-sm">
@@ -208,13 +330,14 @@ function JobCardCard({ row }: { row: Record<string, unknown> }) {
         {!!row.SalesOrderNo  && <span>SO: {String(row.SalesOrderNo)}</span>}
         {Number(row.NoOfColors ?? 0) > 0 && <span>{Number(row.NoOfColors)}C</span>}
       </div>
-      {Number(row.DaysOverdue ?? 0) > 0 && (
-        <div className="mt-1">
+      <div className="flex items-center justify-between mt-1">
+        {Number(row.DaysOverdue ?? 0) > 0 ? (
           <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-red-100 text-red-600">
             {Number(row.DaysOverdue)}d overdue
           </span>
-        </div>
-      )}
+        ) : <span />}
+        {erpUrl && <Link href={erpUrl} className="text-[9px] text-teal-600 hover:text-teal-800 font-semibold">Open →</Link>}
+      </div>
     </div>
   );
 }
@@ -253,16 +376,19 @@ function DispatchCard({ row }: { row: Record<string, unknown> }) {
       </div>
       <div className="text-gray-800 font-medium truncate">{String(row.JobName ?? "—")}</div>
       <div className="text-gray-500 text-[10px] truncate">{String(row.CustomerName ?? "")}</div>
-      <div className="flex gap-3 text-gray-400 mt-1 flex-wrap text-[10px]">
-        {!!row.SalesOrderNo  && <span>SO: {String(row.SalesOrderNo)}</span>}
-        {!!row.CatalogNo     && <span>PC: {String(row.CatalogNo)}</span>}
-        {Number(row.OrderQuantity ?? 0) > 0 && <span>{Number(row.OrderQuantity).toLocaleString()} {String(row.Unit ?? "")}</span>}
+      <div className="flex items-center justify-between mt-1">
+        <div className="flex gap-3 text-gray-400 flex-wrap text-[10px]">
+          {!!row.SalesOrderNo  && <span>SO: {String(row.SalesOrderNo)}</span>}
+          {!!row.CatalogNo     && <span>PC: {String(row.CatalogNo)}</span>}
+          {Number(row.OrderQuantity ?? 0) > 0 && <span>{Number(row.OrderQuantity).toLocaleString()} {String(row.Unit ?? "")}</span>}
+        </div>
+        <Link href="/gravure/dispatch" className="text-[9px] text-teal-600 hover:text-teal-800 font-semibold shrink-0">Open →</Link>
       </div>
     </div>
   );
 }
 
-function ArtworkCard({ row }: { row: Record<string, unknown> }) {
+function ArtworkCard({ row, erpUrl }: { row: Record<string, unknown>; erpUrl?: string }) {
   const stage    = String(row.Stage ?? row.CurrentStage ?? "Artwork Pending");
   const isGrouped = "TotalColors" in row;
   return (
@@ -284,6 +410,11 @@ function ArtworkCard({ row }: { row: Record<string, unknown> }) {
           {!!row.ColorNo             && <span>Color {String(row.ColorNo)}</span>}
           {!!row.ArtworkReceivedDate && <span>Received: {String(row.ArtworkReceivedDate)}</span>}
           {!!row.CylinderExpectedDate && <span>Cyl ETA: {String(row.CylinderExpectedDate)}</span>}
+        </div>
+      )}
+      {erpUrl && (
+        <div className="mt-1 text-right">
+          <Link href={erpUrl} className="text-[9px] text-pink-600 hover:text-pink-800 font-semibold">Open Artwork →</Link>
         </div>
       )}
     </div>
@@ -308,7 +439,7 @@ function InkCard({ row }: { row: Record<string, unknown> }) {
   );
 }
 
-function ScheduleCard({ row }: { row: Record<string, unknown> }) {
+function ScheduleCard({ row, erpUrl }: { row: Record<string, unknown>; erpUrl?: string }) {
   const status = String(row.Status ?? "Open");
   return (
     <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs shadow-sm">
@@ -318,12 +449,15 @@ function ScheduleCard({ row }: { row: Record<string, unknown> }) {
       </div>
       <div className="text-gray-800 font-medium truncate">{String(row.JobName ?? "—")}</div>
       <div className="text-gray-500 text-[10px] truncate">{String(row.CustomerName ?? "")}</div>
-      <div className="flex gap-3 text-gray-400 mt-1 flex-wrap text-[10px]">
-        {!!row.MachineName && <span>🖨 {String(row.MachineName)}</span>}
-        {!!row.PlannedDate  && <span>📅 {String(row.PlannedDate)}</span>}
-        {Number(row.ReleasedProcessCount ?? 0) > 0 && (
-          <span className="text-teal-600">{Number(row.ReleasedProcessCount)} process released</span>
-        )}
+      <div className="flex items-center justify-between mt-1">
+        <div className="flex gap-3 text-gray-400 flex-wrap text-[10px]">
+          {!!row.MachineName && <span>🖨 {String(row.MachineName)}</span>}
+          {!!row.PlannedDate  && <span>📅 {String(row.PlannedDate)}</span>}
+          {Number(row.ReleasedProcessCount ?? 0) > 0 && (
+            <span className="text-teal-600">{Number(row.ReleasedProcessCount)} released</span>
+          )}
+        </div>
+        {erpUrl && <Link href={erpUrl} className="text-[9px] text-blue-600 hover:text-blue-800 font-semibold shrink-0">Open Schedule →</Link>}
       </div>
     </div>
   );
@@ -443,12 +577,12 @@ function OpsSummaryCard({ row, onQuery }: { row: Record<string, unknown>; onQuer
   const metrics = [
     { label: "Open Orders",     value: Number(row.OpenOrders       ?? 0), color: "bg-teal-50 text-teal-700",     query: "Show pending orders"                       },
     { label: "Active Jobs",     value: Number(row.ActiveJobs        ?? 0), color: "bg-orange-50 text-orange-700", query: "Show pending job cards"                    },
-    { label: "Dispatch Ready",  value: Number(row.DispatchReadyJobs ?? 0), color: "bg-green-50 text-green-700",   query: "Dispatch pending dikhao"                   },
-    { label: "Pending Est.",    value: Number(row.PendingEstimations ?? 0), color: "bg-purple-50 text-purple-700",query: "Pending estimations dikhao"                },
-    { label: "Artwork Pending", value: Number(row.JobsWithPendingArtwork ?? 0), color: "bg-pink-50 text-pink-700", query: "Pending artwork dikhao"                  },
-    { label: "Await Schedule",  value: Number(row.JobsAwaitingSchedule ?? 0), color: "bg-yellow-50 text-yellow-700", query: "Jobs awaiting schedule dikhao"          },
-    { label: "No Job Card",     value: Number(row.OrdersWithoutJobCard ?? 0), color: "bg-red-50 text-red-600",   query: "Orders without job card dikhao"            },
-    { label: "Dispatch 7d",     value: Number(row.DispatchedLast7Days  ?? 0), color: "bg-blue-50 text-blue-700", query: "Recent dispatches dikhao"                  },
+    { label: "Dispatch Ready",  value: Number(row.DispatchReadyJobs ?? 0), color: "bg-green-50 text-green-700",   query: "Show dispatch pending"                     },
+    { label: "Pending Est.",    value: Number(row.PendingEstimations ?? 0), color: "bg-purple-50 text-purple-700",query: "Show pending estimations"                  },
+    { label: "Artwork Pending", value: Number(row.JobsWithPendingArtwork ?? 0), color: "bg-pink-50 text-pink-700", query: "Show pending artwork"                    },
+    { label: "Await Schedule",  value: Number(row.JobsAwaitingSchedule ?? 0), color: "bg-yellow-50 text-yellow-700", query: "Show jobs awaiting schedule"            },
+    { label: "No Job Card",     value: Number(row.OrdersWithoutJobCard ?? 0), color: "bg-red-50 text-red-600",   query: "Show orders without job card"              },
+    { label: "Dispatch 7d",     value: Number(row.DispatchedLast7Days  ?? 0), color: "bg-blue-50 text-blue-700", query: "Show recent dispatches"                    },
   ];
   return (
     <div className="bg-white border border-gray-100 rounded-lg px-3 py-2.5 shadow-sm">
@@ -463,19 +597,19 @@ function OpsSummaryCard({ row, onQuery }: { row: Record<string, unknown>; onQuer
         ))}
       </div>
       <div className="flex gap-1 mt-2 flex-wrap items-center">
-        <button onClick={() => onQuery("Top active clients dikhao")}
+        <button onClick={() => onQuery("Show top active clients")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-teal-50 hover:border-teal-300 text-gray-500 transition-colors">
           Top Clients
         </button>
-        <button onClick={() => onQuery("Machine load dikhao")}
+        <button onClick={() => onQuery("Show machine load summary")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-violet-50 hover:border-violet-300 text-gray-500 transition-colors">
           Machine Load
         </button>
-        <button onClick={() => onQuery("Oldest open orders dikhao")}
+        <button onClick={() => onQuery("Show oldest open orders")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-red-50 hover:border-red-300 text-gray-500 transition-colors">
           Oldest Orders
         </button>
-        <button onClick={() => onQuery("Stuck overdue jobs dikhao")}
+        <button onClick={() => onQuery("Show stuck overdue jobs")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-orange-50 hover:border-orange-300 text-gray-500 transition-colors">
           Stuck Jobs
         </button>
@@ -522,15 +656,17 @@ function ClientWorkloadCard({ row, onQuery }: { row: Record<string, unknown>; on
         {onHold > 0    && <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-red-50 text-red-500">{onHold} on hold</span>}
         {dispReady > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-teal-50 text-teal-700">{dispReady} dispatch ready</span>}
       </div>
-      <div className="flex gap-1 mt-1.5">
-        <button onClick={() => onQuery(name + " ke active jobs")}
+      <div className="flex gap-1 mt-1.5 flex-wrap items-center">
+        <button onClick={() => onQuery(name + " active jobs")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-orange-50 hover:border-orange-300 text-gray-500 transition-colors">Jobs</button>
         {dispReady > 0 && (
-          <button onClick={() => onQuery(name + " ke dispatch ready jobs")}
+          <button onClick={() => onQuery(name + " dispatch ready jobs")}
             className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-teal-50 hover:border-teal-300 text-gray-500 transition-colors">Dispatch Ready</button>
         )}
-        <button onClick={() => onQuery(name + " ka summary dikhao")}
+        <button onClick={() => onQuery(name + " summary")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-purple-50 hover:border-purple-300 text-gray-500 transition-colors">Summary</button>
+        <Link href={`/gravure/orders?search=${encodeURIComponent(name)}`}
+          className="ml-auto text-[9px] text-teal-600 hover:text-teal-800 font-semibold">Open Orders →</Link>
       </div>
     </div>
   );
@@ -561,9 +697,11 @@ function MachineLoadCard({ row, onQuery }: { row: Record<string, unknown>; onQue
         {openJobs > 0 && <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-gray-100 text-gray-500">{openJobs} open</span>}
         {earliest     && <span className="px-1.5 py-0.5 rounded text-[9px] bg-amber-50 text-amber-600">Next: {earliest}</span>}
       </div>
-      <div className="mt-1.5">
-        <button onClick={() => onQuery(name + " ke active jobs dikhao")}
+      <div className="flex items-center gap-1 mt-1.5">
+        <button onClick={() => onQuery(name + " active jobs")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-violet-50 hover:border-violet-300 text-gray-500 transition-colors">Active Jobs</button>
+        <Link href={`/gravure/workorder?search=${encodeURIComponent(name)}`}
+          className="ml-auto text-[9px] text-violet-600 hover:text-violet-800 font-semibold">Open Jobs →</Link>
       </div>
     </div>
   );
@@ -625,25 +763,23 @@ function OrderWorkflowCard({ row, onQuery }: { row: Record<string, unknown>; onQ
       </div>
 
       {/* Quick drill-down */}
-      <div className="flex gap-1 mt-2 flex-wrap">
-        <button onClick={() => onQuery(soNo + " ke linked jobs dikhao")}
+      <div className="flex gap-1 mt-2 flex-wrap items-center">
+        <button onClick={() => onQuery(soNo + " linked jobs")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-teal-50 hover:border-teal-300 text-gray-500 transition-colors">
           Linked Jobs
         </button>
-        <button onClick={() => onQuery(soNo + " ka artwork status")}
+        <button onClick={() => onQuery(soNo + " artwork status")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-pink-50 hover:border-pink-300 text-gray-500 transition-colors">
           Artwork
         </button>
-        <button onClick={() => onQuery(soNo + " ka dispatch status")}
+        <button onClick={() => onQuery(soNo + " dispatch status")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-blue-50 hover:border-blue-300 text-gray-500 transition-colors">
           Dispatch
         </button>
-        {client && (
-          <button onClick={() => onQuery(client + " ka summary dikhao")}
-            className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-purple-50 hover:border-purple-300 text-gray-500 transition-colors">
-            Client Summary
-          </button>
-        )}
+        <Link href={`/gravure/orders?search=${encodeURIComponent(soNo)}`}
+          className="ml-auto text-[9px] text-teal-600 hover:text-teal-800 font-semibold">
+          Open Order →
+        </Link>
       </div>
     </div>
   );
@@ -706,23 +842,27 @@ function JobWorkflowCard({ row, onQuery }: { row: Record<string, unknown>; onQue
       </div>
 
       {/* Drill-down chips */}
-      <div className="flex gap-1 flex-wrap">
+      <div className="flex gap-1 flex-wrap items-center">
         {soNo && (
-          <button onClick={() => onQuery(soNo + " ka workflow dikhao")}
+          <button onClick={() => onQuery(soNo + " workflow")}
             className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-teal-50 hover:border-teal-300 text-gray-500 transition-colors">
             Order Flow
           </button>
         )}
         {client && (
-          <button onClick={() => onQuery(client + " ke active jobs")}
+          <button onClick={() => onQuery(client + " active jobs")}
             className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-orange-50 hover:border-orange-300 text-gray-500 transition-colors">
             Client Jobs
           </button>
         )}
-        <button onClick={() => onQuery(jcNo + " ka artwork status dikhao")}
+        <button onClick={() => onQuery(jcNo + " artwork status")}
           className="text-[9px] px-1.5 py-0.5 rounded border border-gray-200 hover:bg-pink-50 hover:border-pink-300 text-gray-500 transition-colors">
           Artwork
         </button>
+        <Link href={`/gravure/workorder?search=${encodeURIComponent(jcNo)}`}
+          className="ml-auto text-[9px] text-orange-600 hover:text-orange-800 font-semibold">
+          Open Job Card →
+        </Link>
       </div>
     </div>
   );
@@ -766,10 +906,189 @@ function LinkedJobMiniCard({ row }: { row: Record<string, unknown> }) {
   );
 }
 
+// ─── OrderDetailCard — grouped full order with product lines (Phase 7) ────────
+
+function OrderDetailCard({ rows, onQuery }: { rows: Record<string, unknown>[]; onQuery: (q: string) => void }) {
+  if (!rows.length) return null;
+  const h           = rows[0];
+  const soNo        = String(h.SalesOrderNo ?? "—");
+  const customer    = String(h.CustomerName ?? "—");
+  const orderDate   = String(h.OrderDate    ?? "");
+  const status      = String(h.OrderStatus  ?? "");
+  const poNo        = String(h.PONo         ?? "");
+  const totalAmt    = Number(h.TotalAmount  ?? 0);
+  const totalJobs   = Number(h.TotalJobCards  ?? 0);
+  const doneJobs    = Number(h.CompletedJobs  ?? 0);
+  const inProg      = Number(h.InProgressJobs ?? 0);
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-lg shadow-sm overflow-hidden text-xs">
+      {/* Header */}
+      <div className="bg-teal-50 px-3 py-2 border-b border-gray-100">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-bold text-teal-700">{soNo}</span>
+          <StatusBadge status={status} />
+        </div>
+        <div className="text-gray-800 font-medium mt-0.5">{customer}</div>
+        <div className="flex gap-3 text-[10px] text-gray-400 mt-1 flex-wrap">
+          {orderDate && <span>📅 {orderDate}</span>}
+          {poNo      && <span>PO: {poNo}</span>}
+          {totalAmt > 0 && <span className="text-gray-700 font-semibold">₹{totalAmt.toLocaleString("en-IN")}</span>}
+        </div>
+        {totalJobs > 0 && (
+          <div className="flex gap-2 mt-1 text-[10px]">
+            <span className="text-gray-500">{totalJobs} job card{totalJobs > 1 ? "s" : ""}</span>
+            {doneJobs > 0  && <span className="text-green-600">{doneJobs} done</span>}
+            {inProg > 0    && <span className="text-blue-600">{inProg} in progress</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Product lines */}
+      <div className="divide-y divide-gray-50">
+        {rows.map((row, idx) => {
+          const name    = String(row.ProductName ?? "");
+          const cat     = String(row.CatalogNo   ?? "");
+          if (!name && !cat) return null;
+          const qty     = Number(row.OrderQty    ?? 0);
+          const unit    = String(row.Unit        ?? "Kg");
+          const colors  = Number(row.NoOfColors  ?? 0);
+          const w       = Number(row.JobWidth    ?? 0);
+          const hh      = Number(row.JobHeight   ?? 0);
+          const sub     = String(row.Substrate   ?? "");
+          const struct  = String(row.StructureType ?? "");
+          const del     = String(row.DeliveryDate  ?? "");
+          const jtype   = String(row.JobType     ?? "");
+          const prio    = String(row.JobPriority ?? "Normal");
+          return (
+            <div key={idx} className="px-3 py-1.5">
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-medium text-gray-800 truncate">{name || cat}</span>
+                {cat && <span className="text-[10px] font-mono text-indigo-600 shrink-0 ml-1">{cat}</span>}
+              </div>
+              <div className="flex gap-3 text-[10px] text-gray-400 mt-0.5 flex-wrap">
+                {qty > 0    && <span className="font-semibold text-gray-700">{qty.toLocaleString()} {unit}</span>}
+                {colors > 0 && <span>{colors}C</span>}
+                {w > 0      && <span>{w}×{hh}mm</span>}
+                {sub        && <span>{sub}</span>}
+                {struct     && <span>{struct}</span>}
+                {del        && <span>Del: {del}</span>}
+                {jtype && jtype !== "New"     && <span className="text-orange-500">{jtype}</span>}
+                {prio  && prio  !== "Normal"  && <span className="text-red-500">{prio}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Quick actions */}
+      <div className="flex gap-1.5 px-3 py-2 border-t border-gray-100 bg-gray-50 flex-wrap">
+        <button onClick={() => onQuery(soNo + " ink details")}
+          className="text-[9px] px-2 py-1 rounded bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors">
+          🖌 Ink Details
+        </button>
+        <button onClick={() => onQuery(soNo + " job cards")}
+          className="text-[9px] px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors">
+          🔧 Job Cards
+        </button>
+        <button onClick={() => onQuery(soNo + " artwork status")}
+          className="text-[9px] px-2 py-1 rounded bg-pink-100 text-pink-700 hover:bg-pink-200 transition-colors">
+          🎨 Artwork
+        </button>
+        <button onClick={() => onQuery(soNo + " dispatch status")}
+          className="text-[9px] px-2 py-1 rounded bg-teal-100 text-teal-700 hover:bg-teal-200 transition-colors">
+          🚚 Dispatch
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── InkDetailCard — per-job-SPR row for order.inkDetail / job.inkDetail ──────
+
+function InkDetailCard({ row }: { row: Record<string, unknown> }) {
+  const isProduced    = Number(row.IsShadeProduced ?? 0) === 1;
+  const hasSPR        = !!row.SPRNo && String(row.SPRNo) !== "";
+  const pendingShades = Number(row.PendingShadeCount ?? 0);
+  const readyShades   = Number(row.ReadyShadeCount   ?? 0);
+  const jobStatus     = String(row.JobStatus ?? "Open");
+  return (
+    <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-0.5">
+        <span className="font-bold text-orange-700">{String(row.JobNo ?? row.JobBookingNo ?? "—")}</span>
+        <StatusBadge status={jobStatus} />
+      </div>
+      <div className="text-gray-800 font-medium truncate">{String(row.JobName ?? "—")}</div>
+      <div className="text-gray-500 text-[10px] truncate">{String(row.CustomerName ?? "")}</div>
+
+      {/* Color summary row */}
+      <div className="flex gap-2 mt-1 text-[10px] flex-wrap">
+        {Number(row.TotalColors ?? 0) > 0 && (
+          <span className="text-gray-400">{Number(row.TotalColors)}C total</span>
+        )}
+        {readyShades > 0   && <span className="text-green-600 font-semibold">{readyShades} ready</span>}
+        {pendingShades > 0 && <span className="text-red-500 font-semibold">{pendingShades} shade pending</span>}
+        {!!row.SalesOrderNo && <span className="text-gray-400">SO: {String(row.SalesOrderNo)}</span>}
+      </div>
+
+      {/* SPR detail */}
+      {hasSPR && (
+        <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="font-semibold text-orange-600 text-[10px]">{String(row.SPRNo)}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isProduced ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
+              {isProduced ? "Produced" : "Pending"}
+            </span>
+          </div>
+          <div className="text-gray-700 text-[10px] font-medium">{String(row.ShadeName ?? "")}</div>
+          <div className="flex gap-3 text-gray-400 text-[10px] mt-0.5 flex-wrap">
+            {!!row.InkCode    && <span className="font-mono">{String(row.InkCode)}</span>}
+            {!!row.InkName    && <span>{String(row.InkName)}</span>}
+            {Number(row.RequiredQty ?? 0) > 0 && <span>Qty: {Number(row.RequiredQty)} Kg</span>}
+            {!!row.RequiredDate && <span>By: {String(row.RequiredDate)}</span>}
+            {!!row.RecipeNo   && <span>Recipe: {String(row.RecipeNo)}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PendingShadeCard — reuses InkCard shape but adds DaysOverdue ─────────────
+
+function PendingShadeCard({ row }: { row: Record<string, unknown> }) {
+  const days = Number(row.DaysOverdue ?? 0);
+  return (
+    <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 text-xs shadow-sm">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <span className="font-bold text-orange-600">{String(row.SPRNo ?? "—")}</span>
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-yellow-100 text-yellow-700">Pending</span>
+      </div>
+      <div className="text-gray-800 font-medium truncate">{String(row.ShadeName ?? "—")}</div>
+      <div className="flex gap-3 text-gray-400 mt-1 flex-wrap text-[10px]">
+        {!!row.JobBookingNo  && <span>JC: {String(row.JobBookingNo)}</span>}
+        {!!row.CustomerName  && <span>{String(row.CustomerName)}</span>}
+        {!!row.InkCode       && <span className="font-mono">{String(row.InkCode)}</span>}
+        {Number(row.RequiredQty ?? 0) > 0 && <span>Qty: {Number(row.RequiredQty)} Kg</span>}
+        {!!row.RequiredDate  && <span>By: {String(row.RequiredDate)}</span>}
+        {!!row.RecipeNo      && <span>Recipe: {String(row.RecipeNo)}</span>}
+      </div>
+      {days > 0 && (
+        <div className="mt-1">
+          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${days > 7 ? "bg-red-100 text-red-600" : "bg-yellow-100 text-yellow-700"}`}>
+            {days}d overdue
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Result card dispatcher ───────────────────────────────────────────────────
 
 function ResultCards({ result, onQuery }: { result: BotResult; onQuery: (q: string) => void }) {
-  if (!result.data?.length) return null;
+  const data = Array.isArray(result.data) ? result.data : [];
+  if (!data.length) return null;
   const i = result.intent ?? "";
 
   // Phase 4 workflow intents
@@ -782,8 +1101,13 @@ function ResultCards({ result, onQuery }: { result: BotResult; onQuery: (q: stri
   const isTopClients    = i === "ops.topClients";
   const isMachineLoad   = i === "ops.machineLoad";
 
+  // Phase 7 order/ink detail intents
+  const isOrderDetail   = i === "order.detail";
+  const isInkDetail     = i === "order.inkDetail" || i === "job.inkDetail";
+  const isPendingShade  = i === "ink.pendingShades";
+
   // Standard + Phase 3 intents
-  const isOrder          = (i.startsWith("order") && !isOrderWorkflow && !isLinkedJobs) || i === "client.orders" || i === "ops.oldestOrders" || i === "ops.noJobCard";
+  const isOrder          = (i.startsWith("order") && !isOrderWorkflow && !isLinkedJobs && !isOrderDetail) || i === "client.orders" || i === "ops.oldestOrders" || i === "ops.noJobCard";
   const isCatalog        = i.startsWith("catalog");
   const isClient         = i === "client.details";
   const isJobCard        = i.startsWith("jobcard") || i === "client.activeJobs" || i === "client.dispatchReady"
@@ -793,7 +1117,7 @@ function ResultCards({ result, onQuery }: { result: BotResult; onQuery: (q: stri
   const isDispatchPending = i === "dispatch.pending" || i === "ops.dispatchReady";
   const isDispatchDone   = i === "dispatch.recent" || i === "dispatch.byOrder" || i === "dispatch.byClient" || i === "order.dispatchStatus";
   const isArtwork        = i.startsWith("artwork") || i === "order.artworkStatus" || i === "ops.artworkPending";
-  const isInk            = i.startsWith("ink");
+  const isInk            = i === "ink.pendingSPR";
   const isSchedule       = i.startsWith("schedule");
   const isStock          = i.startsWith("stock");
   const isMachine        = i === "master.machine";
@@ -802,37 +1126,51 @@ function ResultCards({ result, onQuery }: { result: BotResult; onQuery: (q: stri
   const isDispatch = isDispatchPending || isDispatchDone;
   const known = isOrderWorkflow || isLinkedJobs || isJobWorkflow
              || isOpsSummary || isTopClients || isMachineLoad
+             || isOrderDetail || isInkDetail || isPendingShade
              || isOrder || isCatalog || isClient || isJobCard || isEst || isDispatch
              || isArtwork || isInk || isSchedule || isStock || isMachine || isClientSummary;
 
   // ops.summary returns a single row — render directly without slice loop
-  if (isOpsSummary && result.data.length > 0) {
+  if (isOpsSummary && data.length > 0) {
     return (
       <div className="mt-2">
-        <OpsSummaryCard row={result.data[0]} onQuery={onQuery} />
+        <OpsSummaryCard row={data[0]} onQuery={onQuery} />
+      </div>
+    );
+  }
+
+  // order.detail — grouped single card showing all product lines
+  if (isOrderDetail && data.length > 0) {
+    return (
+      <div className="mt-2">
+        <OrderDetailCard rows={data} onQuery={onQuery} />
       </div>
     );
   }
 
   return (
     <div className="mt-2 space-y-1.5">
-      {result.data.slice(0, 10).map((row, idx) => (
+      {data.slice(0, 10).map((row, idx) => {
+        const erpUrl = buildERPLink(i, row) ?? undefined;
+        return (
         <div key={idx}>
           {isOrderWorkflow && <OrderWorkflowCard  row={row} onQuery={onQuery} />}
           {isLinkedJobs    && <LinkedJobMiniCard  row={row} />}
           {isJobWorkflow   && <JobWorkflowCard    row={row} onQuery={onQuery} />}
           {isTopClients    && <ClientWorkloadCard row={row} onQuery={onQuery} />}
           {isMachineLoad   && <MachineLoadCard    row={row} onQuery={onQuery} />}
-          {isOrder         && <OrderCard          row={row} />}
+          {isOrder         && <OrderCard          row={row} erpUrl={erpUrl} />}
           {isCatalog       && <CatalogCard        row={row} />}
           {isClient        && <ClientCard         row={row} />}
-          {isJobCard       && <JobCardCard        row={row} />}
+          {isJobCard       && <JobCardCard        row={row} erpUrl={erpUrl} />}
           {isEst           && <EstimationCard     row={row} />}
           {isDispatchPending && <DispatchCard     row={row} />}
           {isDispatchDone  && <DispatchDoneCard   row={row} />}
-          {isArtwork       && <ArtworkCard        row={row} />}
+          {isArtwork       && <ArtworkCard        row={row} erpUrl={erpUrl} />}
           {isInk           && <InkCard            row={row} />}
-          {isSchedule      && <ScheduleCard       row={row} />}
+          {isInkDetail     && <InkDetailCard      row={row} />}
+          {isPendingShade  && <PendingShadeCard   row={row} />}
+          {isSchedule      && <ScheduleCard       row={row} erpUrl={erpUrl} />}
           {isStock         && <StockCard          row={row} />}
           {isMachine       && <MachineCard        row={row} />}
           {isClientSummary && <ClientSummaryCard  row={row} />}
@@ -847,18 +1185,28 @@ function ResultCards({ result, onQuery }: { result: BotResult; onQuery: (q: stri
             </div>
           )}
         </div>
-      ))}
-      {result.data.length > 8 && (
+        );
+      })}
+      {data.length > 8 && (
         <div className="text-center text-[10px] text-gray-400 py-1">
-          +{result.data.length - 8} more — open the module to see all
+          +{data.length - 8} more — open the module to see all
         </div>
       )}
-      {!isOpsSummary && result.data.length >= 3 && (
-        <button
-          onClick={() => downloadCSV(result.data, (result.intent ?? "export").replace(/\./g, "_") + ".csv")}
-          className="mt-0.5 text-[9px] text-gray-400 hover:text-teal-600 px-2 py-0.5 rounded border border-gray-200 hover:border-teal-300 transition-colors">
-          📥 Download CSV ({result.data.length} rows)
-        </button>
+      {!isOpsSummary && data.length >= 3 && (
+        <div className="flex gap-1 mt-0.5 flex-wrap">
+          <button
+            onClick={() => downloadCSV(data, (result.intent ?? "export").replace(/\./g, "_") + ".csv")}
+            className="text-[9px] text-gray-400 hover:text-teal-600 px-2 py-0.5 rounded border border-gray-200 hover:border-teal-300 transition-colors">
+            📥 Download CSV ({data.length} rows)
+          </button>
+          {(isTopClients || isMachineLoad || isJobCard || isOrder || isDispatchPending) && (
+            <button
+              onClick={() => copyResultText(data, i)}
+              className="text-[9px] text-gray-400 hover:text-teal-600 px-2 py-0.5 rounded border border-gray-200 hover:border-teal-300 transition-colors">
+              📋 Copy list
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -886,9 +1234,15 @@ function ClarificationCard({ result, onChoose }: { result: BotResult; onChoose: 
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ msg, onQuickReply }: { msg: ChatMessage; onQuickReply: (q: string) => void }) {
+function MessageBubble({ msg, onQuickReply, pinnedQueries, onTogglePin }: {
+  msg: ChatMessage;
+  onQuickReply: (q: string) => void;
+  pinnedQueries?: string[];
+  onTogglePin?: (q: string) => void;
+}) {
   const isUser = msg.role === "user";
   const r = msg.result;
+  const isPinned = pinnedQueries?.includes(msg.text) ?? false;
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
@@ -899,8 +1253,23 @@ function MessageBubble({ msg, onQuickReply }: { msg: ChatMessage; onQuickReply: 
       )}
       <div className={`max-w-[92%] flex flex-col ${isUser ? "items-end" : "items-start"}`}>
         {isUser ? (
-          <div className="bg-teal-600 text-white text-xs px-3 py-2 rounded-2xl rounded-tr-sm shadow-sm">
-            {msg.text}
+          <div className="group flex items-center gap-1">
+            {onTogglePin && (
+              <button
+                onClick={() => onTogglePin(msg.text)}
+                title={isPinned ? "Unpin" : "Pin this query"}
+                className={`text-[11px] transition-opacity shrink-0 ${
+                  isPinned
+                    ? "text-amber-400 opacity-100"
+                    : "text-gray-300 hover:text-amber-400 opacity-0 group-hover:opacity-100"
+                }`}
+              >
+                📌
+              </button>
+            )}
+            <div className="bg-teal-600 text-white text-xs px-3 py-2 rounded-2xl rounded-tr-sm shadow-sm">
+              {msg.text}
+            </div>
           </div>
         ) : (
           <div className="bg-gray-50 border border-gray-200 text-xs px-3 py-2 rounded-2xl rounded-tl-sm shadow-sm w-full">
@@ -1048,7 +1417,7 @@ function EmptyState({ onSend, chatMode, setChatMode, visibleGroups, recentQuerie
       </div>
 
       <div className="text-center mt-3 text-[10px] text-gray-400">
-        Hindi/English dono chalega — e.g. "ABC ke orders", "SO-1023 status"
+        Type anything — e.g. "ABC orders", "SO-1023 status", "pending artwork"
       </div>
     </div>
   );
@@ -1070,6 +1439,11 @@ export default function ERPChatBot() {
   const [userCtx, setUserCtx]     = useState<UserCtx | null>(null);
   const [recentQueries, setRecentQueries] = useState<string[]>([]);
   const [pinnedQueries, setPinnedQueries] = useState<string[]>([]);
+
+  // FlexiBot smart suggestions
+  const [suggestionGroups, setSuggestionGroups]   = useState<SuggestionGroup[]>([]);
+  const [activeSugCat, setActiveSugCat]           = useState<string>("");
+  const [sugExpanded, setSugExpanded]             = useState(false);
 
   // Load localStorage on mount
   useEffect(() => {
@@ -1125,6 +1499,22 @@ export default function ERPChatBot() {
     if (open) setTimeout(() => inputRef.current?.focus(), 150);
   }, [open]);
 
+  // Fetch personalized suggestions once when chat first opens
+  useEffect(() => {
+    if (!open || suggestionGroups.length > 0) return;
+    apiGet<string>("api/chat/suggestions")
+      .then(raw => {
+        try {
+          const parsed: SuggestionGroup[] = typeof raw === "string" ? JSON.parse(raw) : raw as unknown as SuggestionGroup[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSuggestionGroups(parsed);
+            setActiveSugCat(parsed[0].category);
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  }, [open]);
+
   const addMessage = (role: ChatRole, text: string, result?: BotResult) =>
     setMessages(prev => [...prev, { id: Date.now().toString() + Math.random(), role, text, result, ts: Date.now() }]);
 
@@ -1144,14 +1534,59 @@ export default function ERPChatBot() {
     if (Object.keys(updates).length) setCtx(prev => ({ ...prev, ...updates }));
   }, []);
 
+  // Detect pure knowledge/explanation questions that should go directly to FlexiBot,
+  // bypassing the ERP bot entirely. Pattern: "X kya hai?", "what is X", "explain X", etc.
+  const isKnowledgeQuestion = (q: string): boolean => {
+    const m = q.toLowerCase().trim();
+    const KNOWLEDGE_PATTERNS = [
+      /kya\s+h(ai|ota|oti|ote)\b/,   // kya hai, kya hota hai, kya hoti hai
+      /kyaa\s+h(ai|ota|oti|ote)\b/,  // kyaa hai
+      /\bwhat\s+is\b/,
+      /\bwhat\s+are\b/,
+      /\bhow\s+does\b/,
+      /\bhow\s+do\b/,
+      /\bexplain\b/,
+      /\btell\s+me\s+about\b/,
+      /\bdifference\s+between\b/,
+      /\bsamjhao\b/,
+      /\bbatao\b/,
+      /\bwhy\s+is\b/,
+      /\bwhen\s+to\s+use\b/,
+      /\bkab\s+use\b/,
+      /\bkya\s+hota\b/,
+      /\bkaise\s+hota\b/,
+      /\bkaise\s+kaam\b/,
+    ];
+    return KNOWLEDGE_PATTERNS.some(p => p.test(m));
+  };
+
+  const callFlexiBot = async (q: string): Promise<string | null> => {
+    try {
+      const raw = await apiPost<string>("api/chat/send-message", { message: q, mode: "general" });
+      let parsed: { message?: string } | null = null;
+      if (typeof raw === "string") {
+        try { parsed = JSON.parse(raw); } catch { parsed = null; }
+      } else {
+        parsed = raw as unknown as { message?: string };
+      }
+      return parsed?.message ?? null;
+    } catch { return null; }
+  };
+
   const sendQuery = useCallback(async (query: string) => {
     const q = query.trim();
     if (!q || loading) return;
-    addToRecent(q);
     setInput("");
     addMessage("user", q);
     setLoading(true);
+    console.debug("[ChatBot] query:", q, "ctx:", ctx);
     try {
+      // Knowledge question pattern detected → skip ERP bot, go directly to FlexiBot
+      if (isKnowledgeQuestion(q)) {
+        const flexiBotMsg = await callFlexiBot(q);
+        if (flexiBotMsg) { addMessage("bot", flexiBotMsg); return; }
+      }
+
       const raw = await apiPost<string>("api/gravure/chatbot/query", { query: q, ctx });
       // Backend double-wraps JSON — unwrap all layers
       let parsed: BotResult | null = null;
@@ -1167,11 +1602,24 @@ export default function ERPChatBot() {
       if (parsed && typeof parsed.choices === "string") {
         try { parsed.choices = JSON.parse(parsed.choices as unknown as string); } catch { parsed.choices = []; }
       }
-      if (parsed) updateCtx(parsed);
-      addMessage("bot", parsed?.message ?? "Kuch error aayi.", parsed ?? undefined);
+      // Ensure data is always an array
+      if (parsed && !Array.isArray(parsed.data)) parsed.data = [];
+      if (parsed && !Array.isArray(parsed.quickReplies)) parsed.quickReplies = [];
+      console.debug("[ChatBot] intent:", parsed?.intent, "rows:", parsed?.data?.length ?? 0);
+
+      // ERP bot couldn't understand → fall back to FlexiBot
+      if (parsed?.intent === "help" || parsed?.intent === "clarification") {
+        const flexiBotMsg = await callFlexiBot(q);
+        if (flexiBotMsg) { addMessage("bot", flexiBotMsg); return; }
+      }
+
+      // Only add to recent after a successful (non-null) response
+      if (parsed) { addToRecent(q); updateCtx(parsed); }
+      addMessage("bot", parsed?.message ?? "No response received.", parsed ?? undefined);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      addMessage("bot", "Request fail ho gayi: " + msg);
+      console.error("[ChatBot] request failed:", msg);
+      addMessage("bot", "Request failed: " + msg);
     } finally {
       setLoading(false);
     }
@@ -1294,7 +1742,13 @@ export default function ERPChatBot() {
             ) : (
               <>
                 {messages.map(msg => (
-                  <MessageBubble key={msg.id} msg={msg} onQuickReply={sendQuery} />
+                  <MessageBubble
+                    key={msg.id}
+                    msg={msg}
+                    onQuickReply={sendQuery}
+                    pinnedQueries={pinnedQueries}
+                    onTogglePin={togglePin}
+                  />
                 ))}
                 {loading && (
                   <div className="flex items-center gap-2 mb-3">
@@ -1311,6 +1765,71 @@ export default function ERPChatBot() {
             )}
           </div>
 
+          {/* Smart suggestion panel */}
+          {suggestionGroups.length > 0 && (
+            <div className="border-t border-gray-100 bg-gray-50/80 shrink-0">
+              {/* Category tab strip */}
+              <div className="flex items-center gap-0.5 px-2 pt-1.5 overflow-x-auto [scrollbar-width:none]">
+                <span className="text-[9px] text-gray-400 font-medium mr-1 shrink-0">💡</span>
+                {suggestionGroups.map(g => (
+                  <button
+                    key={g.category}
+                    onClick={() => { setActiveSugCat(g.category); setSugExpanded(true); }}
+                    className={`shrink-0 text-[9px] px-2 py-0.5 rounded-full font-semibold transition-colors border ${
+                      activeSugCat === g.category
+                        ? "bg-teal-600 text-white border-teal-600"
+                        : "bg-white text-gray-500 border-gray-200 hover:border-teal-400 hover:text-teal-600"
+                    }`}
+                  >
+                    {g.icon} {g.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setSugExpanded(e => !e)}
+                  className="shrink-0 ml-auto text-[9px] text-gray-400 hover:text-teal-600 px-1"
+                  title={sugExpanded ? "Collapse" : "Expand"}
+                >
+                  {sugExpanded ? "▲" : "▼"}
+                </button>
+              </div>
+
+              {/* Active category chips */}
+              {sugExpanded && (() => {
+                const group = suggestionGroups.find(g => g.category === activeSugCat);
+                if (!group) return null;
+                const catColors: Record<string, string> = {
+                  film:       "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100",
+                  client:     "bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100",
+                  order:      "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100",
+                  jobcard:    "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
+                  estimation: "bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100",
+                  artwork:    "bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100",
+                  dispatch:   "bg-green-50 text-green-700 border-green-200 hover:bg-green-100",
+                  ink:        "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100",
+                  machine:    "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100",
+                  dashboard:  "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100",
+                  knowledge:  "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100",
+                };
+                const cls = catColors[group.category] ?? "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100";
+                return (
+                  <div className="flex flex-wrap gap-1 px-2 pb-2 pt-1 max-h-[88px] overflow-y-auto [scrollbar-width:thin]">
+                    {group.items.map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { sendQuery(s.query); setSugExpanded(false); }}
+                        disabled={loading}
+                        title={s.text}
+                        className={`text-[9px] border rounded-full px-2 py-0.5 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed max-w-[200px] truncate ${cls}`}
+                      >
+                        {s.text}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Input row */}
           <div className="px-3 py-2.5 border-t border-gray-200 bg-white shrink-0">
             <div className="flex items-center gap-2">
@@ -1320,7 +1839,7 @@ export default function ERPChatBot() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKey}
-                placeholder="e.g. ABC estimation dikhao, SO-1023 status…"
+                placeholder="e.g. ABC orders, GRV-1234 ink details, pending artwork…"
                 disabled={loading}
                 className="flex-1 text-xs border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:border-transparent disabled:opacity-50 bg-gray-50 placeholder:text-gray-400"
               />

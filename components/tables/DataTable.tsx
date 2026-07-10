@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Search, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 export type Column<T> = {
@@ -22,13 +22,17 @@ interface DataTableProps<T> {
   scrollContainerClass?: string;
   /** Extra content rendered on the right side of the search bar (e.g. action buttons) */
   toolbar?: React.ReactNode;
+  /** Pre-fills the search box — used for chatbot deep-link navigation via ?search= query param */
+  initialSearch?: string;
 }
 
 export function DataTable<T>({
   data, columns, searchKeys = [], pageSize = 10, actions,
-  stickyHeader = false, scrollContainerClass, toolbar,
+  stickyHeader = false, scrollContainerClass, toolbar, initialSearch = "",
 }: DataTableProps<T>) {
-  const [search,      setSearch]      = useState("");
+  const [search,      setSearch]      = useState(initialSearch);
+  // Sync initialSearch on URL navigation (e.g. chatbot opens page with ?search=xxx)
+  useEffect(() => { if (initialSearch) { setSearch(initialSearch); setPage(1); } }, [initialSearch]);
   const [sortKey,     setSortKey]     = useState<string | null>(null);
   const [sortDir,     setSortDir]     = useState<"asc" | "desc">("asc");
   const [page,        setPage]        = useState(1);

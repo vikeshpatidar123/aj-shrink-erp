@@ -1,32 +1,34 @@
 "use client";
-import { useState } from "react";
-import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check, X, RefreshCw } from "lucide-react";
-import { customers, products, categories, items, CATEGORY_GROUP_SUBGROUP, SecondaryLayer, PlyConsumableItem } from "@/data/dummyData";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Plus, Eye, Pencil, Trash2, ClipboardList, ArrowRight, Check, X, RefreshCw, Copy } from "lucide-react";
+import { PlyConsumableItem } from "@/data/dummyData";
 import { useUnit } from "@/context/UnitContext";
-import { useEnquiries, CombinedEnquiry } from "@/context/EnquiryContext";
-import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
+import { useEnquiries, CombinedEnquiry, ProcessRef } from "@/context/EnquiryContext";
+import { useToast } from "@/components/ui/Toast";
+import { apiGet, apiGetSafe } from "@/lib/api";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
+import { useMasters } from "@/context/MastersContext";
 
 type BU = "Extrusion" | "Gravure";
 
-const FILM_ITEMS = items.filter(i => i.group === "Film" && i.active);
-const FILM_SUBGROUPS = Array.from(
-  new Map(FILM_ITEMS.filter(i => i.subGroup).map(i => [i.subGroup, { subGroup: i.subGroup, density: parseFloat(i.density) || 0, thicknesses: new Set<number>() }])).entries()
-).map(([subGroup, data]) => {
-  FILM_ITEMS.filter(i => i.subGroup === subGroup).forEach(i => { const t = parseFloat(i.thickness); if (!isNaN(t) && t > 0) data.thicknesses.add(t); });
-  return { subGroup, density: data.density, thicknesses: Array.from(data.thicknesses).sort((a, b) => a - b) };
-});
+// ─── Types ───────────────────────────────────────────────
+type Customer = { LedgerID: string; LedgerName: string; MailingName?: string };
+type Category = { CategoryID: string; CategoryName: string };
+type Content  = { ContentID: string; ContentName: string; ContentCaption: string };
+type SalesPerson = { LedgerID: string; LedgerName: string };
+type Process = { ProcessID: string; ProcessName: string };
 
 // ─── Blank form ───────────────────────────────────────────────
 const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
   date: new Date().toISOString().slice(0, 10),
   businessUnit: "Gravure",
   customerId: "", customerName: "",
-  jobName: "", quantity: 0, uom: "Kg",
+  jobName: "", quantity: 0, uom: "Meter",
   status: "Pending", remarks: "",
   productId: "", productName: "", width: 0, thickness: 0,
   printingRequired: false, printingColors: 0,
@@ -37,6 +39,8 @@ const blank: Omit<CombinedEnquiry, "id" | "enquiryNo"> = {
   salesPersonId: "", salesPersonName: "", salesType: "Domestic", concernPerson: "",
   planHeight: 0, planWidth: 0, frontColors: 4, backColors: 2,
   wastageType: "Machine Default", finishedFormat: "Roll Form", labelRoll: 0,
+  topSeal: 0, bottomSeal: 0, sideSeal: 0, centerSeal: 0,
+  gusset: 0, sideGusset: 0, sealWidth: 0, seamingArea: 0, transparentArea: 0,
   processes: [], plys: [], secondaryLayers: [],
 };
 
@@ -45,46 +49,137 @@ const BU_BADGE: Record<BU, string> = {
   Gravure: "bg-purple-50 text-purple-700 border-purple-200",
 };
 
-// ─── Section header ───────────────────────────────────────────
 const SH = ({ label }: { label: string }) => (
   <p className="text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-100 pb-1.5 mb-3">{label}</p>
 );
 
-// ─── Substrates list (Gravure) ────────────────────────────────
-const SUBSTRATES = ["BOPP 20μ", "BOPP 15μ", "PET 12μ", "CPP 30μ", "PVC 50μ", "Met PET 12μ", "OPS 40μ", "LDPE 40μ"];
-const STRUCTURES = ["BOPP+CPP", "PET+Dry Lam+PE", "BOPP+Met PET+CPP", "PVC Shrink", "BOPP+PE", "PET+CPP", "BOPP+BOPP"];
-const FINISHES = ["None", "Gloss OPV", "Matte OPV", "Heat Seal Coat", "Cold Seal", "UV Varnish"];
-// Must match processMasters[].name (module="Rotogravure") so estimation can find them by name
-const ALL_PROCESSES = [
-  "Cylinder Engraving", "Cylinder Chrome Plating",
-  "6-Color Roto Printing", "8-Color Roto Printing", "9-Color Roto Printing", "10-Color Roto Printing",
-  "Dry Bond Lamination", "Solventless Lamination", "Extrusion Lamination (PE)",
-  "Matte OPV Coating", "Gloss OPV Coating", "Heat Seal Coating",
-  "Slitting & Rewinding", "Log Slitting",
-  "3-Side Seal Pouch Making", "4-Side Seal Pouch Making", "Center Seal (Back Seal) Pouch", "Stand-up Pouch (SUP)", "Zip Lock Pouch",
-  "Inline Vision Inspection", "Final Inspection & Rewinding",
-];
-
+const SALES_TYPES = ["Domestic", "Exporter", "Service", "Direct"];
 
 export default function EnquiryPage() {
   const { unit: globalUnit } = useUnit();
-  const { enquiries: data, saveEnquiry, deleteEnquiry } = useEnquiries();
-  const [modalOpen, setModal] = useState(false);
-  const [viewRow, setViewRow] = useState<CombinedEnquiry | null>(null);
-  const [editing, setEditing] = useState<CombinedEnquiry | null>(null);
-  const [form, setForm] = useState<Omit<CombinedEnquiry, "id" | "enquiryNo">>({ ...blank });
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { enquiries: data, loading: listLoading, saveEnquiry, deleteEnquiry, refreshEnquiries } = useEnquiries();
+  const { showToast } = useToast();
 
-  const SALES_PERSONS = [
-    { id: "S1", name: "Rahul Sharma" },
-    { id: "S2", name: "Anil Verma" },
-    { id: "S3", name: "Priya Singh" },
-  ];
-  const SALES_TYPES = ["Domestic", "Exporter", "Service", "Direct"];
+  // ── Real item masters from API ─────────────────────────
+  const { filmItems: apiFilmItems, inkItems: apiInkItems } = useMasters();
+
+  const normalizeInkGroup = (g: string): string => {
+    const u = (g || "").toUpperCase();
+    if (u.includes("INK")) return "Ink";
+    if (u.includes("SOLVENT")) return "Solvent";
+    if (u.includes("ADHESIVE")) return "Adhesive";
+    if (u.includes("HARDNER") || u.includes("HARDENER")) return "Hardner";
+    return g;
+  };
+
+  const FILM_ITEMS = useMemo(() => {
+    const seen = new Set<string>();
+    return apiFilmItems
+      .map(i => ({
+        id: String(i.ItemID),
+        name: i.ItemDisplayName || i.ItemName,
+        group: "Film",
+        subGroup: i.ItemSubGroupName,
+        density: String(i.Density ?? 0),
+        thickness: String(i.Thickness ?? 0),
+        active: true,
+      }))
+      .filter(i => { if (seen.has(i.id)) return false; seen.add(i.id); return true; });
+  }, [apiFilmItems]);
+
+  const INK_ITEMS = useMemo(() => {
+    const seen = new Set<string>();
+    return apiInkItems
+      .map(i => ({
+        id: String(i.ItemID),
+        name: i.ItemName + (i.InkColour ? "/" + i.InkColour : ""),
+        group: normalizeInkGroup(i.ItemGroupName),
+        subGroup: i.ItemSubGroupName,
+        active: true,
+        DryGsM: i.DryGsM,
+        SolidPerc: i.SolidPerc,
+      }))
+      .filter(i => { if (seen.has(i.id)) return false; seen.add(i.id); return true; });
+  }, [apiInkItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const items = useMemo(() => [...FILM_ITEMS, ...INK_ITEMS], [FILM_ITEMS, INK_ITEMS]);
+
+  // ── Master data from API ───────────────────────────────
+  const [customers, setCustomers]       = useState<Customer[]>([]);
+  const [categories, setCategories]     = useState<Category[]>([]);
+  const [salesPersons, setSalesPersons] = useState<SalesPerson[]>([]);
+  const [allProcesses, setAllProcesses] = useState<Process[]>([]);
+  const [availableContents, setAvailableContents] = useState<Content[]>([]);
+  const [nextEnquiryNo, setNextEnquiryNo] = useState("—");
+
+  // ── Modal / form state ─────────────────────────────────
+  const [modalOpen, setModal]     = useState(false);
+  const [viewRow, setViewRow]     = useState<CombinedEnquiry | null>(null);
+  const [editing, setEditing]     = useState<CombinedEnquiry | null>(null);
+  const [form, setForm]           = useState<Omit<CombinedEnquiry, "id" | "enquiryNo">>({ ...blank });
+  const [deleteId, setDeleteId]   = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+  const [deleting, setDeleting]   = useState(false);
+  const [dimValues, setDimValues] = useState<DimValues>({});
 
   const f = (k: keyof typeof blank, v: unknown) => setForm(p => ({ ...p, [k]: v }));
+  const patchDim = (patch: Partial<DimValues>) => setDimValues(prev => ({ ...prev, ...patch }));
 
-  const isGrv = form.businessUnit === "Gravure";
+  const normalizeContentType = (content: string): string => {
+    const c = (content || "").toLowerCase().trim();
+    if (!c) return content;
+    if (c === "flat bottom pouch")  return "Flat Bottom Pouch";
+    if (c === "stand up pouch")     return "Stand Up Pouch";
+    if (c === "3 side seal sachet") return "3 Side Seal Sachet";
+    if (c === "gusset bag")         return "Gusset Bag";
+    if (c === "center seal pouch")  return "Center Seal Pouch";
+    if (c.includes("sleeve") && !c.includes("stretch"))                            return "Sleeve — Shrink";
+    if (c.includes("sleeve") && c.includes("stretch"))                             return "Sleeve — Stretch";
+    if (c.includes("wrap around"))                                                  return "Wrap Around Labels";
+    if (c.includes("shrink label") || c.includes("shrink film"))                   return "Shrink Labels";
+    if (c.includes("cut") && c.includes("stack"))                                  return "Cut & Stack Labels";
+    if (c.includes("in-mould") || c.includes("in mould"))                         return "In-Mould Labels";
+    if (c.includes("both side") && c.includes("gusset"))                           return "Gusset Bag";
+    if (c.includes("flat bottom") || (c.includes("3d") && c.includes("pouch")))   return "Flat Bottom Pouch";
+    if (c.includes("3 side") || c.includes("3-side") || c.includes("three side") || c.includes("sachet")) return "3 Side Seal Sachet";
+    if (c.includes("center seal") || c.includes("centre seal"))                    return "Center Seal Pouch";
+    if (c.includes("standup") || c.includes("stand up") || c.includes("stand-up")) return "Stand Up Pouch";
+    if (c.includes("zipper") && !c.includes("stand"))                              return "Stand Up Pouch";
+    if (c.includes("gusset") || c.includes("side gusset"))                         return "Gusset Bag";
+    if (c.includes("pouch") || c.includes("doy"))                                  return "3 Side Seal Sachet";
+    if (c.includes("lldpe") || c.includes("ldpe"))                                 return "Shrink Labels";
+    if (c.includes("laminate"))                                                     return "Laminate Roll";
+    if (c.includes("roll form") || c.includes("roll") || c.includes("film"))       return "Laminate Roll";
+    if (c.includes("bag") || c.includes("sack"))                                   return "Gusset Bag";
+    if (c.includes("label") || c.includes("sticker") || c.includes("tag"))         return "Wrap Around Labels";
+    return content;
+  };
+  const getDisplayContentType = (content: string): string =>
+    CONTENT_TYPE_CONFIG[content] ? content : normalizeContentType(content);
+
+  // ── Load enquiries + masters on mount ─────────────────
+  useEffect(() => { refreshEnquiries(); }, [refreshEnquiries]);
+
+  useEffect(() => {
+    apiGetSafe<Customer[]>("api/gravureestimationShrink/getcustomerlist")
+      .then(d => setCustomers(Array.isArray(d) ? d : []));
+
+    apiGetSafe<Category[]>("api/categorymasterShrink/getcategory")
+      .then(d => setCategories(Array.isArray(d) ? d : []));
+
+    apiGetSafe<SalesPerson[]>("api/gravureEnquiryShrink/getsalespersonlist")
+      .then(d => setSalesPersons(Array.isArray(d) ? d : []));
+
+    apiGetSafe<Process[]>("api/productcataloggravureShrink/getprocesslist")
+      .then(d => setAllProcesses(Array.isArray(d) ? d : []));
+  }, []);
+
+  const fetchContents = useCallback(async (categoryId: string) => {
+    setAvailableContents([]);
+    if (!categoryId) return;
+    const d = await apiGetSafe<Content[]>(`api/categorymasterShrink/getcategoryallocatedcontents/${categoryId}`);
+    setAvailableContents(Array.isArray(d) ? d : []);
+  }, []);
 
   // ── Ply helpers ──────────────────────────────────────────────
   const addPly = () => {
@@ -97,7 +192,7 @@ export default function EnquiryPage() {
   };
   const onPlyTypeChange = (idx: number, plyType: string) => {
     const layers = [...(form.secondaryLayers || [])];
-    layers[idx] = { ...layers[idx], plyType, itemSubGroup: "", density: 0, thickness: 0, gsm: 0 };
+    layers[idx] = { ...layers[idx], plyType, itemId: "", itemName: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0, consumableItems: [] };
     f("secondaryLayers", layers);
   };
   const addPlyConsumable = (idx: number) => {
@@ -117,53 +212,148 @@ export default function EnquiryPage() {
     layers[plyIdx].consumableItems = ci;
     f("secondaryLayers", layers);
   };
+  const clonePlyConsumable = (plyIdx: number, ciIdx: number) => {
+    const layers = [...(form.secondaryLayers || [])];
+    const layer = { ...layers[plyIdx] };
+    const source = layer.consumableItems[ciIdx];
+    const clone: PlyConsumableItem = { ...source, consumableId: Math.random().toString(), isClone: true };
+    layer.consumableItems = [
+      ...layer.consumableItems.slice(0, ciIdx + 1),
+      clone,
+      ...layer.consumableItems.slice(ciIdx + 1),
+    ];
+    layers[plyIdx] = layer;
+    f("secondaryLayers", layers);
+  };
 
-  // Derive available contents from selected category (from categories master)
-  const availableContents = form.categoryId
-    ? (categories.find(c => c.id === form.categoryId)?.contents || [])
-    : [];
   const contentSelected = !!form.selectedContent;
 
   // Filter table by global unit
   const displayData = data.filter(d => d.businessUnit === globalUnit);
 
-  const openAdd = () => {
+  const openAdd = async () => {
     setEditing(null);
     setForm({ ...blank, businessUnit: "Gravure", uom: "Meter" });
+    setAvailableContents([]);
+    setDimValues({});
     setModal(true);
+    try {
+      const res = await apiGet<{ EnquiryNo: string }>("api/gravureEnquiryShrink/getenquiryno");
+      setNextEnquiryNo(res?.EnquiryNo || "—");
+    } catch { setNextEnquiryNo("—"); }
   };
-  const openEdit = (row: CombinedEnquiry) => {
+
+  const openEdit = async (row: CombinedEnquiry) => {
     setEditing(row);
     const { id, enquiryNo, ...rest } = row;
     setForm(rest);
+    setNextEnquiryNo(enquiryNo);
+    setDimValues({
+      width:           row.planWidth   || 0,
+      layflatWidth:    row.planWidth   || 0,
+      height:          row.planHeight  || 0,
+      cutHeight:       row.planHeight  || 0,
+      topSeal:         row.topSeal     || 0,
+      bottomSeal:      row.bottomSeal  || 0,
+      sideSeal:        row.sideSeal    || 0,
+      centerSealWidth: row.centerSeal  || 0,
+      gusset:          row.gusset      || 0,
+      sideGusset:      row.sideGusset  || 0,
+      sealWidth:       row.sealWidth   || 0,
+      seamingArea:     row.seamingArea || 0,
+      transparentArea: row.transparentArea || 0,
+    });
     setModal(true);
+    if (row.categoryId) fetchContents(row.categoryId);
+    // Load processes + plys from getenquirybyid
+    type FullEnquiry = {
+      Processes?: { ProcessID: string; ProcessName: string }[];
+      Plys?: {
+        PlyID: string; LayerNo: number; PlyType: string; FilmSubGroup: string;
+        Density: number; Thickness: number; FilmGSM: number; ItemID: string; ItemName: string;
+        Consumables?: { ItemGroup: string; ItemSubGroup: string; ItemID: string; ItemName: string; FieldDisplayName: string; GSM: number; Rate: number; CoveragePct: number }[];
+      }[];
+    };
+    const full = await apiGetSafe<FullEnquiry>(`api/gravureEnquiryShrink/getenquirybyid/${row.id}`);
+    if (!full) return;
+
+    setForm(prev => ({
+      ...prev,
+      ...(full.Processes?.length
+        ? { processes: full.Processes!.map(p => ({ id: String(p.ProcessID), name: p.ProcessName })) }
+        : {}),
+      ...(full.Plys?.length
+        ? {
+            secondaryLayers: full.Plys!.map(p => ({
+              id: String(p.PlyID ?? Math.random()),
+              layerNo: Number(p.LayerNo ?? 1),
+              plyType: String(p.PlyType ?? ""),
+              itemSubGroup: String(p.FilmSubGroup ?? ""),
+              density: parseFloat(String(p.Density ?? "0")) || 0,
+              thickness: parseFloat(String(p.Thickness ?? "0")) || 0,
+              gsm: parseFloat(String(p.FilmGSM ?? "0")) || 0,
+              itemId: String(p.ItemID ?? ""),
+              itemName: String(p.ItemName ?? ""),
+              consumableItems: (p.Consumables ?? []).map(c => ({
+                consumableId: String(Math.random()),
+                fieldDisplayName: String(c.FieldDisplayName ?? ""),
+                itemGroup: String(c.ItemGroup ?? ""),
+                itemSubGroup: String(c.ItemSubGroup ?? ""),
+                itemId: String(c.ItemID ?? ""),
+                itemName: String(c.ItemName ?? ""),
+                gsm: parseFloat(String(c.GSM ?? "0")) || 0,
+                rate: parseFloat(String(c.Rate ?? "0")) || 0,
+                coveragePct: parseFloat(String(c.CoveragePct ?? "100")) || 100,
+              })),
+            })),
+          }
+        : {}),
+    }));
   };
 
-  const save = () => {
-    if (!form.customerId || !form.jobName || form.quantity <= 0) return;
-    if (editing) {
-      saveEnquiry({ ...form, id: editing.id, enquiryNo: editing.enquiryNo });
-    } else {
-      const unitCode = UNIT_CODE.Gravure;
-      const enquiryNo = generateCode(unitCode, MODULE_CODE.Enquiry, data.map(d => d.enquiryNo));
-      const id = `${unitCode}EQ${String(data.length + 1).padStart(3, "0")}`;
-      saveEnquiry({ ...form, id, enquiryNo });
+  const save = async () => {
+    if (!form.customerId) { showToast("error", "Validation", "Please select a Customer."); return; }
+    if (!form.jobName.trim()) { showToast("error", "Validation", "Job Name is required."); return; }
+    if (form.quantity <= 0) { showToast("error", "Validation", "Quantity must be greater than 0."); return; }
+
+    setSaving(true);
+    try {
+      await saveEnquiry({ ...form, id: editing?.id || "", enquiryNo: editing?.enquiryNo || "" });
+      showToast("success", "Saved", editing ? "Enquiry updated successfully." : "Enquiry saved successfully.");
+      setModal(false);
+    } catch (err) {
+      showToast("error", "Save Error", String(err));
+    } finally {
+      setSaving(false);
     }
-    setModal(false);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteId) return;
+    setDeleting(true);
+    try {
+      await deleteEnquiry(deleteId);
+      showToast("success", "Deleted", "Enquiry deleted.");
+      setDeleteId(null);
+    } catch (err) {
+      showToast("error", "Delete Error", String(err));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Stats
-  const total = data.length;
-  const pending = data.filter(d => d.status === "Pending").length;
-  const converted = data.filter(d => d.status === "Converted").length;
+  const total     = displayData.length;
+  const pending   = displayData.filter(d => d.status === "Pending").length;
+  const converted = displayData.filter(d => d.status === "Converted").length;
 
   const columns: Column<CombinedEnquiry>[] = [
-    { key: "enquiryNo", header: "Enquiry No", sortable: true },
-    { key: "date", header: "Date", sortable: true },
-    { key: "customerName", header: "Customer", sortable: true },
-    { key: "jobName", header: "Job / Product" },
+    { key: "enquiryNo",     header: "Enquiry No",    sortable: true },
+    { key: "date",          header: "Date",           sortable: true },
+    { key: "customerName",  header: "Customer",       sortable: true },
+    { key: "jobName",       header: "Job / Product" },
     { key: "salesPersonName", header: "Sales Person" },
-    { key: "salesType", header: "Sales Type" },
+    { key: "salesType",     header: "Sales Type" },
     { key: "quantity", header: "Qty", render: r => <span>{r.quantity.toLocaleString()} {r.uom}</span> },
   ];
 
@@ -185,8 +375,8 @@ export default function EnquiryPage() {
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: "Total", val: total, cls: "bg-gray-50 text-gray-700 border-gray-200" },
-          { label: "Pending", val: pending, cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
+          { label: "Total",     val: total,     cls: "bg-gray-50 text-gray-700 border-gray-200" },
+          { label: "Pending",   val: pending,   cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
           { label: "Converted", val: converted, cls: "bg-green-50 text-green-700 border-green-200" },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 ${s.cls}`}>
@@ -198,18 +388,22 @@ export default function EnquiryPage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        <DataTable
-          data={displayData}
-          columns={columns}
-          searchKeys={["enquiryNo", "customerName", "jobName"]}
-          actions={row => (
-            <div className="flex items-center gap-1.5 justify-end flex-wrap">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
-            </div>
-          )}
-        />
+        {listLoading ? (
+          <div className="text-center py-10 text-sm text-gray-400">Loading enquiries…</div>
+        ) : (
+          <DataTable
+            data={displayData}
+            columns={columns}
+            searchKeys={["enquiryNo", "customerName", "jobName"]}
+            actions={row => (
+              <div className="flex items-center gap-1.5 justify-end flex-wrap">
+                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
+                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+              </div>
+            )}
+          />
+        )}
       </div>
 
       {/* ══ FORM MODAL ══════════════════════════════════════════ */}
@@ -222,13 +416,13 @@ export default function EnquiryPage() {
             🖨️ Gravure Enquiry
           </div>
 
-          {/* Common fields */}
+          {/* Basic Information */}
           <div>
             <SH label="Basic Information" />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               <Input
                 label="Enquiry No."
-                value={editing ? editing.enquiryNo : generateCode(UNIT_CODE.Gravure, MODULE_CODE.Enquiry, data.map(d => d.enquiryNo))}
+                value={nextEnquiryNo}
                 readOnly
                 className="bg-gray-50 font-semibold text-teal-700 border-teal-100"
               />
@@ -237,40 +431,41 @@ export default function EnquiryPage() {
                 label="Customer *"
                 value={form.customerId}
                 onChange={e => {
-                  const c = customers.find(x => x.id === e.target.value);
+                  const c = customers.find(x => x.LedgerID === e.target.value);
                   f("customerId", e.target.value);
-                  if (c) f("customerName", c.name);
+                  f("customerName", c?.LedgerName || "");
                 }}
-                options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+                options={[
+                  { value: "", label: "-- Select Customer --" },
+                  ...customers.map(c => ({ value: String(c.LedgerID ?? ""), label: String(c.LedgerName ?? "") }))
+                ]}
               />
               <Input label="Job / Product Name *" value={form.jobName}
                 onChange={e => f("jobName", e.target.value)} placeholder="Describe the job" />
               <Input label="Quantity *" type="number" value={form.quantity}
                 onChange={e => f("quantity", Number(e.target.value))} />
               <Select label="Unit" value={form.uom} onChange={e => f("uom", e.target.value)}
-                options={[{ value: "Kg", label: "Kg" }, { value: "Nos", label: "Nos" }]} />
-              
-              {/* Sales Person */}
+                options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }, { value: "Nos", label: "Nos" }]} />
+
               <Select
                 label="Sales Person"
                 value={form.salesPersonId}
                 onChange={e => {
-                  const s = SALES_PERSONS.find(x => x.id === e.target.value);
+                  const s = salesPersons.find(x => x.LedgerID === e.target.value);
                   f("salesPersonId", e.target.value);
-                  if (s) f("salesPersonName", s.name);
+                  f("salesPersonName", s?.LedgerName || "");
                 }}
-                options={[{ value: "", label: "-- Select Sales Person --" }, ...SALES_PERSONS.map(s => ({ value: s.id, label: s.name }))]}
+                options={[
+                  { value: "", label: "-- Select Sales Person --" },
+                  ...salesPersons.map(s => ({ value: String(s.LedgerID ?? ""), label: String(s.LedgerName ?? "") }))
+                ]}
               />
-
-              {/* Sales Type */}
               <Select
                 label="Sales Type"
                 value={form.salesType}
                 onChange={e => f("salesType", e.target.value)}
                 options={SALES_TYPES.map(t => ({ value: t, label: t }))}
               />
-
-              {/* Concern Person */}
               <Input
                 label="Concern Person"
                 value={form.concernPerson}
@@ -282,29 +477,30 @@ export default function EnquiryPage() {
                 label="Category"
                 value={form.categoryId}
                 onChange={e => {
-                  const cat = categories.find(x => x.id === e.target.value);
+                  const cat = categories.find(x => x.CategoryID === e.target.value);
                   f("categoryId", e.target.value);
-                  f("categoryName", cat?.name || "");
-                  f("selectedContent", ""); // reset content on category change
+                  f("categoryName", cat?.CategoryName || "");
+                  f("selectedContent", "");
+                  setDimValues({});
+                  fetchContents(e.target.value);
                 }}
                 options={[
                   { value: "", label: "-- Select Category --" },
-                  ...categories.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))
+                  ...categories.map(c => ({ value: String(c.CategoryID ?? ""), label: String(c.CategoryName ?? "") }))
                 ]}
               />
             </div>
           </div>
 
-          {/* ── Content Cards (shown after category is selected) ── */}
+          {/* Content Cards (shown after category is selected) */}
           {form.categoryId && (
             <div>
               <SH label={`Select Content — ${form.categoryName}`} />
               {form.selectedContent ? (
-                /* ── Collapsed: show only selected + Change button ── */
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-3 flex-1 p-3 rounded-xl border-2 border-teal-500 bg-teal-50 shadow-sm">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold leading-tight text-center bg-teal-600 text-white">
-                      {form.selectedContent.split(" - ")[1]?.split(" ").slice(0, 2).join("\n") || form.selectedContent.slice(0, 4)}
+                      {form.selectedContent.slice(0, 4)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold leading-tight truncate text-teal-700">{form.selectedContent}</p>
@@ -313,27 +509,33 @@ export default function EnquiryPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => f("selectedContent", "")}
+                    onClick={() => { f("selectedContent", ""); setDimValues({}); }}
                     className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 rounded-lg transition-colors whitespace-nowrap"
                   >
                     <RefreshCw size={12} /> Change
                   </button>
                 </div>
+              ) : availableContents.length === 0 ? (
+                <div className="text-xs text-gray-400 italic py-3 text-center">
+                  {form.categoryId ? "No contents configured for this category." : "Select a category first."}
+                </div>
               ) : (
-                /* ── Expanded: show all cards ── */
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {availableContents.map(content => (
                     <button
-                      key={content}
+                      key={content.ContentID}
                       type="button"
-                      onClick={() => f("selectedContent", content)}
+                      onClick={() => { f("selectedContent", content.ContentName); setDimValues({}); }}
                       className="flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all border-gray-200 bg-white hover:border-teal-300 hover:bg-gray-50"
                     >
                       <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-[10px] font-bold leading-tight text-center bg-yellow-300 text-yellow-800">
-                        {content.split(" - ")[1]?.split(" ").slice(0, 2).join("\n") || content.slice(0, 4)}
+                        {content.ContentName.slice(0, 4)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold leading-tight truncate text-blue-700">{content}</p>
+                        <p className="text-xs font-semibold leading-tight truncate text-blue-700">{content.ContentName}</p>
+                        {content.ContentCaption && (
+                          <p className="text-[10px] text-gray-400 truncate">{content.ContentCaption}</p>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -342,11 +544,10 @@ export default function EnquiryPage() {
             </div>
           )}
 
-
           <Textarea label="Remarks" value={form.remarks} onChange={e => f("remarks", e.target.value)}
             placeholder="Special requirements, urgency, other notes..." />
 
-          {/* ── Plan Window & Allocation — only shown after content is selected ── */}
+          {/* Plan Window & Allocation — only shown after content is selected */}
           {contentSelected ? (
           <div className="pt-4 mt-2 border-t border-gray-100">
             <div className="flex items-start sm:items-center flex-wrap gap-2 mb-3">
@@ -357,73 +558,132 @@ export default function EnquiryPage() {
             </div>
             <div className="flex flex-col xl:flex-row gap-6">
 
-              {/* Left Column: Plan Window Details */}
+              {/* Left: Plan Window Details */}
               <div className="flex-1 space-y-4">
-                <div className="flex bg-blue-700 text-white text-xs font-semibold rounded-t-lg mx-[1px]">
-                  <div className="w-1/2 px-3 py-2 border-r border-blue-600">Caption</div>
-                  <div className="w-1/2 px-3 py-2">Value</div>
-                </div>
-                <div className="text-sm border border-gray-200 rounded-b-lg -mt-4 bg-white divide-y divide-gray-100">
-                  {[
-                    { label: "Height (MM)", key: "planHeight" as keyof typeof form, type: "number" },
-                    { label: "Width (MM)", key: "planWidth" as keyof typeof form, type: "number" },
-                    { label: "Front Colors", key: "frontColors" as keyof typeof form, type: "number" },
-                    { label: "Back Colors", key: "backColors" as keyof typeof form, type: "number" },
-                    { label: "Wastage Type", key: "wastageType" as keyof typeof form, type: "text", options: ["Machine Default", "Manual"] },
-                    { label: "Finished Format", key: "finishedFormat" as keyof typeof form, type: "text", options: ["Roll Form", "Pouch Form"] },
-                    { label: "Label/Roll", key: "labelRoll" as keyof typeof form, type: "number" },
-                  ].map(field => (
-                    <div key={field.label} className="flex hover:bg-gray-50 transition-colors">
-                      <div className="w-1/2 px-3 py-2 bg-slate-50 border-r border-gray-200 text-slate-700 font-medium">{field.label}</div>
-                      <div className="w-1/2 px-1 py-1">
-                        {field.options ? (
-                          <select className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-blue-500 rounded px-2 h-full"
-                            value={String(form[field.key] || "")} onChange={e => f(field.key, e.target.value)}>
-                            {field.options.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        ) : (
-                          <input type={field.type} className="w-full text-xs bg-transparent border-none outline-none focus:ring-1 focus:ring-blue-500 rounded px-2 h-full py-1"
-                            value={Number(form[field.key]) || 0} onChange={e => f(field.key, field.type === "number" ? Number(e.target.value) : e.target.value)} />
-                        )}
-                      </div>
+
+                {/* Dimension Input + Live Diagram */}
+                {CONTENT_TYPE_CONFIG[getDisplayContentType(form.selectedContent)] ? (
+                  <div className="border border-indigo-200 rounded-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                      <span className="text-white text-xs font-semibold">Packaging Dimensions</span>
+                      <span className="ml-auto text-white/70 text-[10px] truncate max-w-[200px]">{getDisplayContentType(form.selectedContent)}</span>
                     </div>
-                  ))}
+                    <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] font-semibold text-indigo-500 uppercase tracking-widest mb-2">Enter Dimensions (mm)</p>
+                        <DimensionInputPanel
+                          contentType={getDisplayContentType(form.selectedContent)}
+                          dims={dimValues}
+                          onChange={patch => {
+                            patchDim(patch);
+                            if ("width"           in patch && patch.width           !== undefined) f("planWidth",       patch.width);
+                            if ("layflatWidth"    in patch && patch.layflatWidth    !== undefined) f("planWidth",       patch.layflatWidth);
+                            if ("height"          in patch && patch.height          !== undefined) f("planHeight",      patch.height);
+                            if ("cutHeight"       in patch && patch.cutHeight       !== undefined) f("planHeight",      patch.cutHeight);
+                            if ("topSeal"         in patch && patch.topSeal         !== undefined) f("topSeal",         patch.topSeal);
+                            if ("bottomSeal"      in patch && patch.bottomSeal      !== undefined) f("bottomSeal",      patch.bottomSeal);
+                            if ("sideSeal"        in patch && patch.sideSeal        !== undefined) f("sideSeal",        patch.sideSeal);
+                            if ("centerSealWidth" in patch && patch.centerSealWidth !== undefined) f("centerSeal",      patch.centerSealWidth);
+                            if ("gusset"          in patch && patch.gusset          !== undefined) f("gusset",          patch.gusset);
+                            if ("sideGusset"      in patch && patch.sideGusset      !== undefined) f("sideGusset",      patch.sideGusset);
+                            if ("sealWidth"       in patch && patch.sealWidth       !== undefined) f("sealWidth",       patch.sealWidth);
+                            if ("seamingArea"     in patch && patch.seamingArea     !== undefined) f("seamingArea",     patch.seamingArea);
+                            if ("transparentArea" in patch && patch.transparentArea !== undefined) f("transparentArea", patch.transparentArea);
+                          }}
+                        />
+                      </div>
+                      <DimensionDiagram contentType={getDisplayContentType(form.selectedContent)} dims={dimValues} />
+                    </div>
+                  </div>
+                ) : (
+                  /* Fallback: plain H/W inputs for unrecognized content types */
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Height (MM)</label>
+                      <input type="number" value={form.planHeight || ""} onChange={e => f("planHeight", Number(e.target.value))}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Width (MM)</label>
+                      <input type="number" value={form.planWidth || ""} onChange={e => f("planWidth", Number(e.target.value))}
+                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
+                    </div>
+                  </div>
+                )}
+
+                {/* Colors, Wastage, Format, Label/Roll */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Front Colors</label>
+                    <input type="number" min={0} max={12} value={form.frontColors || ""} onChange={e => f("frontColors", Number(e.target.value))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400 font-mono" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Back Colors</label>
+                    <input type="number" min={0} max={12} value={form.backColors || ""} onChange={e => f("backColors", Number(e.target.value))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400 font-mono" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Label/Roll</label>
+                    <input type="number" min={0} value={form.labelRoll || ""} onChange={e => f("labelRoll", Number(e.target.value))}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Wastage Type</label>
+                    <select value={form.wastageType || "Machine Default"} onChange={e => f("wastageType", e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="Machine Default">Machine Default</option>
+                      <option value="Manual">Manual</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Finished Format</label>
+                    <select value={form.finishedFormat || "Roll Form"} onChange={e => f("finishedFormat", e.target.value)}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
+                      <option value="Roll Form">Roll Form</option>
+                      <option value="Pouch Form">Pouch Form</option>
+                    </select>
+                  </div>
                 </div>
+
               </div>
 
-              {/* Middle Column: Process Grid */}
+              {/* Middle: Process Checklist */}
               <div className="w-full xl:w-1/3 space-y-4">
                 <div className="flex bg-teal-700 text-white text-xs font-semibold rounded-t-lg mx-[1px]">
                   <div className="w-10 px-3 py-2 border-r border-teal-600 flex justify-center"><Check size={14} className="opacity-50" /></div>
                   <div className="flex-1 px-3 py-2">Process Name</div>
                 </div>
                 <div className="text-sm border border-gray-200 rounded-b-lg -mt-4 bg-white overflow-y-auto max-h-[350px] divide-y divide-gray-100">
-                  <div className="flex bg-gray-50 border-b border-gray-200">
-                    <div className="w-10 px-3 py-1.5 border-r border-gray-200" />
-                    <div className="flex-1 px-2 py-1.5"><input type="text" placeholder="..." className="w-full text-xs bg-white border border-gray-200 rounded px-2 shadow-inner h-6 outline-none" /></div>
-                  </div>
-                  {ALL_PROCESSES.map(p => {
-                    const checked = form.processes?.includes(p);
-                    return (
-                      <label key={p} className="flex items-center cursor-pointer hover:bg-teal-50/50 transition-colors">
-                        <div className="w-10 px-3 py-2 border-r border-gray-200 flex justify-center">
-                          <input type="checkbox" className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
-                            checked={checked}
-                            onChange={(e) => {
-                              const pList = form.processes || [];
-                              if (e.target.checked) f("processes", [...pList, p]);
-                              else f("processes", pList.filter(x => x !== p));
-                            }} />
-                        </div>
-                        <div className="flex-1 px-3 py-2 text-xs text-gray-700 select-none">{p}</div>
-                      </label>
-                    );
-                  })}
+                  {allProcesses.length === 0 ? (
+                    <div className="text-xs text-gray-400 italic text-center py-4">Loading processes…</div>
+                  ) : (
+                    allProcesses.map(proc => {
+                      const checked = (form.processes || []).some(p => p.id === proc.ProcessID);
+                      return (
+                        <label key={proc.ProcessID} className="flex items-center cursor-pointer hover:bg-teal-50/50 transition-colors">
+                          <div className="w-10 px-3 py-2 border-r border-gray-200 flex justify-center">
+                            <input type="checkbox" className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 cursor-pointer"
+                              checked={checked}
+                              onChange={e => {
+                                const pList = form.processes || [];
+                                if (e.target.checked) {
+                                  f("processes", [...pList, { id: proc.ProcessID, name: proc.ProcessName } as ProcessRef]);
+                                } else {
+                                  f("processes", pList.filter((x: ProcessRef) => x.id !== proc.ProcessID));
+                                }
+                              }} />
+                          </div>
+                          <div className="flex-1 px-3 py-2 text-xs text-gray-700 select-none">{proc.ProcessName}</div>
+                        </label>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
 
-            {/* Bottom Section: Ply Structure with Consumables */}
+            {/* Ply Structure */}
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <SH label="Ply Structure & Consumables" />
@@ -432,163 +692,286 @@ export default function EnquiryPage() {
                   <Plus size={12} /> Add Ply
                 </button>
               </div>
-              <div className="space-y-3">
-                {(form.secondaryLayers || []).map((l, index) => {
-                  const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
-                  return (
-                    <div key={l.id} className="border border-purple-200 rounded-xl overflow-hidden">
-                      <div className="flex items-center justify-between bg-purple-700 text-white px-3 py-2">
-                        <span className="text-xs font-bold">Ply {index + 1}{l.plyType ? ` — ${l.plyType}` : ""}</span>
-                        <button onClick={() => removePly(index)} className="p-1 hover:bg-white/20 rounded transition">
-                          <X size={13} />
-                        </button>
-                      </div>
-                      <div className="p-3 space-y-3">
-                        {/* Ply Type */}
-                        <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                          <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-purple-400"
-                            value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
-                            <option value="">-- Select Ply Type --</option>
-                            <option value="Film">Ply 1</option>
-                            <option value="Printing">Ply 2</option>
-                            <option value="Lamination">Ply 3</option>
-                            <option value="Coating">Ply 4</option>
-                          </select>
-                        </div>
-                        {/* Film section */}
-                        {l.plyType && (
-                          <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
-                            <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">
-                              {l.plyType === "Film" ? "Film / Substrate" : l.plyType === "Lamination" ? "Laminating Film" : "Print Film"}
-                            </p>
+              {(() => {
+                const GROUP_COLOR: Record<string, string> = {
+                  Ink:      "bg-blue-50 text-blue-700 border-blue-200",
+                  Solvent:  "bg-green-50 text-green-700 border-green-200",
+                  Adhesive: "bg-orange-50 text-orange-700 border-orange-200",
+                  Hardner:  "bg-rose-50 text-rose-700 border-rose-200",
+                  Other:    "bg-gray-50 text-gray-600 border-gray-200",
+                };
+                return (
+                  <div className="space-y-3">
+                    {(form.secondaryLayers || []).map((l, index) => {
+                      const ordinal = index === 0 ? "1st" : index === 1 ? "2nd" : index === 2 ? "3rd" : `${index + 1}th`;
+                      return (
+                        <div key={l.id} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
+                          {/* Ply header */}
+                          <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
+                            <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">{ordinal} Ply</span>
+                            <button onClick={() => removePly(index)} className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition">
+                              <X size={14} />
+                            </button>
+                          </div>
+
+                          <div className="p-3 space-y-3">
+                            {/* Ply Type */}
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
-                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                value={l.itemSubGroup}
-                                onChange={e => {
-                                  const sg = FILM_SUBGROUPS.find(s => s.subGroup === e.target.value);
-                                  const layers = [...(form.secondaryLayers || [])];
-                                  layers[index] = { ...l, itemSubGroup: e.target.value, density: sg?.density || 0, thickness: 0, gsm: 0 };
-                                  f("secondaryLayers", layers);
-                                }}>
-                                <option value="">Select Film Type</option>
-                                {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
+                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
+                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
+                                <option value="">-- Select Ply Type --</option>
+                                <option value="Film">Ply 1</option>
+                                <option value="Printing">Ply 2</option>
+                                <option value="Lamination">Ply 3</option>
+                                <option value="Coating">Ply 4</option>
                               </select>
                             </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                              <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Density</label>
-                                <input readOnly value={l.density || ""} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-400" />
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={l.thickness}
-                                  onChange={e => {
-                                    const thickness = Number(e.target.value);
-                                    const layers = [...(form.secondaryLayers || [])];
-                                    layers[index] = { ...l, thickness, gsm: parseFloat((thickness * l.density).toFixed(3)) };
-                                    f("secondaryLayers", layers);
-                                  }}>
-                                  <option value={0}>Select</option>
-                                  {thicknesses.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
-                              </div>
-                              <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film GSM</label>
-                                <input readOnly value={l.gsm || ""} className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 text-purple-800 font-bold" />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        {/* Consumables */}
-                        {l.plyType && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Consumable Items ({l.consumableItems.length})</span>
-                              <button onClick={() => addPlyConsumable(index)}
-                                className="flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition">
-                                <Plus size={10} /> Add Consumable
-                              </button>
-                            </div>
-                            {l.consumableItems.map((ci, ciIdx) => {
-                              const CONSUMABLE_GROUPS = ["Ink", "Solvent", "Adhesive", "Hardner"];
-                              const subGroups = ci.itemGroup ? (CATEGORY_GROUP_SUBGROUP["Raw Material (RM)"]?.[ci.itemGroup] ?? []) : [];
-                              const filteredItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
-                              return (
-                                <div key={ci.consumableId} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-[10px] font-bold text-teal-700 uppercase">Consumable {ciIdx + 1}</span>
-                                    <button onClick={() => removePlyConsumable(index, ciIdx)}
-                                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
-                                      <X size={12} />
-                                    </button>
+
+                            {/* Film Item — single dropdown, auto-fills density/thickness/GSM */}
+                            {l.plyType && (
+                              <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
+                                <div>
+                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
+                                  <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                    value={l.itemId || ""}
+                                    onChange={e => {
+                                      const fi = FILM_ITEMS.find(x => x.id === e.target.value);
+                                      const layers = [...(form.secondaryLayers || [])];
+                                      if (!fi) { layers[index] = { ...l, itemId: "", itemName: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0 }; f("secondaryLayers", layers); return; }
+                                      const thickness = parseFloat(fi.thickness) || 0;
+                                      const density   = parseFloat(fi.density)   || 0;
+                                      const gsm       = parseFloat((thickness * density).toFixed(3));
+                                      layers[index]   = { ...l, itemId: fi.id, itemName: fi.name, itemSubGroup: fi.subGroup, density, thickness, gsm };
+                                      f("secondaryLayers", layers);
+                                    }}>
+                                    <option value="">-- Select Film Item --</option>
+                                    {FILM_ITEMS.map(fi => <option key={fi.id} value={fi.id}>{fi.name}</option>)}
+                                  </select>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Density</label>
+                                    <input readOnly value={l.density || ""} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-400 font-mono" />
                                   </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                        value={ci.itemGroup}
-                                        onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", coveragePct: undefined })}>
-                                        <option value="">-- Group --</option>
-                                        {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                        value={ci.itemSubGroup}
-                                        onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                        disabled={!ci.itemGroup}>
-                                        <option value="">-- Sub Group --</option>
-                                        {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                      <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
-                                        value={ci.itemId}
-                                        onChange={e => {
-                                          const it = filteredItems.find(x => x.id === e.target.value);
-                                          updatePlyConsumable(index, ciIdx, { itemId: it?.id ?? "", itemName: it?.name ?? "", rate: parseFloat(it?.estimationRate ?? "0") || 0 });
-                                        }}
-                                        disabled={!ci.itemGroup}>
-                                        <option value="">-- Select Item --</option>
-                                        {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}{it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}</option>)}
-                                      </select>
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">GSM / Wet Wt.</label>
-                                      <input type="number" step={0.1} min={0}
-                                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
-                                        value={ci.gsm || ""}
-                                        onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Coverage %</label>
-                                      <input type="number" step={1} min={1} max={100}
-                                        className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-blue-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono"
-                                        value={ci.coveragePct ?? 100}
-                                        onChange={e => updatePlyConsumable(index, ciIdx, { coveragePct: Math.min(100, Math.max(1, Number(e.target.value))) })} />
-                                    </div>
+                                  <div>
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
+                                    <input readOnly value={l.thickness || ""} className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-400 font-mono" />
+                                  </div>
+                                  <div>
+                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film GSM</label>
+                                    <input readOnly value={l.gsm || ""} className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 text-purple-800 font-bold font-mono" />
                                   </div>
                                 </div>
-                              );
-                            })}
-                            {l.consumableItems.length === 0 && (
-                              <p className="text-[10px] text-gray-400 italic text-center py-2">Click "+ Add Consumable" to add ink, solvent, adhesive, etc.</p>
+                              </div>
+                            )}
+
+                            {/* Consumable Items */}
+                            {l.plyType && (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] font-bold text-teal-700 uppercase tracking-widest">Consumable Items ({l.consumableItems.length})</span>
+                                  <button onClick={() => addPlyConsumable(index)}
+                                    className="flex items-center gap-1 text-[10px] font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition">
+                                    <Plus size={10} /> Add Consumable
+                                  </button>
+                                </div>
+                                {l.consumableItems.map((ci, ciIdx) => {
+                                  const CONSUMABLE_GROUPS = Array.from(new Set(items.filter(it => it.group !== "Film" && it.active).map(it => it.group))).sort();
+                                  const subGroups = ci.itemGroup ? Array.from(new Set(items.filter(it => it.group === ci.itemGroup && it.active && it.subGroup).map(it => it.subGroup))).sort() : [];
+                                  const filteredItems = items.filter(it => it.group === ci.itemGroup && it.active && (!ci.itemSubGroup || it.subGroup === ci.itemSubGroup));
+                                  const hardenerGSM = (() => {
+                                    const adh = l.consumableItems.find(x => x.itemGroup === "Adhesive");
+                                    if (adh && adh.gsm > 0 && (adh.ohPct ?? 0) > 0 && (ci.ncoPct ?? 0) > 0)
+                                      return ((adh.gsm * (adh.ohPct ?? 0)) / (ci.ncoPct ?? 1)).toFixed(3);
+                                    return null;
+                                  })();
+                                  const groupBefore = l.consumableItems.slice(0, ciIdx).filter(x => x.itemGroup === ci.itemGroup).length;
+                                  const ciLabel = ci.itemGroup || "Consumable";
+                                  return (
+                                    <div key={ci.consumableId} className="bg-teal-50/40 border border-teal-100 rounded-xl p-3">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] font-bold text-teal-700 uppercase">{`${ciLabel} ${groupBefore + 1}`}</span>
+                                        <div className="flex items-center gap-1">
+                                          <button onClick={() => clonePlyConsumable(index, ciIdx)}
+                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">
+                                            <Copy size={11} /> Clone
+                                          </button>
+                                          <button onClick={() => removePlyConsumable(index, ciIdx)}
+                                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                                            <X size={12} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        {/* Item Group */}
+                                        <div>
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
+                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                            value={ci.itemGroup}
+                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}>
+                                            <option value="">-- Group --</option>
+                                            {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
+                                          </select>
+                                        </div>
+                                        {/* Sub Group */}
+                                        <div>
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
+                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                            value={ci.itemSubGroup}
+                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
+                                            disabled={!ci.itemGroup}>
+                                            <option value="">-- Sub Group --</option>
+                                            {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+                                          </select>
+                                        </div>
+                                        {/* Item Master */}
+                                        <div>
+                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
+                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                            value={ci.itemId}
+                                            onChange={e => {
+                                              const it = filteredItems.find(x => x.id === e.target.value);
+                                              const upd: Partial<PlyConsumableItem> = { itemId: it?.id ?? "", itemName: it?.name ?? "" };
+                                              if (ci.itemGroup === "Ink" && it) {
+                                                upd.gsm = parseFloat(String((it as any).DryGsM ?? 0)) || 0;
+                                                upd.solidPct = parseFloat(String((it as any).SolidPerc ?? 40)) || 40;
+                                              }
+                                              updatePlyConsumable(index, ciIdx, upd);
+                                            }}
+                                            disabled={!ci.itemGroup}>
+                                            <option value="">-- Select Item --</option>
+                                            {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
+                                          </select>
+                                        </div>
+                                        {/* Ink fields: Dry GSM + % Solid + Liquid GSM (auto) */}
+                                        {ci.itemGroup === "Ink" && (<>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Dry Ink GSM</label>
+                                            <input type="number" step="any" min={0}
+                                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                              value={ci.gsm || ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: parseFloat(e.target.value) || 0 })} />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
+                                            <input type="number" step={1} min={1} max={100}
+                                              className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
+                                              value={ci.solidPct ?? 40}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { solidPct: Number(e.target.value) || 40 })}
+                                              placeholder="40" />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-purple-600 uppercase block mb-1">Liquid GSM</label>
+                                            <div className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
+                                              {ci.gsm > 0 ? (ci.gsm / ((ci.solidPct ?? 40) / 100)).toFixed(2) : "—"}
+                                            </div>
+                                          </div>
+                                        </>)}
+                                        {/* Solvent: Ratio % */}
+                                        {ci.itemGroup === "Solvent" && (
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ratio (%)</label>
+                                            <input type="number" step={0.1} min={0} max={100}
+                                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                              value={ci.gsm || ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
+                                              placeholder="e.g. 30" />
+                                          </div>
+                                        )}
+                                        {/* Adhesive: GSM + OH% */}
+                                        {ci.itemGroup === "Adhesive" && (<>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Adhesive GSM</label>
+                                            <input type="number" step={0.1} min={0}
+                                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                              value={ci.gsm || ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })}
+                                              placeholder="e.g. 4.5" />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-orange-600 uppercase block mb-1">OH %</label>
+                                            <input type="number" step={0.1} min={0}
+                                              className="w-full text-xs border border-orange-200 rounded-lg px-2 py-1.5 bg-orange-50 outline-none focus:ring-2 focus:ring-orange-400 font-mono"
+                                              value={ci.ohPct ?? ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { ohPct: Number(e.target.value) })}
+                                              placeholder="e.g. 2.5" />
+                                          </div>
+                                        </>)}
+                                        {/* Hardner: NCO% + auto GSM */}
+                                        {ci.itemGroup === "Hardner" && (<>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-rose-600 uppercase block mb-1">NCO %</label>
+                                            <input type="number" step={0.1} min={0}
+                                              className="w-full text-xs border border-rose-200 rounded-lg px-2 py-1.5 bg-rose-50 outline-none focus:ring-2 focus:ring-rose-400 font-mono"
+                                              value={ci.ncoPct ?? ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { ncoPct: Number(e.target.value) })}
+                                              placeholder="e.g. 12.5" />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-teal-600 uppercase block mb-1">Hardener GSM (Auto)</label>
+                                            <div className="w-full text-xs border border-teal-200 rounded-lg px-2 py-1.5 bg-teal-50 font-mono font-bold text-teal-700 min-h-[30px]">
+                                              {hardenerGSM !== null ? hardenerGSM : <span className="text-gray-400 font-normal">Set Adhesive GSM + OH% + NCO%</span>}
+                                            </div>
+                                          </div>
+                                        </>)}
+                                        {/* Generic GSM for any other group */}
+                                        {!["Ink", "Solvent", "Adhesive", "Hardner"].includes(ci.itemGroup) && (
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">GSM</label>
+                                            <input type="number" step={0.1} min={0}
+                                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
+                                              value={ci.gsm || ""}
+                                              onChange={e => updatePlyConsumable(index, ciIdx, { gsm: Number(e.target.value) })} />
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                                {l.consumableItems.length === 0 && (
+                                  <p className="text-[10px] text-gray-400 italic text-center py-2">Click &quot;+ Add Consumable&quot; to add ink, solvent, adhesive, etc.</p>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {(!form.secondaryLayers || form.secondaryLayers.length === 0) && (
-                  <div className="p-6 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl">No ply added. Click &quot;Add Ply&quot; to define the structure.</div>
-                )}
-              </div>
+
+                          {/* Ply Summary strip */}
+                          {l.consumableItems.length > 0 && (() => {
+                            const groupCount: Record<string, number> = {};
+                            l.consumableItems.forEach(ci => { const g = ci.itemGroup || "Other"; groupCount[g] = (groupCount[g] || 0) + 1; });
+                            const inks = l.consumableItems.filter(ci => ci.itemGroup === "Ink");
+                            const totalDryGSM = inks.reduce((sum, ci) => sum + (parseFloat(String(ci.gsm)) || 0), 0);
+                            const avgSolid = inks.length > 0 ? inks.reduce((sum, ci) => sum + (ci.solidPct ?? 40), 0) / inks.length : 0;
+                            return (
+                              <div className="flex flex-wrap items-center gap-2 px-4 py-2 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Ply Summary:</span>
+                                {Object.entries(groupCount).map(([g, cnt]) => (
+                                  <span key={g} className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${GROUP_COLOR[g] ?? GROUP_COLOR.Other}`}>
+                                    {g}: <strong>{cnt}</strong>
+                                  </span>
+                                ))}
+                                {inks.length > 0 && (<>
+                                  <span className="w-px h-3 bg-slate-300 mx-1" />
+                                  <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                    Total Dry GSM: <strong>{totalDryGSM.toFixed(1)}</strong>
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                                    Avg Solid: <strong>{avgSolid.toFixed(1)}%</strong>
+                                  </span>
+                                </>)}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })}
+                    {(!form.secondaryLayers || form.secondaryLayers.length === 0) && (
+                      <div className="p-6 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl">No ply added. Click &quot;Add Ply&quot; to define the structure.</div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
           ) : form.categoryId ? (
@@ -596,8 +979,8 @@ export default function EnquiryPage() {
               <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                 <span className="text-xl">☝️</span>
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">Content Select Karo</p>
-                  <p className="text-xs text-amber-600 mt-0.5">Upar se ek content type choose karo — phir Plan Window Details aur Allocation yahan dikhengi.</p>
+                  <p className="text-sm font-semibold text-amber-800">Select a Content</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Choose a content type above — then Plan Window Details and Allocation will appear here.</p>
                 </div>
               </div>
             </div>
@@ -605,8 +988,8 @@ export default function EnquiryPage() {
         </div>
 
         <div className="flex justify-end gap-3 mt-6">
-          <Button variant="secondary" onClick={() => setModal(false)}>Cancel</Button>
-          <Button onClick={save}>{editing ? "Update" : "Save Enquiry"}</Button>
+          <Button variant="secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>{saving ? "Saving…" : editing ? "Update" : "Save Enquiry"}</Button>
         </div>
       </Modal>
 
@@ -623,22 +1006,18 @@ export default function EnquiryPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {([
-                ["Customer", viewRow.customerName],
-                ["Job Name", viewRow.jobName],
-                ["Quantity", `${viewRow.quantity.toLocaleString()} ${viewRow.uom}`],
-                ["Date", viewRow.date],
-                ...(viewRow.businessUnit === "Extrusion" ? [
-                  ["Product", viewRow.productName],
-                  ["Width", `${viewRow.width} mm`],
-                  ["Thickness", `${viewRow.thickness} μ`],
-                  ["Printing", viewRow.printingRequired ? `Yes – ${viewRow.printingColors} Colors` : "No"],
-                ] : []),
-                ["Sales Person", viewRow.salesPersonName],
-                ["Sales Type", viewRow.salesType],
-                ["Concern Person", viewRow.concernPerson],
-              ] as [string, string][]).map(([k, v]) => (
+                ["Customer",      viewRow.customerName],
+                ["Job Name",      viewRow.jobName],
+                ["Quantity",      `${viewRow.quantity.toLocaleString()} ${viewRow.uom}`],
+                ["Date",          viewRow.date],
+                ["Sales Person",  viewRow.salesPersonName],
+                ["Sales Type",    viewRow.salesType],
+                ["Concern Person",viewRow.concernPerson],
+                ["Category",      viewRow.categoryName],
+                ["Content",       viewRow.selectedContent],
+              ] as [string, string][]).map(([k, v]) => v ? (
                 <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-medium text-gray-900">{v}</p></div>
-              ))}
+              ) : null)}
             </div>
             {viewRow.remarks && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
@@ -657,10 +1036,12 @@ export default function EnquiryPage() {
 
       {/* Delete Confirm */}
       <Modal open={!!deleteId} onClose={() => setDeleteId(null)} title="Confirm Delete" size="sm">
-        <p className="text-sm text-gray-600">Delete this enquiry?</p>
+        <p className="text-sm text-gray-600">Delete this enquiry? This action cannot be undone.</p>
         <div className="flex justify-end gap-3 mt-6">
-          <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
-          <Button variant="danger" onClick={() => { deleteEnquiry(deleteId!); setDeleteId(null); }}>Delete</Button>
+          <Button variant="secondary" onClick={() => setDeleteId(null)} disabled={deleting}>Cancel</Button>
+          <Button variant="danger" onClick={confirmDelete} disabled={deleting}>
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
         </div>
       </Modal>
     </div>

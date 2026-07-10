@@ -64,6 +64,25 @@ export async function apiPost<T = unknown>(path: string, body: unknown): Promise
   return parseResponse<T>(res);
 }
 
+// Safe GET — never redirects to login. Returns null on any error (401, 404, network).
+// Use this for background/optional fetches where failure should be silent.
+export async function apiGetSafe<T = unknown>(path: string): Promise<T | null> {
+  try {
+    const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+      method: "GET",
+      headers: authHeaders(),
+    });
+    if (!res.ok) return null;
+    const text = await res.text();
+    if (!text) return null;
+    let result: unknown = JSON.parse(text);
+    while (typeof result === "string") {
+      try { result = JSON.parse(result); } catch { break; }
+    }
+    return result as T;
+  } catch { return null; }
+}
+
 // For multipart file uploads — omits Content-Type so browser sets the boundary
 export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
   const { "Content-Type": _, ...headers } = getAuthHeaders();

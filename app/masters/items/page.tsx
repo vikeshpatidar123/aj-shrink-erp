@@ -316,10 +316,9 @@ export default function ItemMasterPage() {
   const [gridLoading, setGridLoading] = useState(false);
   const [activeGroupID, setActiveGroupID] = useState("");
 
-  // Date filter — default: last 30 days
+  // Date filter — default: all time (Item Master is reference data, not time-series)
   const todayStr = new Date().toISOString().split("T")[0];
-  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
-  const [fromDate, setFromDate] = useState(thirtyDaysAgoStr);
+  const [fromDate, setFromDate] = useState("2000-01-01");
   const [toDate, setToDate] = useState(todayStr);
 
   const filteredGridData = useMemo(() => {
@@ -1111,12 +1110,12 @@ export default function ItemMasterPage() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(() => {
-                  const isCon = (g: typeof allGroups[0]) => {
-                    const cat = (g.ItemGroupCategory || "").toLowerCase();
-                    return cat === "consumable" || cat === "consumables";
-                  };
-                  const rmGroups = allGroups.filter(g => !isCon(g));
+                  const catStr = (g: typeof allGroups[0]) => (g.ItemGroupCategory || "").toLowerCase().trim();
+                  const isCon  = (g: typeof allGroups[0]) => catStr(g) === "consumable" || catStr(g) === "consumables";
+                  const isCapG = (g: typeof allGroups[0]) => catStr(g) === "capital goods" || catStr(g) === "capital good";
+                  const rmGroups  = allGroups.filter(g => !isCon(g) && !isCapG(g));
                   const conGroups = allGroups.filter(g => isCon(g));
+                  const capGroups = allGroups.filter(g => isCapG(g));
                   const grpBtn = (grp: typeof allGroups[0]) => (
                     <button
                       key={grp.ItemGroupID}
@@ -1139,11 +1138,17 @@ export default function ItemMasterPage() {
                       )}
                       {rmGroups.map(grpBtn)}
                       {conGroups.length > 0 && (
-                        <div className="col-span-2 md:col-span-3 mt-2">
-                          <p className="text-xs font-bold text-orange-500 uppercase tracking-widest mb-1">Consumables</p>
+                        <div className="col-span-2 md:col-span-3 mt-2 pt-2 border-t border-gray-100">
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Consumables</p>
                         </div>
                       )}
                       {conGroups.map(grpBtn)}
+                      {capGroups.length > 0 && (
+                        <div className="col-span-2 md:col-span-3 mt-2 pt-2 border-t border-gray-100">
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Capital Goods</p>
+                        </div>
+                      )}
+                      {capGroups.map(grpBtn)}
                     </>
                   );
                 })()}
@@ -1417,48 +1422,37 @@ export default function ItemMasterPage() {
 
       {/* Filter Bar — group pills direct from backend */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Group</span>
-          <button
-            onClick={() => onGroupPillClick(null)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${!activeGroupID
-              ? "bg-blue-50 text-blue-700 border-blue-300"
-              : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-              }`}
-          >
-            All Groups
-          </button>
+        <div className="flex flex-col gap-2">
+          {/* Row 1: All Groups + Raw Material */}
           {(() => {
-            const isCon = (g: typeof allGroups[0]) => {
-              const cat = (g.ItemGroupCategory || "").toLowerCase();
-              return cat === "consumable" || cat === "consumables";
-            };
-            const rmGroups = allGroups.filter(g => !isCon(g));
-            const conGroups = allGroups.filter(g => isCon(g));
-            const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeGroupID === id
-              ? "bg-blue-50 text-blue-700 border-blue-300"
-              : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-              }`;
-            return (
-              <>
-                {rmGroups.map(grp => (
-                  <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
-                    {grp.ItemGroupName}
-                  </button>
-                ))}
-                {conGroups.length > 0 && (
-                  <>
-                    <span className="text-xs font-semibold text-orange-500 uppercase tracking-wider ml-1 border-l border-gray-200 pl-2">Consumables</span>
-                    {conGroups.map(grp => (
-                      <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
-                        {grp.ItemGroupName}
-                      </button>
-                    ))}
-                  </>
-                )}
-              </>
-            );
-          })()}
+              const cat = (g: typeof allGroups[0]) => (g.ItemGroupCategory || "").toLowerCase().trim();
+              const isCon  = (g: typeof allGroups[0]) => cat(g) === "consumable" || cat(g) === "consumables";
+              const isCapG = (g: typeof allGroups[0]) => cat(g) === "capital goods" || cat(g) === "capital good";
+              const rmGroups  = allGroups.filter(g => !isCon(g) && !isCapG(g));
+              const conGroups = allGroups.filter(g => isCon(g));
+              const capGroups = allGroups.filter(g => isCapG(g));
+              const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeGroupID === id
+                ? "bg-blue-50 text-blue-700 border-blue-300"
+                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+                }`;
+              const Row = ({ label, groups }: { label: string; groups: typeof allGroups }) => (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-28 flex-shrink-0">{label}</span>
+                  {groups.map(grp => (
+                    <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
+                      {grp.ItemGroupName}
+                    </button>
+                  ))}
+                </div>
+              );
+              return (
+                <>
+                  {rmGroups.length  > 0 && <Row label="Raw Material"  groups={rmGroups}  />}
+                  {conGroups.length > 0 && <Row label="Consumables"   groups={conGroups} />}
+                  {capGroups.length > 0 && <Row label="Capital Goods" groups={capGroups} />}
+                </>
+              );
+            })()}
         </div>
       </div>
 
