@@ -11,6 +11,7 @@ import {
   FileText, LayoutDashboard, Factory, Palette,
 } from "lucide-react";
 import { apiGet } from "@/lib/api";
+import TutorialButton from "@/components/ui/TutorialButton";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 type Row = Record<string, unknown>;
@@ -679,6 +680,7 @@ export default function GravureDashboardPage() {
                   className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400" />
               </div>
             )}
+            <TutorialButton title="Gravure Dashboard — Tutorial" />
             <button onClick={() => fetchTab(tab, fromDate, toDate)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />

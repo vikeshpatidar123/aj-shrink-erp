@@ -29,7 +29,7 @@ async function uploadToS3(file: File): Promise<string> {
   const fd = new FormData();
   fd.append("file", file, file.name);
 
-  const res = await fetch(`${BASE_URL}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  const res = await fetch(`${BASE_URL}/api/storage/upload`, { method: "POST", headers: hdrs, body: fd });
   if (!res.ok) throw new Error(`Upload failed (${res.status})`);
   const { publicUrl } = await res.json();
   return publicUrl as string;

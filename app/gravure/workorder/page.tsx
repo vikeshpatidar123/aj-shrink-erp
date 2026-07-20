@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useMemo, useEffect, useRef } from "react";
+import TutorialButton from "@/components/ui/TutorialButton";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Eye, Pencil, Trash2, Printer, CheckCircle2, ClipboardList,
   Clock, RefreshCw, Edit3, Calculator, BookMarked, ChevronRight,
@@ -206,7 +208,7 @@ export default function GravureWorkOrderPage() {
   const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
-  const { inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw, filmItems: apiFilmItems } = useMasters();
+  const { inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw, filmItems: apiFilmItems, processes: apiProcesses } = useMasters();
 
   const normalizeConsumableGroup = (grp: string): string => {
     const g = (grp || "").toLowerCase();
@@ -227,6 +229,35 @@ export default function GravureWorkOrderPage() {
         })).sort((a, b) => parseFloat(a.printWidth) - parseFloat(b.printWidth))
       : SLEEVE_TOOLS,
   [apiSleeveItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live ink items from API (replaces static INK_ITEMS dummy data)
+  const INK_ITEMS_LIVE = useMemo(() =>
+    apiInkItems.length > 0
+      ? apiInkItems
+          .filter((i, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(i.ItemID)) === idx)
+          .map(i => ({
+            id: String(i.ItemID),
+            name: i.ItemName,
+            colour: i.InkColour || "",
+            pantoneNo: "",
+          }))
+      : INK_ITEMS,
+  [apiInkItems]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live processes from API (replaces static ROTO_PROCESSES dummy data)
+  const ROTO_PROCESSES_LIVE = useMemo(() =>
+    apiProcesses.length > 0
+      ? apiProcesses.map(p => ({
+          id: String(p.ProcessID),
+          name: p.DisplayProcessName || p.ProcessName,
+          department: p.DepartmentName || "",
+          chargeUnit: p.TypeofCharges || "",
+          rate: String(p.Rate ?? 0),
+          setupChargeAmount: String(p.SetupCharges ?? 0),
+          makeSetupCharges: (p.SetupCharges ?? 0) > 0,
+        }))
+      : ROTO_PROCESSES,
+  [apiProcesses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cylinder tools from Cylinder Master (API)
   const CYLINDER_TOOLS_LIVE = useMemo(() =>
@@ -298,11 +329,13 @@ export default function GravureWorkOrderPage() {
   // ── Production Preparation Types ────────────────────────────
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; labLMeas: string; labAMeas: string; labBMeas: string; deltaE: string; deltaETol: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; };
-  type MaterialAlloc = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
+  type MaterialAlloc = { id: string; plyNo?: number; materialType: string; materialName: string; requiredQty: number; unit: string; allocatedQty: number; batchId: string; lotNo: string; location: string; status: "Pending" | "Partial" | "Allocated"; };
   type CylinderAlloc = { colorNo: number; colorName: string; cylinderNo: string; circumference: string; cylinderType: "New" | "Existing" | "Rechromed"; status: "Pending" | "Available" | "In Use" | "Under Chrome" | "Ordered"; remarks: string; };
   const [filmReqs, setFilmReqs] = useState<FilmRequisition[]>([]);
   const [colorShades, setColorShades] = useState<ColorShade[]>([]);
   const [materialAllocs, setMaterialAllocs] = useState<MaterialAlloc[]>([]);
+  const [batchOptions, setBatchOptions] = useState<Record<string, any[]>>({}); // key=ma.id → batches
+  const [binOptions, setBinOptions] = useState<Record<string, any[]>>({});     // key=ma.id → bins
   const [cylinderAllocs, setCylinderAllocs] = useState<CylinderAlloc[]>([]);
   const [prepTab, setPrepTab] = useState<"film" | "shade" | "material" | "tool">("film");
   // ── New Cylinder Modal (for life-expired cylinder replacement) ─
@@ -585,7 +618,7 @@ export default function GravureWorkOrderPage() {
       const mapped = (Array.isArray(items) ? items : []).map((p: any) => {
         const pid = String(p.processId ?? "").trim();
         const pname = String(p.processName ?? "").trim();
-        const pm = ROTO_PROCESSES.find(x => x.id === pid) || ROTO_PROCESSES.find(x => x.name === pname);
+        const pm = ROTO_PROCESSES_LIVE.find(x => x.id === pid) || ROTO_PROCESSES_LIVE.find(x => x.name === pname);
         return {
           processId: pm?.id ?? pid,
           processName: (pm?.name ?? pname) || pid,
@@ -681,6 +714,7 @@ export default function GravureWorkOrderPage() {
         savedPlanId: String(row.SavedPlanID ?? row.savedPlanId ?? ""),
         savedPlan: parseNestedJson(row.ContentSizeValues ?? row.GrvSavedPlanJSON ?? row.savedPlanJSON),
         standardUnit: String(row.StandardUnit ?? row.standardUnit ?? "Meter"),
+        unwindDirection: Number(row.UnwindDirection ?? row.unwindDirection ?? 0),
         secondaryLayers: layers,
         processes,
       };
@@ -738,6 +772,7 @@ export default function GravureWorkOrderPage() {
         ? safeNormalizeProcesses(snapshotCatalogItem.processes, f.processes)
         : f.processes,
       selectedPlanId: String(snapshotCatalogItem?.savedPlanId || f.selectedPlanId || ""),
+      unwindDirection: Number((snapshotCatalogItem as any)?.unwindDirection || 0),
     } as any));
 
     if (snapshotCatalogItem?.savedPlanId) {
@@ -879,6 +914,20 @@ export default function GravureWorkOrderPage() {
                   isBest: true, isFromCatalog: false,
                   isSpecial: false, isSpecialSleeve: false,
                 });
+                // Auto-generate cylinder allocs from estimation plan
+                const nC = enqNoOfColors || 0;
+                if (nC > 0) {
+                  setCylinderAllocs(Array.from({ length: nC }, (_, idx) => ({
+                    colorNo: idx + 1,
+                    colorName: `Color ${idx + 1}`,
+                    cylinderNo: sp.cylinderCode || "",
+                    circumference: sp.cylCirc ? String(sp.cylCirc) : "",
+                    cylinderType: "Existing" as const,
+                    status: "Pending" as const,
+                    remarks: "",
+                    cylinderMasterID: String(sp.cylinderId ?? ""),
+                  } as any)));
+                }
               }
             }
           } catch { /* ignore parse error */ }
@@ -961,17 +1010,75 @@ export default function GravureWorkOrderPage() {
           remarks: String(s.remarks ?? ""),
         })));
 
-        // Map cylinderAllocs from cylAllocsJSON
+        // Map cylinderAllocs from cylAllocsJSON; if empty, auto-generate from plan + noOfColors
         const rawCyls: any[] = parseMaybeArray(catRow.cylAllocsJSON);
-        setCylinderAllocs(rawCyls.map((c: any) => ({
-          colorNo: Number(c.colorNo ?? 0),
-          colorName: String(c.colorName ?? ""),
-          cylinderNo: String(c.cylinderNo ?? ""),
-          circumference: String(c.circumference ?? ""),
-          cylinderType: (c.cylinderType || "New") as CylinderAlloc["cylinderType"],
-          status: (c.status || "Pending") as CylinderAlloc["status"],
-          remarks: String(c.remarks ?? ""),
-        })));
+        // Top-level plan cylinder code/id from PMC (fallback when row-level cylinderNo is empty)
+        const topPlanCylCode = String(catRow.planCylCode ?? "").trim();
+        const topPlanCylId   = String(catRow.planCylId ?? "").trim();
+        // Also try savedPlanJSON / contentSizeValues
+        const rawSp0 = catRow.savedPlanJSON || catRow.contentSizeValues;
+        const sp0 = rawSp0 ? (typeof rawSp0 === "string" ? (() => { try { return JSON.parse(rawSp0); } catch { return null; } })() : rawSp0) : null;
+        const spCylCode = String(sp0?.cylinderCode ?? sp0?.PlanCylCode ?? "").trim();
+        const spCylId   = String(sp0?.cylinderId ?? sp0?.CylinderID ?? "").trim();
+        // Don't use SPL as fallback — it's a placeholder for special-order, not a real ToolMaster code
+        const fallbackCylCode = (!topPlanCylCode.startsWith("SPL") ? topPlanCylCode : "") || (!spCylCode.startsWith("SPL") ? spCylCode : "");
+        const fallbackCylId   = topPlanCylId   || spCylId;
+        if (rawCyls.length > 0) {
+          console.log("[CYL-DEBUG] rawCyls from DB:", rawCyls.map((c:any) => ({ cylinderNo: c.cylinderNo, cylinderMasterID: c.cylinderMasterID, planCylCode: c.planCylCode })));
+          console.log("[CYL-DEBUG] dbCylinders count:", dbCylinders.length, "sample ids:", dbCylinders.slice(0,3).map(t=>({id:t.id,code:t.code})));
+          setCylinderAllocs(rawCyls.map((c: any) => {
+            const rowCylNo = String(c.cylinderNo ?? "").trim();
+            const rowMasterId = String(c.cylinderMasterID ?? "").trim();
+            const rowPlanCode = String(c.planCylCode ?? "").trim();
+            return {
+              colorNo: Number(c.colorNo ?? 0),
+              colorName: String(c.colorName ?? ""),
+              cylinderNo: rowCylNo || fallbackCylCode,
+              circumference: String(c.circumference ?? ""),
+              cylinderType: (c.cylinderType || "New") as CylinderAlloc["cylinderType"],
+              status: (c.status || "Pending") as CylinderAlloc["status"],
+              remarks: String(c.remarks ?? ""),
+              cylinderMasterID: rowMasterId || fallbackCylId,
+              planCylCode: rowPlanCode || fallbackCylCode,
+            } as any;
+          }));
+          const missingFromDb = rawCyls
+            .map((c: any) => ({ id: String(c.cylinderMasterID ?? "").trim(), code: String(c.cylinderNo ?? "").trim(), circ: Number(c.circumference ?? 0) }))
+            .filter(c => c.id && c.code && !dbCylinders.some(t => String(t.id) === c.id || t.code === c.code));
+          console.log("[CYL-DEBUG] missingFromDb:", missingFromDb);
+          if (missingFromDb.length > 0) {
+            setExtraCyls(prev => {
+              const existingIds = new Set((prev as any[]).map((e: any) => String(e.id)));
+              const toAdd = missingFromDb.filter(c => !existingIds.has(c.id)).map(c => ({
+                id: c.id, code: c.code, name: c.code, printWidth: "0",
+                circumferenceMM: c.circ, repeatLength: String(c.circ),
+                cylinderType: "New", shelfLifeMeters: 0, usedMeters: 0, toolType: "Cylinder", active: true,
+              }));
+              console.log("[CYL-DEBUG] adding to extraCyls:", toAdd);
+              return toAdd.length > 0 ? [...prev, ...toAdd as any] : prev;
+            });
+          }
+        } else {
+          // Auto-generate one cylinder row per color using the catalog's saved plan cylinder
+          const nColors = Number(catRow.noOfColors || (catalogItem as any)?.noOfColors || 0);
+          const rawSp = catRow.savedPlanJSON || catRow.contentSizeValues;
+          const sp = rawSp ? (typeof rawSp === "string" ? (() => { try { return JSON.parse(rawSp); } catch { return null; } })() : rawSp) : (catalogItem?.savedPlan ?? null);
+          const rawCylCode = sp?.cylinderCode ?? "";
+          // Don't use SPL as cylinder code — it's a special-order placeholder, not a real cylinder
+          const planCylCode = rawCylCode.startsWith("SPL") ? "" : rawCylCode;
+          const planCylName = sp?.cylinderName ?? "";
+          const planCylSet = planCylCode || catRow.cylinderSet || "";
+          const planCirc = sp?.cylCirc ? String(sp.cylCirc) : "";
+          setCylinderAllocs(Array.from({ length: nColors }, (_, i) => ({
+            colorNo: i + 1,
+            colorName: `Color ${i + 1}`,
+            cylinderNo: planCylCode,
+            circumference: planCirc,
+            cylinderType: "New" as const,
+            status: "Pending" as const,
+            remarks: "",
+          })));
+        }
 
         // Auto-generate material allocations from ply/consumable data
         {
@@ -988,13 +1095,13 @@ export default function GravureWorkOrderPage() {
             const matName = String(l.itemSubGroup || l.itemName || "");
             if (matName) {
               const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * sqm * 1.03).toFixed(3)) : 0;
-              matAllocs.push({ id: `film-${idx}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+              matAllocs.push({ id: `film-${idx}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending", batchId: "" });
             }
             (l.consumableItems || []).forEach((ci: any, j: number) => {
               const ciName = String(ci.itemName || ci.fieldDisplayName || "");
               if (ciName) {
                 const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * sqm * 1.03).toFixed(3)) : 0;
-                matAllocs.push({ id: `con-${idx}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+                matAllocs.push({ id: `con-${idx}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending", batchId: "" });
               }
             });
           });
@@ -1101,6 +1208,7 @@ export default function GravureWorkOrderPage() {
           secondaryLayers: secondaryLayers as any,
           processes,
           selectedPlanId: String(catRow.savedPlanId || catalogItem?.savedPlanId || ""),
+          unwindDirection: Number(catRow.unwindDirection || (catalogItem as any)?.unwindDirection || 0),
         } as any));
 
         if (catRow.savedPlanId || catalogItem?.savedPlanId) {
@@ -1197,6 +1305,7 @@ export default function GravureWorkOrderPage() {
       overheadPct: 12,
       profitPct: 15,
       orderLines: lines,
+      unwindDirection: Number(firstLine.unwindDirection ?? 0),
       status: (r.status || r.Status || "Confirmed") as any,
     } as unknown as GravureOrder;
   }
@@ -1282,8 +1391,8 @@ export default function GravureWorkOrderPage() {
       ? r.savedProcessesJSON.map((p: any) => {
         const pid = String(p.processId ?? p.id ?? "").trim();
         const pname = String(p.processName ?? p.name ?? "").trim();
-        const pm = ROTO_PROCESSES.find(x => x.id === pid)
-          || ROTO_PROCESSES.find(x => x.name === pname);
+        const pm = ROTO_PROCESSES_LIVE.find(x => x.id === pid)
+          || ROTO_PROCESSES_LIVE.find(x => x.name === pname);
         return {
           processId: pm?.id ?? pid,
           processName: (pm?.name ?? pname) || pid,
@@ -1306,7 +1415,9 @@ export default function GravureWorkOrderPage() {
           cylinderType: (ca.cylinderType || "New") as CylinderAlloc["cylinderType"],
           status: (ca.status || "Pending") as CylinderAlloc["status"],
           remarks: String(ca.remarks ?? ""),
-        }))
+          cylinderMasterID: String(ca.cylinderMasterID ?? ""),
+          toolId: String(ca.toolId ?? ""),
+        } as any))
       : [];
     const cylAllocsFromColor: CylinderAlloc[] = Array.isArray(r.savedColorShadesJSON)
       ? r.savedColorShadesJSON
@@ -2057,11 +2168,11 @@ export default function GravureWorkOrderPage() {
     f.secondaryLayers.forEach((l, i) => {
       if (l.itemSubGroup) {
         const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
-        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: l.itemSubGroup, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: l.itemSubGroup, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending", batchId: "" });
       }
       (l.consumableItems || []).forEach((ci, j) => {
         const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
-        allocs.push({ id: `con-${i}-${j}`, plyNo: l.layerNo, materialType: ci.itemGroup, materialName: ci.itemName || ci.fieldDisplayName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+        allocs.push({ id: `con-${i}-${j}`, plyNo: l.layerNo, materialType: ci.itemGroup, materialName: ci.itemName || ci.fieldDisplayName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending", batchId: "" });
       });
     });
     setMaterialAllocs(allocs);
@@ -2104,7 +2215,7 @@ export default function GravureWorkOrderPage() {
       inkList.map((ink, i) => {
         const existing = prev.find(c => (c as any).consumableId === ink.consumableId);
         if (existing) return { ...existing, colorNo: i + 1 };
-        const inkItem = INK_ITEMS.find(x => x.id === ink.inkItemId);
+        const inkItem = INK_ITEMS_LIVE.find(x => x.id === ink.inkItemId);
         return {
           colorNo: i + 1,
           colorName: inkItem?.colour || inkItem?.name || ink.inkName,
@@ -2122,8 +2233,12 @@ export default function GravureWorkOrderPage() {
 
     setCylinderAllocs(prev =>
       inkList.map((ink, i) => {
-        const existing = prev.find(c => (c as any).consumableId === ink.consumableId);
-        if (existing) return { ...existing, colorNo: i + 1, colorName: ink.inkName };
+        // 1. Match by consumableId (most reliable — same ink across re-renders)
+        const byConsumable = prev.find(c => (c as any).consumableId === ink.consumableId);
+        if (byConsumable) return { ...byConsumable, colorNo: i + 1, colorName: ink.inkName };
+        // 2. Match by colorNo — preserves cylinder data loaded from catalog/estimation
+        const byColorNo = prev.find(c => c.colorNo === i + 1);
+        if (byColorNo) return { ...byColorNo, colorName: ink.inkName, consumableId: ink.consumableId } as any;
         return {
           colorNo: i + 1,
           colorName: ink.inkName,
@@ -2151,19 +2266,70 @@ export default function GravureWorkOrderPage() {
       const matName = String(l.itemSubGroup || l.itemName || "");
       if (matName) {
         const reqWt = l.gsm > 0 ? parseFloat(((l.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
-        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+        allocs.push({ id: `film-${i}`, plyNo: l.layerNo, materialType: "Film", materialName: matName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, batchId: "", lotNo: "", location: "", status: "Pending" } as any);
       }
       l.consumableItems.forEach((ci, j) => {
         const ciName = String(ci.itemName || ci.fieldDisplayName || "");
         if (ciName) {
           const reqWt = ci.gsm > 0 ? parseFloat(((ci.gsm / 1000) * reqSQM * 1.03).toFixed(3)) : 0;
-          allocs.push({ id: `con-${i}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, lotNo: "", location: "", status: "Pending" });
+          allocs.push({ id: `con-${i}-${j}`, plyNo: l.layerNo, materialType: String(ci.itemGroup || ""), materialName: ciName, requiredQty: reqWt, unit: "Kg", allocatedQty: 0, batchId: "", lotNo: "", location: "", status: "Pending", itemId: String(ci.itemId || "") } as any);
         }
       });
     });
     if (allocs.length > 0) setMaterialAllocs(allocs);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.secondaryLayers, form.quantity, form.jobWidth, modalOpen, materialAllocs.length]);
+
+  // ── Auto-resolve toolId for cylinder allocs when cylinder master loads ──
+  useEffect(() => {
+    if (cylinderAllocs.length === 0) return;
+    const allCyls = dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_LIVE;
+    if (allCyls.length === 0) return;
+    const needsResolve = cylinderAllocs.some(ca => !(ca as any).toolId && ((ca as any).cylinderMasterID || (ca as any).cylinderNo || (ca as any).planCylCode));
+    console.log("[CYL-RESOLVE] needsResolve:", needsResolve, "allCyls:", allCyls.length, "allocs:", cylinderAllocs.map((ca:any)=>({cylinderNo:ca.cylinderNo,cylinderMasterID:ca.cylinderMasterID,toolId:ca.toolId})));
+    if (!needsResolve) return;
+    setCylinderAllocs(prev => {
+      const next = prev.map(ca => {
+        if ((ca as any).toolId) return ca;
+        // 1. Match by cylinderMasterID (ToolID from DB) — most reliable
+        const masterId = String((ca as any).cylinderMasterID || "").trim();
+        console.log("[CYL-RESOLVE] trying masterId:", masterId, "in allCyls:", allCyls.slice(0,3).map((t:any)=>({id:t.id,code:t.code})));
+        if (masterId) {
+          const match = allCyls.find(t => String(t.id) === masterId);
+          if (match) return { ...ca, toolId: match.id, cylinderNo: match.code, circumference: match.repeatLength || String(match.circumferenceMM) || ca.circumference } as any;
+        }
+        // 2. Match by planCylCode (direct code, e.g. "CUC-034") — skip SPL
+        const planCode = String((ca as any).planCylCode || "").trim();
+        if (planCode && !planCode.startsWith("SPL")) {
+          const match = allCyls.find(t => t.code === planCode);
+          if (match) return { ...ca, toolId: match.id, cylinderNo: match.code, circumference: match.repeatLength || String(match.circumferenceMM) || ca.circumference } as any;
+        }
+        // 3. Fallback: match by cylinderNo code (strip "-C01" suffix: "CUC-034-C01" → "CUC-034")
+        const code = String((ca as any).cylinderNo || "").trim();
+        if (!code || code.startsWith("SPL")) return ca;
+        const baseCode = code.replace(/-C\d+$/, "");
+        const match = allCyls.find(t => t.code === code) || allCyls.find(t => t.code === baseCode);
+        if (!match) return ca;
+        return { ...ca, toolId: match.id, cylinderNo: match.code, circumference: match.repeatLength || String(match.circumferenceMM) || ca.circumference } as any;
+      });
+      // Return prev if nothing changed — prevents infinite re-render loop
+      return next.some((v, i) => v !== prev[i]) ? next : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbCylinders, CYLINDER_TOOLS_LIVE, cylinderAllocs]);
+
+  // ── Auto-fetch batches for material allocs when Material tab opens ──
+  useEffect(() => {
+    if (prepTab !== "material" || materialAllocs.length === 0) return;
+    materialAllocs.forEach(ma => {
+      const itemId = (ma as any).itemId;
+      if (!itemId || batchOptions[ma.id]) return; // already loaded
+      apiGet<any[]>(`api/gravureWorkOrderShrink/getbatchesbyitem?itemId=${itemId}`)
+        .then(res => setBatchOptions(p => ({ ...p, [ma.id]: Array.isArray(res) ? res : [] })))
+        .catch(() => {});
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepTab, materialAllocs]);
 
   // ── Recalculate requiredQty when quantity or unit changes (allocs already exist) ──
   useEffect(() => {
@@ -2406,7 +2572,7 @@ export default function GravureWorkOrderPage() {
           const estimationProcs = apiProcs.map((p: any) => {
             const procId = String(p.ProcessID ?? "");
             const procName = String(p.ProcessName ?? "");
-            const pm = ROTO_PROCESSES.find((r: any) => r.id === procId);
+            const pm = ROTO_PROCESSES_LIVE.find((r: any) => r.id === procId);
             return {
               processId: pm?.id ?? procId,
               processName: (pm?.name ?? procName) || procId,
@@ -2496,7 +2662,7 @@ export default function GravureWorkOrderPage() {
     }));
 
   const selectProcess = (i: number, processId: string) => {
-    const pm = ROTO_PROCESSES.find(x => x.id === processId);
+    const pm = ROTO_PROCESSES_LIVE.find(x => x.id === processId);
     if (!pm) return;
     updateProcess(i, { processId: pm.id, processName: pm.name, chargeUnit: pm.chargeUnit, rate: parseFloat(pm.rate) || 0, setupCharge: pm.makeSetupCharges ? parseFloat(pm.setupChargeAmount) || 0 : 0 });
   };
@@ -3422,7 +3588,7 @@ export default function GravureWorkOrderPage() {
                         <td className="px-3 py-2 min-w-[200px]">
                           <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
                             <option value="">-- Select Process --</option>
-                            {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
+                            {ROTO_PROCESSES_LIVE.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
                           </select>
                         </td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
@@ -4333,7 +4499,7 @@ export default function GravureWorkOrderPage() {
                             <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
                               value={(cs as any).inkItemId ?? ""}
                               onChange={e => {
-                                const ink = INK_ITEMS.find(x => x.id === e.target.value);
+                                const ink = INK_ITEMS_LIVE.find(x => x.id === e.target.value);
                                 setColorShades(p => p.map((c, ci) => ci === i ? {
                                   ...c,
                                   inkItemId: ink?.id ?? "",
@@ -4341,7 +4507,7 @@ export default function GravureWorkOrderPage() {
                                 } as any : c));
                               }}>
                               <option value="">-- Select Ink --</option>
-                              {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
+                              {INK_ITEMS_LIVE.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
                             </select>
                           </td>
                           <td className="px-2 py-1.5"><input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
@@ -4392,7 +4558,7 @@ export default function GravureWorkOrderPage() {
                 <table className="min-w-full text-[11px] border-collapse">
                   <thead className="bg-teal-700 text-white uppercase tracking-wider">
                     <tr>
-                      {["Ply", "Type", "Item (Master)", "Req. Qty", "Alloc. Qty", "Unit", "Lot / Batch No.", "Store Location", "Status", "Action"].map(h => (
+                      {["Ply", "Type", "Item (Master)", "Req. Qty", "Alloc. Qty", "Unit", "Batch No.", "Bin / Location", "Status", "Action"].map(h => (
                         <th key={h} className="px-2 py-2 border border-teal-600/30 text-center whitespace-nowrap font-semibold">{h}</th>
                       ))}
                     </tr>
@@ -4409,9 +4575,17 @@ export default function GravureWorkOrderPage() {
                           <td className="px-2 py-1.5 min-w-[180px]">
                             <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
                               value={(ma as any).itemId ?? ""}
-                              onChange={e => {
+                              onChange={async e => {
                                 const it = itemsForType.find(x => x.id === e.target.value);
-                                setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, itemId: it?.id ?? "", materialName: it?.name ?? m.materialName } as any : m));
+                                setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, itemId: it?.id ?? "", materialName: it?.name ?? m.materialName, batchId: "", lotNo: "", location: "" } as any : m));
+                                setBatchOptions(p => ({ ...p, [ma.id]: [] }));
+                                setBinOptions(p => ({ ...p, [ma.id]: [] }));
+                                if (e.target.value) {
+                                  try {
+                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbatchesbyitem?itemId=${e.target.value}`);
+                                    setBatchOptions(p => ({ ...p, [ma.id]: Array.isArray(res) ? res : [] }));
+                                  } catch { /* ignore */ }
+                                }
                               }}>
                               <option value="">{ma.materialName || "-- Select Item --"}</option>
                               {itemsForType.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
@@ -4422,8 +4596,36 @@ export default function GravureWorkOrderPage() {
                             <input type="number" step={0.001} className="w-16 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-teal-400 text-center" value={ma.allocatedQty || ""} onChange={e => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, allocatedQty: Number(e.target.value) } : m))} />
                           </td>
                           <td className="px-2 py-1.5 text-center text-gray-500">{ma.unit}</td>
-                          <td className="px-2 py-1.5"><input placeholder="LOT-001" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-teal-400" value={ma.lotNo} onChange={e => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, lotNo: e.target.value } : m))} /></td>
-                          <td className="px-2 py-1.5"><input placeholder="Rack A-3" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-teal-400" value={ma.location} onChange={e => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, location: e.target.value } : m))} /></td>
+                          <td className="px-2 py-1.5 min-w-[140px]">
+                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                              value={(ma as any).batchId ?? ""}
+                              onChange={async e => {
+                                const batch = (batchOptions[ma.id] || []).find((b: any) => String(b.BatchID) === e.target.value);
+                                setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, batchId: e.target.value, lotNo: batch?.BatchNo ?? e.target.value, location: "" } as any : m));
+                                setBinOptions(p => ({ ...p, [ma.id]: [] }));
+                                if (e.target.value) {
+                                  try {
+                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbinsbybatch?batchId=${e.target.value}`);
+                                    setBinOptions(p => ({ ...p, [ma.id]: Array.isArray(res) ? res : [] }));
+                                  } catch { /* ignore */ }
+                                }
+                              }}>
+                              <option value="">{ma.lotNo || "-- Select Batch --"}</option>
+                              {(batchOptions[ma.id] || []).map((b: any) => (
+                                <option key={b.BatchID} value={String(b.BatchID)}>{b.BatchNo}{b.SupplierBatchNo ? ` (${b.SupplierBatchNo})` : ""}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-1.5 min-w-[130px]">
+                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                              value={ma.location}
+                              onChange={e => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, location: e.target.value } : m))}>
+                              <option value="">{ma.location || "-- Select Bin --"}</option>
+                              {(binOptions[ma.id] || []).map((b: any) => (
+                                <option key={b.BinID} value={b.WarehouseName + (b.BinName ? ` / ${b.BinName}` : "")}>{b.WarehouseName}{b.BinName ? ` / ${b.BinName}` : ""}</option>
+                              ))}
+                            </select>
+                          </td>
                           <td className="px-2 py-1.5 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ma.status === "Allocated" ? "bg-green-50 text-green-700 border-green-200" : ma.status === "Partial" ? "bg-yellow-50 text-yellow-700 border-yellow-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{ma.status}</span>
                           </td>
@@ -4495,24 +4697,42 @@ export default function GravureWorkOrderPage() {
                         </td>
                         {/* Cylinder from Tool Master */}
                         <td className="px-2 py-1.5 min-w-[220px]">
-                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
-                            value={(ca as any).toolId ?? ""}
-                            onChange={e => {
-                              const tool = [...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls].find(t => t.id === e.target.value);
-                              setCylinderAllocs(p => p.map((c, ci) => ci === i ? {
-                                ...c,
-                                toolId: tool?.id ?? "",
-                                cylinderNo: tool?.code ?? c.cylinderNo,
-                                circumference: selectedPlan ? String(selectedPlan.cylCirc) : ((tool as any)?.repeatLength ? String((tool as any).repeatLength) : c.circumference),
-                              } as any : c));
-                            }}>
-                            <option value="">{ca.cylinderNo || "-- Select Cylinder --"}</option>
-                            {[...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls].map(t => {
-                              const rem = t.shelfLifeMeters ? t.shelfLifeMeters - (t.usedMeters ?? 0) : null;
-                              const lifeBadge = rem !== null ? ` [${rem.toLocaleString()}m left]` : "";
-                              return <option key={t.id} value={t.id}>{t.code} — {t.name} ({t.printWidth}mm){lifeBadge}</option>;
-                            })}
-                          </select>
+                          {(() => {
+                            const allToolsRaw = [...(dbCylinders.length > 0 ? dbCylinders as any[] : CYLINDER_TOOLS_ALL), ...extraCyls];
+                            const currentToolId = String((ca as any).toolId ?? "");
+                            // Deduplicate by code — prefer the entry whose id matches currentToolId, then highest remaining life
+                            const seenCodes = new Map<string, any>();
+                            allToolsRaw.forEach(t => {
+                              const existing = seenCodes.get(t.code);
+                              if (!existing) { seenCodes.set(t.code, t); return; }
+                              // If current alloc's toolId matches this entry, always prefer it
+                              if (t.id === currentToolId) { seenCodes.set(t.code, t); return; }
+                              if (existing.id === currentToolId) return; // keep existing if it matches
+                              const remNew = t.shelfLifeMeters ? t.shelfLifeMeters - (t.usedMeters ?? 0) : 0;
+                              const remOld = existing.shelfLifeMeters ? existing.shelfLifeMeters - (existing.usedMeters ?? 0) : 0;
+                              if (remNew > remOld) seenCodes.set(t.code, t);
+                            });
+                            const dedupedTools = Array.from(seenCodes.values()).sort((a, b) => a.code.localeCompare(b.code));
+                            return (
+                              <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                                value={currentToolId}
+                                onChange={e => {
+                                  const tool = allToolsRaw.find(t => t.id === e.target.value);
+                                  setCylinderAllocs(p => p.map((c, ci) => ci === i ? {
+                                    ...c,
+                                    toolId: tool?.id ?? "",
+                                    cylinderNo: tool?.code ?? c.cylinderNo,
+                                    circumference: selectedPlan ? String(selectedPlan.cylCirc) : ((tool as any)?.repeatLength ? String((tool as any).repeatLength) : c.circumference),
+                                  } as any : c));
+                                }}>
+                                <option value="">{ca.cylinderNo || "-- Select Cylinder --"}</option>
+                                {dedupedTools.map(t => {
+                                  const circ = t.circumferenceMM || t.repeatLength || "";
+                                  return <option key={t.id} value={t.id}>{t.code}{circ ? ` (${circ}mm)` : ""}</option>;
+                                })}
+                              </select>
+                            );
+                          })()}
                           {/* ── Cylinder Life Info + Check ── */}
                           {(() => {
                             const toolId = (ca as any).toolId;
@@ -4771,6 +4991,7 @@ export default function GravureWorkOrderPage() {
                     {s.label} {s.val}
                   </span>
                 ))}
+                <TutorialButton title="Work Order — Tutorial" />
               </div>
             }
             actions={row => (
@@ -4872,7 +5093,7 @@ export default function GravureWorkOrderPage() {
                         <td className="px-3 py-2 min-w-[200px]">
                           <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
                             <option value="">-- Select Process --</option>
-                            {ROTO_PROCESSES.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
+                            {ROTO_PROCESSES_LIVE.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
                           </select>
                         </td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
@@ -4957,9 +5178,17 @@ export default function GravureWorkOrderPage() {
       {/* ══ JOB CARD PRINT MODAL ═══════════════════════════════════ */}
       {printWO && (() => {
         const wo = printWO;
-        // Gather all inks from all plies
+        const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        const companyName = (typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company";
+
+        const woCyls: any[] = Array.isArray((wo as any).cylAllocsJSON) ? (wo as any).cylAllocsJSON
+          : Array.isArray((wo as any).savedCylAllocs) ? (wo as any).savedCylAllocs
+          : Array.isArray(wo.cylinderAllocs) ? wo.cylinderAllocs : [];
+
+        const qrData = JSON.stringify({ wo: wo.workOrderNo, job: wo.jobName, cyls: woCyls.map((c: any) => ({ no: c.colorNo, code: c.cylinderNo || c.code || "" })).filter((c: any) => c.code) });
+
         const allInks = wo.secondaryLayers.flatMap(l =>
-          l.consumableItems.filter(ci => ci.itemGroup === "Ink").map((ci, idx) => ({ ...ci, plyType: l.plyType, plyNo: l.layerNo }))
+          l.consumableItems.filter(ci => ci.itemGroup === "Ink").map(ci => ({ ...ci, plyType: l.plyType, plyNo: l.layerNo }))
         );
         const allSolvents = wo.secondaryLayers.flatMap(l =>
           l.consumableItems.filter(ci => ci.itemGroup === "Solvent").map(ci => ({ ...ci, plyType: l.plyType, plyNo: l.layerNo }))
@@ -4968,325 +5197,398 @@ export default function GravureWorkOrderPage() {
           l.consumableItems.filter(ci => ci.itemGroup === "Adhesive" || ci.itemGroup === "Hardner").map(ci => ({ ...ci, plyType: l.plyType, plyNo: l.layerNo }))
         );
         const filmLayers = wo.secondaryLayers.filter(l => l.itemSubGroup);
+
         const reqMtr = wo.quantity || 0;
         const woFilmGsm = wo.secondaryLayers[0]?.gsm ?? 0;
+        const woPlanFilmWidth: number = (wo as any)._savedPlanJSON?.filmSize || 0;
+        const woFilmWidth = woPlanFilmWidth > 0 ? woPlanFilmWidth : (wo.jobWidth || 0);
         const reqSQM = (wo.unit === "Kg" && woFilmGsm > 0)
           ? (reqMtr * 1000) / woFilmGsm
-          : reqMtr * ((wo.width || wo.jobWidth || 0) / 1000);
+          : reqMtr * (woFilmWidth / 1000);
         const waste = (wo.wastagePct ?? 3) / 100;
+        const totalFilmReq = reqMtr * (1 + waste);
+
+        // Build per-color-station rows: cylinder + matched ink by index
+        type ColorStation = { colorNo: number; colorName: string; cylCode: string; circ: string; cylType: string; cylStatus: string; inkName: string; dryGSM: number; liqGSM: number; reqWtKg: number; };
+        const colorStations: ColorStation[] = (() => {
+          if (woCyls.length > 0) {
+            return woCyls.map((c: any, i: number) => {
+              const ink = allInks[i];
+              const dryGSM = ink?.gsm ?? 0;
+              const solidPct = ink?.solidPct ?? 40;
+              const liqGSM = dryGSM > 0 && solidPct > 0 ? parseFloat((dryGSM / (solidPct / 100)).toFixed(2)) : 0;
+              const reqWtKg = dryGSM > 0 ? parseFloat(((dryGSM / 1000) * reqSQM * (1 + waste)).toFixed(3)) : 0;
+              return { colorNo: c.colorNo ?? i + 1, colorName: c.colorName || `Color ${i + 1}`, cylCode: c.cylinderNo || c.code || "—", circ: String(c.circumference || "—"), cylType: c.cylinderType || "—", cylStatus: c.status || "—", inkName: ink?.itemName || ink?.fieldDisplayName || "—", dryGSM, liqGSM, reqWtKg };
+            });
+          }
+          return allInks.map((ink, i) => {
+            const dryGSM = ink.gsm ?? 0;
+            const solidPct = ink.solidPct ?? 40;
+            const liqGSM = dryGSM > 0 && solidPct > 0 ? parseFloat((dryGSM / (solidPct / 100)).toFixed(2)) : 0;
+            const reqWtKg = dryGSM > 0 ? parseFloat(((dryGSM / 1000) * reqSQM * (1 + waste)).toFixed(3)) : 0;
+            return { colorNo: i + 1, colorName: ink.fieldDisplayName || ink.itemName || `Color ${i + 1}`, cylCode: "—", circ: "—", cylType: "—", cylStatus: "—", inkName: ink.itemName || "—", dryGSM, liqGSM, reqWtKg };
+          });
+        })();
+
+        const totalInkKg  = colorStations.reduce((s, r) => s + r.reqWtKg, 0);
+        const totalSolvKg = allSolvents.reduce((s, ci) => s + (ci.gsm > 0 ? (ci.gsm / 1000) * reqSQM * (1 + waste) : 0), 0);
+        const totalAdhKg  = allAdhesives.filter(ci => ci.itemGroup === "Adhesive").reduce((s, ci) => s + (ci.gsm > 0 ? (ci.gsm / 1000) * reqSQM * (1 + waste) : 0), 0);
+        const totalHrdKg  = allAdhesives.filter(ci => ci.itemGroup === "Hardner").reduce((s, ci) => s + (ci.gsm > 0 ? (ci.gsm / 1000) * reqSQM * (1 + waste) : 0), 0);
+
+        const PRINT_CSS = `*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}body{padding:8mm 10mm;color:#000;background:#fff;font-size:8pt;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #999;padding:2px 4px;vertical-align:middle;color:#000;}th{background:#efefef;font-weight:700;text-align:left;white-space:nowrap;font-size:6pt;text-transform:uppercase;}@media print{body{padding:7mm 8mm;}@page{margin:6mm;size:A4 portrait;}}`;
 
         const handlePrint = () => {
           const el = document.getElementById("wo-job-card-print");
           if (!el) return;
-          const orig = document.body.innerHTML;
-          document.body.innerHTML = el.innerHTML;
-          window.print();
-          document.body.innerHTML = orig;
-          window.location.reload();
+          const pw = window.open("", "_blank", "width=1050,height=820");
+          if (!pw) return;
+          pw.document.write(`<!DOCTYPE html><html><head><title>Work Order — ${wo.workOrderNo}</title><style>${PRINT_CSS}</style></head><body>${el.innerHTML}</body></html>`);
+          pw.document.close();
+          pw.focus();
+          setTimeout(() => { pw.print(); }, 400);
         };
+
+        const PH: React.CSSProperties = { background: "#fff", color: "#000", fontWeight: 900, fontSize: "7.5pt", letterSpacing: "0.5px", padding: "2px 0", textTransform: "uppercase", borderBottom: "2px solid #000", marginTop: "4px", marginBottom: "2px", display: "block" };
+        const TH: React.CSSProperties = { padding: "2px 4px", border: "1px solid #999", background: "#efefef", fontWeight: 700, fontSize: "6pt", textTransform: "uppercase", textAlign: "left", whiteSpace: "nowrap", color: "#000" };
+        const TD: React.CSSProperties = { padding: "2px 4px", border: "1px solid #bbb", fontSize: "7.5pt", verticalAlign: "middle", color: "#000" };
 
         return (
           <>
-            <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={() => setPrintWO(null)} />
-            <div className="fixed z-[71] inset-4 sm:inset-8 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" onClick={() => setPrintWO(null)} />
+            <div className="fixed z-[71] inset-2 sm:inset-6 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
               {/* Toolbar */}
-              <div className="flex items-center justify-between px-5 py-3 bg-gray-900 text-white flex-shrink-0">
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-900 text-white flex-shrink-0">
                 <div className="flex items-center gap-3">
-                  <Printer size={18} className="text-orange-400" />
-                  <span className="font-bold text-sm">Job Card Preview — {wo.workOrderNo}</span>
+                  <Printer size={17} className="text-orange-400" />
+                  <span className="font-bold text-sm">Work Order — {wo.workOrderNo}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${wo.status === "Completed" ? "bg-green-600" : wo.status === "In Progress" ? "bg-yellow-600" : wo.status === "On Hold" ? "bg-red-600" : "bg-gray-600"}`}>{wo.status}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={handlePrint}
-                    className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-xl transition">
+                  <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-bold rounded-xl transition">
                     <Printer size={14} /> Print Job Card
                   </button>
-                  <button onClick={() => setPrintWO(null)}
-                    className="p-2 hover:bg-white/10 rounded-lg transition"><X size={16} /></button>
+                  <button onClick={() => setPrintWO(null)} className="p-2 hover:bg-white/10 rounded-lg transition"><X size={16} /></button>
                 </div>
               </div>
 
-              {/* Scrollable preview */}
-              <div className="flex-1 overflow-auto bg-gray-100 p-4 sm:p-8">
-                <div id="wo-job-card-print" className="bg-white mx-auto shadow-lg" style={{ width: "210mm", minHeight: "297mm", padding: "12mm", fontFamily: "Arial, sans-serif", fontSize: "9pt", color: "#111" }}>
+              {/* A4 Preview */}
+              <div className="flex-1 overflow-auto bg-slate-200 p-6">
+                <div id="wo-job-card-print" className="bg-white mx-auto shadow-xl"
+                  style={{ width: "210mm", minHeight: "297mm", padding: "8mm 10mm", fontFamily: "Arial, sans-serif", fontSize: "8pt", color: "#000" }}>
 
-                  {/* ── PAGE HEADER ── */}
-                  <div style={{ borderBottom: "3px solid #1e3a8a", paddingBottom: "6px", marginBottom: "8px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div>
-                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#1e3a8a", letterSpacing: "1px" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
-                        <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Printing &amp; Flexible Packaging</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: "13pt", fontWeight: "800", color: "#b45309", letterSpacing: "2px" }}>PRODUCTION JOB CARD</div>
-                        <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Module</div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* ── HEADER ── */}
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px", border: "2px solid #000" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ border: "none", borderRight: "1px solid #000", padding: "5px 8px", width: "35%", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: "14pt", fontWeight: 900, color: "#000", letterSpacing: "0.5px", lineHeight: 1.1 }}>{companyName}</div>
+                          <div style={{ fontSize: "6.5pt", color: "#000", fontWeight: 700, marginTop: "2px" }}>FLEXIBLE PACKAGING · GRAVURE PRINTING</div>
+                        </td>
+                        <td style={{ border: "none", borderRight: "1px solid #000", textAlign: "center", padding: "5px 8px", width: "28%", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: "13pt", fontWeight: 900, color: "#000", letterSpacing: "1px", textTransform: "uppercase" as const, lineHeight: 1.1 }}>PRODUCTION WORK ORDER</div>
+                          <div style={{ fontSize: "6.5pt", color: "#444", marginTop: "3px", fontWeight: 600 }}>GRAVURE MODULE · SHOP FLOOR JOB CARD</div>
+                        </td>
+                        <td style={{ border: "none", padding: "5px 8px", width: "37%", verticalAlign: "top" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                            <table style={{ flex: 1, borderCollapse: "collapse" }}>
+                              <tbody>
+                                {[["WO Number", wo.workOrderNo], ["WO Date", today], ["Order Ref", wo.orderNo || "Direct"], ["Planned Date", wo.plannedDate || "—"], ["Status", wo.status]].map(([k, v]) => (
+                                  <tr key={k}><td style={{ border: "none", padding: "1px 0", fontSize: "7pt", fontWeight: 700, whiteSpace: "nowrap" as const }}>{k}</td><td style={{ border: "none", padding: "1px 2px", fontSize: "7pt" }}>: {v}</td></tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div style={{ marginLeft: "8px", flexShrink: 0 }}>
+                              <QRCodeSVG value={qrData} size={56} level="M" />
+                              <div style={{ fontSize: "5pt", textAlign: "center", color: "#555", marginTop: "1px" }}>{wo.workOrderNo}</div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  {/* ── WO IDENTITY STRIP ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0", border: "2px solid #1e3a8a", marginBottom: "8px" }}>
-                    {[
-                      ["WO Number", wo.workOrderNo],
-                      ["WO Date", wo.date],
-                      ["Status", wo.status],
-                      ["Order Ref", wo.orderNo || "Direct"],
-                    ].map(([k, v]) => (
-                      <div key={k} style={{ padding: "5px 8px", borderRight: "1px solid #cdd6f4" }}>
-                        <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px" }}>{k}</div>
-                        <div style={{ fontSize: "9pt", fontWeight: "800", color: "#1e3a8a" }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* ── A · JOB IDENTITY ── */}
+                  <span style={PH}>A · Job Identity</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                    <tbody>
+                      <tr>
+                        <th style={{ ...TH, width: "11%" }}>Customer</th>
+                        <td style={{ ...TD, fontWeight: 800, fontSize: "8.5pt", width: "22%" }}>{wo.customerName || "—"}</td>
+                        <th style={{ ...TH, width: "11%" }}>Job Name</th>
+                        <td style={{ ...TD, fontWeight: 800, fontSize: "8.5pt", width: "22%" }}>{wo.jobName || "—"}</td>
+                        <th style={{ ...TH, width: "11%" }}>Category</th>
+                        <td style={TD}>{wo.categoryName || "—"}</td>
+                      </tr>
+                      <tr>
+                        <th style={TH}>Machine</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{wo.machineName || "—"}</td>
+                        <th style={TH}>Operator</th>
+                        <td style={TD}>{wo.operatorName || "—"}</td>
+                        <th style={TH}>Sales Person</th>
+                        <td style={TD}>{wo.salesPerson || "—"}</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  {/* ── CUSTOMER & JOB ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginBottom: "8px" }}>
-                    <div style={{ border: "1px solid #d1d5db", borderRadius: "4px", padding: "6px 8px", background: "#f8fafc" }}>
-                      <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>Customer</div>
-                      <div style={{ fontSize: "11pt", fontWeight: "800", color: "#111" }}>{wo.customerName}</div>
-                    </div>
-                    <div style={{ border: "1px solid #d1d5db", borderRadius: "4px", padding: "6px 8px", background: "#f8fafc" }}>
-                      <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>Job Name / Product</div>
-                      <div style={{ fontSize: "11pt", fontWeight: "800", color: "#111" }}>{wo.jobName}</div>
-                    </div>
-                  </div>
+                  {/* ── B · PRODUCT SPECIFICATION ── */}
+                  <span style={PH}>B · Product Specification</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                    <tbody>
+                      <tr>
+                        <th style={{ ...TH, width: "11%" }}>Structure Type</th>
+                        <td style={{ ...TD, width: "14%" }}>{wo.structureType || "—"}</td>
+                        <th style={{ ...TH, width: "9%" }}>Content</th>
+                        <td style={{ ...TD, width: "14%" }}>{wo.content || "—"}</td>
+                        <th style={{ ...TH, width: "9%" }}>Print Type</th>
+                        <td style={{ ...TD, width: "11%" }}>{wo.printType || "—"}</td>
+                        <th style={{ ...TH, width: "5%" }}>UPS</th>
+                        <td style={{ ...TD, textAlign: "center", width: "7%" }}>{wo.ups || 1}</td>
+                        <th style={{ ...TH, width: "8%" }}>Unwind Dir.</th>
+                        <td style={{ ...TD, textAlign: "center" }}>{wo.unwindDirection === 1 ? "Bottom" : wo.unwindDirection === 2 ? "Top" : "—"}</td>
+                      </tr>
+                      <tr>
+                        <th style={TH}>Job W×H (mm)</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{wo.jobWidth}×{wo.jobHeight}</td>
+                        <th style={TH}>Film Width (mm)</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{woFilmWidth || "—"}</td>
+                        <th style={TH}>Colors (F+B)</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{wo.noOfColors}C ({wo.frontColors}F+{wo.backColors}B)</td>
+                        <th style={TH}>Trimming</th>
+                        <td style={{ ...TD, textAlign: "center" }}>{wo.trimmingSize ? `${wo.trimmingSize}mm` : "—"}</td>
+                        <th style={TH}>Width Shrink</th>
+                        <td style={{ ...TD, textAlign: "center" }}>{wo.widthShrinkage ? `${wo.widthShrinkage}mm` : "—"}</td>
+                      </tr>
+                      <tr>
+                        <th style={TH}>Order Qty</th>
+                        <td style={{ ...TD, fontWeight: 800 }}>{Number(wo.quantity || 0).toLocaleString("en-IN")} {wo.unit}</td>
+                        <th style={TH}>Wastage %</th>
+                        <td style={TD}>{wo.wastagePct ?? 3}%</td>
+                        <th style={TH}>Total Film Req.</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{totalFilmReq.toLocaleString("en-IN", { maximumFractionDigits: 0 })} {wo.unit}</td>
+                        <th style={TH}>Final Roll OD</th>
+                        <td style={{ ...TD, textAlign: "center" }}>{wo.finalRollOD ? `${wo.finalRollOD}mm` : "—"}</td>
+                        <th style={TH}>Source</th>
+                        <td style={TD}>{wo.sourceOrderType || "Direct"}</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  {/* ── PRODUCT SPECIFICATION ── */}
-                  <div style={{ marginBottom: "8px" }}>
-                    <div style={{ background: "#1e3a8a", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "0" }}>Product Specification</div>
-                    <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
-                      <tbody>
-                        <tr>
-                          {[
-                            ["Job Size (mm)", `${wo.jobWidth} × ${wo.jobHeight}`],
-                            ["Actual Size (mm)", `${wo.actualWidth} × ${wo.actualHeight}`],
-                            ["Film Width (mm)", `${wo.width || wo.jobWidth}`],
-                            ["No. of Colors", `${wo.noOfColors}C`],
-                          ].map(([k, v]) => (
-                            <td key={k} style={{ padding: "4px 7px", border: "1px solid #e5e7eb", width: "25%" }}>
-                              <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                              <div style={{ fontWeight: "700" }}>{v}</div>
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          {[
-                            ["Print Type", wo.printType],
-                            ["Content / Structure", wo.content || wo.categoryName || "—"],
-                            ["Substrate", wo.substrate || "—"],
-                            ["Category", wo.categoryName || "—"],
-                          ].map(([k, v]) => (
-                            <td key={k} style={{ padding: "4px 7px", border: "1px solid #e5e7eb", width: "25%" }}>
-                              <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                              <div style={{ fontWeight: "700" }}>{v}</div>
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          {[
-                            ["Machine", wo.machineName || "—"],
-                            ["Operator", wo.operatorName || "—"],
-                            ["Cylinder Set", wo.cylinderSet || "—"],
-                            ["UPS", wo.ups || 1],
-                          ].map(([k, v]) => (
-                            <td key={k} style={{ padding: "4px 7px", border: "1px solid #e5e7eb", width: "25%" }}>
-                              <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                              <div style={{ fontWeight: "700" }}>{v}</div>
-                            </td>
-                          ))}
-                        </tr>
-                        <tr>
-                          {[
-                            ["Quantity", `${wo.quantity.toLocaleString("en-IN")} ${wo.unit}`],
-                            ["Planned Date", wo.plannedDate || "—"],
-                            ["Wastage %", `${wo.wastagePct ?? 3}%`],
-                            ["Req. SQM (approx.)", `${reqSQM.toFixed(1)} m²`],
-                          ].map(([k, v]) => (
-                            <td key={k} style={{ padding: "4px 7px", border: "1px solid #e5e7eb", width: "25%" }}>
-                              <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                              <div style={{ fontWeight: "700" }}>{v}</div>
-                            </td>
-                          ))}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* ── FILM / PLY STRUCTURE ── */}
+                  {/* ── C · PLY STRUCTURE ── */}
                   {filmLayers.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ background: "#1e3a8a", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Film / Ply Structure</div>
-                      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
+                    <>
+                      <span style={PH}>C · Film / Ply Structure</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px", tableLayout: "fixed" as const }}>
+                        <colgroup>
+                          <col style={{ width: "6%" }} /><col style={{ width: "14%" }} /><col style={{ width: "28%" }} />
+                          <col style={{ width: "10%" }} /><col style={{ width: "8%" }} /><col style={{ width: "10%" }} />
+                          <col style={{ width: "10%" }} /><col style={{ width: "14%" }} />
+                        </colgroup>
                         <thead>
-                          <tr style={{ background: "#eff6ff" }}>
-                            {["Ply #", "Type", "Film / Material", "Thickness (μ)", "GSM", "Req. Wt. (Kg)"].map(h => (
-                              <th key={h} style={{ padding: "3px 6px", border: "1px solid #d1d5db", fontSize: "6.5pt", fontWeight: "700", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
-                            ))}
+                          <tr>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Ply #</th>
+                            <th style={TH}>Type</th>
+                            <th style={TH}>Film / Material</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Thickness (μ)</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>GSM</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Req. SQM</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Rate (₹/Kg)</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Req. Wt. (Kg)</th>
                           </tr>
                         </thead>
                         <tbody>
                           {filmLayers.map((l, li) => {
                             const reqWt = l.gsm > 0 ? ((l.gsm / 1000) * reqSQM * (1 + waste)) : 0;
                             return (
-                              <tr key={l.id ?? l.layerNo ?? li}>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700", textAlign: "center" }}>{l.layerNo}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{l.plyType}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{l.itemSubGroup}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{l.thickness || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{l.gsm || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700" }}>{reqWt > 0 ? reqWt.toFixed(2) : "—"}</td>
+                              <tr key={l.id ?? l.layerNo ?? li} style={{ background: li % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                                <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{l.layerNo}</td>
+                                <td style={TD}>{l.plyType}</td>
+                                <td style={{ ...TD, fontWeight: 700 }}>{l.itemSubGroup || l.itemName || "—"}</td>
+                                <td style={{ ...TD, textAlign: "center" }}>{l.thickness || "—"}</td>
+                                <td style={{ ...TD, textAlign: "center" }}>{l.gsm || "—"}</td>
+                                <td style={{ ...TD, textAlign: "right" }}>{reqSQM > 0 ? reqSQM.toFixed(2) : "—"}</td>
+                                <td style={{ ...TD, textAlign: "right" }}>{l.filmRate ? `₹${l.filmRate}` : "—"}</td>
+                                <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{reqWt > 0 ? reqWt.toFixed(2) : "—"}</td>
                               </tr>
                             );
                           })}
                         </tbody>
                       </table>
-                    </div>
+                    </>
                   )}
 
-                  {/* ── INK / COLOR TABLE ── */}
-                  {allInks.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ background: "#1e40af", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Ink Details (Color-wise)</div>
-                      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
+                  {/* ── D · COLOR STATION PLAN (Cylinder + Ink per station) ── */}
+                  {colorStations.length > 0 && (
+                    <>
+                      <span style={PH}>D · Color Station Plan (Cylinder + Ink)</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px", tableLayout: "fixed" as const }}>
+                        <colgroup>
+                          <col style={{ width: "5%" }} /><col style={{ width: "13%" }} /><col style={{ width: "12%" }} />
+                          <col style={{ width: "9%" }} /><col style={{ width: "9%" }} /><col style={{ width: "9%" }} />
+                          <col style={{ width: "20%" }} /><col style={{ width: "7%" }} /><col style={{ width: "8%" }} /><col style={{ width: "8%" }} />
+                        </colgroup>
                         <thead>
-                          <tr style={{ background: "#eff6ff" }}>
-                            {["#", "Ply", "Ink Item", "Sub Group", "Dry GSM", "% Solid", "Liquid GSM", "Coverage %", "Req. Wt. (Kg)"].map(h => (
-                              <th key={h} style={{ padding: "3px 5px", border: "1px solid #d1d5db", fontSize: "6.5pt", fontWeight: "700", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
-                            ))}
+                          <tr>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Clr #</th>
+                            <th style={TH}>Color Name</th>
+                            <th style={TH}>Cylinder Code</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Circ. (mm)</th>
+                            <th style={TH}>Cyl. Type</th>
+                            <th style={TH}>Cyl. Status</th>
+                            <th style={TH}>Ink Item</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Dry GSM</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>Liq. GSM</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Req. Kg</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {allInks.map((ci, i) => {
-                            const solid = ci.solidPct ?? 40;
-                            const dryGSM = ci.gsm || 0;
-                            const liqGSM = solid > 0 ? parseFloat((dryGSM / (solid / 100)).toFixed(2)) : 0;
-                            const effGSM = dryGSM * ((ci.coveragePct ?? 100) / 100);
-                            const reqWt = effGSM > 0 ? ((effGSM / 1000) * reqSQM * (1 + waste)) : 0;
-                            return (
-                              <tr key={ci.consumableId} style={{ background: i % 2 === 0 ? "#fff" : "#f8faff" }}>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontWeight: "700", textAlign: "center" }}>{i + 1}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontSize: "7.5pt" }}>{ci.plyType}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{ci.itemName || ci.fieldDisplayName || "—"}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontSize: "7.5pt" }}>{ci.itemSubGroup || "—"}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{dryGSM || "—"}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{solid}%</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700", color: "#6d28d9" }}>{liqGSM || "—"}</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{ci.coveragePct ?? 100}%</td>
-                                <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700" }}>{reqWt > 0 ? reqWt.toFixed(3) : "—"}</td>
-                              </tr>
-                            );
-                          })}
+                          {colorStations.map((cs, i) => (
+                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                              <td style={{ ...TD, textAlign: "center", fontWeight: 900, fontSize: "9pt" }}>{cs.colorNo}</td>
+                              <td style={{ ...TD, fontWeight: 700 }}>{cs.colorName}</td>
+                              <td style={{ ...TD, fontWeight: 800 }}>{cs.cylCode}</td>
+                              <td style={{ ...TD, textAlign: "center" }}>{cs.circ}</td>
+                              <td style={TD}>{cs.cylType}</td>
+                              <td style={TD}>{cs.cylStatus}</td>
+                              <td style={{ ...TD, fontSize: "7pt" }}>{cs.inkName}</td>
+                              <td style={{ ...TD, textAlign: "center" }}>{cs.dryGSM || "—"}</td>
+                              <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{cs.liqGSM || "—"}</td>
+                              <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{cs.reqWtKg > 0 ? cs.reqWtKg.toFixed(3) : "—"}</td>
+                            </tr>
+                          ))}
                         </tbody>
+                        {totalInkKg > 0 && (
+                          <tfoot>
+                            <tr style={{ background: "#efefef" }}>
+                              <td colSpan={9} style={{ ...TD, textAlign: "right", fontWeight: 800, background: "#efefef", whiteSpace: "nowrap" as const }}>Total Ink Required →</td>
+                              <td style={{ ...TD, textAlign: "right", fontWeight: 900, whiteSpace: "nowrap" as const }}>{totalInkKg.toFixed(3)} Kg</td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </table>
-                    </div>
+                    </>
                   )}
 
-                  {/* ── SOLVENT TABLE ── */}
-                  {allSolvents.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ background: "#5b21b6", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Solvent Details</div>
-                      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
+                  {/* ── E · CONSUMABLES PLAN (Adhesive + Solvent) ── */}
+                  {(allAdhesives.length > 0 || allSolvents.length > 0) && (
+                    <>
+                      <span style={PH}>E · Consumables Plan (Adhesive / Hardener / Solvent)</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
                         <thead>
-                          <tr style={{ background: "#f5f3ff" }}>
-                            {["#", "Ply", "Solvent Item", "Sub Group", "Ratio (%)", "Req. Wt. (Kg)"].map(h => (
-                              <th key={h} style={{ padding: "3px 6px", border: "1px solid #d1d5db", fontSize: "6.5pt", fontWeight: "700", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
-                            ))}
+                          <tr>
+                            <th style={{ ...TH, width: "5%", textAlign: "center" as const }}>Ply</th>
+                            <th style={{ ...TH, width: "10%" }}>Type</th>
+                            <th style={{ ...TH, width: "28%" }}>Item Name</th>
+                            <th style={TH}>Sub Group</th>
+                            <th style={{ ...TH, textAlign: "center" as const, width: "8%" }}>GSM</th>
+                            <th style={{ ...TH, textAlign: "center" as const, width: "12%" }}>% Solid / NCO</th>
+                            <th style={{ ...TH, textAlign: "right" as const, width: "12%" }}>Req. Wt. (Kg)</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {allSolvents.map((ci, i) => {
+                          {[...allAdhesives, ...allSolvents].map((ci, i) => {
                             const reqWt = ci.gsm > 0 ? ((ci.gsm / 1000) * reqSQM * (1 + waste)) : 0;
+                            const pctLabel = ci.itemGroup === "Hardner" ? `${ci.ncoPct ?? "—"}% NCO` : ci.itemGroup === "Adhesive" ? `${ci.ohPct ?? "—"}% OH` : `${ci.gsm ?? "—"}%`;
                             return (
-                              <tr key={ci.consumableId}>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{i + 1}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{ci.plyType}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{ci.itemName || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{ci.itemSubGroup || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{ci.gsm || "—"}%</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700" }}>{reqWt > 0 ? reqWt.toFixed(3) : "—"}</td>
+                              <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                                <td style={{ ...TD, textAlign: "center" }}>{ci.plyNo}</td>
+                                <td style={{ ...TD, fontWeight: 700 }}>{ci.itemGroup}</td>
+                                <td style={{ ...TD, fontWeight: 700 }}>{ci.itemName || ci.fieldDisplayName || "—"}</td>
+                                <td style={TD}>{ci.itemSubGroup || "—"}</td>
+                                <td style={{ ...TD, textAlign: "center" }}>{ci.itemGroup === "Solvent" ? "—" : (ci.gsm || "—")}</td>
+                                <td style={{ ...TD, textAlign: "center" }}>{pctLabel}</td>
+                                <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{reqWt > 0 ? reqWt.toFixed(3) : "—"}</td>
                               </tr>
                             );
                           })}
                         </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {/* ── ADHESIVE / HARDNER TABLE ── */}
-                  {allAdhesives.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ background: "#7c3aed", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Adhesive / Hardener Details</div>
-                      <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
-                        <thead>
-                          <tr style={{ background: "#faf5ff" }}>
-                            {["#", "Ply", "Group", "Item", "Sub Group", "GSM / NCO%", "Req. Wt. (Kg)"].map(h => (
-                              <th key={h} style={{ padding: "3px 6px", border: "1px solid #d1d5db", fontSize: "6.5pt", fontWeight: "700", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
-                            ))}
+                        <tfoot>
+                          <tr style={{ background: "#efefef" }}>
+                            <td colSpan={6} style={{ ...TD, textAlign: "right", fontWeight: 800, background: "#efefef", fontSize: "7pt", whiteSpace: "nowrap" as const }}>
+                              {[totalAdhKg > 0 && `Adhesive: ${totalAdhKg.toFixed(3)} Kg`, totalHrdKg > 0 && `Hardener: ${totalHrdKg.toFixed(3)} Kg`, totalSolvKg > 0 && `Solvent: ${totalSolvKg.toFixed(3)} Kg`].filter(Boolean).join("   |   ")}
+                            </td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 900, whiteSpace: "nowrap" as const }}>{(totalAdhKg + totalHrdKg + totalSolvKg).toFixed(3)} Kg</td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {allAdhesives.map((ci, i) => {
-                            const reqWt = ci.gsm > 0 ? ((ci.gsm / 1000) * reqSQM * (1 + waste)) : 0;
-                            return (
-                              <tr key={ci.consumableId}>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{i + 1}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{ci.plyType}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{ci.itemGroup}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", fontWeight: "700" }}>{ci.itemName || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb" }}>{ci.itemSubGroup || "—"}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center" }}>{ci.itemGroup === "Hardner" ? `NCO: ${ci.ncoPct ?? "—"}%` : `${ci.gsm || "—"} GSM / OH: ${ci.ohPct ?? "—"}%`}</td>
-                                <td style={{ padding: "3px 6px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700" }}>{reqWt > 0 ? reqWt.toFixed(3) : "—"}</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
+                        </tfoot>
                       </table>
-                    </div>
+                    </>
                   )}
 
-                  {/* ── PROCESSES ── */}
+                  {/* ── F · PROCESS ROUTING ── */}
                   {wo.processes.length > 0 && (
-                    <div style={{ marginBottom: "8px" }}>
-                      <div style={{ background: "#065f46", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Production Processes (In Order)</div>
-                      <div style={{ border: "1px solid #d1d5db", padding: "6px 8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {wo.processes.map((p, i) => (
-                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 10px", border: "1px solid #6ee7b7", background: "#ecfdf5", borderRadius: "20px", fontSize: "7.5pt", fontWeight: "700", color: "#065f46" }}>
-                            <span style={{ background: "#065f46", color: "white", borderRadius: "50%", width: "14px", height: "14px", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "6.5pt", fontWeight: "900" }}>{i + 1}</span>
-                            {p.processName}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+                    <>
+                      <span style={PH}>F · Process Routing</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...TH, width: "5%", textAlign: "center" as const }}>Seq</th>
+                            <th style={TH}>Process Name</th>
+                            <th style={{ ...TH, width: "13%", textAlign: "center" as const }}>Charge Unit</th>
+                            <th style={{ ...TH, width: "9%", textAlign: "right" as const }}>Qty</th>
+                            <th style={{ ...TH, width: "11%", textAlign: "right" as const }}>Rate (₹)</th>
+                            <th style={{ ...TH, width: "11%", textAlign: "right" as const }}>Amount (₹)</th>
+                            <th style={{ ...TH, width: "20%", textAlign: "center" as const }}>Operator Sign-off</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {wo.processes.map((p, i) => (
+                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                              <td style={{ ...TD, textAlign: "center", fontWeight: 900 }}>{i + 1}</td>
+                              <td style={{ ...TD, fontWeight: 700 }}>{p.processName}</td>
+                              <td style={{ ...TD, textAlign: "center", fontSize: "7pt" }}>{p.chargeUnit || "—"}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{p.qty > 0 ? p.qty.toLocaleString("en-IN") : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{p.rate > 0 ? `₹${Number(p.rate).toFixed(2)}` : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{p.amount > 0 ? `₹${Number(p.amount).toFixed(2)}` : "—"}</td>
+                              <td style={{ ...TD, textAlign: "center", color: "#bbb", fontSize: "7pt" }}>_______________________</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
                   )}
 
-                  {/* ── SPECIAL INSTRUCTIONS ── */}
+                  {/* ── G · PRODUCTION LOG (shop floor fill-in) ── */}
+                  <span style={PH}>G · Production Log</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                    <tbody>
+                      <tr>
+                        {["Actual Start Time", "Actual End Time", "Machine Speed (m/min)", "Actual Qty Produced", "Actual Waste (m)", "Roll Wt. (Kg)"].map(label => (
+                          <td key={label} style={{ ...TD, width: `${100 / 6}%`, verticalAlign: "top", padding: "4px" }}>
+                            <div style={{ fontSize: "6pt", fontWeight: 700, textTransform: "uppercase" as const, color: "#555" }}>{label}</div>
+                            <div style={{ borderBottom: "1px solid #bbb", marginTop: "14px" }}></div>
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* ── H · SPECIAL INSTRUCTIONS ── */}
                   {wo.specialInstructions && (
-                    <div style={{ marginBottom: "8px", border: "2px solid #f59e0b", borderRadius: "4px", padding: "6px 10px", background: "#fffbeb" }}>
-                      <div style={{ fontSize: "7pt", fontWeight: "800", color: "#b45309", textTransform: "uppercase", marginBottom: "3px" }}>⚠ Special Instructions</div>
-                      <div style={{ fontSize: "8.5pt", color: "#78350f" }}>{wo.specialInstructions}</div>
-                    </div>
+                    <>
+                      <span style={PH}>H · Special Instructions</span>
+                      <div style={{ border: "2px solid #000", padding: "5px 8px", marginBottom: "3px", fontSize: "8pt", fontWeight: 600 }}>
+                        {wo.specialInstructions}
+                      </div>
+                    </>
                   )}
 
                   {/* ── SIGN-OFF ── */}
-                  <div style={{ marginTop: "12px", borderTop: "2px solid #1e3a8a", paddingTop: "8px" }}>
+                  <div style={{ borderTop: "2px solid #000", marginTop: "4px", paddingTop: "4px" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <tbody>
                         <tr>
-                          {["Prepared By", "Approved By", "Machine Operator", "Quality Check"].map(role => (
-                            <td key={role} style={{ width: "25%", padding: "4px 8px", border: "1px solid #d1d5db", textAlign: "center" }}>
-                              <div style={{ height: "30px" }} />
-                              <div style={{ borderTop: "1px solid #333", paddingTop: "3px", fontSize: "7pt", fontWeight: "700", color: "#374151" }}>{role}</div>
+                          {["Prepared By", "Approved By / PIC", "Machine Operator", "Quality Inspector"].map((role, idx) => (
+                            <td key={idx} style={{ border: "1px solid #999", textAlign: "center", padding: "3px 6px", width: "25%" }}>
+                              <div style={{ height: "25px", borderBottom: "1px solid #bbb", marginBottom: "3px" }} />
+                              <div style={{ fontSize: "7pt", fontWeight: 800, color: "#000" }}>{role}</div>
+                              <div style={{ fontSize: "6pt", color: "#555", marginTop: "1px" }}>Name / Signature / Date</div>
                             </td>
                           ))}
                         </tr>
                       </tbody>
                     </table>
-                  </div>
-
-                  {/* ── FOOTER ── */}
-                  <div style={{ marginTop: "6px", display: "flex", justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: "4px", fontSize: "6.5pt", color: "#9ca3af" }}>
-                    <span>Printed: {new Date().toLocaleString("en-IN")}</span>
-                    <span>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"} — Gravure Production Job Card</span>
-                    <span>{wo.workOrderNo}</span>
+                    <div style={{ fontSize: "6pt", color: "#666", textAlign: "center", marginTop: "3px" }}>
+                      Generated by AJ Shrink ERP · {today} · {companyName} · This is a system generated Production Work Order
+                    </div>
                   </div>
 
                 </div>{/* end print area */}

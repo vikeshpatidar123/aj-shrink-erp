@@ -1,7 +1,9 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { Cylinder, Loader2, RefreshCw } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
+import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
 
@@ -44,6 +46,8 @@ export default function CylinderManagementPage() {
   const [cylCatFilter,   setCylCatFilter]   = useState("");
   const [cylTypeFilter,  setCylTypeFilter]  = useState("");
   const [cylStatusFilter,setCylStatusFilter]= useState("");
+  const [cylSort,        setCylSort]        = useState<{ col: keyof CylRow; dir: "asc" | "desc" } | null>(null);
+  const [cylColFilters,  setCylColFilters]  = useState<Partial<Record<keyof CylRow, string>>>({});
 
   const loadCylinders = useCallback(async () => {
     setLoading(true);
@@ -61,6 +65,28 @@ export default function CylinderManagementPage() {
   const uniqueTypes    = [...new Set(cylinders.map(r => r.CylinderType).filter(Boolean))].sort();
   const uniqueStatuses = [...new Set(cylinders.map(r => r.CylinderStatus).filter(Boolean))].sort();
 
+  const CYL_COLS: { h: string; key: keyof CylRow }[] = [
+    { h: "Cyl. Code",    key: "ToolCode" },
+    { h: "Cust. Ref",    key: "CustomerRefCode" },
+    { h: "Product Code", key: "ProductCode" },
+    { h: "Product Name", key: "ProductName" },
+    { h: "Customer",     key: "CustomerName" },
+    { h: "Category",     key: "CategoryName" },
+    { h: "Color",        key: "ColorName" },
+    { h: "Seq",          key: "ColorSeq" },
+    { h: "Type",         key: "CylinderType" },
+    { h: "Circ (mm)",    key: "CircumferenceMM" },
+    { h: "Length (mm)",  key: "CylLength" },
+    { h: "Print W (mm)", key: "PrintWidth" },
+    { h: "Repeat UPS",   key: "RepeatUPS" },
+    { h: "Colors",       key: "TotalColors" },
+    { h: "Rate (₹)",     key: "PurchaseRate" },
+    { h: "Life (m)",     key: "EstLifeMeters" },
+    { h: "Vendor",       key: "VendorName" },
+    { h: "Status",       key: "CylinderStatus" },
+    { h: "Date",         key: "CreatedDate" },
+  ];
+
   const filtered = cylinders.filter(r => {
     const q = cylSearch.toLowerCase();
     const matchSearch = !q ||
@@ -74,8 +100,28 @@ export default function CylinderManagementPage() {
       (!cylCustFilter    || r.CustomerName  === cylCustFilter) &&
       (!cylCatFilter     || r.CategoryName  === cylCatFilter) &&
       (!cylTypeFilter    || r.CylinderType  === cylTypeFilter) &&
-      (!cylStatusFilter  || r.CylinderStatus=== cylStatusFilter);
+      (!cylStatusFilter  || r.CylinderStatus=== cylStatusFilter) &&
+      Object.entries(cylColFilters).every(([k, v]) =>
+        !v || String(r[k as keyof CylRow] ?? "").toLowerCase().includes(v.toLowerCase())
+      );
   });
+
+  const sorted = cylSort
+    ? [...filtered].sort((a, b) => {
+        const av = String(a[cylSort.col] ?? "");
+        const bv = String(b[cylSort.col] ?? "");
+        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+        return cylSort.dir === "asc" ? cmp : -cmp;
+      })
+    : filtered;
+
+  const handleCylSort = (key: keyof CylRow) => {
+    setCylSort(prev =>
+      prev?.col === key
+        ? prev.dir === "asc" ? { col: key, dir: "desc" } : null
+        : { col: key, dir: "asc" }
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -85,10 +131,13 @@ export default function CylinderManagementPage() {
           <h2 className="text-xl font-bold text-gray-800">Cylinder Management</h2>
           <p className="text-sm text-gray-500">{cylinders.length} cylinder{cylinders.length !== 1 ? "s" : ""}</p>
         </div>
-        <button onClick={loadCylinders}
-          className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-        </button>
+        <div className="flex items-center gap-2">
+          <TutorialButton title="Cylinder Management — Tutorial" />
+          <button onClick={loadCylinders}
+            className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
@@ -118,7 +167,7 @@ export default function CylinderManagementPage() {
             {uniqueStatuses.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <p className="text-xs text-gray-400 mt-2">{filtered.length} cylinder{filtered.length !== 1 ? "s" : ""} found</p>
+        <p className="text-xs text-gray-400 mt-2">{sorted.length} cylinder{sorted.length !== 1 ? "s" : ""} found</p>
       </div>
 
       {/* Table */}
@@ -127,24 +176,42 @@ export default function CylinderManagementPage() {
           <div className="flex items-center justify-center py-16">
             <Loader2 size={28} className="animate-spin text-gray-400" />
           </div>
-        ) : filtered.length === 0 ? (
+        ) : sorted.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <Cylinder size={36} className="mb-3 text-gray-300" />
             <p className="text-sm">No cylinders found.</p>
           </div>
         ) : (
           <table className="w-full text-sm min-w-[1200px]">
-            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+            <thead className="sticky top-0" style={{ background: "var(--erp-primary)" }}>
               <tr>
-                {["Cyl. Code","Cust. Ref","Product Code","Product Name","Customer","Category",
-                  "Color","Seq","Type","Circ (mm)","Length (mm)","Print W (mm)",
-                  "Repeat UPS","Colors","Rate (₹)","Life (m)","Vendor","Status","Date"].map(h => (
-                  <th key={h} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
+                {CYL_COLS.map(({ h, key }) => {
+                  const isSortActive = cylSort?.col === key;
+                  const uniqVals = [...new Set(cylinders.map(r => String(r[key] ?? "")).filter(Boolean))].sort();
+                  return (
+                    <th key={key} className="px-3 py-2.5 text-left text-[10px] font-bold text-white/90 uppercase tracking-wider whitespace-nowrap">
+                      <div className="flex items-center gap-1">
+                        <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none hover:text-white"
+                          onClick={() => handleCylSort(key)}>
+                          {h}
+                          <span className="flex flex-col leading-none ml-0.5">
+                            <span className={`text-[7px] ${isSortActive && cylSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                            <span className={`text-[7px] ${isSortActive && cylSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                          </span>
+                        </span>
+                        <ColFilterIcon
+                          values={uniqVals}
+                          active={cylColFilters[key] ?? ""}
+                          onChange={v => setCylColFilters(p => ({ ...p, [key]: v }))}
+                        />
+                      </div>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r, i) => (
+              {sorted.map((r, i) => (
                 <tr key={r.ToolID} className={`border-t border-gray-100 hover:bg-gray-50 ${i % 2 === 0 ? "" : "bg-gray-50/40"}`}>
                   <td className="px-3 py-2.5 font-semibold text-indigo-700 whitespace-nowrap">{r.ToolCode}</td>
                   <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.CustomerRefCode || "—"}</td>

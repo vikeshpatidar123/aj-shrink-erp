@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, X, Check, Loader2, Search } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { authHeaders } from "@/lib/auth";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -156,6 +157,15 @@ const blankForm = (): FormState => ({
 
 const isCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
+// Convert "DD-MMM-YYYY" (SQL format 106 with spaces→dashes) to "YYYY-MM-DD" for <input type="date">
+function parseDisplayDate(v: string): string {
+  if (!v) return new Date().toISOString().slice(0, 10);
+  const months: Record<string, string> = { Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12" };
+  const parts = v.split("-");
+  if (parts.length === 3 && months[parts[1]]) return `${parts[2]}-${months[parts[1]]}-${parts[0].padStart(2,"0")}`;
+  return v;
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 export default function GateEntryPage() {
   const [activeTab, setActiveTab]   = useState<EntryDirection>("Outward");
@@ -237,7 +247,7 @@ export default function GateEntryPage() {
           entryDirection: direction,
           gateEntryType: row.GateEntryType,
           dcNo: row.DCNo,
-          voucherDate: "",
+          voucherDate: parseDisplayDate(row.VoucherDate),
           voucherNo: row.VoucherNo,
           goodsSendTo: "",
           ledgerId: row.LedgerID,
@@ -269,7 +279,7 @@ export default function GateEntryPage() {
         entryDirection: direction,
         gateEntryType: row.GateEntryType,
         dcNo: row.DCNo,
-        voucherDate: "",
+        voucherDate: parseDisplayDate(row.VoucherDate),
         voucherNo: row.VoucherNo,
         goodsSendTo: row.MaterialSentTo,
         ledgerId: row.LedgerID,
@@ -295,6 +305,7 @@ export default function GateEntryPage() {
   // ─── Entry type change ────────────────────────────────────────────────────
   const handleEntryTypeChange = (type: string) => {
     setForm(f => ({ ...f, gateEntryType: type, dcNo: "", items: [], gatePassTransactionId: "" }));
+    setPoNos([]);
   };
 
   // ─── GP picker ────────────────────────────────────────────────────────────
@@ -316,7 +327,7 @@ export default function GateEntryPage() {
       ...f,
       dcNo: gp.VoucherNo,
       documentNo: gp.DocumentNo ?? f.documentNo,
-      sentThroughName: gp.SentThroughName ?? "",
+      sendThroughName: gp.SentThroughName ?? "",
       sendThrough: gp.SentThrough ?? f.sendThrough,
       vehicleNo: gp.VehicleNo ?? f.vehicleNo,
       goodsSendTo: gp.LedgerName ?? f.goodsSendTo,
@@ -405,6 +416,7 @@ export default function GateEntryPage() {
   // ─── Save ─────────────────────────────────────────────────────────────────
   const save = async () => {
     const isInward = form.entryDirection === "Inward";
+    if (!form.gateEntryType) { setError("Please select a Type."); return; }
     if (isInward && form.items.length === 0) { setError("Please add or select items."); return; }
     if (isInward && !form.sendThroughName?.trim()) { setError("Received by name is required."); return; }
     if (!form.documentNo?.trim()) { setError("Document No. is required."); return; }
@@ -447,7 +459,7 @@ export default function GateEntryPage() {
       });
       const result = unwrap(await res.json());
       if (result === "Success") { setShowModal(false); loadList(); }
-      else setError(String(result || "Save failed"));
+      else setError(typeof result === "string" ? (result || "Save failed") : JSON.stringify(result) || "Save failed");
     } catch (e: unknown) { setError(String(e)); } finally { setSaving(false); }
   };
 
@@ -489,7 +501,10 @@ export default function GateEntryPage() {
           <h2 className="text-xl font-bold text-gray-800">Gate Entry</h2>
           <p className="text-sm text-gray-500">{listLoading ? "Loading..." : `${list.length} record${list.length !== 1 ? "s" : ""}`}</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Gate Entry</Button>
+        <div className="flex items-center gap-2">
+          <TutorialButton title="Gate Entry — Tutorial" />
+          <Button icon={<Plus size={16} />} onClick={openAdd}>New Gate Entry</Button>
+        </div>
       </div>
 
       {/* Outward / Inward tabs */}
@@ -611,8 +626,8 @@ export default function GateEntryPage() {
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Supplier Name</label>
                     <select value={form.ledgerId} onChange={e => handleSupplierChange(e.target.value)} className={isCls}>
                       <option value="">-- Select Supplier --</option>
-                      {sendThroughData.Supplier.map(s => (
-                        <option key={s.LedgerID} value={s.LedgerID}>{s.LedgerName}</option>
+                      {sendThroughData.Supplier.map((s, i) => (
+                        <option key={s.LedgerID ?? i} value={s.LedgerID}>{s.LedgerName}</option>
                       ))}
                     </select>
                   </div>
@@ -635,8 +650,8 @@ export default function GateEntryPage() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">PO No. (Select multiple)</label>
                   <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-lg bg-gray-50 max-h-32 overflow-y-auto">
-                    {poNos.map(p => (
-                      <label key={p.POTransactionID} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    {poNos.map((p, i) => (
+                      <label key={p.POTransactionID ?? i} className="flex items-center gap-1.5 text-sm cursor-pointer">
                         <input type="checkbox"
                           checked={form.selectedPoIds.includes(p.POTransactionID)}
                           onChange={e => handlePOSelect(p.POTransactionID, e.target.checked)}
@@ -800,8 +815,8 @@ export default function GateEntryPage() {
                   <tbody>
                     {gpList.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-6 text-gray-400">No gate passes found</td></tr>
-                    ) : gpList.map(gp => (
-                      <tr key={gp.TransactionID} className="border-t border-gray-100 hover:bg-blue-50">
+                    ) : gpList.map((gp, i) => (
+                      <tr key={gp.TransactionID ?? i} className="border-t border-gray-100 hover:bg-blue-50">
                         <td className="px-3 py-2 font-medium text-blue-700">{gp.VoucherNo}</td>
                         <td className="px-3 py-2">{gp.VoucherDate}</td>
                         <td className="px-3 py-2">{gp.LedgerName}</td>

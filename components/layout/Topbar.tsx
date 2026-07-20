@@ -1,10 +1,13 @@
 "use client";
 import { useState } from "react";
-import { Menu, Search, User, LogOut, ChevronDown, Settings, Mail } from "lucide-react";
+import {
+  Menu, Search, User, LogOut, ChevronDown, Settings, Mail, Building2,
+} from "lucide-react";
 import { useUnit, BusinessUnit } from "@/context/UnitContext";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NotificationPanel from "./NotificationPanel";
+import { useCompanyName } from "@/lib/useCompanyName";
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -16,92 +19,171 @@ const UNITS: { value: BusinessUnit; label: string }[] = [
   { value: "Gravure",   label: "Gravure"   },
 ];
 
-export default function Topbar({ onMenuClick, title }: TopbarProps) {
-  const { unit, setUnit } = useUnit();
-  const router = useRouter();
-  const [dropOpen, setDropOpen] = useState(false);
+function getFinancialYear() {
+  const now = new Date();
+  const y = now.getFullYear();
+  return (now.getMonth() + 1) >= 4 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+}
 
-  const handleLogout = () => {
-    setDropOpen(false);
-    router.push("/login");
-  };
+export default function Topbar({ onMenuClick }: TopbarProps) {
+  const { unit, setUnit } = useUnit();
+  const companyName = useCompanyName("ERP");
+  const router = useRouter();
+  const [dropOpen, setDropOpen]         = useState(false);
+  const [unitDropOpen, setUnitDropOpen] = useState(false);
 
   return (
     <header
-      className="bg-white px-3 md:px-4 py-0 flex items-center justify-between sticky top-0 z-50 gap-2"
-      style={{ borderBottom: "1px solid #dde3ed", minHeight: "52px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}
+      className="px-3 md:px-4 flex items-center justify-between sticky top-0 z-50 gap-2"
+      style={{
+        background: "var(--erp-sidebar-bg)",
+        minHeight: "52px",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+      }}
     >
 
-      {/* ── Left: hamburger + title ── */}
+      {/* ── Left: hamburger + brand icon + company name + unit dropdown + FY badge ── */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
+        {/* Hamburger — mobile only; desktop uses the sidebar's own toggle button */}
         <button
           onClick={onMenuClick}
-          className="p-2 rounded text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+          className="lg:hidden p-2 rounded flex-shrink-0 transition-colors"
+          style={{ color: "rgba(255,255,255,0.6)" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#fff"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.6)"; }}
         >
           <Menu size={19} />
         </button>
-        <h2 className="text-[13px] sm:text-[14px] font-semibold text-gray-800 truncate"
-          style={{ letterSpacing: "0.01em" }}>
-          {title}
-        </h2>
-      </div>
 
-      {/* ── Centre: Unit switcher — icon-only on mobile, full label on sm+ ── */}
-      <div
-        className="flex items-center gap-px rounded-md overflow-hidden border flex-shrink-0"
-        style={{ borderColor: "#dde3ed" }}
-      >
-        {UNITS.map(u => {
-          const active = unit === u.value;
-          return (
-            <button
-              key={u.value}
-              onClick={() => setUnit(u.value)}
-              className="px-2 sm:px-3 py-1.5 text-[10px] sm:text-[11px] font-semibold tracking-wide transition-all"
-              style={
-                active
-                  ? { background: "var(--erp-primary)", color: "#fff", borderColor: "transparent" }
-                  : { background: "#fff", color: "#6b7280" }
-              }
-              onMouseEnter={e => {
-                if (!active) (e.currentTarget as HTMLElement).style.background = "var(--erp-primary-light)";
-              }}
-              onMouseLeave={e => {
-                if (!active) (e.currentTarget as HTMLElement).style.background = "#fff";
-              }}
-            >
-              <span className="hidden sm:inline">{u.label}</span>
-              <span className="sm:hidden">{u.label.slice(0, 3)}</span>
-            </button>
-          );
-        })}
+        {/* Brand icon */}
+        <div
+          className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0"
+          style={{ background: "var(--erp-primary)" }}
+        >
+          <Building2 size={13} className="text-white" />
+        </div>
+
+        {/* Company name */}
+        <span
+          className="font-semibold text-[13px] truncate hidden sm:block"
+          style={{ color: "#fff", maxWidth: 220, letterSpacing: "0.01em" }}
+        >
+          {companyName}
+        </span>
+
+        {/* Unit dropdown */}
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => setUnitDropOpen(p => !p)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all"
+            style={{
+              background: "rgba(255,255,255,0.1)",
+              color: "rgba(255,255,255,0.85)",
+              border: "1px solid rgba(255,255,255,0.15)",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.18)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)"; }}
+          >
+            {unit}
+            <ChevronDown size={10} />
+          </button>
+
+          {unitDropOpen && (
+            <>
+              <div className="fixed inset-0 z-50" onClick={() => setUnitDropOpen(false)} />
+              <div
+                className="absolute left-0 mt-1.5 w-36 rounded-lg shadow-xl z-[60] overflow-hidden py-1"
+                style={{
+                  background: "var(--erp-sidebar-bg)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                }}
+              >
+                {UNITS.map(u => (
+                  <button
+                    key={u.value}
+                    onClick={() => { setUnit(u.value); setUnitDropOpen(false); }}
+                    className="w-full flex items-center px-3 py-2 text-xs font-medium transition-colors"
+                    style={{
+                      color:      unit === u.value ? "#fff" : "rgba(255,255,255,0.6)",
+                      background: unit === u.value ? "var(--erp-primary)" : "transparent",
+                    }}
+                    onMouseEnter={e => {
+                      if (unit !== u.value) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)";
+                    }}
+                    onMouseLeave={e => {
+                      if (unit !== u.value) (e.currentTarget as HTMLElement).style.background = "transparent";
+                    }}
+                  >
+                    {u.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Financial Year badge */}
+        <span
+          className="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide"
+          style={{
+            background: "rgba(20,184,166,0.18)",
+            color: "#2dd4bf",
+            border: "1px solid rgba(45,212,191,0.25)",
+          }}
+        >
+          {getFinancialYear()}
+        </span>
       </div>
 
       {/* ── Right ── */}
-      <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex items-center gap-0.5 flex-shrink-0">
+
+        {/* Hello Admin */}
+        <span
+          className="hidden lg:block text-[11px] font-medium px-2"
+          style={{ color: "rgba(255,255,255,0.4)" }}
+        >
+          Hello Admin
+        </span>
 
         {/* Search — md+ only */}
-        <div className="hidden md:flex items-center gap-2 rounded-md px-3 py-1.5 border border-gray-200 bg-gray-50 focus-within:bg-white transition-all"
-          style={{ minWidth: "160px" }}>
-          <Search size={13} className="text-gray-400 flex-shrink-0" />
+        <div
+          className="hidden md:flex items-center gap-2 rounded-md px-3 py-1.5 mr-1"
+          style={{
+            minWidth: "150px",
+            background: "rgba(255,255,255,0.07)",
+            border: "1px solid rgba(255,255,255,0.1)",
+          }}
+        >
+          <Search size={13} style={{ color: "rgba(255,255,255,0.4)", flexShrink: 0 }} />
           <input
             type="text"
             placeholder="Search..."
-            className="bg-transparent text-sm text-gray-600 outline-none w-full"
+            className="bg-transparent outline-none w-full text-xs erp-topbar-input"
           />
         </div>
 
-        {/* Bell — Notification Panel */}
-        <NotificationPanel />
+        {/* Notification bell */}
+        <NotificationPanel dark />
 
         {/* Email */}
-        <Link href="/email"
-          className="p-2 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors hidden md:flex">
+        <Link
+          href="/email"
+          className="p-2 rounded transition-colors hidden md:flex"
+          style={{ color: "rgba(255,255,255,0.6)" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#fff"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.6)"; }}
+        >
           <Mail size={16} />
         </Link>
 
-        {/* Settings — md+ only */}
-        <button className="p-2 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors hidden md:flex">
+        {/* Settings */}
+        <button
+          className="p-2 rounded transition-colors hidden md:flex"
+          style={{ color: "rgba(255,255,255,0.6)" }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#fff"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.6)"; }}
+        >
           <Settings size={16} />
         </button>
 
@@ -109,16 +191,23 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
         <div className="relative">
           <button
             onClick={() => setDropOpen(p => !p)}
-            className="flex items-center gap-1.5 cursor-pointer rounded hover:bg-gray-100 px-1.5 sm:px-2 py-1.5 transition-colors"
+            className="flex items-center gap-1.5 cursor-pointer rounded px-1.5 sm:px-2 py-1.5 transition-colors"
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
           >
             <div
               className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: "var(--erp-primary)" }}
+              style={{ background: "var(--erp-primary)", border: "2px solid rgba(255,255,255,0.2)" }}
             >
               <User size={13} className="text-white" />
             </div>
-            <span className="hidden sm:block text-xs font-medium text-gray-600">Admin</span>
-            <ChevronDown size={12} className="text-gray-400 hidden sm:block" />
+            <span
+              className="hidden sm:block text-xs font-medium"
+              style={{ color: "rgba(255,255,255,0.85)" }}
+            >
+              Admin
+            </span>
+            <ChevronDown size={12} className="hidden sm:block" style={{ color: "rgba(255,255,255,0.4)" }} />
           </button>
 
           {dropOpen && (
@@ -130,7 +219,7 @@ export default function Topbar({ onMenuClick, title }: TopbarProps) {
                   <p className="text-[10px] text-gray-400 mt-0.5">admin@ajshrink.com</p>
                 </div>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => { setDropOpen(false); router.push("/login"); }}
                   className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
                 >
                   <LogOut size={13} /> Logout

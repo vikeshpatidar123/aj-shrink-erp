@@ -279,7 +279,7 @@ function NotifRow({ n, onRead, onDelete }: { n: Notif; onRead: () => void; onDel
 }
 
 // ─── Main panel ──────────────────────────────────────────────────────────────
-export default function NotificationPanel() {
+export default function NotificationPanel({ dark }: { dark?: boolean }) {
   const [open,    setOpen]    = useState(false);
   const [search,  setSearch]  = useState("");
   const [tab,     setTab]     = useState<"all" | NotifCategory>("all");
@@ -328,7 +328,10 @@ export default function NotificationPanel() {
       {/* Bell button */}
       <button
         onClick={() => setOpen(p => !p)}
-        className="relative p-2 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+        className={`relative p-2 rounded transition-colors ${dark ? "" : "text-gray-400 hover:bg-gray-100 hover:text-gray-600"}`}
+        style={dark ? { color: "rgba(255,255,255,0.65)" } : undefined}
+        onMouseEnter={dark ? e => { (e.currentTarget as HTMLElement).style.color = "#fff"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; } : undefined}
+        onMouseLeave={dark ? e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.65)"; (e.currentTarget as HTMLElement).style.background = "transparent"; } : undefined}
       >
         <Bell size={16} />
         {unread > 0 && (

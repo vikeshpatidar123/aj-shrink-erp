@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Eye, Pencil, Trash2, ArrowRight, Layers, RefreshCw } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/api";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { useToast } from "@/components/ui/Toast";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
@@ -244,6 +245,7 @@ export default function GravureEnquiryPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <TutorialButton title="Gravure Enquiry — Tutorial" />
           <Button variant="secondary" size="sm" icon={<RefreshCw size={14} className={loading ? "animate-spin" : ""} />} onClick={fetchData}>
             Refresh
           </Button>

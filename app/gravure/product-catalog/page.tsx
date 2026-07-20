@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useMemo, useEffect } from "react";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
 import {
   BookMarked, Eye, Trash2, Clock, CheckCircle2,
@@ -30,7 +31,7 @@ async function uploadAttachmentToS3(file: File): Promise<string> {
   const { "Content-Type": _ct, ...hdrs } = authHeaders();
   const fd = new FormData();
   fd.append("file", file, file.name);
-  const res = await fetch(`${CLDN_BASE_CAT}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  const res = await fetch(`${CLDN_BASE_CAT}/api/productcataloggravureShrink/upload`, { method: "POST", headers: hdrs, body: fd });
   if (!res.ok) throw new Error(`S3 upload failed for ${file.name} (${res.status})`);
   const { publicUrl } = await res.json();
   return publicUrl as string;
@@ -1457,7 +1458,7 @@ export default function ProductCatalogPage() {
             cylinderStatus: ca.status,
             remarks: ca.remarks,
             cylinderMasterID: ca.cylinderMasterID || "",
-            planCylinderCode: sp?.cylinderCode || "",
+            planCylinderCode: (sp?.cylinderCode && !String(sp.cylinderCode).startsWith("SPL")) ? sp.cylinderCode : "",
             planCircumference: sp?.cylCirc || 0,
             planRepeatUPS: sp?.repeatUPS || 0,
             planPrintWidth: sp?.cylinderWidthVal || 0,
@@ -1871,6 +1872,7 @@ export default function ProductCatalogPage() {
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{stats.processed}</span>
                     </button>
                   </div>
+                  <TutorialButton title="Product Catalog — Tutorial" />
                   <Button icon={<Plus size={13} />} onClick={openDirectCreate}
                     className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
                     Create Direct Catalog
@@ -4551,38 +4553,36 @@ export default function ProductCatalogPage() {
         const cylWidth = r.actualWidth || r.jobWidth || 0;
         const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
-        // Use saved plan data from the row
         const savedPlan = replanAllPlans.find(p => p.planId === r.savedPlanId) || null;
         const colorShades = (r.savedColorShades as any[]) || [];
         const cylAllocs = (r.savedCylAllocs as any[]) || [];
 
-        // Derive plan values
-        const planFilmW = savedPlan ? (savedPlan.filmSize ?? cylWidth) : cylWidth;
-        const planCylCirc = savedPlan ? (savedPlan.cylCirc ?? r.jobHeight ?? 0) : (r.jobHeight ?? 0);
-        const planAcUPS = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
-        const planRepUPS = savedPlan ? ((savedPlan as any).repeatUPS ?? "—") : "—";
-        const planPieces = savedPlan ? (savedPlan.totalUPS ?? "—") : "—";
-        const planSQM = savedPlan ? (savedPlan.totalRMT * (r.jobWidth / 1000)).toFixed(2) : "—";
-        const planWastage = savedPlan ? (savedPlan.wastage ?? 0) : 0;
+        const planFilmW    = savedPlan ? (savedPlan.filmSize ?? cylWidth)          : cylWidth;
+        const planCylCirc  = savedPlan ? (savedPlan.cylCirc  ?? r.jobHeight ?? 0)  : (r.jobHeight ?? 0);
+        const planAcUPS    = savedPlan ? (savedPlan.totalUPS  ?? "—")              : "—";
+        const planRepUPS   = savedPlan ? ((savedPlan as any).repeatUPS ?? "—")     : "—";
+        const planSQM      = savedPlan ? (savedPlan.totalRMT * (r.jobWidth / 1000)).toFixed(2) : "—";
+        const planWastage  = savedPlan ? (savedPlan.wastage  ?? 0)                 : 0;
+
+        // Shared inline style helpers (work in both React modal AND print-window innerHTML)
+        const TH: React.CSSProperties = { border: "1px solid #555", padding: "2px 4px", background: "#dce6f1", fontWeight: 700, verticalAlign: "middle", whiteSpace: "nowrap" as const, textAlign: "left" as const };
+        const TD: React.CSSProperties = { border: "1px solid #555", padding: "2px 4px", verticalAlign: "middle" };
+        const HDR: React.CSSProperties = { background: "#1e3a5f", color: "#fff", fontWeight: 900, fontSize: "9.5px", letterSpacing: "0.8px", padding: "3px 8px", marginBottom: "2px", marginTop: "5px", display: "block" };
 
         const handlePrint = () => {
           const el = document.getElementById("pms-print-area");
           if (!el) return;
-          const w = window.open("", "_blank", "width=960,height=750");
+          const w = window.open("", "_blank", "width=1000,height=800");
           if (!w) return;
           w.document.write(`<!DOCTYPE html><html><head><title>Product Master Sheet — ${r.catalogNo}</title>
             <style>
-              *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;font-size:9.5px;}
-              body{padding:10px;color:#000;background:#fff;}
-              table{width:100%;border-collapse:collapse;margin-bottom:5px;}
-              td,th{border:1px solid #333;padding:3px 5px;vertical-align:middle;}
-              th{background:#dce6f1;font-weight:bold;text-align:left;white-space:nowrap;}
-              .sec{font-size:10px;font-weight:bold;background:#1e3a5f;color:#fff;padding:3px 6px;margin:7px 0 3px;letter-spacing:.5px;}
-              .center{text-align:center;}
-              .bold{font-weight:bold;}
-              .sign-box{text-align:center;min-width:110px;}
-              .sign-line{border-bottom:1px solid #000;height:28px;margin-bottom:3px;}
-              @media print{body{padding:5px;} @page{margin:8mm;}}
+              *{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;font-size:8.5px;}
+              body{padding:8px;color:#111;background:#fff;}
+              table{width:100%;border-collapse:collapse;}
+              td,th{border:1px solid #555;padding:2px 4px;vertical-align:middle;}
+              th{background:#dce6f1;font-weight:700;text-align:left;white-space:nowrap;}
+              .hdr{background:#1e3a5f;color:#fff;font-weight:900;font-size:9.5px;letter-spacing:.8px;padding:3px 8px;margin-bottom:2px;margin-top:5px;display:block;}
+              @media print{body{padding:4px;} @page{margin:7mm;size:A4 portrait;}}
             </style></head><body>${el.innerHTML}</body></html>`);
           w.document.close();
           w.focus();
@@ -4598,284 +4598,330 @@ export default function ProductCatalogPage() {
               </button>
             </div>
 
-            <div id="pms-print-area" className="bg-white text-black text-[10px] p-4 border border-gray-300 rounded-xl font-sans">
+            <div id="pms-print-area" style={{ background: "#fff", color: "#111", padding: "12px", fontFamily: "Arial,sans-serif", fontSize: "9px" }}>
 
-              {/* ── Header ── */}
-              <div className="flex justify-between items-start border-b-2 border-black pb-2 mb-1">
-                <div>
-                  <div className="text-[20px] font-black tracking-widest" style={{ color: "#1e3a5f" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
-                  <div className="text-[8px] text-gray-500 font-semibold tracking-wide">FLEXIBLE PACKAGING · GRAVURE PRINTING</div>
-                </div>
-                <div className="text-center px-4">
-                  <div className="text-[16px] font-black tracking-widest uppercase" style={{ color: "#1e3a5f" }}>Product Master Sheet</div>
-                  <div className="text-[8px] text-gray-500 mt-0.5">AJSW / PC / PMS / R0</div>
-                </div>
-                <div className="text-right text-[8.5px] leading-snug">
-                  <div><span className="font-bold">Doc No:</span> {r.catalogNo}</div>
-                  <div><span className="font-bold">Date:</span> {today}</div>
-                  <div><span className="font-bold">Status:</span> {r.status}</div>
-                  <div><span className="font-bold">Created:</span> {r.createdDate}</div>
-                </div>
-              </div>
-
-              {/* ── A. Product Details ── */}
-              <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>A. Product Details</div>
-              <table className="mb-1">
+              {/* ── Document Header ── */}
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px", border: "2px solid #1e3a5f" }}>
                 <tbody>
                   <tr>
-                    <th style={{ width: "16%" }}>Product Name</th>
-                    <td colSpan={3} className="font-bold text-[11px]">{r.productName || "—"}</td>
+                    <td style={{ border: "none", borderRight: "1px solid #1e3a5f", padding: "6px 8px", width: "34%", verticalAlign: "middle" }}>
+                      <div style={{ fontSize: "16px", fontWeight: 900, color: "#000", letterSpacing: "0.5px", lineHeight: 1.15, whiteSpace: "nowrap" }}>
+                        {(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}
+                      </div>
+                      <div style={{ fontSize: "7.5px", color: "#444", fontWeight: 700, letterSpacing: "1px", marginTop: "3px" }}>
+                        FLEXIBLE PACKAGING · GRAVURE PRINTING
+                      </div>
+                    </td>
+                    <td style={{ border: "none", borderRight: "1px solid #1e3a5f", textAlign: "center", padding: "6px 8px", verticalAlign: "middle", width: "32%" }}>
+                      <div style={{ fontSize: "13px", fontWeight: 900, color: "#000", letterSpacing: "1.5px", textTransform: "uppercase", lineHeight: 1.2 }}>
+                        PRODUCT MASTER SHEET
+                      </div>
+                      <div style={{ fontSize: "7.5px", color: "#555", marginTop: "5px", fontWeight: 700, letterSpacing: "0.5px" }}>AJSW / PC / PMS / R0</div>
+                    </td>
+                    <td style={{ border: "none", padding: "6px 8px", verticalAlign: "middle", width: "34%" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                        <tbody>
+                          {[
+                            ["Doc No", r.catalogNo],
+                            ["Date", today],
+                            ["Rev", "00"],
+                            ["Status", r.status || "—"],
+                            ["Created", r.createdDate || "—"],
+                          ].map(([k, v]) => (
+                            <tr key={k}>
+                              <td style={{ border: "none", padding: "1px 0", fontSize: "8px", fontWeight: 700, width: "45%", color: "#333" }}>{k}</td>
+                              <td style={{ border: "none", padding: "1px 0", fontSize: "8px", color: "#111" }}>: {v}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
                   </tr>
-                  <tr>
-                    <th>Customer</th>
-                    <td style={{ width: "28%" }}>{r.customerName || "—"}</td>
-                    <th style={{ width: "16%" }}>Brand Name</th>
-                    <td>{r.brandName || "—"}</td>
-                  </tr>
-                  <tr>
-                    <th>Size (W × H)</th>
-                    <td>{r.jobWidth} mm × {r.jobHeight} mm</td>
-                    <th>Artwork Name</th>
-                    <td>{r.artworkName || "—"}</td>
-                  </tr>
-                  <tr>
-                    <th>Substrate</th>
-                    <td>{r.substrate || r.content || "—"}</td>
-                    <th>Category</th>
-                    <td>{r.categoryName || "—"}</td>
-                  </tr>
-                  <tr>
-                    <th>Pack Size</th>
-                    <td>{r.packSize || "—"}</td>
-                    <th>SKU Type</th>
-                    <td>{r.skuType || "—"}</td>
-                  </tr>
-                  <tr>
-                    <th>Address Type</th>
-                    <td>{r.addressType || "—"}</td>
-                    <th>Print Type</th>
-                    <td>{r.printType || "—"}</td>
-                  </tr>
-                  <tr>
-                    <th>No. of Colors</th>
-                    <td>{r.noOfColors} colours ({r.frontColors ?? "—"} F + {r.backColors ?? "—"} B)</td>
-                    <th>Trimming</th>
-                    <td>{trim > 0 ? `${trim}+${trim} mm` : "—"}</td>
-                  </tr>
-                  {r.specialSpecs && (
-                    <tr><th>Special Specs</th><td colSpan={3}>{r.specialSpecs}</td></tr>
-                  )}
-                  {r.remarks && (
-                    <tr><th>Remarks</th><td colSpan={3}>{r.remarks}</td></tr>
-                  )}
                 </tbody>
               </table>
 
-              {/* ── B. Production Planning ── */}
-              <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>B. Production Planning</div>
-              <table className="mb-1">
+              {/* ── A. Product Identity ── */}
+              <div className="hdr" style={HDR}>A · PRODUCT IDENTITY</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                <tbody>
+                  <tr>
+                    <th style={{ ...TH, width: "14%" }}>Product Name</th>
+                    <td colSpan={3} style={{ ...TD, fontWeight: 800, fontSize: "10.5px" }}>{r.productName || "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Customer</th>
+                    <td style={{ ...TD, width: "27%" }}>{r.customerName || "—"}</td>
+                    <th style={{ ...TH, width: "14%" }}>Brand Name</th>
+                    <td style={TD}>{r.brandName || "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Category</th>
+                    <td style={TD}>{r.categoryName || "—"}</td>
+                    <th style={TH}>SKU Type</th>
+                    <td style={TD}>{r.skuType || "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Artwork Name</th>
+                    <td style={TD}>{r.artworkName || "—"}</td>
+                    <th style={TH}>Address Type</th>
+                    <td style={TD}>{r.addressType || "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Pack Size</th>
+                    <td style={TD}>{r.packSize || "—"}</td>
+                    <th style={TH}>Print Type</th>
+                    <td style={TD}>{r.printType || "—"}{r.noOfColors > 0 ? ` · ${r.noOfColors} Colours (${r.frontColors ?? "—"}F + ${r.backColors ?? "—"}B)` : ""}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Content / Substrate</th>
+                    <td colSpan={3} style={TD}>{r.content || (r as any).substrate || (r as any).structureType || "—"}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* ── B. Physical Dimensions + Seals ── */}
+              <div className="hdr" style={HDR}>B · PHYSICAL DIMENSIONS &amp; SEAL SPECIFICATIONS</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                <tbody>
+                  <tr>
+                    <th style={{ ...TH, width: "13%" }}>Job Size (W × H)</th>
+                    <td style={{ ...TD, width: "15%" }}>{r.jobWidth} × {r.jobHeight} mm</td>
+                    <th style={{ ...TH, width: "13%" }}>Actual Size (W × H)</th>
+                    <td style={{ ...TD, width: "15%" }}>{r.actualWidth || r.jobWidth} × {r.actualHeight || r.jobHeight} mm</td>
+                    <th style={{ ...TH, width: "10%" }}>Top Seal</th>
+                    <td style={{ ...TD, width: "9%" }}>{((r as any).topSeal ?? 0) > 0 ? `${(r as any).topSeal} mm` : "—"}</td>
+                    <th style={{ ...TH, width: "10%" }}>Bottom Seal</th>
+                    <td style={TD}>{((r as any).bottomSeal ?? 0) > 0 ? `${(r as any).bottomSeal} mm` : "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Trimming</th>
+                    <td style={TD}>{trim > 0 ? `${trim} + ${trim} mm` : "—"}</td>
+                    <th style={TH}>Width Shrinkage</th>
+                    <td style={TD}>{((r as any).widthShrinkage ?? 0) > 0 ? `${(r as any).widthShrinkage} mm` : "—"}</td>
+                    <th style={TH}>Side Seal</th>
+                    <td style={TD}>{((r as any).sideSeal ?? 0) > 0 ? `${(r as any).sideSeal} mm` : "—"}</td>
+                    <th style={TH}>Center Seal</th>
+                    <td style={TD}>{((r as any).centerSealWidth ?? 0) > 0 ? `${(r as any).centerSealWidth} mm` : "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Gusset (Bottom)</th>
+                    <td style={TD}>{((r as any).gusset ?? 0) > 0 ? `${(r as any).gusset} mm` : "—"}</td>
+                    <th style={TH}>Side Gusset</th>
+                    <td style={TD}>{((r as any).sideGusset ?? 0) > 0 ? `${(r as any).sideGusset} mm` : "—"}</td>
+                    <th style={TH}>Roll Std. OD</th>
+                    <td style={TD}>{((r as any).finalRollOD ?? 0) > 0 ? `${(r as any).finalRollOD} mm` : "—"}</td>
+                    <th style={TH}>Unwind Direction</th>
+                    <td style={{ ...TD, fontWeight: 700 }}>{((r as any).unwindDirection ?? 0) > 0 ? `# ${(r as any).unwindDirection} (PIFA)` : "—"}</td>
+                  </tr>
+                  <tr>
+                    <th style={TH}>Special Features</th>
+                    <td colSpan={7} style={TD}>
+                      {[
+                        (r as any).hasZipper      && "Zipper",
+                        (r as any).hasSpout       && "Spout",
+                        (r as any).hasValve       && "Valve",
+                        (r as any).hasWindow      && "Window",
+                        (r as any).hasTearNotch   && "Tear Notch",
+                        (r as any).hasEuroHole    && "Euro Hole",
+                        (r as any).hasRoundCorner && "Round Corner",
+                      ].filter(Boolean).join("  ·  ") || "None"}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* ── C. Lamination / Ply Structure ── */}
+              {r.secondaryLayers && r.secondaryLayers.length > 0 && (() => {
+                const totalGSM = r.secondaryLayers.reduce((s, l) => s + (Number(l.gsm) || 0), 0);
+                return (
+                  <>
+                    <div className="hdr" style={HDR}>C · LAMINATION / PLY STRUCTURE</div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...TH, width: "3%", textAlign: "center" }}>#</th>
+                          <th style={{ ...TH, width: "12%" }}>Ply Type</th>
+                          <th style={{ ...TH, width: "22%" }}>Film / Material</th>
+                          <th style={{ ...TH, width: "7%", textAlign: "center" }}>GSM</th>
+                          <th style={TH}>Consumables (Ink / Adhesive / Solvent)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {r.secondaryLayers.map((l, li) => {
+                          const cons = (l.consumableItems || [])
+                            .filter((ci: any) => ci.itemName || ci.itemSubGroup)
+                            .map((ci: any) => `${ci.itemName || ci.itemSubGroup}${ci.gsm != null ? ` (${ci.gsm} ${ci.itemGroup === "Ink" ? "GSM" : ci.itemGroup === "Solvent" ? "%" : "GSM"})` : ""}`)
+                            .join("  ·  ");
+                          return (
+                            <tr key={li}>
+                              <td style={{ ...TD, textAlign: "center" }}>{li + 1}</td>
+                              <td style={{ ...TD, fontWeight: 700 }}>{l.plyType || "—"}</td>
+                              <td style={TD}>{l.itemSubGroup || l.plyType || "—"}</td>
+                              <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{l.gsm || "—"}</td>
+                              <td style={{ ...TD, fontSize: "8px" }}>{cons || "—"}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr>
+                          <td colSpan={3} style={{ ...TD, textAlign: "right", fontWeight: 700, background: "#eef2fa" }}>Total Film GSM</td>
+                          <td style={{ ...TD, textAlign: "center", fontWeight: 800, background: "#eef2fa" }}>{totalGSM || "—"}</td>
+                          <td style={{ ...TD, background: "#eef2fa" }}></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </>
+                );
+              })()}
+
+              {/* ── D. Ink / Color Standards ── */}
+              <div className="hdr" style={HDR}>D · INK / COLOR STANDARDS{colorShades.length > 0 ? ` — ${colorShades.length} Colour${colorShades.length > 1 ? "s" : ""}` : ""}</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
                 <thead>
                   <tr>
-                    <th className="text-center">Film Width (mm)</th>
-                    <th className="text-center">Cyl. Circumference (mm)</th>
-                    <th className="text-center">AC UPS</th>
-                    <th className="text-center">Repeat UPS</th>
-                    <th className="text-center">Total Pieces</th>
-                    <th className="text-center">Total SQM</th>
-                    <th className="text-center">Wastage (mm)</th>
-                    <th className="text-center">Machine</th>
+                    <th style={{ ...TH, width: "3%", textAlign: "center" }}>#</th>
+                    <th style={{ ...TH, width: "15%" }}>Color Name</th>
+                    <th style={{ ...TH, width: "20%" }}>Ink Item</th>
+                    <th style={{ ...TH, width: "10%" }}>Ink Type</th>
+                    <th style={{ ...TH, width: "11%" }}>Pantone Ref</th>
+                    <th style={{ ...TH, width: "6%", textAlign: "center" }}>L*</th>
+                    <th style={{ ...TH, width: "6%", textAlign: "center" }}>a*</th>
+                    <th style={{ ...TH, width: "6%", textAlign: "center" }}>b*</th>
+                    <th style={TH}>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {colorShades.length > 0
+                    ? colorShades.map((cs: any, i: number) => (
+                        <tr key={i}>
+                          <td style={{ ...TD, textAlign: "center" }}>{i + 1}</td>
+                          <td style={{ ...TD, fontWeight: 700 }}>{cs.colorName || "—"}</td>
+                          <td style={TD}>{cs.itemName || cs.inkItemName || cs.inkItemId || "—"}</td>
+                          <td style={TD}>{cs.inkType || "—"}</td>
+                          <td style={TD}>{cs.pantoneRef || "—"}</td>
+                          <td style={{ ...TD, textAlign: "center", fontWeight: cs.labL != null && cs.labL !== "" ? 700 : 400 }}>{cs.labL ?? "—"}</td>
+                          <td style={{ ...TD, textAlign: "center", fontWeight: cs.labA != null && cs.labA !== "" ? 700 : 400 }}>{cs.labA ?? "—"}</td>
+                          <td style={{ ...TD, textAlign: "center", fontWeight: cs.labB != null && cs.labB !== "" ? 700 : 400 }}>{cs.labB ?? "—"}</td>
+                          <td style={TD}>{cs.remarks || ""}</td>
+                        </tr>
+                      ))
+                    : Array.from({ length: r.noOfColors || 4 }, (_, i) => (
+                        <tr key={i}>
+                          <td style={{ ...TD, textAlign: "center" }}>{i + 1}</td>
+                          {Array.from({ length: 8 }, (__, j) => <td key={j} style={{ ...TD, height: "14px" }}></td>)}
+                        </tr>
+                      ))
+                  }
+                </tbody>
+              </table>
+
+              {/* ── E. Production Parameters ── */}
+              <div className="hdr" style={HDR}>E · PRODUCTION PARAMETERS</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...TH, textAlign: "center" }}>Machine</th>
+                    <th style={{ ...TH, textAlign: "center" }}>Film Width (mm)</th>
+                    <th style={{ ...TH, textAlign: "center" }}>Cyl. Circumference (mm)</th>
+                    <th style={{ ...TH, textAlign: "center" }}>AC UPS</th>
+                    <th style={{ ...TH, textAlign: "center" }}>Repeat UPS</th>
+                    <th style={{ ...TH, textAlign: "center" }}>SQM / Run</th>
+                    <th style={{ ...TH, textAlign: "center" }}>Wastage (mm)</th>
+                    <th style={{ ...TH, textAlign: "center" }}>Standard Qty</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="text-center font-bold">{planFilmW}</td>
-                    <td className="text-center font-bold">{planCylCirc}</td>
-                    <td className="text-center">{planAcUPS}</td>
-                    <td className="text-center">{planRepUPS}</td>
-                    <td className="text-center">{planPieces}</td>
-                    <td className="text-center font-bold">{planSQM}</td>
-                    <td className="text-center">{planWastage || "—"}</td>
-                    <td className="text-center">{r.machineName || "—"}</td>
+                    <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{r.machineName || "—"}</td>
+                    <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{planFilmW}</td>
+                    <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{planCylCirc}</td>
+                    <td style={{ ...TD, textAlign: "center" }}>{planAcUPS}</td>
+                    <td style={{ ...TD, textAlign: "center" }}>{planRepUPS}</td>
+                    <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{planSQM}</td>
+                    <td style={{ ...TD, textAlign: "center" }}>{planWastage || "—"}</td>
+                    <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{(r.standardQty || 0).toLocaleString()} {r.standardUnit}</td>
                   </tr>
                 </tbody>
               </table>
 
-              {/* ── C. Cylinder Allocation ── */}
-              <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>C. Cylinder Allocation</div>
-              {cylAllocs.length > 0 ? (
-                <table className="mb-1">
-                  <thead>
-                    <tr>
-                      <th className="text-center" style={{ width: "4%" }}>#</th>
-                      <th style={{ width: "18%" }}>Color Name</th>
-                      <th style={{ width: "16%" }}>Cylinder No.</th>
-                      <th className="text-center" style={{ width: "12%" }}>Circumference</th>
-                      <th className="text-center" style={{ width: "12%" }}>Print Width</th>
-                      <th className="text-center" style={{ width: "8%" }}>Rpt UPS</th>
-                      <th style={{ width: "12%" }}>Cyl. Type</th>
-                      <th style={{ width: "12%" }}>Status</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cylAllocs.map((ca: any, i: number) => (
-                      <tr key={i}>
-                        <td className="text-center">{i + 1}</td>
-                        <td className="font-bold">{ca.colorName || "—"}</td>
-                        <td>{ca.cylinderNo || "—"}</td>
-                        <td className="text-center">{ca.circumference ? `${ca.circumference} mm` : "—"}</td>
-                        <td className="text-center">{ca.printWidth ? `${ca.printWidth} mm` : "—"}</td>
-                        <td className="text-center">{ca.repeatUPS ?? "—"}</td>
-                        <td>{ca.cylinderType || "—"}</td>
-                        <td>{ca.status || "—"}</td>
-                        <td>{ca.remarks || ""}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="mb-1">
-                  <thead>
-                    <tr>
-                      <th className="text-center" style={{ width: "4%" }}>#</th>
-                      <th style={{ width: "20%" }}>Color Name</th>
-                      <th style={{ width: "18%" }}>Cylinder No.</th>
-                      <th className="text-center">Circumference</th>
-                      <th className="text-center">Print Width</th>
-                      <th className="text-center">Rpt UPS</th>
-                      <th>Type</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: r.noOfColors || 4 }, (_, i) => (
-                      <tr key={i}>
-                        <td className="text-center">{i + 1}</td>
-                        <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-
-              {/* ── D. Color Shade & LAB ── */}
-              <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>D. Color Shade &amp; LAB Standards</div>
-              {colorShades.length > 0 ? (
-                <table className="mb-1">
-                  <thead>
-                    <tr>
-                      <th className="text-center" style={{ width: "4%" }}>#</th>
-                      <th style={{ width: "22%" }}>Ink Item</th>
-                      <th style={{ width: "14%" }}>Color Name</th>
-                      <th style={{ width: "10%" }}>Type</th>
-                      <th style={{ width: "12%" }}>Pantone Ref</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {colorShades.map((cs: any, i: number) => {
-                      const inkItem = items.find((x: any) => x.id === cs.inkItemId);
-                      return (
+              {/* ── F. Cylinder Allocation ── */}
+              <div className="hdr" style={HDR}>F · CYLINDER ALLOCATION</div>
+              <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...TH, width: "3%", textAlign: "center" }}>#</th>
+                    <th style={{ ...TH, width: "16%" }}>Color Name</th>
+                    <th style={{ ...TH, width: "17%" }}>Cylinder No.</th>
+                    <th style={{ ...TH, width: "10%", textAlign: "center" }}>Circ (mm)</th>
+                    <th style={{ ...TH, width: "10%", textAlign: "center" }}>Print W (mm)</th>
+                    <th style={{ ...TH, width: "7%", textAlign: "center" }}>UPS</th>
+                    <th style={{ ...TH, width: "12%" }}>Type</th>
+                    <th style={{ ...TH, width: "10%" }}>Status</th>
+                    <th style={TH}>Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cylAllocs.length > 0
+                    ? cylAllocs.map((ca: any, i: number) => (
                         <tr key={i}>
-                          <td className="text-center">{i + 1}</td>
-                          <td>{inkItem?.name || cs.inkItemId || "—"}</td>
-                          <td className="font-bold">{cs.colorName || "—"}</td>
-                          <td>{cs.inkType || "—"}</td>
-                          <td>{cs.pantoneRef || "—"}</td>
-                          <td>{cs.remarks || ""}</td>
+                          <td style={{ ...TD, textAlign: "center" }}>{i + 1}</td>
+                          <td style={{ ...TD, fontWeight: 700 }}>{ca.colorName || "—"}</td>
+                          <td style={TD}>{ca.cylinderNo || "—"}</td>
+                          <td style={{ ...TD, textAlign: "center" }}>{ca.circumference || "—"}</td>
+                          <td style={{ ...TD, textAlign: "center" }}>{ca.printWidth || "—"}</td>
+                          <td style={{ ...TD, textAlign: "center" }}>{ca.repeatUPS ?? "—"}</td>
+                          <td style={TD}>{ca.cylinderType || "—"}</td>
+                          <td style={TD}>{ca.status || "—"}</td>
+                          <td style={TD}>{ca.remarks || ""}</td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="mb-1">
-                  <thead>
-                    <tr>
-                      <th className="text-center" style={{ width: "4%" }}>#</th>
-                      <th style={{ width: "22%" }}>Ink Item</th>
-                      <th style={{ width: "14%" }}>Color Name</th>
-                      <th style={{ width: "10%" }}>Type</th>
-                      <th style={{ width: "12%" }}>Pantone Ref</th>
-                      <th>Remarks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from({ length: r.noOfColors || 4 }, (_, i) => (
-                      <tr key={i}>
-                        <td className="text-center">{i + 1}</td>
-                        <td></td><td></td><td></td><td></td>
-                        <td></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                      ))
+                    : Array.from({ length: r.noOfColors || 4 }, (_, i) => (
+                        <tr key={i}>
+                          <td style={{ ...TD, textAlign: "center" }}>{i + 1}</td>
+                          {Array.from({ length: 8 }, (__, j) => <td key={j} style={{ ...TD, height: "14px" }}></td>)}
+                        </tr>
+                      ))
+                  }
+                </tbody>
+              </table>
 
-              {/* ── E. Ply / Structure ── */}
-              {r.secondaryLayers && r.secondaryLayers.length > 0 && (
-                <>
-                  <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>E. Ply / Structure Details</div>
-                  <table className="mb-1">
-                    <thead>
+              {/* ── Special Notes ── */}
+              {(r.specialSpecs || r.remarks) && (
+                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "3px" }}>
+                  <tbody>
+                    {r.specialSpecs && (
                       <tr>
-                        <th style={{ width: "4%" }}>#</th>
-                        <th style={{ width: "12%" }}>Ply Type</th>
-                        <th style={{ width: "22%" }}>Film / Material</th>
-                        <th className="text-center" style={{ width: "8%" }}>GSM</th>
-                        <th>Consumables</th>
+                        <th style={{ ...TH, width: "16%" }}>Special Specifications</th>
+                        <td style={TD}>{r.specialSpecs}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {r.secondaryLayers.map((l, li) => {
-                        const consumablesSummary = (l.consumableItems || [])
-                          .filter((ci: any) => ci.itemName || ci.itemSubGroup)
-                          .map((ci: any) => `${ci.itemName || ci.itemSubGroup} (${ci.gsm ?? 0} ${ci.itemGroup === "Ink" ? "GSM" : ci.itemGroup === "Solvent" ? "%" : "GSM"})`)
-                          .join(" · ");
-                        return (
-                          <tr key={li}>
-                            <td className="text-center">{li + 1}</td>
-                            <td className="font-bold">{l.plyType || "—"}</td>
-                            <td>{l.itemSubGroup || l.plyType || "—"}</td>
-                            <td className="text-center">{l.gsm || "—"}</td>
-                            <td className="text-[8.5px]">{consumablesSummary || "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </>
+                    )}
+                    {r.remarks && (
+                      <tr>
+                        <th style={TH}>Remarks / Notes</th>
+                        <td style={TD}>{r.remarks}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               )}
-
-              {/* ── F. Slitting & Packing ── */}
-              <div className="text-[9px] font-black uppercase px-2 py-0.5 mb-1 mt-2" style={{ background: "#1e3a5f", color: "#fff", letterSpacing: "0.5px" }}>F. Slitting &amp; Packing</div>
-              <div className="grid grid-cols-2 gap-2 mb-1">
-                <table>
-                  <tbody>
-                    <tr><th style={{ width: "50%" }}>Slitting Width</th><td>{cylWidth} mm</td></tr>
-                    <tr><th>Trimming</th><td>{trim > 0 ? `${trim}+${trim} mm` : "—"}</td></tr>
-                    <tr><th>Core Type</th><td>3&quot; Paper Core</td></tr>
-                    <tr><th>Order Ref</th><td>{r.sourceOrderNo || "—"}</td></tr>
-                  </tbody>
-                </table>
-                <table>
-                  <tbody>
-                    <tr><th style={{ width: "50%" }}>Pack Size</th><td>{r.packSize || "—"}</td></tr>
-                    <tr><th>SKU Type</th><td>{r.skuType || "—"}</td></tr>
-                    <tr><th>Address Type</th><td>{r.addressType || "—"}</td></tr>
-                    <tr><th>Standard Qty</th><td>{(r.standardQty || 0).toLocaleString()} {r.standardUnit}</td></tr>
-                  </tbody>
-                </table>
-              </div>
 
               {/* ── Signatures ── */}
-              <div className="flex justify-between mt-4 pt-3 border-t-2 border-black">
-                {["Prepared by", "Reviewed by", "Approved by", "Customer Sign"].map(label => (
-                  <div key={label} className="text-center" style={{ minWidth: 100 }}>
-                    <div className="border-b border-black mb-1" style={{ height: 30 }}></div>
-                    <div className="text-[8px] font-bold">{label}</div>
-                  </div>
-                ))}
+              <div style={{ borderTop: "2px solid #1e3a5f", marginTop: "6px", paddingTop: "5px" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <tbody>
+                    <tr>
+                      {["Prepared By", "Reviewed By (QA)", "Approved By", "Customer Sign"].map((label, i) => (
+                        <td key={i} style={{ border: "1px solid #555", textAlign: "center", padding: "4px 6px", width: "25%" }}>
+                          <div style={{ height: "30px", borderBottom: "1px solid #bbb", marginBottom: "4px" }}></div>
+                          <div style={{ fontSize: "8px", fontWeight: 800, color: "#333", letterSpacing: "0.3px" }}>{label}</div>
+                          <div style={{ fontSize: "7px", color: "#aaa", marginTop: "2px" }}>Name / Designation / Date</div>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+                <div style={{ fontSize: "7px", color: "#ccc", textAlign: "center", marginTop: "4px", letterSpacing: "0.3px" }}>
+                  Generated by AJ Shrink ERP · {today} · This is a computer generated document
+                </div>
               </div>
 
             </div>

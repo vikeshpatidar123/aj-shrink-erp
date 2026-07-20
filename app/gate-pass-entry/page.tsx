@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, X, Check, Loader2, Printer } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { authHeaders } from "@/lib/auth";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -113,6 +114,15 @@ const blankForm = (): FormState => ({
 
 const isCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
+// Convert "DD-MMM-YYYY" (SQL format 106 with spaces→dashes) to "YYYY-MM-DD" for <input type="date">
+function parseDisplayDate(v: string): string {
+  if (!v) return new Date().toISOString().slice(0, 10);
+  const months: Record<string, string> = { Jan:"01",Feb:"02",Mar:"03",Apr:"04",May:"05",Jun:"06",Jul:"07",Aug:"08",Sep:"09",Oct:"10",Nov:"11",Dec:"12" };
+  const parts = v.split("-");
+  if (parts.length === 3 && months[parts[1]]) return `${parts[2]}-${months[parts[1]]}-${parts[0].padStart(2,"0")}`;
+  return v;
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────
 export default function GatePassEntryPage() {
   const [activeTab, setActiveTab] = useState<GPType | "All">("Non-Returnable");
@@ -213,7 +223,7 @@ export default function GatePassEntryPage() {
         ledgerId: String(m.LedgerID ?? ""),
         materialSentTo: String(m.MaterialSentTo ?? ""),
         departmentId: String(m.DepartmentID ?? ""),
-        voucherDate: String(m.VoucherDate ?? "").slice(0, 10).split("-").reverse().join("-"),
+        voucherDate: parseDisplayDate(String(m.VoucherDate ?? "")),
         voucherNo: String(m.VoucherNo ?? ""),
         documentNo: String(m.DocumentNo ?? ""),
         vehicleNo: String(m.VehicleNo ?? ""),
@@ -335,7 +345,7 @@ export default function GatePassEntryPage() {
         setShowModal(false);
         loadList();
       } else {
-        setError(String(result || "Save failed"));
+        setError(typeof result === "string" ? (result || "Save failed") : JSON.stringify(result) || "Save failed");
       }
     } catch (e: unknown) { setError(String(e)); } finally { setSaving(false); }
   };
@@ -373,7 +383,10 @@ export default function GatePassEntryPage() {
           <h2 className="text-xl font-bold text-gray-800">Gate Pass Entry</h2>
           <p className="text-sm text-gray-500">{listLoading ? "Loading..." : `${list.length} record${list.length !== 1 ? "s" : ""}`}</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Gate Pass</Button>
+        <div className="flex items-center gap-2">
+          <TutorialButton title="Gate Pass Entry — Tutorial" />
+          <Button icon={<Plus size={16} />} onClick={openAdd}>New Gate Pass</Button>
+        </div>
       </div>
 
       {/* Tabs */}

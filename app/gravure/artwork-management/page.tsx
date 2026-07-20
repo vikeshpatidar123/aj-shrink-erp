@@ -4,6 +4,7 @@ import {
   Plus, Pencil, Trash2, X, Check, Loader2, Eye, EyeOff,
   FileText, Image as ImgIcon, Download, Paperclip, RefreshCw,
   Link2, ChevronDown, ChevronRight, ChevronLeft, Package, Filter, Library,
+  PlayCircle,
 } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
 import { useCategories } from "@/context/CategoriesContext";
@@ -42,7 +43,7 @@ async function uploadFile(file: File) {
 
   let res: Response;
   try {
-    res = await fetch(`${BASE}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+    res = await fetch(`${BASE}/api/artworkManagement/upload`, { method: "POST", headers: hdrs, body: fd });
   } catch (e: any) {
     throw new Error(`[Network] ${e.message} — ${BASE}/api/s3/upload`);
   }
@@ -269,6 +270,7 @@ function AttCard({ att, onRemove, onPreview }: {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ArtworkManagementPage() {
   const [activeTab, setActiveTab] = useState<"master" | "management" | "library">("master");
+  const [showVideoModal, setShowVideoModal] = useState(false);
 
   const { categories: catWithDetails } = useCategories();
 
@@ -294,6 +296,11 @@ export default function ArtworkManagementPage() {
   const [detailMap, setDetailMap] = useState<Record<string, ArtworkRow>>({});
   const [attMap, setAttMap] = useState<Record<string, AttachmentItem[]>>({});
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const [masterAttOpen,    setMasterAttOpen]    = useState<string | null>(null);
+  const [masterAttLoading, setMasterAttLoading] = useState<string | null>(null);
+  const [masterSort,       setMasterSort]       = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const [masterColFilter,  setMasterColFilter]  = useState<string | null>(null);
+  const [masterFilters,    setMasterFilters]    = useState({ artworkNo: "", artworkName: "", content: "", catalog: "" });
 
   // ─── FieldMaster dropdown options ────────────────────────────────────────
   const [fmOptions, setFmOptions] = useState<{
@@ -315,9 +322,9 @@ export default function ArtworkManagementPage() {
   };
 
   const ARTWORK_STAGES = [
-    "Artwork Pending", "Artwork Received", "Design In Progress",
-    "Brand Approval Sent", "Brand Approved", "LSD Shade Approved",
-    "Cylinder Ordered", "Cylinder Received", "Released to Production",
+    "Artwork Pending", "Artwork Received", "Under Process",
+    "Pending Mail to MB", "Brand Approved", "LSD Shade Approved",
+    "Engraving", "Cylinder Received", "Released to Production", "On Hold",
   ];
 
   const [libRows,       setLibRows]       = useState<LibRow[]>([]);
@@ -325,16 +332,29 @@ export default function ArtworkManagementPage() {
   const [libLoaded,     setLibLoaded]     = useState(false);
   const [libShowFilter, setLibShowFilter] = useState(true);
   const [libSearch,     setLibSearch]     = useState("");
+  const [kpiFilter,     setKpiFilter]     = useState<string | null>(null);
   const [libUpdating,   setLibUpdating]   = useState<string | null>(null);
+  const [openStageRow,  setOpenStageRow]  = useState<string | null>(null);
   const [libFilters,    setLibFilters]    = useState({
     customer: "", jobName: "", brand: "", packSize: "", category: "",
     substrate: "", designType: "", noOfColors: "", colorName: "",
     machine: "", cylType: "", cylStatus: "", cylVendor: "",
     artworkStage: "", brandApproved: "", lsdApproved: "", cylReceived: "",
+    circum: "", cylLength: "", coilWidth: "", repeatLength: "",
   });
+  const [libSort,       setLibSort]       = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const [colFilterOpen, setColFilterOpen] = useState<string | null>(null);
 
   // ─── Search ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    if (!openStageRow && !colFilterOpen && !masterColFilter && !masterAttOpen) return;
+    const handler = () => { setOpenStageRow(null); setColFilterOpen(null); setMasterColFilter(null); setMasterAttOpen(null); };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [openStageRow, colFilterOpen, masterColFilter, masterAttOpen]);
 
   // ─── Load list + dropdowns ────────────────────────────────────────────────
   const loadList = useCallback(async () => {
@@ -484,7 +504,6 @@ export default function ArtworkManagementPage() {
   // ─── Save ─────────────────────────────────────────────────────────────────
   const save = async () => {
     if (!form.JobName.trim()) { setFormError("Product Name is required."); return; }
-    if (!form.LedgerID) { setFormError("Client is required."); return; }
     if (!form.CategoryID) { setFormError("Category is required."); return; }
 
     setSaving(true); setFormError("");
@@ -498,7 +517,7 @@ export default function ArtworkManagementPage() {
               const { "Content-Type": _ct, ...hdrs } = authHeaders();
               const fd = new FormData();
               fd.append("file", a.fileObj, a.fileObj.name);
-              const res = await fetch(`${BASE}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+              const res = await fetch(`${BASE}/api/artworkManagement/upload`, { method: "POST", headers: hdrs, body: fd });
               if (res.ok) {
                 const { publicUrl } = await res.json();
                 URL.revokeObjectURL(a.url);
@@ -565,6 +584,37 @@ export default function ArtworkManagementPage() {
 
   const rf = (k: keyof FormState, v: string) => setForm(f => ({ ...f, [k]: v }));
 
+  // ─── Eye icon handler (Master tab) ───────────────────────────────────────
+  const openAttView = async (e: React.MouseEvent, row: ArtworkRow) => {
+    e.stopPropagation();
+    const id = row.ArtworkID;
+    if (masterAttOpen === id) { setMasterAttOpen(null); return; }
+    if (attMap[id] !== undefined) {
+      const cached = attMap[id];
+      if (cached.length === 1) { window.open(cached[0].url, "_blank"); }
+      else { setMasterAttOpen(id); }
+      return;
+    }
+    setMasterAttLoading(id);
+    try {
+      const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
+        `${ART}/attachments/${id}`
+      );
+      const mapped = (Array.isArray(atts) ? atts : []).map(a => ({
+        _id: a.FileID,
+        name: decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName),
+        url: a.AttachedFileName,
+        mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
+                : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+        remark: a.AttachedFileRemark,
+      }));
+      setAttMap(m => ({ ...m, [id]: mapped }));
+      if (mapped.length === 0) { /* no attachments */ }
+      else if (mapped.length === 1) { window.open(mapped[0].url, "_blank"); }
+      else { setMasterAttOpen(id); }
+    } catch { /* silent */ } finally { setMasterAttLoading(null); }
+  };
+
   // ─── Filter ───────────────────────────────────────────────────────────────
   const filtered = list.filter(r => {
     const q = search.toLowerCase();
@@ -586,6 +636,11 @@ export default function ArtworkManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowVideoModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-medium transition-colors">
+            <PlayCircle size={15} />
+            Tutorial
+          </button>
           <button onClick={activeTab === "library" ? loadLibrary : loadList}
             className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
             <RefreshCw size={15} className={
@@ -627,59 +682,238 @@ export default function ArtworkManagementPage() {
       )}
 
       {/* ═══ TAB: Artwork Master ═══════════════════════════════════════════ */}
-      {activeTab === "master" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin text-gray-400" /></div>
-          ) : filtered.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">No artworks found. Click "New Artwork" to create one.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Artwork No.</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Product Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Client</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Category</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Received</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Expected</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Catalog</th>
-                  <th className="px-4 py-3 w-28"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(row => (
-                  <tr key={row.ArtworkID} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-4 py-3 font-semibold text-indigo-700">{row.ArtworkNo}</td>
-                    <td className="px-4 py-3 text-gray-800 font-medium">{row.ProductName}</td>
-                    <td className="px-4 py-3 text-gray-600">{row.ClientName}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.CategoryName}</span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{row.ReceivedDate || "—"}</td>
-                    <td className="px-4 py-3 text-gray-500 text-xs">{row.ExpectedCompletionDate || "—"}</td>
-                    <td className="px-4 py-3">
-                      {row.ProductMasterID && String(row.ProductMasterID) !== "0" ? (
-                        <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
-                          <Link2 size={11} /> Linked
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">Not linked</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2 justify-end">
-                        <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(row)}>Edit</Button>
-                        <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteArtwork(row)}>Del</Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
+      {activeTab === "master" && (() => {
+        // Master table column filter config
+        type MCF = { key: keyof typeof masterFilters; getVal: (r: ArtworkRow) => string };
+        const MASTER_CF: Record<string, MCF> = {
+          "ARTWORK NO.":        { key: "artworkNo",   getVal: r => r.ArtworkNo || "" },
+          "ARTWORK NAME":       { key: "artworkName", getVal: r => r.ArtworkName || r.ProductName || "" },
+          "SUB TYPE (CONTENT)": { key: "content",     getVal: r => r.Content || "" },
+          "CATALOG":            { key: "catalog",     getVal: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked" },
+        };
+        const MASTER_SORT_KEY: Record<string, (r: ArtworkRow) => string> = {
+          "ARTWORK NO.":        r => r.ArtworkNo || "",
+          "ARTWORK NAME":       r => r.ArtworkName || r.ProductName || "",
+          "SUB TYPE (CONTENT)": r => r.Content || "",
+          "CATALOG":            r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked",
+        };
+
+        const masterFiltered = filtered.filter(r => {
+          const mf = masterFilters;
+          const catalogVal = (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked";
+          return (!mf.artworkNo   || (r.ArtworkNo||"").toLowerCase().includes(mf.artworkNo.toLowerCase()))
+            && (!mf.artworkName || (r.ArtworkName||r.ProductName||"").toLowerCase().includes(mf.artworkName.toLowerCase()))
+            && (!mf.content     || (r.Content||"").toLowerCase().includes(mf.content.toLowerCase()))
+            && (!mf.catalog     || catalogVal.toLowerCase().includes(mf.catalog.toLowerCase()));
+        });
+
+        const masterSorted = (masterSort && MASTER_SORT_KEY[masterSort.col])
+          ? [...masterFiltered].sort((a, b) => {
+              const cmp = MASTER_SORT_KEY[masterSort.col](a).localeCompare(MASTER_SORT_KEY[masterSort.col](b), undefined, { numeric: true, sensitivity: "base" });
+              return masterSort.dir === "asc" ? cmp : -cmp;
+            })
+          : masterFiltered;
+
+        const hasColFilter = Object.values(masterFilters).some(Boolean);
+
+        return (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {loading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin text-gray-400" /></div>
+            ) : filtered.length === 0 ? (
+              <div className="text-center py-16 text-gray-400">No artworks found. Click "New Artwork" to create one.</div>
+            ) : (
+              <>
+                {/* toolbar */}
+                {(hasColFilter || masterSort) && (
+                  <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
+                    {masterSort && <span>Sorted by <strong>{masterSort.col}</strong> {masterSort.dir === "asc" ? "↑" : "↓"}</span>}
+                    {hasColFilter && <span>{Object.values(masterFilters).filter(Boolean).length} column filter(s) active</span>}
+                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo:"", artworkName:"", content:"", catalog:"" }); }}
+                      className="ml-auto text-red-500 hover:text-red-700 font-semibold">✕ Clear all</button>
+                  </div>
+                )}
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10">
+                    <tr style={{ background: "var(--erp-primary)" }}>
+                      {([
+                        { h: "ARTWORK NO.",        s: true  },
+                        { h: "ARTWORK NAME",       s: true  },
+                        { h: "SUB TYPE (CONTENT)", s: true  },
+                        { h: "CATALOG",            s: true  },
+                        { h: "ATTACHMENTS",        s: false },
+                        { h: "",                   s: false },
+                      ] as { h: string; s: boolean }[]).map(({ h, s }) => {
+                        const isSortActive = masterSort?.col === h;
+                        const cf = MASTER_CF[h];
+                        const isFiltered = cf ? !!masterFilters[cf.key] : false;
+                        const isOpen = masterColFilter === h;
+                        const colVals = cf
+                          ? [...new Set(filtered.map(r => cf.getVal(r)).filter(Boolean))].sort()
+                          : [];
+                        return (
+                          <th key={h || "actions"} className="relative px-4 py-3 text-left whitespace-nowrap border-r border-white/10 last:border-r-0">
+                            <div className="flex items-center gap-1">
+                              <span
+                                className={`flex items-center gap-1 text-[11px] font-bold text-white/80 uppercase tracking-wider flex-1 ${s ? "cursor-pointer hover:text-white select-none" : ""}`}
+                                onClick={() => {
+                                  if (!s || !h) return;
+                                  if (!isSortActive) { setMasterSort({ col: h, dir: "asc" }); return; }
+                                  if (masterSort?.dir === "asc") { setMasterSort({ col: h, dir: "desc" }); return; }
+                                  setMasterSort(null);
+                                }}
+                              >
+                                {h}
+                                {s && h && (
+                                  <span className="flex flex-col leading-none ml-0.5">
+                                    <span className={`text-[7px] ${isSortActive && masterSort?.dir === "asc" ? "text-yellow-300" : "text-white/25"}`}>▲</span>
+                                    <span className={`text-[7px] ${isSortActive && masterSort?.dir === "desc" ? "text-yellow-300" : "text-white/25"}`}>▼</span>
+                                  </span>
+                                )}
+                              </span>
+                              {cf && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); setMasterColFilter(isOpen ? null : h); }}
+                                  className={`p-0.5 rounded flex-shrink-0 transition-colors ${isFiltered ? "text-yellow-300" : isOpen ? "text-white" : "text-white/70 hover:text-white"}`}
+                                  title={isFiltered ? `Filtered: ${masterFilters[cf.key]}` : "Filter"}
+                                >
+                                  <Filter size={9} />
+                                </button>
+                              )}
+                            </div>
+                            {/* Excel dropdown */}
+                            {isOpen && cf && (
+                              <div
+                                className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 min-w-[200px] max-h-[260px] overflow-y-auto"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <button
+                                  className="w-full px-3 py-2 text-left text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 border-b border-gray-100"
+                                  onClick={() => { setMasterFilters(f => ({ ...f, [cf.key]: "" })); setMasterColFilter(null); }}
+                                >
+                                  — All (Clear Filter) —
+                                </button>
+                                {colVals.map(v => {
+                                  const active = masterFilters[cf.key] === v;
+                                  const inCurrent = masterFiltered.some(r => cf.getVal(r) === v);
+                                  return (
+                                    <button key={v}
+                                      className={`w-full px-3 py-2 text-left text-[11px] flex items-center gap-2 transition-colors
+                                        ${active ? "bg-indigo-50 text-indigo-700 font-semibold" : inCurrent ? "text-gray-700 hover:bg-gray-50" : "text-gray-300 hover:bg-gray-50"}`}
+                                      onClick={() => { setMasterFilters(f => ({ ...f, [cf.key]: active ? "" : v })); setMasterColFilter(null); }}
+                                    >
+                                      <span className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${active ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}>
+                                        {active && <Check size={8} className="text-white" />}
+                                      </span>
+                                      {v}
+                                      {!inCurrent && <span className="ml-auto text-[9px] text-gray-300">(hidden)</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                    {/* ── Filter input row ── */}
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {[
+                        { key: "artworkNo"   as const, ph: "Filter…" },
+                        { key: "artworkName" as const, ph: "Filter…" },
+                        { key: "content"     as const, ph: "Filter…" },
+                        { key: "catalog"     as const, ph: "Filter…" },
+                        { key: null,                   ph: ""         },
+                        { key: null,                   ph: ""         },
+                      ].map((f, i) => (
+                        <td key={i} className="px-2 py-1.5">
+                          {f.key ? (
+                            <div className="relative">
+                              <input
+                                value={masterFilters[f.key]}
+                                onChange={e => setMasterFilters(p => ({ ...p, [f.key!]: e.target.value }))}
+                                placeholder={f.ph}
+                                className="w-full text-xs border rounded px-2 py-1 pr-5 outline-none bg-white border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 placeholder-gray-300"
+                              />
+                              {masterFilters[f.key] && (
+                                <button onClick={() => setMasterFilters(p => ({ ...p, [f.key!]: "" }))}
+                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                  <X size={10} />
+                                </button>
+                              )}
+                            </div>
+                          ) : null}
+                        </td>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {masterSorted.map((row, i) => (
+                      <tr key={row.ArtworkID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                        <td className="px-4 py-3 font-semibold text-indigo-700">{row.ArtworkNo}</td>
+                        <td className="px-4 py-3 text-gray-800 font-medium">{row.ArtworkName || row.ProductName}</td>
+                        <td className="px-4 py-3">
+                          {row.Content ? (
+                            <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.Content}</span>
+                          ) : <span className="text-xs text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.ProductMasterID && String(row.ProductMasterID) !== "0" ? (
+                            <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
+                              <Link2 size={11} /> Linked
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">Not linked</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 relative">
+                          <button
+                            onClick={e => openAttView(e, row)}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-500 hover:text-indigo-700 transition-colors"
+                            title="View attachments"
+                          >
+                            {masterAttLoading === row.ArtworkID
+                              ? <Loader2 size={15} className="animate-spin" />
+                              : <Eye size={15} />}
+                          </button>
+                          {masterAttOpen === row.ArtworkID && (
+                            <div className="absolute z-50 left-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl p-2 space-y-1"
+                              onClick={e => e.stopPropagation()}>
+                              {(attMap[row.ArtworkID] ?? []).length === 0 ? (
+                                <p className="text-xs text-gray-400 px-2 py-1">No attachments</p>
+                              ) : (attMap[row.ArtworkID] ?? []).map(att => (
+                                <a key={att._id} href={att.url} target="_blank" rel="noreferrer"
+                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-indigo-50 text-xs text-gray-700 hover:text-indigo-700 truncate">
+                                  {att.mimeType === "application/pdf"
+                                    ? <FileText size={13} className="text-red-500 flex-shrink-0" />
+                                    : att.mimeType?.startsWith("image/")
+                                      ? <ImgIcon size={13} className="text-blue-500 flex-shrink-0" />
+                                      : <Paperclip size={13} className="text-gray-400 flex-shrink-0" />}
+                                  <span className="truncate">{att.name}</span>
+                                </a>
+                              ))}
+                              <button onClick={() => setMasterAttOpen(null)}
+                                className="w-full text-center text-[10px] text-gray-400 hover:text-gray-600 py-0.5 mt-1">
+                                Close
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 justify-end">
+                            <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(row)}>Edit</Button>
+                            <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteArtwork(row)}>Del</Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ═══ TAB: Artwork Management ════════════════════════════════════════ */}
       {activeTab === "management" && (
@@ -708,16 +942,16 @@ export default function ArtworkManagementPage() {
                       <p className="font-bold text-indigo-700 text-sm">{row.ArtworkNo}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Product Name</p>
-                      <p className="font-semibold text-gray-800 text-sm truncate">{row.ProductName}</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Artwork Name</p>
+                      <p className="font-semibold text-gray-800 text-sm truncate">{row.ArtworkName || row.ProductName}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Client</p>
-                      <p className="text-gray-600 text-sm truncate">{row.ClientName}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Category</p>
-                      <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.CategoryName}</span>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Sub Type</p>
+                      {row.Content ? (
+                        <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.Content}</span>
+                      ) : <span className="text-xs text-gray-400">—</span>}
                     </div>
                     <div>
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide">Catalog Link</p>
@@ -882,24 +1116,78 @@ export default function ArtworkManagementPage() {
           const lsdAppr    = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("LSD Shade Approved");
           const cylRcvd    = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Cylinder Received");
 
+          const inc = (a: string | undefined | null, b: string) => (a||"").toLowerCase().includes(b.toLowerCase());
           return matchSearch
-            && (!lf.customer     || r.Customer    === lf.customer)
-            && (!lf.brand        || r.Brand       === lf.brand)
-            && (!lf.packSize     || r.PackSize    === lf.packSize)
-            && (!lf.category     || r.CategoryName=== lf.category)
-            && (!lf.substrate    || r.Substrate   === lf.substrate)
-            && (!lf.designType   || r.TypeOfProduct=== lf.designType)
-            && (!lf.noOfColors   || r.NoOfColors  === lf.noOfColors)
-            && (!lf.colorName    || r.ColorName?.split(",").some(c => c.trim() === lf.colorName))
-            && (!lf.machine      || r.Machine     === lf.machine)
-            && (!lf.cylType      || r.CylType     === lf.cylType)
-            && (!lf.cylStatus    || r.CylStatus?.split(",").some(c => c.trim() === lf.cylStatus))
-            && (!lf.cylVendor    || r.CylVendor   === lf.cylVendor)
-            && (!lf.artworkStage || stage          === lf.artworkStage)
+            && (!lf.customer     || inc(r.Customer,     lf.customer))
+            && (!lf.brand        || inc(r.Brand,        lf.brand))
+            && (!lf.packSize     || inc(r.PackSize,     lf.packSize))
+            && (!lf.category     || inc(r.CategoryName, lf.category))
+            && (!lf.substrate    || inc(r.Substrate,    lf.substrate))
+            && (!lf.designType   || inc(r.TypeOfProduct,lf.designType))
+            && (!lf.noOfColors   || inc(r.NoOfColors,   lf.noOfColors))
+            && (!lf.colorName    || r.ColorName?.split(",").some(c => c.trim().toLowerCase().includes(lf.colorName.toLowerCase())))
+            && (!lf.machine      || inc(r.Machine,      lf.machine))
+            && (!lf.cylType      || inc(r.CylType,      lf.cylType))
+            && (!lf.cylStatus    || r.CylStatus?.split(",").some(c => c.trim().toLowerCase().includes(lf.cylStatus.toLowerCase())))
+            && (!lf.cylVendor    || inc(r.CylVendor,    lf.cylVendor))
+            && (!lf.artworkStage || inc(stage,           lf.artworkStage))
             && (!lf.brandApproved || (lf.brandApproved === "Yes" ? brandAppr : !brandAppr))
             && (!lf.lsdApproved   || (lf.lsdApproved   === "Yes" ? lsdAppr   : !lsdAppr))
-            && (!lf.cylReceived   || (lf.cylReceived    === "Yes" ? cylRcvd   : !cylRcvd));
+            && (!lf.cylReceived   || (lf.cylReceived    === "Yes" ? cylRcvd   : !cylRcvd))
+            && (!lf.jobName       || inc(r.JobName,     lf.jobName))
+            && (!lf.circum        || inc(r.CircumMM,    lf.circum))
+            && (!lf.cylLength     || inc(r.CylLength,   lf.cylLength))
+            && (!lf.coilWidth     || inc(r.CylPrintWidth,lf.coilWidth))
+            && (!lf.repeatLength  || inc(r.RepeatMM,    lf.repeatLength))
+            && (!kpiFilter || (() => {
+              const s = r.ArtworkStage || "Artwork Pending";
+              if (kpiFilter === "CYLINDER RECEIVED")  return s === "Cylinder Received";
+              if (kpiFilter === "ENGRAVING")          return s === "Engraving";
+              if (kpiFilter === "BRAND APPROVED")     return s === "Brand Approved";
+              if (kpiFilter === "UNDER PROCESS")      return s === "Under Process";
+              if (kpiFilter === "PENDING MAIL TO MB") return s === "Pending Mail to MB";
+              if (kpiFilter === "ON HOLD")            return s === "On Hold";
+              return true;
+            })());
         });
+
+        // ── sort ─────────────────────────────────────────────────────────
+        const COL_KEY: Record<string, (r: LibRow) => string> = {
+          "JOB NAME":         r => r.JobName        || "",
+          "SKU SIZE":         r => r.PackSize        || "",
+          "MATERIAL":         r => r.StructureType   || "",
+          "DESIGN TYPE":      r => r.TypeOfProduct   || "",
+          "CURRENT STATUS":   r => r.ArtworkStage    || "",
+          "CUSTOMER / PARTY": r => r.Customer        || "",
+          "CYL. MAKER":       r => r.CylVendor       || "",
+          "COLORS":           r => (parseInt(r.NoOfColors||"0")||0).toString().padStart(5,"0"),
+          "BRAND / PRODUCT":  r => r.Brand           || "",
+          "SUBSTRATE":        r => r.Substrate       || "",
+          "CYLINDER STATUS":  r => r.CylStatus       || "",
+          "ARTWORK RECD.":    r => r.CreatedDate      || "",
+        };
+        const sortedRows = (libSort && COL_KEY[libSort.col])
+          ? [...filtered].sort((a, b) => {
+              const cmp = COL_KEY[libSort.col](a).localeCompare(COL_KEY[libSort.col](b), undefined, { numeric: true, sensitivity: "base" });
+              return libSort.dir === "asc" ? cmp : -cmp;
+            })
+          : filtered;
+
+        // column → filter mapping for Excel-style header dropdowns
+        type CFEntry = { key: keyof typeof libFilters; getVal: (r: LibRow) => string };
+        const COL_FILTER: Record<string, CFEntry> = {
+          "JOB NAME":         { key: "jobName",     getVal: r => r.JobName          || "" },
+          "SKU SIZE":         { key: "packSize",     getVal: r => r.PackSize         || "" },
+          "DESIGN TYPE":      { key: "designType",   getVal: r => r.TypeOfProduct    || "" },
+          "CURRENT STATUS":   { key: "artworkStage", getVal: r => r.ArtworkStage || "Artwork Pending" },
+          "CUSTOMER / PARTY": { key: "customer",     getVal: r => r.Customer         || "" },
+          "CYL. MAKER":       { key: "cylVendor",    getVal: r => r.CylVendor        || "" },
+          "COLORS":           { key: "noOfColors",   getVal: r => r.NoOfColors       || "" },
+          "BRAND / PRODUCT":  { key: "brand",        getVal: r => r.Brand            || "" },
+          "SUBSTRATE":        { key: "substrate",    getVal: r => r.Substrate        || "" },
+          "CYLINDER STATUS":  { key: "cylStatus",    getVal: r => r.CylStatus        || "" },
+          "MATERIAL":         { key: "category",     getVal: r => r.StructureType    || "" },
+        };
 
         // ── summary counts ────────────────────────────────────────────────
         const distinctArtworks = (stagePred: (s: string) => boolean) => {
@@ -910,75 +1198,321 @@ export default function ArtworkManagementPage() {
           });
           return seen.size;
         };
-        const totalColors    = libRows.reduce((sum, r) => sum + (Number(r.NoOfColors) || 0), 0);
-        const artPending     = distinctArtworks(s => s === "Artwork Pending");
-        const inProgress     = distinctArtworks(s => ["Artwork Received","Design In Progress","Brand Approval Sent"].includes(s));
-        const brandApproved  = distinctArtworks(s => s === "Brand Approved");
-        const cylReceived    = distinctArtworks(s => s === "Cylinder Received");
-        const released       = distinctArtworks(s => s === "Released to Production");
+        // Overall KPIs (all libRows)
+        const totalJobs      = new Set(libRows.map(r => r.ArtworkID)).size;
+        const cylRcvdAll     = distinctArtworks(s => s === "Cylinder Received");
+        const engravingAll   = distinctArtworks(s => s === "Engraving");
+        const brandApprAll   = distinctArtworks(s => s === "Brand Approved");
+        const underProcAll   = distinctArtworks(s => s === "Under Process");
+        const pendMailAll    = distinctArtworks(s => s === "Pending Mail to MB");
+        const onHoldAll      = distinctArtworks(s => s === "On Hold");
+
+        // Filtered KPIs
+        const distinctFiltered = (stagePred: (s: string) => boolean) => {
+          const seen = new Set<string>();
+          filtered.forEach(r => { const s = r.ArtworkStage || "Artwork Pending"; if (stagePred(s)) seen.add(r.ArtworkID); });
+          return seen.size;
+        };
+        const fTotalJobs    = new Set(filtered.map(r => r.ArtworkID)).size;
+        const fCylRcvd      = distinctFiltered(s => s === "Cylinder Received");
+        const fEngraving    = distinctFiltered(s => s === "Engraving");
+        const fBrandAppr    = distinctFiltered(s => s === "Brand Approved");
+        const fUnderProc    = distinctFiltered(s => s === "Under Process");
+        const fPendMail     = distinctFiltered(s => s === "Pending Mail to MB");
+        const fOnHold       = distinctFiltered(s => s === "On Hold");
+
+        const hasFilter = Object.values(libFilters).some(Boolean) || !!libSearch || !!kpiFilter;
 
         const setLF = (k: keyof typeof libFilters, v: string) =>
           setLibFilters(f => ({ ...f, [k]: v }));
 
-        // ── stage badge color ────────────────────────────────────────────
+        // ── stage color map ───────────────────────────────────────────────
+        const STAGE_COLORS: Record<string, { dot: string; bg: string; text: string; border: string }> = {
+          "Artwork Pending":       { dot:"#9ca3af", bg:"bg-gray-100",   text:"text-gray-700",   border:"border-gray-300"   },
+          "Artwork Received":      { dot:"#f59e0b", bg:"bg-yellow-100", text:"text-yellow-800", border:"border-yellow-300" },
+          "Under Process":         { dot:"#0d9488", bg:"bg-teal-100",   text:"text-teal-800",   border:"border-teal-300"   },
+          "Pending Mail to MB":    { dot:"#f59e0b", bg:"bg-amber-50",   text:"text-amber-800",  border:"border-amber-300"  },
+          "Brand Approved":        { dot:"#7c3aed", bg:"bg-purple-100", text:"text-purple-800", border:"border-purple-300" },
+          "LSD Shade Approved":    { dot:"#3b82f6", bg:"bg-blue-100",   text:"text-blue-800",   border:"border-blue-300"   },
+          "Engraving":             { dot:"#4f46e5", bg:"bg-indigo-100", text:"text-indigo-800", border:"border-indigo-300" },
+          "Cylinder Received":     { dot:"#16a34a", bg:"bg-green-100",  text:"text-green-800",  border:"border-green-300"  },
+          "Released to Production":{ dot:"#15803d", bg:"bg-green-200",  text:"text-green-900",  border:"border-green-400"  },
+          "On Hold":               { dot:"#dc2626", bg:"bg-red-100",    text:"text-red-800",    border:"border-red-300"    },
+        };
         const stageBadge = (s: string) => {
-          const idx = ARTWORK_STAGES.indexOf(s);
-          if (idx < 0)  return "bg-gray-100 text-gray-500";
-          if (idx === 0) return "bg-red-100 text-red-700";
-          if (idx <= 2)  return "bg-yellow-100 text-yellow-700";
-          if (idx <= 4)  return "bg-blue-100 text-blue-700";
-          if (idx <= 6)  return "bg-purple-100 text-purple-700";
-          return "bg-green-100 text-green-700";
+          const c = STAGE_COLORS[s];
+          return c ? `${c.bg} ${c.text}` : "bg-gray-100 text-gray-500";
         };
 
         const selCls = "px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-full";
 
+        // unique values for new filters
+        const uCircums     = [...new Set(libRows.map(r => r.CircumMM).filter(Boolean))].sort();
+        const uCylLengths  = [...new Set(libRows.map(r => r.CylLength).filter(Boolean))].sort();
+        const uCoilWidths  = [...new Set(libRows.map(r => r.CylPrintWidth).filter(Boolean))].sort();
+        const uRepeatLens  = [...new Set(libRows.map(r => r.RepeatMM).filter(Boolean))].sort();
+
+        // KPI definitions — exact match to screenshot
+        const KPI_DEF = [
+          { label: "TOTAL JOBS",        filLabel: "JOBS IN SELECTION", overall: totalJobs,   fil: fTotalJobs, border: "border-t-blue-500",   num: "text-gray-800",   clickable: true  },
+          { label: "CYLINDER RECEIVED", filLabel: "CYLINDER RECEIVED", overall: cylRcvdAll,  fil: fCylRcvd,   border: "border-t-green-500",  num: "text-green-600",  clickable: true  },
+          { label: "ENGRAVING",         filLabel: "ENGRAVING",         overall: engravingAll,fil: fEngraving, border: "border-t-indigo-600", num: "text-indigo-700", clickable: true  },
+          { label: "BRAND APPROVED",    filLabel: "BRAND APPROVED",    overall: brandApprAll,fil: fBrandAppr, border: "border-t-purple-500", num: "text-purple-700", clickable: true  },
+          { label: "UNDER PROCESS",     filLabel: "UNDER PROCESS",     overall: underProcAll,fil: fUnderProc, border: "border-t-teal-500",   num: "text-teal-700",   clickable: true  },
+          { label: "PENDING MAIL TO MB",filLabel: "PENDING MAIL TO MB",overall: pendMailAll, fil: fPendMail,  border: "border-t-amber-500",  num: "text-amber-600",  clickable: true  },
+          { label: "ON HOLD",           filLabel: "ON HOLD",           overall: onHoldAll,   fil: fOnHold,    border: "border-t-red-500",    num: "text-red-600",    clickable: true  },
+        ];
+
         return (
           <div className="space-y-4">
 
-            {/* ── 6 Summary Cards ── */}
-            <div className="grid grid-cols-6 gap-3">
-              {[
-                { label: "TOTAL COLORS",   value: totalColors,   color: "from-indigo-500 to-indigo-600" },
-                { label: "ART. PENDING",   value: artPending,    color: "from-red-400 to-red-500" },
-                { label: "IN PROGRESS",    value: inProgress,    color: "from-yellow-400 to-orange-500" },
-                { label: "BRAND APPROVED", value: brandApproved, color: "from-blue-500 to-blue-600" },
-                { label: "CYL. RECEIVED",  value: cylReceived,   color: "from-purple-500 to-purple-600" },
-                { label: "RELEASED",       value: released,      color: "from-green-500 to-green-600" },
-              ].map(c => (
-                <div key={c.label} className={`bg-gradient-to-br ${c.color} rounded-xl p-4 text-white shadow-sm`}>
-                  <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">{c.label}</p>
-                  <p className="text-3xl font-black mt-1">{c.value}</p>
-                </div>
-              ))}
+            {/* ── KPI Dashboard ── */}
+            {/* OVERALL */}
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="px-3 py-1 bg-[#1a2b4a] text-white text-[11px] font-bold rounded-md uppercase tracking-widest">■ OVERALL</span>
+              </div>
+              <div className="grid grid-cols-7 gap-3">
+                {KPI_DEF.map(k => {
+                  const isActive = kpiFilter === k.label;
+                  return (
+                    <button
+                      key={k.label}
+                      onClick={() => {
+                        if (!k.clickable) return;
+                        if (k.label === "TOTAL JOBS") { setKpiFilter(null); return; }
+                        setKpiFilter(isActive ? null : k.label);
+                      }}
+                      className={`bg-white rounded-xl border border-gray-200 border-t-4 ${k.border} p-4 text-left shadow-sm transition-all
+                        ${k.clickable ? "cursor-pointer hover:shadow-md hover:-translate-y-0.5" : "cursor-default"}
+                        ${isActive ? "ring-2 ring-indigo-400 shadow-md" : ""}
+                      `}
+                    >
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider leading-tight">{k.label}</p>
+                      <p className={`text-3xl font-black mt-1 ${k.num}`}>{k.overall}</p>
+                      {isActive ? (
+                        <p className="text-[10px] text-red-500 font-semibold mt-0.5 flex items-center gap-0.5"><X size={9}/> Remove</p>
+                      ) : k.label === "TOTAL JOBS" ? (
+                        <p className="text-[10px] text-blue-500 mt-0.5">{kpiFilter ? "Click to show all" : "All records"}</p>
+                      ) : (
+                        <p className="text-[10px] text-blue-500 mt-0.5">Click to filter</p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
+
+            {/* FILTERED SELECTION */}
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="px-3 py-1 bg-blue-600 text-white text-[11px] font-bold rounded-md uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-white inline-block"></span> FILTERED SELECTION
+                </span>
+                {!hasFilter && <span className="text-xs text-gray-400">No filter active</span>}
+                {kpiFilter && (
+                  <button onClick={() => setKpiFilter(null)}
+                    className="flex items-center gap-1 text-[11px] text-white bg-red-500 hover:bg-red-600 rounded-full px-2.5 py-0.5 font-semibold">
+                    <X size={10} /> Remove KPI filter
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-7 gap-3">
+                {KPI_DEF.map(k => {
+                  const isActive = kpiFilter === k.label;
+                  return (
+                    <div key={k.label}
+                      className={`bg-white rounded-xl border border-gray-200 border-t-4 ${k.border} p-4 shadow-sm relative transition-all
+                        ${isActive ? "ring-2 ring-indigo-400" : ""}
+                      `}
+                    >
+                      <span className="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 rounded font-bold bg-green-100 text-green-700">
+                        {isActive ? "active" : "All"}
+                      </span>
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider leading-tight pr-6">{k.filLabel}</p>
+                      <p className={`text-3xl font-black mt-1 ${k.num}`}>{k.fil}</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">all records</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ── 4 Bar Chart Panels ── */}
+            {(() => {
+              const BAR_COLORS = [
+                "#991b1b","#166534","#1e3a8a","#78350f","#581c87",
+                "#0f766e","#831843","#3f6212","#1d4ed8","#92400e",
+                "#15803d","#6d28d9","#0369a1","#b45309","#be123c",
+              ];
+              const SKU_COLORS = [
+                "#1e3a8a","#1d4ed8","#2563eb","#3b82f6","#60a5fa",
+                "#93c5fd","#bfdbfe","#dbeafe","#065f46","#047857",
+                "#059669","#10b981","#34d399",
+              ];
+              const maxCount = (arr: [string,number][]) => arr.length ? Math.max(...arr.map(x=>x[1])) : 1;
+
+              const countBy = (key: keyof LibRow) =>
+                Object.entries(
+                  filtered.reduce((acc, r) => {
+                    const k = (r[key] as string) || "—";
+                    acc[k] = (acc[k] || 0) + 1;
+                    return acc;
+                  }, {} as Record<string, number>)
+                ).sort((a,b) => b[1]-a[1]);
+
+              const byJobName  = countBy("JobName").slice(0, 12);
+              const bySkuSize  = countBy("PackSize").slice(0, 12);
+              const byProduct  = countBy("CategoryName");
+              const byStatus = [
+                { label: "Cylinder received", stage: "Cylinder Received", color: "#16a34a" },
+                { label: "Brand approved",    stage: "Brand Approved",    color: "#1d4ed8" },
+                { label: "Under process",     stage: "Under Process",     color: "#78350f" },
+                { label: "Engraving",         stage: "Engraving",         color: "#3b82f6" },
+                { label: "On hold",           stage: "On Hold",           color: "#b91c1c" },
+              ].map(s => ({ ...s, count: filtered.filter(r => (r.ArtworkStage || "Artwork Pending") === s.stage).length }));
+
+              const BarPanel = ({
+                title, rows, colors, onItemClick, activeVal, filterKey,
+              }: {
+                title: string;
+                rows: [string, number][];
+                colors: string[];
+                onItemClick: (val: string) => void;
+                activeVal: string;
+                filterKey: string;
+              }) => {
+                const mx = maxCount(rows);
+                return (
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[11px] font-bold text-gray-600 uppercase tracking-widest">{title}</p>
+                      {activeVal && (
+                        <button onClick={() => onItemClick("")}
+                          className="flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-700 font-semibold">
+                          <X size={9}/> clear
+                        </button>
+                      )}
+                      {!activeVal && (
+                        <span className="text-[10px] text-pink-400 font-medium flex items-center gap-0.5">
+                          📌 click to filter
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {rows.map(([label, count], i) => {
+                        const pct = Math.round((count / mx) * 100);
+                        const color = colors[i % colors.length];
+                        const isActive = activeVal === label;
+                        return (
+                          <button key={label} onClick={() => onItemClick(isActive ? "" : label)}
+                            className={`w-full flex items-center gap-2 text-left group rounded px-1 py-0.5 transition-colors
+                              ${isActive ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+                            <span className="text-[11px] text-gray-700 w-[110px] flex-shrink-0 truncate" title={label}>{label}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-700 w-5 text-right flex-shrink-0">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <div className="grid grid-cols-4 gap-4">
+                  <BarPanel
+                    title="By Job Name" rows={byJobName}
+                    colors={BAR_COLORS}
+                    activeVal={libFilters.jobName}
+                    filterKey="jobName"
+                    onItemClick={v => setLF("jobName", v)}
+                  />
+                  <BarPanel
+                    title="By SKU Size" rows={bySkuSize}
+                    colors={SKU_COLORS}
+                    activeVal={libFilters.packSize}
+                    filterKey="packSize"
+                    onItemClick={v => setLF("packSize", v)}
+                  />
+                  <BarPanel
+                    title="By Product" rows={byProduct}
+                    colors={["#dc2626","#2563eb","#16a34a","#9333ea","#f59e0b","#0891b2"]}
+                    activeVal={libFilters.category}
+                    filterKey="category"
+                    onItemClick={v => setLF("category", v)}
+                  />
+                  {/* BY STATUS */}
+                  <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-[11px] font-bold text-gray-600 uppercase tracking-widest">By Status</p>
+                      {kpiFilter && (
+                        <button onClick={() => setKpiFilter(null)}
+                          className="flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-700 font-semibold">
+                          <X size={9}/> clear
+                        </button>
+                      )}
+                      {!kpiFilter && (
+                        <span className="text-[10px] text-pink-400 font-medium flex items-center gap-0.5">
+                          📌 click to filter
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {byStatus.map(s => {
+                        const mx2 = Math.max(...byStatus.map(x => x.count), 1);
+                        const pct = Math.round((s.count / mx2) * 100);
+                        const isActive = kpiFilter === s.stage;
+                        return (
+                          <button key={s.stage} onClick={() => setKpiFilter(isActive ? null : s.stage)}
+                            className={`w-full flex items-center gap-2 text-left rounded px-1 py-0.5 transition-colors
+                              ${isActive ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
+                            <span className="text-[11px] text-gray-700 w-[110px] flex-shrink-0 truncate">{s.label}</span>
+                            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: s.color }} />
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-700 w-5 text-right flex-shrink-0">{s.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* ── Filter Panel ── */}
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-              {/* filter header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <Filter size={14} className="text-indigo-500" />
-                  Filters
-                  {Object.values(libFilters).some(Boolean) && (
+                  FILTERS
+                  {hasFilter && (
                     <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full">
-                      {Object.values(libFilters).filter(Boolean).length} active
+                      {Object.values(libFilters).filter(Boolean).length + (libSearch ? 1 : 0) + (kpiFilter ? 1 : 0)} active
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {Object.values(libFilters).some(Boolean) && (
-                    <button onClick={() => setLibFilters({
-                      customer:"",jobName:"",brand:"",packSize:"",category:"",substrate:"",
-                      designType:"",noOfColors:"",colorName:"",machine:"",cylType:"",
-                      cylStatus:"",cylVendor:"",artworkStage:"",brandApproved:"",lsdApproved:"",cylReceived:"",
-                    })} className="text-xs text-red-500 hover:text-red-700 font-medium">
-                      Clear All
+                  {hasFilter && (
+                    <button onClick={() => {
+                      setLibSearch("");
+                      setKpiFilter(null);
+                      setLibFilters({
+                        customer:"",jobName:"",brand:"",packSize:"",category:"",substrate:"",
+                        designType:"",noOfColors:"",colorName:"",machine:"",cylType:"",
+                        cylStatus:"",cylVendor:"",artworkStage:"",brandApproved:"",lsdApproved:"",cylReceived:"",
+                        circum:"",cylLength:"",coilWidth:"",repeatLength:"",
+                      });
+                    }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 rounded-lg px-2 py-1 hover:bg-red-50">
+                      ↺ Reset
                     </button>
                   )}
                   <button onClick={() => setLibShowFilter(v => !v)}
                     className="flex items-center gap-1 text-xs text-indigo-600 font-semibold hover:text-indigo-800">
-                    {libShowFilter ? "Hide Filters" : "Show Filters"}
+                    {libShowFilter ? "Hide" : "Show"}
                     {libShowFilter ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                   </button>
                 </div>
@@ -986,71 +1520,66 @@ export default function ArtworkManagementPage() {
 
               {libShowFilter && (
                 <div className="p-4 space-y-3">
-                  {/* Row 1: Search + Customer + Brand + Pack Size + Category + Substrate */}
+                  {/* Row 1: Search + Job Name + SKU Size + Brand + Product + Customer */}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-                    <input value={libSearch} onChange={e => setLibSearch(e.target.value)}
-                      placeholder="Search WO, customer, brand, artwork…"
-                      className="col-span-2 md:col-span-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400" />
-                    <select value={lf.customer} onChange={e => setLF("customer", e.target.value)} className={selCls}>
-                      <option value="">All Customers</option>
-                      {uCustomers.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.brand} onChange={e => setLF("brand", e.target.value)} className={selCls}>
-                      <option value="">All Brands</option>
-                      {uBrands.map(v => <option key={v} value={v}>{v}</option>)}
+                    <div className="relative md:col-span-1">
+                      <input value={libSearch} onChange={e => setLibSearch(e.target.value)}
+                        placeholder="Job, SKU, brand, customer, file…"
+                        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400" />
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">🔍</span>
+                    </div>
+                    <select value={lf.jobName} onChange={e => setLF("jobName", e.target.value)} className={selCls}>
+                      <option value="">All jobs</option>
+                      {uJobNames.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                     <select value={lf.packSize} onChange={e => setLF("packSize", e.target.value)} className={selCls}>
-                      <option value="">All Pack Sizes</option>
+                      <option value="">All SKUs</option>
                       {uPackSizes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
+                    <select value={lf.brand} onChange={e => setLF("brand", e.target.value)} className={selCls}>
+                      <option value="">All brands</option>
+                      {uBrands.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                     <select value={lf.category} onChange={e => setLF("category", e.target.value)} className={selCls}>
-                      <option value="">All Categories</option>
+                      <option value="">All products</option>
                       {uCategories.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
-                    <select value={lf.substrate} onChange={e => setLF("substrate", e.target.value)} className={selCls}>
-                      <option value="">All Substrates</option>
-                      {uSubstrates.map(v => <option key={v} value={v}>{v}</option>)}
+                    <select value={lf.customer} onChange={e => setLF("customer", e.target.value)} className={selCls}>
+                      <option value="">All customers</option>
+                      {uCustomers.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
 
-                  {/* Row 2: Design Type + No. of Colors + Color Name + Machine + Cyl. Type + Cyl. Status */}
+                  {/* Row 2: Status + Cyl. Maker + Design Type + Substrate + No. of Colors + Cyl. Status */}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+                    <select value={lf.artworkStage} onChange={e => setLF("artworkStage", e.target.value)} className={selCls}>
+                      <option value="">All statuses</option>
+                      {ARTWORK_STAGES.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <select value={lf.cylVendor} onChange={e => setLF("cylVendor", e.target.value)} className={selCls}>
+                      <option value="">All makers</option>
+                      {uVendors.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                     <select value={lf.designType} onChange={e => setLF("designType", e.target.value)} className={selCls}>
-                      <option value="">All Design Types</option>
+                      <option value="">All types</option>
                       {uTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
+                    <select value={lf.substrate} onChange={e => setLF("substrate", e.target.value)} className={selCls}>
+                      <option value="">All substrates</option>
+                      {uSubstrates.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
                     <select value={lf.noOfColors} onChange={e => setLF("noOfColors", e.target.value)} className={selCls}>
-                      <option value="">No. of Colors</option>
+                      <option value="">All</option>
                       {uColors.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
-                    <select value={lf.colorName} onChange={e => setLF("colorName", e.target.value)} className={selCls}>
-                      <option value="">All Color Names</option>
-                      {uColorNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.machine} onChange={e => setLF("machine", e.target.value)} className={selCls}>
-                      <option value="">All Machines</option>
-                      {uMachines.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.cylType} onChange={e => setLF("cylType", e.target.value)} className={selCls}>
-                      <option value="">All Cyl. Types</option>
-                      {uCylTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
                     <select value={lf.cylStatus} onChange={e => setLF("cylStatus", e.target.value)} className={selCls}>
-                      <option value="">All Cyl. Status</option>
+                      <option value="">All cyl. status</option>
                       {uCylStatuses.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
 
-                  {/* Row 3: Order Vendor + Artwork Stage + Brand Appr. + LSD Appr. + Cyl. Rcvd */}
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                    <select value={lf.cylVendor} onChange={e => setLF("cylVendor", e.target.value)} className={selCls}>
-                      <option value="">All Order Vendors</option>
-                      {uVendors.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.artworkStage} onChange={e => setLF("artworkStage", e.target.value)} className={selCls}>
-                      <option value="">All Artwork Stages</option>
-                      {ARTWORK_STAGES.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                  {/* Row 3: Brand Approval + LSD Approval + Cyl. Received + Cyl. Type + Machine + Color Name */}
+                  <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
                     <select value={lf.brandApproved} onChange={e => setLF("brandApproved", e.target.value)} className={selCls}>
                       <option value="">Brand Appr. (All)</option>
                       <option value="Yes">Brand Approved</option>
@@ -1066,10 +1595,42 @@ export default function ArtworkManagementPage() {
                       <option value="Yes">Cyl. Received</option>
                       <option value="No">Not Received</option>
                     </select>
+                    <select value={lf.cylType} onChange={e => setLF("cylType", e.target.value)} className={selCls}>
+                      <option value="">All cyl. types</option>
+                      {uCylTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <select value={lf.machine} onChange={e => setLF("machine", e.target.value)} className={selCls}>
+                      <option value="">All machines</option>
+                      {uMachines.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                    <select value={lf.colorName} onChange={e => setLF("colorName", e.target.value)} className={selCls}>
+                      <option value="">All color names</option>
+                      {uColorNames.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+
+                  {/* Row 4: Coil Width + Repeat Length + Cyl. Circum + Cyl. Length */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <select value={lf.coilWidth} onChange={e => setLF("coilWidth", e.target.value)} className={selCls}>
+                      <option value="">Coil Width (MM) — All</option>
+                      {uCoilWidths.map(v => <option key={v} value={v}>{v} mm</option>)}
+                    </select>
+                    <select value={lf.repeatLength} onChange={e => setLF("repeatLength", e.target.value)} className={selCls}>
+                      <option value="">Repeat Length (MM) — All</option>
+                      {uRepeatLens.map(v => <option key={v} value={v}>{v} mm</option>)}
+                    </select>
+                    <select value={lf.circum} onChange={e => setLF("circum", e.target.value)} className={selCls}>
+                      <option value="">Cylinder Circum (MM) — All</option>
+                      {uCircums.map(v => <option key={v} value={v}>{v} mm</option>)}
+                    </select>
+                    <select value={lf.cylLength} onChange={e => setLF("cylLength", e.target.value)} className={selCls}>
+                      <option value="">Cylinder Length (MM) — All</option>
+                      {uCylLengths.map(v => <option key={v} value={v}>{v} mm</option>)}
+                    </select>
                   </div>
 
                   <p className="text-[10px] text-gray-400 pt-1">
-                    Showing {filtered.length} of {libRows.length} records
+                    Showing <strong>{filtered.length}</strong> of <strong>{libRows.length}</strong> records
                   </p>
                 </div>
               )}
@@ -1081,106 +1642,316 @@ export default function ArtworkManagementPage() {
                 <div className="flex items-center justify-center py-16">
                   <Loader2 size={28} className="animate-spin text-gray-400" />
                 </div>
-              ) : filtered.length === 0 ? (
+              ) : sortedRows.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                   <Library size={36} className="mb-3 text-gray-300" />
                   <p className="text-sm">No artwork records found.</p>
                 </div>
               ) : (
-                <table className="w-full text-xs min-w-[2000px]">
-                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
-                    <tr>
+                <table className="w-full text-xs min-w-[2800px]">
+                  <thead className="sticky top-0 z-10">
+                    <tr style={{ background: "var(--erp-primary)" }}>
+                      {([
+                        { h: "#",                 s: false },
+                        { h: "JOB NAME",          s: true  },
+                        { h: "SKU SIZE",          s: true  },
+                        { h: "MATERIAL",          s: true  },
+                        { h: "DESIGN TYPE",       s: true  },
+                        { h: "CURRENT STATUS",    s: true  },
+                        { h: "CUSTOMER / PARTY",  s: true  },
+                        { h: "CYL. MAKER",        s: true  },
+                        { h: "COLORS",            s: true  },
+                        { h: "BRAND / PRODUCT",   s: true  },
+                        { h: "SUBSTRATE",         s: true  },
+                        { h: "CYLINDER STATUS",   s: true  },
+                        { h: "ARTWORK RECD.",      s: true  },
+                        { h: "APPRVD. TO MAKER",  s: false },
+                        { h: "BRAND APPROVAL",    s: false },
+                        { h: "LSD APPROVAL",      s: false },
+                        { h: "DEV. STATUS",       s: false },
+                        { h: "REMARKS",           s: false },
+                        { h: "ACTIONS",           s: false },
+                      ] as { h: string; s: boolean }[]).map(({ h, s }) => {
+                        const isSortActive  = libSort?.col === h;
+                        const cf            = COL_FILTER[h];
+                        const isFiltered    = cf ? !!lf[cf.key] : false;
+                        const isColFOpen    = colFilterOpen === h;
+                        const colVals = cf
+                          ? [...new Set(libRows.map(r => cf.getVal(r)).filter(Boolean))].sort((a, b) =>
+                              a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+                          : [];
+                        return (
+                          <th key={h} className="relative px-2 py-3 text-left text-[10px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
+                            <div className="flex items-center gap-1">
+                              {/* Sort click zone */}
+                              <span
+                                className={`flex items-center gap-0.5 flex-1 ${s ? "cursor-pointer hover:text-white" : ""}`}
+                                onClick={() => {
+                                  if (!s) return;
+                                  if (!isSortActive) { setLibSort({ col: h, dir: "asc" }); return; }
+                                  if (libSort?.dir === "asc") { setLibSort({ col: h, dir: "desc" }); return; }
+                                  setLibSort(null);
+                                }}
+                              >
+                                {h}
+                                {s && (
+                                  <span className="flex flex-col leading-none ml-0.5">
+                                    <span className={`text-[7px] ${isSortActive && libSort?.dir === "asc" ? "text-yellow-300" : "text-white/25"}`}>▲</span>
+                                    <span className={`text-[7px] ${isSortActive && libSort?.dir === "desc" ? "text-yellow-300" : "text-white/25"}`}>▼</span>
+                                  </span>
+                                )}
+                              </span>
+                              {/* Filter funnel */}
+                              {cf && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); setColFilterOpen(isColFOpen ? null : h); }}
+                                  className={`p-0.5 rounded transition-colors flex-shrink-0 ${isFiltered ? "text-yellow-300" : isColFOpen ? "text-white" : "text-white/70 hover:text-white"}`}
+                                  title={isFiltered ? `Filtered: ${lf[cf.key]}` : "Filter"}
+                                >
+                                  <Filter size={9} />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Excel-style dropdown */}
+                            {isColFOpen && cf && (
+                              <div
+                                className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 min-w-[180px] max-h-[260px] overflow-y-auto"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <button
+                                  className="w-full px-3 py-2 text-left text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 border-b border-gray-100"
+                                  onClick={() => { setLF(cf.key, ""); setColFilterOpen(null); }}
+                                >
+                                  — All (Clear Filter) —
+                                </button>
+                                {colVals.map(v => {
+                                  const active    = lf[cf.key] === v;
+                                  const inCurrent = filtered.some(r => cf.getVal(r) === v);
+                                  return (
+                                    <button key={v}
+                                      className={`w-full px-3 py-2 text-left text-[11px] flex items-center gap-2 transition-colors
+                                        ${active ? "bg-indigo-50 text-indigo-700 font-semibold" : inCurrent ? "text-gray-700 hover:bg-gray-50" : "text-gray-300 hover:bg-gray-50"}`}
+                                      onClick={() => { setLF(cf.key, active ? "" : v); setColFilterOpen(null); }}
+                                    >
+                                      <span className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${active ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}>
+                                        {active && <Check size={8} className="text-white" />}
+                                      </span>
+                                      <span className="truncate">{v || "—"}</span>
+                                      {!inCurrent && <span className="ml-auto text-[9px] text-gray-300">(hidden)</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                    {/* ── Filter input row ── */}
+                    <tr className="bg-gray-50 border-b border-gray-200">
                       {[
-                        "#","WO NO","DATE","ORDER NO","CUSTOMER","JOB NAME",
-                        "BRAND","PRODUCT","ARTWORK","CATEGORY","SUBSTRATE",
-                        "PACK SIZE","TYPE","# CLRS","REPEAT(MM)","WIDTH(MM)",
-                        "HEIGHT(MM)","COLORS","STAGE","ACTIONS",
-                      ].map(h => (
-                        <th key={h} className="px-3 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                          {h}
-                        </th>
+                        { key: null          as null },
+                        { key: "jobName"     as const },
+                        { key: "packSize"    as const },
+                        { key: "category"   as const },
+                        { key: "designType"  as const },
+                        { key: "artworkStage"as const },
+                        { key: "customer"    as const },
+                        { key: "cylVendor"   as const },
+                        { key: "noOfColors"  as const },
+                        { key: "brand"       as const },
+                        { key: "substrate"   as const },
+                        { key: "cylStatus"   as const },
+                        { key: null          as null },
+                        { key: null          as null },
+                        { key: null          as null },
+                        { key: null          as null },
+                        { key: null          as null },
+                        { key: null          as null },
+                        { key: null          as null },
+                      ].map((f, idx) => (
+                        <td key={idx} className="px-2 py-1.5">
+                          {f.key ? (
+                            <div className="relative">
+                              <input
+                                value={lf[f.key]}
+                                onChange={e => setLF(f.key!, e.target.value)}
+                                placeholder="Filter…"
+                                className="w-full text-xs border rounded px-2 py-1 pr-5 outline-none bg-white border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 placeholder-gray-300"
+                              />
+                              {lf[f.key] && (
+                                <button onClick={() => setLF(f.key!, "")}
+                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                                  <X size={10} />
+                                </button>
+                              )}
+                            </div>
+                          ) : null}
+                        </td>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((r, i) => {
+                    {sortedRows.map((r, i) => {
                       const stage = r.ArtworkStage || "Artwork Pending";
                       const stageIdx = ARTWORK_STAGES.indexOf(stage);
                       const isUpdating = libUpdating === r.ArtworkID;
+
+                      // Status badge style for CURRENT STATUS column
+                      const statusBadgeCls = (() => {
+                        if (stage === "Cylinder Received")  return "bg-green-100 text-green-800 border border-green-200";
+                        if (stage === "Brand Approved")     return "bg-blue-100 text-blue-800 border border-blue-200";
+                        if (stage === "Engraving")          return "bg-indigo-100 text-indigo-800 border border-indigo-200";
+                        if (stage === "Under Process")      return "bg-teal-100 text-teal-800 border border-teal-200";
+                        if (stage === "Pending Mail to MB") return "bg-amber-50 text-amber-800 border border-amber-200";
+                        if (stage === "On Hold")            return "bg-red-100 text-red-800 border border-red-200";
+                        if (stage === "Released to Production") return "bg-green-200 text-green-900 border border-green-300";
+                        if (stage === "LSD Shade Approved") return "bg-purple-100 text-purple-800 border border-purple-200";
+                        return "bg-gray-100 text-gray-600 border border-gray-200";
+                      })();
+
                       return (
                         <tr key={`${r.ArtworkID}-${i}`}
-                          className={`border-t border-gray-100 hover:bg-indigo-50/20 ${i % 2 === 0 ? "" : "bg-gray-50/40"}`}>
-                          <td className="px-3 py-2 text-gray-400 text-[10px]">{i + 1}</td>
-                          <td className="px-3 py-2 font-bold text-indigo-700 whitespace-nowrap">{r.WoNo || "—"}</td>
-                          <td className="px-3 py-2 text-gray-500 whitespace-nowrap">{r.CreatedDate || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.OrderNo || "—"}</td>
-                          <td className="px-3 py-2 text-gray-800 font-medium whitespace-nowrap max-w-[120px] truncate" title={r.Customer}>{r.Customer || "—"}</td>
-                          <td className="px-3 py-2 text-gray-700 max-w-[140px] truncate" title={r.JobName}>{r.JobName || "—"}</td>
-                          <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{r.Brand || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.ProductCode || "—"}</td>
-                          <td className="px-3 py-2 text-indigo-600 font-medium whitespace-nowrap">{r.ArtworkNo || "—"}</td>
-                          <td className="px-3 py-2">
-                            <span className="px-1.5 py-0.5 bg-orange-50 text-orange-700 rounded-full text-[10px] font-semibold whitespace-nowrap">{r.CategoryName || "—"}</span>
+                          className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
+                          <td className="px-3 py-3 text-gray-400 text-[10px] font-medium">{i + 1}</td>
+
+                          {/* JOB NAME + artwork code */}
+                          <td className="px-3 py-3 min-w-[160px]">
+                            <p className="font-semibold text-gray-800 leading-tight">{r.JobName || "—"}</p>
+                            {r.ArtworkNo && <p className="text-[10px] text-gray-400 mt-0.5">{r.ArtworkNo}</p>}
                           </td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.Substrate || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.PackSize || "—"}</td>
-                          <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{r.TypeOfProduct || "—"}</td>
-                          <td className="px-3 py-2 text-center font-mono text-gray-700">{r.NoOfColors || "—"}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-700">{r.RepeatMM || "—"}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-700">{r.WidthMM || "—"}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-700">{r.HeightMM || "—"}</td>
-                          <td className="px-3 py-2 max-w-[180px]">
-                            {r.ColorName ? (
-                              <div className="flex flex-wrap gap-1">
-                                {r.ColorName.split(",").map((c, ci) => {
-                                  const name = c.trim();
-                                  return name ? (
-                                    <span key={ci} className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
-                                      style={{
-                                        background: `hsl(${ci * 53 % 360},55%,90%)`,
-                                        color: `hsl(${ci * 53 % 360},50%,28%)`,
-                                      }}>
-                                      {name}
-                                    </span>
-                                  ) : null;
-                                })}
-                              </div>
+
+                          {/* SKU SIZE */}
+                          <td className="px-3 py-3 text-gray-700 whitespace-nowrap font-medium">{r.PackSize || "—"}</td>
+
+                          {/* MATERIAL */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {r.StructureType ? (
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.StructureType}</span>
                             ) : <span className="text-gray-400">—</span>}
                           </td>
-                          <td className="px-3 py-2">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${stageBadge(stage)}`}>
+
+                          {/* DESIGN TYPE */}
+                          <td className="px-3 py-3 max-w-[200px]">
+                            <p className="text-gray-700 leading-snug line-clamp-2" title={r.TypeOfProduct}>{r.TypeOfProduct || "—"}</p>
+                          </td>
+
+                          {/* CURRENT STATUS */}
+                          <td className="px-3 py-3 min-w-[180px]">
+                            <span className={`inline-block px-2 py-1 rounded text-[10px] font-semibold leading-tight ${statusBadgeCls}`}>
                               {stage}
                             </span>
                           </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-1">
-                              {isUpdating ? (
-                                <Loader2 size={12} className="animate-spin text-indigo-400" />
-                              ) : (
-                                <>
+
+                          {/* CUSTOMER / PARTY */}
+                          <td className="px-3 py-3 max-w-[150px]">
+                            <p className="text-gray-700 text-[11px] leading-snug line-clamp-2" title={r.Customer}>{r.Customer || "—"}</p>
+                          </td>
+
+                          {/* CYL. MAKER */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-700 font-medium">{r.CylVendor || "—"}</td>
+
+                          {/* COLORS */}
+                          <td className="px-3 py-3 whitespace-nowrap text-center font-bold text-gray-700">{r.NoOfColors || "—"}</td>
+
+                          {/* BRAND / PRODUCT */}
+                          <td className="px-3 py-3 whitespace-nowrap min-w-[110px]">
+                            <p className="font-bold text-red-600 text-[11px]">{r.Brand || "—"}</p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">{r.CategoryName || "—"}</p>
+                          </td>
+
+                          {/* SUBSTRATE */}
+                          <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{r.Substrate || "—"}</td>
+
+                          {/* CYLINDER STATUS */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            {r.CylStatus ? (
+                              <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">{r.CylStatus}</span>
+                            ) : <span className="text-gray-400">—</span>}
+                          </td>
+
+                          {/* ARTWORK RECD. */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-600 text-[11px]">{r.CreatedDate || "—"}</td>
+
+                          {/* APPRVD. TO MAKER */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
+
+                          {/* BRAND APPROVAL */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
+
+                          {/* LSD APPROVAL */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
+
+                          {/* DEV. STATUS */}
+                          <td className="px-3 py-3 whitespace-nowrap">
+                            <span className="text-indigo-700 font-medium text-[11px]">{stage}</span>
+                          </td>
+
+                          {/* REMARKS */}
+                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
+
+                          {/* ACTIONS — custom colored stage picker */}
+                          <td className="px-3 py-3 relative">
+                            {isUpdating ? (
+                              <div className="flex items-center gap-1.5 text-indigo-500">
+                                <Loader2 size={13} className="animate-spin" />
+                                <span className="text-[10px]">Saving…</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                {/* Prev */}
+                                <button disabled={stageIdx <= 0}
+                                  onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.max(0, stageIdx - 1)])}
+                                  className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-not-allowed flex-shrink-0">
+                                  <ChevronLeft size={13} />
+                                </button>
+
+                                {/* Custom stage button */}
+                                <div className="relative">
                                   <button
-                                    disabled={stageIdx <= 0}
-                                    onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.max(0, stageIdx - 1)])}
-                                    className="p-0.5 rounded text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-not-allowed"
-                                    title="Previous stage">
-                                    <ChevronLeft size={14} />
+                                    onClick={e => { e.stopPropagation(); setOpenStageRow(openStageRow === r.ArtworkID ? null : r.ArtworkID); }}
+                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap
+                                      ${STAGE_COLORS[stage]?.bg || "bg-gray-100"}
+                                      ${STAGE_COLORS[stage]?.text || "text-gray-700"}
+                                      ${STAGE_COLORS[stage]?.border || "border-gray-300"}
+                                    `}
+                                  >
+                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: STAGE_COLORS[stage]?.dot || "#9ca3af" }} />
+                                    {stage}
+                                    <ChevronDown size={10} className="opacity-60" />
                                   </button>
-                                  <button
-                                    disabled={stageIdx >= ARTWORK_STAGES.length - 1}
-                                    onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.min(ARTWORK_STAGES.length - 1, stageIdx + 1)])}
-                                    className="p-0.5 rounded text-gray-400 hover:text-green-600 disabled:opacity-20 disabled:cursor-not-allowed"
-                                    title="Next stage">
-                                    <ChevronRight size={14} />
-                                  </button>
-                                  <select
-                                    value={stage}
-                                    onChange={e => updateStage(r.ArtworkID, e.target.value)}
-                                    className="text-[10px] border border-gray-200 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-indigo-300 bg-white max-w-[110px]">
-                                    {ARTWORK_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
-                                  </select>
-                                </>
-                              )}
-                            </div>
+
+                                  {/* Dropdown list */}
+                                  {openStageRow === r.ArtworkID && (
+                                    <div className="absolute z-50 left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
+                                      {ARTWORK_STAGES.map(s => {
+                                        const c = STAGE_COLORS[s] || { dot:"#9ca3af", bg:"bg-gray-50", text:"text-gray-700", border:"border-gray-200" };
+                                        const isCur = s === stage;
+                                        return (
+                                          <button key={s}
+                                            onClick={() => { updateStage(r.ArtworkID, s); setOpenStageRow(null); }}
+                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-medium transition-colors
+                                              ${isCur ? `${c.bg} ${c.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
+                                          >
+                                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
+                                            {s}
+                                            {isCur && <Check size={11} className="ml-auto" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Next */}
+                                <button disabled={stageIdx >= ARTWORK_STAGES.length - 1}
+                                  onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.min(ARTWORK_STAGES.length - 1, stageIdx + 1)])}
+                                  className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-green-600 disabled:opacity-20 disabled:cursor-not-allowed flex-shrink-0">
+                                  <ChevronRight size={13} />
+                                </button>
+                              </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1188,41 +1959,8 @@ export default function ArtworkManagementPage() {
                   </tbody>
                 </table>
               )}
-            </div>
+            </div>{/* data table */}
 
-            {/* ── Workflow Pipeline Bar ── */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Workflow Pipeline</p>
-              <div className="flex items-center gap-0 overflow-x-auto pb-1">
-                {ARTWORK_STAGES.map((s, i) => {
-                  const count = libRows.filter(r => (r.ArtworkStage || "Artwork Pending") === s).length;
-                  const colors = [
-                    "bg-gray-200 text-gray-600",
-                    "bg-blue-100 text-blue-700",
-                    "bg-yellow-100 text-yellow-700",
-                    "bg-orange-100 text-orange-700",
-                    "bg-blue-200 text-blue-800",
-                    "bg-teal-100 text-teal-700",
-                    "bg-purple-100 text-purple-700",
-                    "bg-indigo-100 text-indigo-700",
-                    "bg-green-200 text-green-800",
-                  ];
-                  return (
-                    <div key={s} className="flex items-center shrink-0">
-                      <div className={`flex flex-col items-center px-3 py-2 rounded-lg min-w-[110px] ${colors[i]}`}>
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-center leading-tight">{s}</span>
-                        <span className="text-lg font-black mt-0.5">{count}</span>
-                      </div>
-                      {i < ARTWORK_STAGES.length - 1 && (
-                        <div className="w-5 h-0.5 bg-gray-300 relative flex items-center justify-center shrink-0">
-                          <span className="absolute text-gray-400" style={{ fontSize: 10 }}>›</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
         );
       })()}
@@ -1251,17 +1989,142 @@ export default function ArtworkManagementPage() {
                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{formError}</div>
               )}
 
+              {/* ── Attachments ── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <SH label="Attachments" />
+                  <button onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 hover:bg-orange-50 rounded-lg text-xs font-semibold transition-colors">
+                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                    {uploading ? "Uploading…" : "Add Files"}
+                  </button>
+                  <input ref={fileRef} type="file" multiple accept="*" className="hidden"
+                    onChange={e => addFiles(e.target.files)} />
+                </div>
+
+                {attachments.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-3">
+                    {attachments.map(att => (
+                      <AttCard key={att._id} att={att}
+                        onRemove={() => setAttachments(p => p.filter(a => a._id !== att._id))}
+                        onPreview={() => setPreview(att)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+                    onClick={() => fileRef.current?.click()}
+                    className="border-2 border-dashed border-orange-200 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
+                    <Paperclip size={22} className="text-orange-300 mx-auto mb-2" />
+                    <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
+                    <p className="text-[10px] text-orange-300 mt-1">or click to browse</p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Product Details ── */}
+              <div>
+                <SH label="Product Details" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className={lCls}>Job Name</label>
+                    <input value={form.JobName} onChange={e => {
+                      const v = e.target.value;
+                      rf("JobName", v);
+                      rf("ArtworkName", [v, form.PackSize, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-"));
+                    }} placeholder="Enter job name…" className={iCls} />
+                  </div>
+                  <div>
+                    <label className={lCls}>Brand Name</label>
+                    <select value={form.BrandName} onChange={e => rf("BrandName", e.target.value)} className={iCls}>
+                      <option value="">-- Select Brand --</option>
+                      {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Pack Size</label>
+                    <select value={form.PackSize} onChange={e => {
+                      const v = e.target.value;
+                      rf("PackSize", v);
+                      rf("ArtworkName", [form.JobName, v, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Pack Size --</option>
+                      {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Product Type</label>
+                    <select value={form.ProductType} onChange={e => rf("ProductType", e.target.value)} className={iCls}>
+                      <option value="">-- Select Product Type --</option>
+                      {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>SKU Type</label>
+                    <select value={form.SkuType} onChange={e => {
+                      const v = e.target.value;
+                      rf("SkuType", v);
+                      rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, form.AddressType, v].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select SKU Type --</option>
+                      {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Bottle Type</label>
+                    <select value={form.BottleType} onChange={e => {
+                      const v = e.target.value;
+                      rf("BottleType", v);
+                      rf("ArtworkName", [form.JobName, form.PackSize, v, form.AddressType, form.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Bottle Type --</option>
+                      {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Address Type</label>
+                    <select value={form.AddressType} onChange={e => {
+                      const v = e.target.value;
+                      rf("AddressType", v);
+                      rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, v, form.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Address Type --</option>
+                      {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+                    <input value={form.ArtworkName} readOnly
+                      className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Special Specifications</label>
+                    <textarea value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)}
+                      rows={2} placeholder="Any special requirements or notes…" className={iCls} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Dates ── */}
+              <div>
+                <SH label="Dates" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={lCls}>Received Date</label>
+                    <input type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} className={iCls} />
+                  </div>
+                  <div>
+                    <label className={lCls}>Expected Completion Date</label>
+                    <input type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} className={iCls} />
+                  </div>
+                </div>
+              </div>
+
               {/* ── Basic Info ── */}
               <div>
                 <SH label="Basic Information" />
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Client / Customer *</label>
-                    <select value={form.LedgerID} onChange={e => rf("LedgerID", e.target.value)} className={iCls}>
-                      <option value="">-- Select Client --</option>
-                      {dropData.clients.map(c => <option key={c.LedgerID} value={c.LedgerID}>{c.LedgerName}</option>)}
-                    </select>
-                  </div>
                   <div>
                     <label className={lCls}>Category (Type of Product) *</label>
                     <select value={form.CategoryID} onChange={e => {
@@ -1276,7 +2139,7 @@ export default function ArtworkManagementPage() {
                   </div>
                   {/* Sub Type (Content) picker — shown when category is selected */}
                   {form.CategoryID && (() => {
-                    const selCat = catWithDetails.find(c => c.id === form.CategoryID);
+                    const selCat = catWithDetails.find(c => String(c.id) === String(form.CategoryID));
                     const contentDetails = selCat?.contentDetails ?? [];
                     if (contentDetails.length === 0) return null;
                     const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
@@ -1331,13 +2194,6 @@ export default function ArtworkManagementPage() {
                     );
                   })()}
                   <div>
-                    <label className={lCls}>Sales Representative</label>
-                    <select value={form.SalesEmployeeID} onChange={e => rf("SalesEmployeeID", e.target.value)} className={iCls}>
-                      <option value="">-- Select Sales Rep --</option>
-                      {dropData.employees.map(e => <option key={e.SalesEmployeeID} value={e.SalesEmployeeID}>{e.LedgerName}</option>)}
-                    </select>
-                  </div>
-                  <div>
                     <label className={lCls}>Client Artwork No.</label>
                     <input value={form.ClientArtWorkNo} onChange={e => rf("ClientArtWorkNo", e.target.value)}
                       placeholder="Client's reference number" className={iCls} />
@@ -1348,143 +2204,6 @@ export default function ArtworkManagementPage() {
                       rows={2} placeholder="Describe the artwork…" className={iCls} />
                   </div>
                 </div>
-              </div>
-
-              {/* ── Dates ── */}
-              <div>
-                <SH label="Dates" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Received Date</label>
-                    <input type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Expected Completion Date</label>
-                    <input type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Product Details ── */}
-              <div>
-                <SH label="Product Details" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Pack Size</label>
-                    <select value={form.PackSize} onChange={e => {
-                      const v = e.target.value;
-                      rf("PackSize", v);
-                      rf("JobName", [form.BrandName, form.ProductType, v, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select Pack Size --</option>
-                      {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Brand Name</label>
-                    <select value={form.BrandName} onChange={e => {
-                      const v = e.target.value;
-                      rf("BrandName", v);
-                      rf("JobName", [v, form.ProductType, form.PackSize, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select Brand --</option>
-                      {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Product Type</label>
-                    <select value={form.ProductType} onChange={e => {
-                      const v = e.target.value;
-                      rf("ProductType", v);
-                      rf("JobName", [form.BrandName, v, form.PackSize, form.SkuType, form.BottleType, form.AddressType].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select Product Type --</option>
-                      {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>SKU Type</label>
-                    <select value={form.SkuType} onChange={e => {
-                      const v = e.target.value;
-                      rf("SkuType", v);
-                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, v, form.BottleType, form.AddressType].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select SKU Type --</option>
-                      {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Bottle Type</label>
-                    <select value={form.BottleType} onChange={e => {
-                      const v = e.target.value;
-                      rf("BottleType", v);
-                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, form.SkuType, v, form.AddressType].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select Bottle Type --</option>
-                      {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Address Type</label>
-                    <select value={form.AddressType} onChange={e => {
-                      const v = e.target.value;
-                      rf("AddressType", v);
-                      rf("JobName", [form.BrandName, form.ProductType, form.PackSize, form.SkuType, form.BottleType, v].filter(Boolean).join(" "));
-                    }} className={iCls}>
-                      <option value="">-- Select Address Type --</option>
-                      {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Product Name *</label>
-                    <input value={form.JobName} readOnly
-                      className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Artwork Name</label>
-                    <input value={form.ArtworkName} onChange={e => rf("ArtworkName", e.target.value)}
-                      placeholder="e.g. Parle-G Front Label v3" className={iCls} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Special Specifications</label>
-                    <textarea value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)}
-                      rows={2} placeholder="Any special requirements or notes…" className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Attachments ── */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <SH label="Attachments" />
-                  <button onClick={() => fileRef.current?.click()}
-                    disabled={uploading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 hover:bg-orange-50 rounded-lg text-xs font-semibold transition-colors">
-                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                    {uploading ? "Uploading…" : "Add Files"}
-                  </button>
-                  <input ref={fileRef} type="file" multiple accept="*" className="hidden"
-                    onChange={e => addFiles(e.target.files)} />
-                </div>
-
-                {attachments.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {attachments.map(att => (
-                      <AttCard key={att._id} att={att}
-                        onRemove={() => setAttachments(p => p.filter(a => a._id !== att._id))}
-                        onPreview={() => setPreview(att)} />
-                    ))}
-                  </div>
-                ) : (
-                  <div onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-                    onClick={() => fileRef.current?.click()}
-                    className="border-2 border-dashed border-orange-200 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
-                    <Paperclip size={22} className="text-orange-300 mx-auto mb-2" />
-                    <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
-                    <p className="text-[10px] text-orange-300 mt-1">or click to browse</p>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1522,6 +2241,67 @@ export default function ArtworkManagementPage() {
             )}
           </div>
         </Modal>
+      )}
+
+      {/* ─── YouTube Tutorial Modal ─────────────────────────────────────────── */}
+      {showVideoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <PlayCircle size={20} className="text-red-500" />
+                <h3 className="text-base font-bold text-gray-800">Artwork Management — Tutorial Videos</h3>
+              </div>
+              <button onClick={() => setShowVideoModal(false)}
+                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Videos */}
+            <div className="p-6 space-y-6">
+              {[
+                {
+                  title: "Artwork Master — Overview & How to Create",
+                  videoId: "rh8tHmYkya0",
+                  description: "Is video mein aap seekhenge ki Artwork Master kaise create karte hain, fields kya hain aur catalog se kaise link karte hain.",
+                },
+                // ↓ Aur videos add karne ke liye yahan copy karein
+                // {
+                //   title: "Artwork Management — Approval Flow",
+                //   videoId: "YOUR_VIDEO_ID_HERE",
+                //   description: "Description here",
+                // },
+              ].map((v, i) => (
+                <div key={i} className="rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
+                    <p className="text-sm font-semibold text-gray-800">{v.title}</p>
+                    {v.description && (
+                      <p className="text-xs text-gray-500 mt-0.5">{v.description}</p>
+                    )}
+                  </div>
+                  <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+                    <iframe
+                      className="absolute inset-0 w-full h-full"
+                      src={`https://www.youtube.com/embed/${v.videoId}?rel=0`}
+                      title={v.title}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-100 flex justify-end">
+              <button onClick={() => setShowVideoModal(false)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

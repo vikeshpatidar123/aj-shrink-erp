@@ -1,5 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect } from "react";
+import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
 import {
   Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator, BookMarked,
@@ -20,7 +21,7 @@ async function uploadImageToS3(file: File): Promise<string> {
   const { "Content-Type": _ct, ...hdrs } = authHeaders();
   const fd = new FormData();
   fd.append("file", file, file.name);
-  const res = await fetch(`${BASE_ORDERS}/api/s3/upload`, { method: "POST", headers: hdrs, body: fd });
+  const res = await fetch(`${BASE_ORDERS}/api/gravureOrderBookingShrink/upload`, { method: "POST", headers: hdrs, body: fd });
   if (!res.ok) throw new Error(`Image upload failed (${res.status})`);
   const { publicUrl } = await res.json();
   return publicUrl as string;
@@ -1277,7 +1278,7 @@ export default function GravureOrdersPage() {
                         {/* Unit */}
                         <td className="px-1 py-0.5">
                           <CS value={l.unit} onChange={v => updateLine(idx, { ...l, unit: v })}
-                            options={["Kg", "Pcs", "Nos"].map(u => ({ value: u, label: u }))} />
+                            options={["Meter", "Kg", "Pcs", "Nos"].map(u => ({ value: u, label: u }))} />
                         </td>
                         {/* Rate Type */}
                         <td className="px-1 py-0.5">
@@ -1739,10 +1740,13 @@ export default function GravureOrdersPage() {
           stickyHeader
           scrollContainerClass="flex-1"
           toolbar={
-            <Button icon={<Plus size={13} />} onClick={openAdd}
-              className="bg-teal-600 text-white hover:bg-teal-700 border-0 text-xs py-1.5 px-3">
-              New Order
-            </Button>
+            <div className="flex items-center gap-2">
+              <TutorialButton title="Order Booking — Tutorial" />
+              <Button icon={<Plus size={13} />} onClick={openAdd}
+                className="bg-teal-600 text-white hover:bg-teal-700 border-0 text-xs py-1.5 px-3">
+                New Order
+              </Button>
+            </div>
           }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
@@ -2021,179 +2025,384 @@ export default function GravureOrdersPage() {
       {/* ══ ORDER PRINT MODAL ════════════════════════════════════ */}
       {printOrder && (() => {
         const o = printOrder;
+        const today = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+        const companyName = (typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company";
+        const lines = (o.orderLines || []) as any[];
         const balance = Math.max(0, o.totalAmount - o.advancePaid);
+
+        const totalTaxable = lines.reduce((s: number, l: any) => s + (Number(l.amount) || 0), 0);
+        const totalCGST    = lines.reduce((s: number, l: any) => s + (Number(l.cgstAmt) || 0), 0);
+        const totalSGST    = lines.reduce((s: number, l: any) => s + (Number(l.sgstAmt) || 0), 0);
+        const totalIGST    = lines.reduce((s: number, l: any) => s + (Number(l.igstAmt) || 0), 0);
+        const totalGST     = totalCGST + totalSGST + totalIGST;
+        const grandTotal   = totalTaxable + totalGST;
+        const hasGST       = totalGST > 0;
+
+        const gstGroups: Record<string, { hsn: string; taxable: number; cgstPct: number; cgst: number; sgstPct: number; sgst: number; igstPct: number; igst: number }> = {};
+        lines.forEach((l: any) => {
+          const key = l.hsnGroup || "—";
+          if (!gstGroups[key]) gstGroups[key] = { hsn: key, taxable: 0, cgstPct: Number(l.cgstPct) || 0, cgst: 0, sgstPct: Number(l.sgstPct) || 0, sgst: 0, igstPct: Number(l.igstPct) || 0, igst: 0 };
+          gstGroups[key].taxable += Number(l.amount) || 0;
+          gstGroups[key].cgst    += Number(l.cgstAmt) || 0;
+          gstGroups[key].sgst    += Number(l.sgstAmt) || 0;
+          gstGroups[key].igst    += Number(l.igstAmt) || 0;
+        });
+        const gstRows = Object.values(gstGroups);
+
+        let deliveryRows: any[] = [];
+        try { deliveryRows = JSON.parse((o as any).deliveryJSON || "[]"); } catch { deliveryRows = []; }
+
+        const PRINT_CSS = `*{margin:0;padding:0;box-sizing:border-box;font-family:Arial,sans-serif;}body{padding:10mm;color:#000;background:#fff;font-size:8.5pt;}table{width:100%;border-collapse:collapse;}td,th{border:1px solid #999;padding:2px 5px;vertical-align:middle;color:#000;}th{background:#efefef;font-weight:700;text-align:left;white-space:nowrap;font-size:6.5pt;text-transform:uppercase;}@media print{body{padding:8mm;}@page{margin:7mm;size:A4 portrait;}}`;
+
         const handlePrint = () => {
           const el = document.getElementById("order-print-area");
           if (!el) return;
-          const orig = document.body.innerHTML;
-          document.body.innerHTML = el.innerHTML;
-          window.print();
-          document.body.innerHTML = orig;
-          window.location.reload();
+          const w = window.open("", "_blank", "width=1050,height=820");
+          if (!w) return;
+          w.document.write(`<!DOCTYPE html><html><head><title>Sales Order — ${o.orderNo}</title><style>${PRINT_CSS}</style></head><body>${el.innerHTML}</body></html>`);
+          w.document.close();
+          w.focus();
+          setTimeout(() => { w.print(); }, 400);
         };
-        const S = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+        const INR = (n: number) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const TH: React.CSSProperties = { padding: "2px 5px", border: "1px solid #999", background: "#efefef", fontWeight: 700, fontSize: "6.5pt", textTransform: "uppercase", textAlign: "left", whiteSpace: "nowrap", color: "#000" };
+        const TD: React.CSSProperties = { padding: "2px 5px", border: "1px solid #bbb", fontSize: "8pt", verticalAlign: "middle", color: "#000" };
+        const PH: React.CSSProperties = { background: "#fff", color: "#000", fontWeight: 900, fontSize: "8pt", letterSpacing: "0.5px", padding: "3px 0", textTransform: "uppercase", borderBottom: "2px solid #000", marginTop: "5px", marginBottom: "2px", display: "block" };
+
         return (
           <>
-            <div className="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm" onClick={() => setPrintOrder(null)} />
-            <div className="fixed z-[71] inset-4 sm:inset-8 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" onClick={() => setPrintOrder(null)} />
+            <div className="fixed z-[71] inset-2 sm:inset-6 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden">
               {/* Toolbar */}
-              <div className="flex items-center justify-between px-5 py-3 bg-teal-900 text-white flex-shrink-0">
+              <div className="flex items-center justify-between px-5 py-3 bg-slate-900 text-white flex-shrink-0">
                 <div className="flex items-center gap-3">
-                  <Printer size={18} className="text-teal-300" />
-                  <span className="font-bold text-sm">Order Confirmation Print — {o.orderNo}</span>
+                  <Printer size={17} className="text-blue-400" />
+                  <span className="font-bold text-sm">Sales Order — {o.orderNo}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${o.status === "Confirmed" ? "bg-blue-600" : o.status === "Dispatched" ? "bg-green-600" : o.status === "Hold" ? "bg-orange-600" : "bg-gray-600"}`}>{o.status}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={handlePrint}
-                    className="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl transition">
-                    <Printer size={14} /> Print
+                  <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-bold rounded-xl transition">
+                    <Printer size={14} /> Print / Save PDF
                   </button>
                   <button onClick={() => setPrintOrder(null)} className="p-2 hover:bg-white/10 rounded-lg transition"><X size={16} /></button>
                 </div>
               </div>
-              {/* Scrollable preview */}
-              <div className="flex-1 overflow-auto bg-gray-100 p-4 sm:p-8">
-                <div id="order-print-area" className="bg-white mx-auto shadow-lg" style={{ width: "210mm", minHeight: "297mm", padding: "12mm", fontFamily: "Arial, sans-serif", fontSize: "9pt", color: "#111" }}>
+
+              {/* A4 Preview */}
+              <div className="flex-1 overflow-auto bg-slate-200 p-6">
+                <div id="order-print-area" className="bg-white mx-auto shadow-xl"
+                  style={{ width: "210mm", minHeight: "297mm", padding: "10mm", fontFamily: "Arial, sans-serif", fontSize: "8.5pt", color: "#000" }}>
 
                   {/* ── HEADER ── */}
-                  <div style={{ borderBottom: "3px solid #0f766e", paddingBottom: "6px", marginBottom: "8px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div>
-                        <div style={{ fontSize: "16pt", fontWeight: "900", color: "#0f766e", letterSpacing: "1px" }}>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"}</div>
-                        <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Printing &amp; Flexible Packaging</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: "13pt", fontWeight: "800", color: "#1e3a8a", letterSpacing: "2px" }}>ORDER CONFIRMATION</div>
-                        <div style={{ fontSize: "7.5pt", color: "#555", marginTop: "2px" }}>Gravure Sales Order</div>
-                      </div>
-                    </div>
-                  </div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "5px", border: "2px solid #000" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ border: "none", borderRight: "1px solid #000", padding: "6px 8px", width: "36%", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: "15pt", fontWeight: 900, color: "#000", letterSpacing: "0.5px", lineHeight: 1.1, whiteSpace: "nowrap" }}>{companyName}</div>
+                          <div style={{ fontSize: "7pt", color: "#000", fontWeight: 700, letterSpacing: "0.8px", marginTop: "2px" }}>FLEXIBLE PACKAGING · GRAVURE PRINTING</div>
+                        </td>
+                        <td style={{ border: "none", borderRight: "1px solid #000", textAlign: "center", padding: "6px 8px", width: "28%", verticalAlign: "middle" }}>
+                          <div style={{ fontSize: "16pt", fontWeight: 900, color: "#000", letterSpacing: "1px", textTransform: "uppercase", lineHeight: 1.1 }}>SALES ORDER</div>
+                          <div style={{ fontSize: "7pt", color: "#444", marginTop: "4px", fontWeight: 600 }}>ORDER BOOKING CONFIRMATION</div>
+                        </td>
+                        <td style={{ border: "none", padding: "6px 8px", width: "36%", verticalAlign: "middle" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <tbody>
+                              {[
+                                ["SO Number", o.orderNo],
+                                ["Date", today],
+                                ["PO No", o.poNo || "—"],
+                                ["PO Date", o.poDate || "—"],
+                                ["Status", o.status],
+                              ].map(([k, v]) => (
+                                <tr key={k}><td style={{ border: "none", padding: "1px 0", fontSize: "7.5pt", fontWeight: 700, width: "40%", color: "#000" }}>{k}</td><td style={{ border: "none", padding: "1px 0", fontSize: "7.5pt", color: "#000" }}>: {v}</td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  {/* ── ORDER IDENTITY STRIP ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "0", border: "2px solid #0f766e", marginBottom: "8px" }}>
-                    {[
-                      ["Order No", o.orderNo],
-                      ["Order Date", o.date],
-                      ["Status", o.status],
-                      ["PO No", o.poNo || "—"],
-                    ].map(([k, v]) => (
-                      <div key={k} style={{ padding: "5px 8px", borderRight: "1px solid #99f6e4" }}>
-                        <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                        <div style={{ fontSize: "9pt", fontWeight: "800", color: "#0f766e" }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
+                  {/* ── A · CUSTOMER & COMMERCIAL DETAILS ── */}
+                  <span style={PH}>A · Customer &amp; Commercial Details</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
+                    <tbody>
+                      <tr>
+                        <th style={{ ...TH, width: "13%" }}>Customer / Party</th>
+                        <td style={{ ...TD, fontWeight: 800, fontSize: "9pt", width: "30%" }}>{o.customerName || "—"}</td>
+                        <th style={{ ...TH, width: "13%" }}>Sales Person</th>
+                        <td style={TD}>{o.salesPerson || "—"}</td>
+                        <th style={{ ...TH, width: "11%" }}>Sales Type</th>
+                        <td style={TD}>{o.salesType || "Local"}</td>
+                      </tr>
+                      <tr>
+                        <th style={TH}>Sales Ledger</th>
+                        <td style={TD}>{(o as any).salesLedger || "—"}</td>
+                        <th style={TH}>Direct Dispatch</th>
+                        <td style={TD}>{o.directDispatch ? "Yes" : "No"}</td>
+                        <th style={TH}>Advance Paid</th>
+                        <td style={{ ...TD, fontWeight: 700 }}>{INR(o.advancePaid)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
 
-                  {/* ── CUSTOMER INFO ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: "6px", marginBottom: "8px" }}>
-                    {[
-                      ["Customer Name", o.customerName],
-                      ["Sales Person", o.salesPerson || "—"],
-                      ["Sales Type", o.salesType || "—"],
-                      ["PO Date", o.poDate || "—"],
-                    ].map(([k, v]) => (
-                      <div key={k} style={{ border: "1px solid #d1d5db", borderRadius: "4px", padding: "5px 8px", background: "#f0fdfa" }}>
-                        <div style={{ fontSize: "6.5pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{k}</div>
-                        <div style={{ fontSize: "9pt", fontWeight: "800", color: "#111" }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* ── PRODUCT LINES TABLE ── */}
-                  <div style={{ marginBottom: "8px" }}>
-                    <div style={{ background: "#0f766e", color: "white", padding: "3px 8px", fontSize: "7.5pt", fontWeight: "700", letterSpacing: "1px", textTransform: "uppercase" }}>Product / Order Lines</div>
-                    <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #d1d5db" }}>
-                      <thead>
-                        <tr style={{ background: "#f0fdfa" }}>
-                          {["#", "Product / Job Name", "Category", "Size (mm)", "Colors", "Cyl.", "Qty", "Unit", "Rate (₹)", "Disc%", "Amount (₹)", "Delivery"].map(h => (
-                            <th key={h} style={{ padding: "3px 5px", border: "1px solid #d1d5db", fontSize: "6.5pt", fontWeight: "700", textTransform: "uppercase", textAlign: "left" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(o.orderLines || []).map((l, i) => (
-                          <tr key={l.id} style={{ background: i % 2 === 0 ? "#fff" : "#f0fdfa" }}>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center", fontWeight: "700" }}>{i + 1}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontWeight: "700" }}>
-                              <div>{l.productName || "—"}</div>
-                              {l.productCode && <div style={{ fontSize: "6.5pt", color: "#6b7280" }}>{l.productCode}</div>}
-                              <span style={{ fontSize: "6.5pt", padding: "1px 5px", borderRadius: "8px", background: l.sourceType === "Estimation" ? "#dbeafe" : l.sourceType === "Catalog" ? "#ede9fe" : "#f3f4f6", color: l.sourceType === "Estimation" ? "#1d4ed8" : l.sourceType === "Catalog" ? "#6d28d9" : "#374151", fontWeight: "700" }}>{l.sourceType}</span>
+                  {/* ── B · ORDER LINES ── */}
+                  <span style={PH}>B · Order Lines</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px", tableLayout: "fixed" as const }}>
+                    <colgroup>
+                      <col style={{ width: "3%" }} />
+                      <col style={{ width: "26%" }} />
+                      <col style={{ width: "11%" }} />
+                      <col style={{ width: "8%" }} />
+                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "9%" }} />
+                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "8%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={{ ...TH, textAlign: "center" as const }}>#</th>
+                        <th style={TH}>Product / Job Name</th>
+                        <th style={TH}>Category / HSN</th>
+                        <th style={{ ...TH, textAlign: "right" as const }}>Qty / Unit</th>
+                        <th style={{ ...TH, textAlign: "center" as const }}>Disc%</th>
+                        <th style={{ ...TH, textAlign: "right" as const }}>Rate (₹)</th>
+                        <th style={{ ...TH, textAlign: "center" as const }}>GST%</th>
+                        <th style={{ ...TH, textAlign: "right" as const }}>Basic Amt (₹)</th>
+                        <th style={{ ...TH, textAlign: "right" as const }}>Tax (₹)</th>
+                        <th style={{ ...TH, textAlign: "right" as const }}>Net Amt (₹)</th>
+                        <th style={TH}>Delivery</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((l: any, i: number) => {
+                        const taxAmt = (Number(l.cgstAmt) || 0) + (Number(l.sgstAmt) || 0) + (Number(l.igstAmt) || 0);
+                        const netAmt = (Number(l.amount) || 0) + taxAmt;
+                        const specs = [
+                          l.jobWidth && l.jobHeight ? `${l.jobWidth}×${l.jobHeight}mm` : null,
+                          l.noOfColors ? `${l.noOfColors}C` : null,
+                          l.cylinderStatus || null,
+                          l.jobType || null,
+                          l.jobPriority || null,
+                        ].filter(Boolean).join(" · ");
+                        return (
+                          <tr key={l.id || i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                            <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{i + 1}</td>
+                            <td style={{ ...TD, wordBreak: "break-word" as const }}>
+                              <div style={{ fontWeight: 700, fontSize: "8pt" }}>{l.productName || "—"}</div>
+                              {l.productCode && <div style={{ fontSize: "6pt", color: "#555" }}>{l.productCode}</div>}
+                              {specs && <div style={{ fontSize: "6pt", color: "#444" }}>{specs}</div>}
+                              {l.prePressRemark && <div style={{ fontSize: "6pt", color: "#444", fontStyle: "italic" }}>{l.prePressRemark}</div>}
                             </td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontSize: "7.5pt" }}>{l.categoryName || "—"}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{l.jobWidth && l.jobHeight ? `${l.jobWidth}×${l.jobHeight}` : "—"}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{l.noOfColors}C</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center", fontSize: "7.5pt" }}>{l.cylinderStatus}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "right", fontWeight: "700" }}>{l.orderQty.toLocaleString("en-IN")}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>{l.unit}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "right" }}>₹{l.rate}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "center" }}>—</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", textAlign: "right", fontWeight: "700" }}>{S(l.amount)}</td>
-                            <td style={{ padding: "3px 5px", border: "1px solid #e5e7eb", fontSize: "7.5pt" }}>{l.deliveryDate || "—"}</td>
+                            <td style={{ ...TD, fontSize: "7pt", wordBreak: "break-word" as const }}>
+                              <div>{l.categoryName || "—"}</div>
+                              <div style={{ fontSize: "6pt", color: "#555" }}>{l.hsnGroup || ""}</div>
+                            </td>
+                            <td style={{ ...TD, textAlign: "right" }}>
+                              <div style={{ fontWeight: 700 }}>{Number(l.orderQty || 0).toLocaleString("en-IN")}</div>
+                              <div style={{ fontSize: "6.5pt", color: "#555" }}>{l.unit || ""}</div>
+                            </td>
+                            <td style={{ ...TD, textAlign: "center" }}>{Number(l.discPct || 0) > 0 ? `${l.discPct}%` : "—"}</td>
+                            <td style={{ ...TD, textAlign: "right" }}>₹{Number(l.rate || 0).toFixed(4)}</td>
+                            <td style={{ ...TD, textAlign: "center" }}>{Number(l.gstPct || 0) > 0 ? `${l.gstPct}%` : "—"}</td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{INR(Number(l.amount) || 0)}</td>
+                            <td style={{ ...TD, textAlign: "right" }}>{taxAmt > 0 ? INR(taxAmt) : "—"}</td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{INR(netAmt)}</td>
+                            <td style={{ ...TD, fontSize: "7pt" }}>{l.expectedDeliveryDate || l.deliveryDate || "—"}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr style={{ background: "#f0fdfa", borderTop: "2px solid #0f766e" }}>
-                          <td colSpan={11} style={{ padding: "4px 8px", border: "1px solid #d1d5db", fontWeight: "700", textAlign: "right", fontSize: "8.5pt" }}>Order Total</td>
-                          <td style={{ padding: "4px 8px", border: "2px solid #0f766e", textAlign: "right", fontWeight: "900", fontSize: "10pt", color: "#0f766e" }}>{S(o.totalAmount)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                        );
+                      })}
+                    </tbody>
+                  </table>
 
-                  {/* ── FINANCIAL SUMMARY ── */}
-                  <div style={{ marginBottom: "8px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "6px" }}>
+                  {/* ── B TOTALS BOX ── */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "0", marginBottom: "6px", marginTop: "2px" }}>
                     {[
-                      { label: "Order Total", val: S(o.totalAmount), bg: "#f0fdfa", border: "#0f766e", color: "#0f766e" },
-                      { label: "Advance Paid", val: S(o.advancePaid), bg: "#f0fdf4", border: "#16a34a", color: "#16a34a" },
-                      { label: "Balance Due", val: S(balance), bg: balance > 0 ? "#fef2f2" : "#f0fdf4", border: balance > 0 ? "#dc2626" : "#16a34a", color: balance > 0 ? "#dc2626" : "#16a34a" },
-                    ].map(s => (
-                      <div key={s.label} style={{ border: `2px solid ${s.border}`, borderRadius: "4px", padding: "8px 12px", background: s.bg, textAlign: "center" }}>
-                        <div style={{ fontSize: "7pt", color: "#6b7280", fontWeight: "700", textTransform: "uppercase" }}>{s.label}</div>
-                        <div style={{ fontSize: "14pt", fontWeight: "900", color: s.color, marginTop: "2px" }}>{s.val}</div>
+                      { label: "Taxable Amount", val: INR(totalTaxable) },
+                      { label: `Total GST`, val: hasGST ? INR(totalGST) : "—" },
+                      { label: "Grand Total (Incl. GST)", val: INR(grandTotal), bold: true },
+                    ].map((item, idx) => (
+                      <div key={idx} style={{
+                        border: item.bold ? "2px solid #000" : "1px solid #999",
+                        padding: "4px 10px",
+                        minWidth: "130px",
+                        textAlign: "right",
+                        background: item.bold ? "#000" : "#f5f5f5",
+                        marginLeft: "4px",
+                      }}>
+                        <div style={{ fontSize: "6pt", fontWeight: 700, textTransform: "uppercase" as const, color: item.bold ? "#ccc" : "#555", letterSpacing: "0.3px" }}>{item.label}</div>
+                        <div style={{ fontSize: "10pt", fontWeight: 900, color: item.bold ? "#fff" : "#000", marginTop: "1px", whiteSpace: "nowrap" as const }}>{item.val}</div>
                       </div>
                     ))}
                   </div>
 
-                  {/* ── REMARKS ── */}
-                  {o.remarks && (
-                    <div style={{ marginBottom: "8px", border: "1px solid #d1d5db", borderRadius: "4px", padding: "6px 10px", background: "#fffbeb" }}>
-                      <div style={{ fontSize: "7pt", fontWeight: "800", color: "#b45309", textTransform: "uppercase", marginBottom: "3px" }}>Remarks / Terms</div>
-                      <div style={{ fontSize: "8.5pt" }}>{o.remarks}</div>
-                    </div>
+                  {/* ── C · GST SUMMARY ── */}
+                  {hasGST && (
+                    <>
+                      <span style={PH}>C · GST Summary</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
+                        <thead>
+                          <tr>
+                            <th style={TH}>HSN Code</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Taxable Value (₹)</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>CGST%</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>CGST (₹)</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>SGST%</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>SGST (₹)</th>
+                            <th style={{ ...TH, textAlign: "center" as const }}>IGST%</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>IGST (₹)</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Total Tax (₹)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {gstRows.map((g, i) => (
+                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                              <td style={{ ...TD, fontWeight: 700 }}>{g.hsn}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{INR(g.taxable)}</td>
+                              <td style={{ ...TD, textAlign: "center" }}>{g.cgstPct > 0 ? `${g.cgstPct}%` : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{g.cgst > 0 ? INR(g.cgst) : "—"}</td>
+                              <td style={{ ...TD, textAlign: "center" }}>{g.sgstPct > 0 ? `${g.sgstPct}%` : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{g.sgst > 0 ? INR(g.sgst) : "—"}</td>
+                              <td style={{ ...TD, textAlign: "center" }}>{g.igstPct > 0 ? `${g.igstPct}%` : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right" }}>{g.igst > 0 ? INR(g.igst) : "—"}</td>
+                              <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{INR(g.cgst + g.sgst + g.igst)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ background: "#efefef" }}>
+                            <td style={{ ...TD, fontWeight: 800, background: "#efefef" }}>Total</td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 800 }}>{INR(totalTaxable)}</td>
+                            <td style={{ ...TD, background: "#efefef" }}></td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 800 }}>{totalCGST > 0 ? INR(totalCGST) : "—"}</td>
+                            <td style={{ ...TD, background: "#efefef" }}></td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 800 }}>{totalSGST > 0 ? INR(totalSGST) : "—"}</td>
+                            <td style={{ ...TD, background: "#efefef" }}></td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 800 }}>{totalIGST > 0 ? INR(totalIGST) : "—"}</td>
+                            <td style={{ ...TD, textAlign: "right", fontWeight: 900 }}>{INR(totalGST)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </>
                   )}
 
-                  {/* ── TERMS BOX ── */}
-                  <div style={{ marginBottom: "8px", border: "1px solid #d1d5db", borderRadius: "4px", padding: "6px 10px", background: "#f9fafb" }}>
-                    <div style={{ fontSize: "7pt", fontWeight: "800", color: "#374151", textTransform: "uppercase", marginBottom: "4px" }}>Standard Terms &amp; Conditions</div>
-                    <div style={{ fontSize: "7pt", color: "#6b7280", lineHeight: "1.6" }}>
-                      1. Goods once dispatched cannot be returned without prior approval. &nbsp;|&nbsp;
-                      2. Payment as per agreed credit terms. &nbsp;|&nbsp;
-                      3. Disputes subject to local jurisdiction. &nbsp;|&nbsp;
-                      4. Prices valid for 30 days from order date.
-                    </div>
-                  </div>
+                  {/* ── D · DELIVERY SCHEDULE ── */}
+                  {deliveryRows.length > 0 && (
+                    <>
+                      <span style={PH}>D · Delivery Schedule</span>
+                      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
+                        <thead>
+                          <tr>
+                            <th style={{ ...TH, width: "4%", textAlign: "center" as const }}>#</th>
+                            <th style={TH}>Job Name</th>
+                            <th style={TH}>PM Code</th>
+                            <th style={{ ...TH, textAlign: "right" as const }}>Schedule Qty</th>
+                            <th style={TH}>Delivery Date</th>
+                            <th style={TH}>Consignee</th>
+                            <th style={TH}>Transporter</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {deliveryRows.map((d: any, i: number) => (
+                            <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f5f5f5" }}>
+                              <td style={{ ...TD, textAlign: "center" }}>{i + 1}</td>
+                              <td style={{ ...TD, fontWeight: 700 }}>{d.jobName || "—"}</td>
+                              <td style={{ ...TD, fontSize: "7.5pt" }}>{d.pmCode || "—"}</td>
+                              <td style={{ ...TD, textAlign: "right", fontWeight: 700 }}>{Number(d.scheduleQty || d.ScheduleQuantity || 0).toLocaleString("en-IN")}</td>
+                              <td style={TD}>{d.deliveryDate || "—"}</td>
+                              <td style={TD}>{d.consignee || "—"}</td>
+                              <td style={TD}>{d.transporter || "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
+                  )}
 
-                  {/* ── SIGN-OFF ── */}
-                  <div style={{ marginTop: "10px", borderTop: "2px solid #0f766e", paddingTop: "8px" }}>
+                  {/* ── E · FINANCIAL SUMMARY ── */}
+                  <span style={PH}>E · Financial Summary</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ border: "1px solid #bbb", padding: "0", width: "55%", verticalAlign: "top" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <tbody>
+                              {[
+                                ["Taxable Amount",  INR(totalTaxable)],
+                                ...(totalCGST > 0 ? [["Total CGST", INR(totalCGST)]] : []),
+                                ...(totalSGST > 0 ? [["Total SGST", INR(totalSGST)]] : []),
+                                ...(totalIGST > 0 ? [["Total IGST", INR(totalIGST)]] : []),
+                                ...(hasGST        ? [["Total GST",  INR(totalGST)]]  : []),
+                              ].map(([k, v]) => (
+                                <tr key={k}>
+                                  <td style={{ border: "none", borderBottom: "1px solid #e0e0e0", padding: "3px 8px", fontSize: "8pt" }}>{k}</td>
+                                  <td style={{ border: "none", borderBottom: "1px solid #e0e0e0", padding: "3px 8px", textAlign: "right", fontSize: "8pt", fontWeight: 600 }}>{v}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                        <td style={{ border: "none", padding: "0", width: "10%" }}></td>
+                        <td style={{ border: "2px solid #000", padding: "0", width: "35%", verticalAlign: "top" }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                            <tbody>
+                              <tr style={{ background: "#000" }}>
+                                <td style={{ border: "none", padding: "5px 8px", color: "#ccc", fontSize: "6.5pt", fontWeight: 700, textTransform: "uppercase" as const }}>Grand Total (Incl. GST)</td>
+                                <td style={{ border: "none", padding: "5px 8px", textAlign: "right", color: "#fff", fontSize: "12pt", fontWeight: 900 }}>{INR(grandTotal)}</td>
+                              </tr>
+                              <tr>
+                                <td style={{ border: "none", borderBottom: "1px solid #ccc", padding: "4px 8px", fontSize: "8pt" }}>Advance Paid</td>
+                                <td style={{ border: "none", borderBottom: "1px solid #ccc", padding: "4px 8px", textAlign: "right", fontWeight: 700, fontSize: "8pt" }}>{INR(o.advancePaid)}</td>
+                              </tr>
+                              <tr>
+                                <td style={{ border: "none", padding: "4px 8px", fontSize: "8pt", fontWeight: 700 }}>Balance Due</td>
+                                <td style={{ border: "none", padding: "4px 8px", textAlign: "right", fontWeight: 900, fontSize: "10pt" }}>{INR(balance)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+
+                  {/* ── F · TERMS & REMARKS ── */}
+                  <span style={PH}>F · Terms &amp; Conditions</span>
+                  <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "4px" }}>
+                    <tbody>
+                      {o.remarks && (
+                        <tr><th style={{ ...TH, width: "18%" }}>Remarks / Notes</th><td style={TD}>{o.remarks}</td></tr>
+                      )}
+                      <tr><th style={TH}>Goods Return</th><td style={TD}>Goods once dispatched cannot be returned without prior written approval from both parties.</td></tr>
+                      <tr><th style={TH}>Payment Terms</th><td style={TD}>As per agreed credit terms. Overdue invoices attract 18% p.a. interest.</td></tr>
+                      <tr><th style={TH}>Disputes</th><td style={TD}>Subject to local jurisdiction only.</td></tr>
+                      <tr><th style={TH}>Validity</th><td style={TD}>Rates and terms are valid for 30 days from the date of this Sales Order.</td></tr>
+                      <tr><th style={TH}>Artwork</th><td style={TD}>Production commences only upon receipt of artwork approval and advance payment confirmation.</td></tr>
+                    </tbody>
+                  </table>
+
+                  {/* ── SIGNATURES ── */}
+                  <div style={{ borderTop: "2px solid #000", marginTop: "6px", paddingTop: "5px" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse" }}>
                       <tbody>
                         <tr>
-                          {["Prepared By", "Authorized Signatory", "Customer Signature", "Accounts"].map(role => (
-                            <td key={role} style={{ width: "25%", padding: "4px 8px", border: "1px solid #d1d5db", textAlign: "center" }}>
-                              <div style={{ height: "30px" }} />
-                              <div style={{ borderTop: "1px solid #333", paddingTop: "3px", fontSize: "7pt", fontWeight: "700", color: "#374151" }}>{role}</div>
+                          {["Prepared By", "Authorized Signatory", "Customer Acceptance", "Accounts / Finance"].map((role, idx) => (
+                            <td key={idx} style={{ border: "1px solid #999", textAlign: "center", padding: "4px 6px", width: "25%" }}>
+                              <div style={{ height: "30px", borderBottom: "1px solid #999", marginBottom: "4px" }} />
+                              <div style={{ fontSize: "7.5pt", fontWeight: 800, color: "#000" }}>{role}</div>
+                              <div style={{ fontSize: "6.5pt", color: "#555", marginTop: "2px" }}>Name / Seal / Date</div>
                             </td>
                           ))}
                         </tr>
                       </tbody>
                     </table>
-                  </div>
-
-                  {/* ── FOOTER ── */}
-                  <div style={{ marginTop: "6px", display: "flex", justifyContent: "space-between", borderTop: "1px solid #e5e7eb", paddingTop: "4px", fontSize: "6.5pt", color: "#9ca3af" }}>
-                    <span>Printed: {new Date().toLocaleString("en-IN")}</span>
-                    <span>{(typeof window !== "undefined" ? localStorage.getItem("companyName") : null) || "Company"} — Gravure Order Confirmation</span>
-                    <span>{o.orderNo}</span>
+                    <div style={{ fontSize: "6.5pt", color: "#666", textAlign: "center", marginTop: "4px" }}>
+                      Generated by AJ Shrink ERP · {today} · {companyName} · This is a computer generated Sales Order
+                    </div>
                   </div>
 
                 </div>{/* end print area */}

@@ -659,7 +659,7 @@ export default function EnquiryPage() {
                     <div className="text-xs text-gray-400 italic text-center py-4">Loading processes…</div>
                   ) : (
                     allProcesses.map(proc => {
-                      const checked = (form.processes || []).some(p => p.id === proc.ProcessID);
+                      const checked = (form.processes || []).some(p => String(p.id) === String(proc.ProcessID));
                       return (
                         <label key={proc.ProcessID} className="flex items-center cursor-pointer hover:bg-teal-50/50 transition-colors">
                           <div className="w-10 px-3 py-2 border-r border-gray-200 flex justify-center">
@@ -668,9 +668,9 @@ export default function EnquiryPage() {
                               onChange={e => {
                                 const pList = form.processes || [];
                                 if (e.target.checked) {
-                                  f("processes", [...pList, { id: proc.ProcessID, name: proc.ProcessName } as ProcessRef]);
+                                  f("processes", [...pList, { id: String(proc.ProcessID), name: proc.ProcessName } as ProcessRef]);
                                 } else {
-                                  f("processes", pList.filter((x: ProcessRef) => x.id !== proc.ProcessID));
+                                  f("processes", pList.filter((x: ProcessRef) => String(x.id) !== String(proc.ProcessID)));
                                 }
                               }} />
                           </div>

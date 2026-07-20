@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
+import TutorialButton from "@/components/ui/TutorialButton";
 import {
   Plus, Pencil, Trash2, Save, List, Check, FlaskConical,
   ClipboardList, Beaker, X, Search, ChevronDown, AlertCircle, RefreshCw,
@@ -1119,6 +1120,7 @@ export default function InkKitchenPage() {
             </h2>
             <p className="text-sm text-gray-500">Shade recipe library · Production requests · Mixing console</p>
           </div>
+          <TutorialButton title="Ink Kitchen — Tutorial" />
           <button onClick={() => { loadRecipes(); loadSprs(); loadMixing(); }}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
             <RefreshCw size={13} /> Refresh

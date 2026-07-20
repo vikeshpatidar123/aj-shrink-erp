@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
+import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
 import CoaTab from "./CoaTab";
 import InvoiceTab from "./InvoiceTab";
 
@@ -121,6 +122,34 @@ const ro  = "w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm bg-g
 const th  = "px-2 py-2 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-gray-50";
 const td  = "px-2 py-1.5 text-sm text-gray-700 whitespace-nowrap";
 
+// ── Column definitions for sort + filter ──────────────────────────────────────
+const PEND_COLS: { h: string; key?: keyof PendingRow }[] = [
+  { h: "#" },
+  { h: "Job No",        key: "JobBookingNo" },
+  { h: "Job Name",      key: "JobName" },
+  { h: "Customer",      key: "ClientName" },
+  { h: "Sales Order",   key: "SalesOrderNo" },
+  { h: "PO No",         key: "PONo" },
+  { h: "FG Stock Qty",  key: "FinishGoodsQty" },
+  { h: "Boxes",         key: "TotalFGOuterCartons" },
+  { h: "Pending Qty",   key: "PendingQuantity" },
+  { h: "" },
+];
+
+const PROC_COLS: { h: string; key?: keyof ProcessedRow }[] = [
+  { h: "#" },
+  { h: "Note No",   key: "VoucherNo" },
+  { h: "Date",      key: "VoucherDate" },
+  { h: "Customer",  key: "LedgerName" },
+  { h: "Job No",    key: "JobBookingNo" },
+  { h: "Job Name",  key: "JobName" },
+  { h: "Boxes",     key: "TotalOuterCarton" },
+  { h: "Total Qty", key: "TotalQuantity" },
+  { h: "Vehicle",   key: "VehicleNo" },
+  { h: "Net Amt",   key: "NetAmount" },
+  { h: "" },
+];
+
 // Compute the derived numbers for a dispatch line given carton count
 function lineCalc(l: Line) {
   const cartons = num(l.dispatchCartons);
@@ -149,6 +178,10 @@ export default function DispatchPage() {
   const [pendingList, setPendingList]     = useState<PendingRow[]>([]);
   const [processedList, setProcessedList] = useState<ProcessedRow[]>([]);
   const [listLoading, setListLoading]     = useState(false);
+  const [pendSort,       setPendSort]       = useState<{ col: keyof PendingRow;   dir: "asc" | "desc" } | null>(null);
+  const [pendColFilters, setPendColFilters] = useState<Partial<Record<keyof PendingRow,   string>>>({});
+  const [procSort,       setProcSort]       = useState<{ col: keyof ProcessedRow; dir: "asc" | "desc" } | null>(null);
+  const [procColFilters, setProcColFilters] = useState<Partial<Record<keyof ProcessedRow, string>>>({});
 
   // ── Modal meta ─────────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen]   = useState(false);
@@ -442,6 +475,35 @@ export default function DispatchPage() {
     return acc;
   }, { cartons: 0, qty: 0, weight: 0, net: 0 });
 
+  // ── Sort + column-filter computations ────────────────────────────────────────
+  const pendFiltered = pendingList.filter(r =>
+    Object.entries(pendColFilters).every(([k, v]) =>
+      !v || String(r[k as keyof PendingRow] ?? "").toLowerCase().includes(v.toLowerCase())
+    )
+  );
+  const pendSorted = pendSort
+    ? [...pendFiltered].sort((a, b) => {
+        const av = String(a[pendSort.col] ?? "");
+        const bv = String(b[pendSort.col] ?? "");
+        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+        return pendSort.dir === "asc" ? cmp : -cmp;
+      })
+    : pendFiltered;
+
+  const procFiltered = processedList.filter(r =>
+    Object.entries(procColFilters).every(([k, v]) =>
+      !v || String(r[k as keyof ProcessedRow] ?? "").toLowerCase().includes(v.toLowerCase())
+    )
+  );
+  const procSorted = procSort
+    ? [...procFiltered].sort((a, b) => {
+        const av = String(a[procSort.col] ?? "");
+        const bv = String(b[procSort.col] ?? "");
+        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+        return procSort.dir === "asc" ? cmp : -cmp;
+      })
+    : procFiltered;
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -513,21 +575,40 @@ export default function DispatchPage() {
         ) : tab === "pending" ? (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100">
-              <thead>
+              <thead style={{ background: "var(--erp-primary)" }}>
                 <tr>
-                  {["#", "Job No", "Job Name", "Customer", "Sales Order", "PO No", "FG Stock Qty", "Boxes", "Pending Qty", ""].map(h => (
-                    <th key={h} className={th}>{h}</th>
-                  ))}
+                  {PEND_COLS.map(({ h, key }, ci) => {
+                    const isSortActive = key && pendSort?.col === key;
+                    const uniqVals = key ? [...new Set(pendingList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
+                    return (
+                      <th key={ci} className="px-2 py-2.5 text-left text-[11px] font-semibold text-white/90 uppercase tracking-wide whitespace-nowrap">
+                        {key ? (
+                          <div className="flex items-center gap-1">
+                            <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
+                              onClick={() => setPendSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
+                              {h}
+                              <span className="flex flex-col leading-none ml-0.5">
+                                <span className={`text-[7px] ${isSortActive && pendSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                                <span className={`text-[7px] ${isSortActive && pendSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                              </span>
+                            </span>
+                            <ColFilterIcon values={uniqVals} active={pendColFilters[key] ?? ""}
+                              onChange={v => setPendColFilters(p => ({ ...p, [key]: v }))} />
+                          </div>
+                        ) : h}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {pendingList.length === 0 ? (
+                {pendSorted.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="text-center py-12 text-gray-400 text-sm">
                       No jobs pending for dispatch
                     </td>
                   </tr>
-                ) : pendingList.map((row, i) => (
+                ) : pendSorted.map((row, i) => (
                   <tr key={`${row.JobBookingID}-${i}`}
                     className="hover:bg-blue-50 transition-colors cursor-pointer"
                     onClick={() => openNew(row)}>
@@ -554,21 +635,40 @@ export default function DispatchPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-100">
-              <thead>
+              <thead style={{ background: "var(--erp-primary)" }}>
                 <tr>
-                  {["#", "Note No", "Date", "Customer", "Job No", "Job Name", "Boxes", "Total Qty", "Vehicle", "Net Amt", ""].map(h => (
-                    <th key={h} className={th}>{h}</th>
-                  ))}
+                  {PROC_COLS.map(({ h, key }, ci) => {
+                    const isSortActive = key && procSort?.col === key;
+                    const uniqVals = key ? [...new Set(processedList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
+                    return (
+                      <th key={ci} className="px-2 py-2.5 text-left text-[11px] font-semibold text-white/90 uppercase tracking-wide whitespace-nowrap">
+                        {key ? (
+                          <div className="flex items-center gap-1">
+                            <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
+                              onClick={() => setProcSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
+                              {h}
+                              <span className="flex flex-col leading-none ml-0.5">
+                                <span className={`text-[7px] ${isSortActive && procSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                                <span className={`text-[7px] ${isSortActive && procSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                              </span>
+                            </span>
+                            <ColFilterIcon values={uniqVals} active={procColFilters[key] ?? ""}
+                              onChange={v => setProcColFilters(p => ({ ...p, [key]: v }))} />
+                          </div>
+                        ) : h}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {processedList.length === 0 ? (
+                {procSorted.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="text-center py-12 text-gray-400 text-sm">
                       No dispatches found in the selected date range
                     </td>
                   </tr>
-                ) : processedList.map((row, i) => (
+                ) : procSorted.map((row, i) => (
                   <tr key={row.FGTransactionID} className="hover:bg-gray-50 transition-colors">
                     <td className={td}>{i + 1}</td>
                     <td className={td}><span className="font-medium text-blue-700">{row.VoucherNo}</span></td>

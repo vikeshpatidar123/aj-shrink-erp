@@ -39,29 +39,46 @@ function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
+function ldrShow(msg?: string) {
+  if (typeof window !== "undefined") (window as any).__loader__?.show(msg);
+}
+function ldrHide() {
+  if (typeof window !== "undefined") (window as any).__loader__?.hide();
+}
+
 export async function apiGet<T = unknown>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
-    method: "GET",
-    headers: getAuthHeaders(),
-  });
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
-    throw new Error("Session expired");
+  ldrShow();
+  try {
+    const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+      method: "GET",
+      headers: getAuthHeaders(),
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+      throw new Error("Session expired");
+    }
+    return await parseResponse<T>(res);
+  } finally {
+    ldrHide();
   }
-  return parseResponse<T>(res);
 }
 
 export async function apiPost<T = unknown>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify(body),
-  });
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
-    throw new Error("Session expired");
+  ldrShow();
+  try {
+    const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+      throw new Error("Session expired");
+    }
+    return await parseResponse<T>(res);
+  } finally {
+    ldrHide();
   }
-  return parseResponse<T>(res);
 }
 
 // Safe GET — never redirects to login. Returns null on any error (401, 404, network).
@@ -85,15 +102,20 @@ export async function apiGetSafe<T = unknown>(path: string): Promise<T | null> {
 
 // For multipart file uploads — omits Content-Type so browser sets the boundary
 export async function apiUpload<T = unknown>(path: string, formData: FormData): Promise<T> {
-  const { "Content-Type": _, ...headers } = getAuthHeaders();
-  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
-    method: "POST",
-    headers,
-    body: formData,
-  });
-  if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
-    throw new Error("Session expired");
+  ldrShow("Uploading...");
+  try {
+    const { "Content-Type": _, ...headers } = getAuthHeaders();
+    const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.location.href = "/login";
+      throw new Error("Session expired");
+    }
+    return await parseResponse<T>(res);
+  } finally {
+    ldrHide();
   }
-  return parseResponse<T>(res);
 }

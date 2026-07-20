@@ -5,6 +5,8 @@ import {
   Search, X, CheckCircle2, AlertCircle, ChevronRight, Eye,
 } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/api";
+import TutorialButton from "@/components/ui/TutorialButton";
+import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type PrimaryJob = {
@@ -62,6 +64,45 @@ type DetailRow = {
   PrimaryJobBookingNo: string; PrimaryJobBookingJobCardContentsNo: string;
   TotalUps: number; PrimaryJobUps: number;
 };
+
+// ─── Column definitions for sort + funnel ────────────────────────────────────
+const SIM_COLS: { h: string; key?: keyof SimilarJob }[] = [
+  { h: "Select" },
+  { h: "JC No",    key: "JobCardContentNo" },
+  { h: "Client",   key: "LedgerName" },
+  { h: "Job Name", key: "JobName" },
+  { h: "Content",  key: "PlanContName" },
+  { h: "SO No",    key: "SalesOrderNo" },
+  { h: "Qty",      key: "OrderQuantity" },
+  { h: "Run.Mtr",  key: "TotalRequiredRunningMeter" },
+];
+
+const GANG_COLS: { h: string; key?: keyof GangRow }[] = [
+  { h: "#" },
+  { h: "JC No.",      key: "JobCardContentNo" },
+  { h: "Client",      key: "ClientName" },
+  { h: "Job Name",    key: "JobName" },
+  { h: "Content",     key: "ContentName" },
+  { h: "SO No.",      key: "SalesOrderNo" },
+  { h: "Order Qty",   key: "OrderQuantity" },
+  { h: "Gang Ups",    key: "GangUps" },
+  { h: "Req. Sheets", key: "RequiredSheets" },
+  { h: "Run. Mtr",    key: "TotalRequiredRunningMeter" },
+];
+
+const PLAN_COLS: { h: string; key?: keyof GangPlan }[] = [
+  { h: "Gang No",    key: "GangWorkOrderNo" },
+  { h: "Date",       key: "GangDate" },
+  { h: "Primary Job", key: "PrimaryJobName" },
+  { h: "Client",     key: "PrimaryClientName" },
+  { h: "Film",       key: "Quality" },
+  { h: "Total GSM",  key: "TotalGSM" },
+  { h: "Ups L×W" },
+  { h: "Cyl (in)",   key: "CylinderCircumferenceInch" },
+  { h: "Jobs",       key: "SecondaryJobCount" },
+  { h: "Created By", key: "CreatedBy" },
+  { h: "Actions" },
+];
 
 // ─── Tab component ───────────────────────────────────────────────────────────
 const Tab = ({ label, icon: Icon, active, onClick, count }: {
@@ -133,6 +174,37 @@ export default function ContentGangPage() {
   const [deleting, setDeleting] = useState(false);
   const [msg, setMsg]           = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  // Sort + column filters
+  const [simSort,        setSimSort]        = useState<{ col: keyof SimilarJob; dir: "asc" | "desc" } | null>(null);
+  const [simColFilters,  setSimColFilters]  = useState<Partial<Record<keyof SimilarJob, string>>>({});
+  const [gangSort,       setGangSort]       = useState<{ col: keyof GangRow;    dir: "asc" | "desc" } | null>(null);
+  const [gangColFilters, setGangColFilters] = useState<Partial<Record<keyof GangRow, string>>>({});
+  const [planSort,       setPlanSort]       = useState<{ col: keyof GangPlan;   dir: "asc" | "desc" } | null>(null);
+  const [planColFilters, setPlanColFilters] = useState<Partial<Record<keyof GangPlan, string>>>({});
+
+  // ── Sort + filter helpers ─────────────────────────────────────────────────
+  function applySort<T>(arr: T[], sort: { col: keyof T; dir: "asc" | "desc" } | null): T[] {
+    if (!sort) return arr;
+    return [...arr].sort((a, b) => {
+      const av = String(a[sort.col] ?? "");
+      const bv = String(b[sort.col] ?? "");
+      const c  = av.localeCompare(bv, undefined, { numeric: true, sensitivity: "base" });
+      return sort.dir === "asc" ? c : -c;
+    });
+  }
+  function applyColFilter<T>(arr: T[], filters: Partial<Record<keyof T, string>>): T[] {
+    return arr.filter(r =>
+      Object.entries(filters).every(([k, v]) =>
+        !v || String(r[k as keyof T] ?? "").toLowerCase().includes((v as string).toLowerCase())
+      )
+    );
+  }
+
+  const simSorted  = useMemo(() => applySort(applyColFilter(similarJobs, simColFilters), simSort),
+    [similarJobs, simColFilters, simSort]);
+  const gangSorted = useMemo(() => applySort(applyColFilter(gangRows, gangColFilters), gangSort),
+    [gangRows, gangColFilters, gangSort]);
+
   // ── Derived ──────────────────────────────────────────────────────────────
   const totalUps = primaryJob ? primaryJob.TotalUps : 0;
 
@@ -155,14 +227,17 @@ export default function ContentGangPage() {
 
   const filteredPlans = useMemo(() => {
     const q = listSearch.toLowerCase();
-    if (!q) return planList;
-    return planList.filter(p =>
-      p.GangWorkOrderNo.toLowerCase().includes(q) ||
-      p.PrimaryJobName.toLowerCase().includes(q) ||
-      p.PrimaryClientName.toLowerCase().includes(q) ||
-      p.Quality.toLowerCase().includes(q)
-    );
-  }, [planList, listSearch]);
+    let rows = q
+      ? planList.filter(p =>
+          p.GangWorkOrderNo.toLowerCase().includes(q) ||
+          p.PrimaryJobName.toLowerCase().includes(q) ||
+          p.PrimaryClientName.toLowerCase().includes(q) ||
+          p.Quality.toLowerCase().includes(q)
+        )
+      : planList;
+    rows = applyColFilter(rows, planColFilters);
+    return applySort(rows, planSort);
+  }, [planList, listSearch, planColFilters, planSort]);
 
   // ── Load plan list ────────────────────────────────────────────────────────
   const loadPlanList = useCallback(async () => {
@@ -492,6 +567,7 @@ export default function ContentGangPage() {
               <p className="text-xs text-gray-500">Roto Gravure · Film Gang</p>
             </div>
           </div>
+          <TutorialButton title="Content Gang — Tutorial" />
           <button onClick={() => { loadPlanList(); generateNo(); }}
             className="flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:border-blue-300 transition-colors">
             <RefreshCw size={14} /> Refresh
@@ -636,15 +712,34 @@ export default function ContentGangPage() {
               ) : (
                 <div className="overflow-x-auto rounded-lg border border-gray-100">
                   <table className="w-full text-xs">
-                    <thead className="bg-[#0f2746] text-white">
+                    <thead style={{ background: "var(--erp-primary)" }}>
                       <tr>
-                        {["Select","JC No","Client","Job Name","Content","SO No","Qty","Run.Mtr"].map(h => (
-                          <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                        ))}
+                        {SIM_COLS.map(({ h, key }, ci) => {
+                          const isSortActive = key && simSort?.col === key;
+                          const uniqVals = key ? [...new Set(similarJobs.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
+                          return (
+                            <th key={ci} className="px-3 py-2 text-left font-semibold whitespace-nowrap text-white/90">
+                              {key ? (
+                                <div className="flex items-center gap-1">
+                                  <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
+                                    onClick={() => setSimSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
+                                    {h}
+                                    <span className="flex flex-col leading-none ml-0.5">
+                                      <span className={`text-[7px] ${isSortActive && simSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                                      <span className={`text-[7px] ${isSortActive && simSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                                    </span>
+                                  </span>
+                                  <ColFilterIcon values={uniqVals} active={simColFilters[key] ?? ""}
+                                    onChange={v => setSimColFilters(p => ({ ...p, [key]: v }))} />
+                                </div>
+                              ) : h}
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>
-                      {similarJobs.map((j, i) => (
+                      {simSorted.map((j, i) => (
                         <tr key={j.JobBookingJobCardContentsID}
                           onClick={() => setSelectedSimilar(j)}
                           className={`cursor-pointer border-b border-gray-100 transition-colors
@@ -714,23 +809,35 @@ export default function ContentGangPage() {
               </div>
               <div className="overflow-x-auto rounded-lg border border-gray-100">
                 <table className="w-full text-xs">
-                  <thead className="bg-[#0f2746] text-white">
+                  <thead style={{ background: "var(--erp-primary)" }}>
                     <tr>
-                      <th className="px-3 py-2 text-left">#</th>
-                      <th className="px-3 py-2 text-left">JC No.</th>
-                      <th className="px-3 py-2 text-left">Client</th>
-                      <th className="px-3 py-2 text-left">Job Name</th>
-                      <th className="px-3 py-2 text-left">Content</th>
-                      <th className="px-3 py-2 text-left">SO No.</th>
-                      <th className="px-3 py-2 text-right">Order Qty</th>
-                      <th className="px-3 py-2 text-right">Gang Ups</th>
-                      <th className="px-3 py-2 text-right">Req. Sheets</th>
-                      <th className="px-3 py-2 text-right">Run. Mtr</th>
-                      {!isViewMode && <th className="px-3 py-2"></th>}
+                      {GANG_COLS.map(({ h, key }, ci) => {
+                        const isSortActive = key && gangSort?.col === key;
+                        const uniqVals = key ? [...new Set(gangRows.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
+                        return (
+                          <th key={ci} className="px-3 py-2 text-left font-semibold whitespace-nowrap text-white/90">
+                            {key ? (
+                              <div className="flex items-center gap-1">
+                                <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
+                                  onClick={() => setGangSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
+                                  {h}
+                                  <span className="flex flex-col leading-none ml-0.5">
+                                    <span className={`text-[7px] ${isSortActive && gangSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                                    <span className={`text-[7px] ${isSortActive && gangSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                                  </span>
+                                </span>
+                                <ColFilterIcon values={uniqVals} active={gangColFilters[key] ?? ""}
+                                  onChange={v => setGangColFilters(p => ({ ...p, [key]: v }))} />
+                              </div>
+                            ) : h}
+                          </th>
+                        );
+                      })}
+                      {!isViewMode && <th className="px-3 py-2 text-white/90"></th>}
                     </tr>
                   </thead>
                   <tbody>
-                    {gangRows.map((r, i) => (
+                    {gangSorted.map((r, i) => (
                       <tr key={r.JobBookingJobCardContentsID}
                         className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
                         <td className="px-3 py-2 text-gray-400">{i + 1}</td>
@@ -745,7 +852,7 @@ export default function ContentGangPage() {
                         <td className="px-3 py-2 text-right">{r.TotalRequiredRunningMeter?.toFixed(2)}</td>
                         {!isViewMode && (
                           <td className="px-3 py-2">
-                            <button onClick={() => setGangRows(prev => prev.filter((_, idx) => idx !== i))}
+                            <button onClick={() => setGangRows(prev => prev.filter(x => x.JobBookingJobCardContentsID !== r.JobBookingJobCardContentsID))}
                               className="text-red-500 hover:text-red-700 transition-colors">
                               <Trash2 size={13}/>
                             </button>
@@ -816,11 +923,30 @@ export default function ContentGangPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead className="bg-[#0f2746] text-white">
+                  <thead style={{ background: "var(--erp-primary)" }}>
                     <tr>
-                      {["Gang No","Date","Primary Job","Client","Film","Total GSM","Ups L×W","Cyl (in)","Jobs","Created By","Actions"].map(h => (
-                        <th key={h} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap">{h}</th>
-                      ))}
+                      {PLAN_COLS.map(({ h, key }, ci) => {
+                        const isSortActive = key && planSort?.col === key;
+                        const uniqVals = key ? [...new Set(planList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
+                        return (
+                          <th key={ci} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap text-white/90">
+                            {key ? (
+                              <div className="flex items-center gap-1">
+                                <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
+                                  onClick={() => setPlanSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
+                                  {h}
+                                  <span className="flex flex-col leading-none ml-0.5">
+                                    <span className={`text-[7px] ${isSortActive && planSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
+                                    <span className={`text-[7px] ${isSortActive && planSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
+                                  </span>
+                                </span>
+                                <ColFilterIcon values={uniqVals} active={planColFilters[key] ?? ""}
+                                  onChange={v => setPlanColFilters(p => ({ ...p, [key]: v }))} />
+                              </div>
+                            ) : h}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
