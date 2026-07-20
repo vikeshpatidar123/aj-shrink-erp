@@ -142,7 +142,7 @@ function StatusBadge({ s }: { s: string }) {
 function ConfirmModal({ open, onConfirm, onClose, msg }: { open: boolean; onConfirm: () => void; onClose: () => void; msg: string }) {
   if (!open) return null;
   return (
-    <Modal isOpen={open} onClose={onClose} title="Confirm Delete">
+    <Modal open={open} onClose={onClose} title="Confirm Delete">
       <p className="text-sm text-gray-600 mb-4">{msg}</p>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
