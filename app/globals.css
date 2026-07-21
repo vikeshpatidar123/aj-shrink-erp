@@ -209,7 +209,7 @@ input.erp-topbar-input {
   color: rgba(255, 255, 255, 0.88) !important;
 }
 input.erp-topbar-input::placeholder {
-  color: rgba(255, 255, 255, 0.32) !important;
+  color: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* ── Main content scrollbar — always visible, thin, neutral ── */

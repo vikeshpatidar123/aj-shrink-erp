@@ -13,7 +13,7 @@ import Modal from "@/components/ui/Modal";
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
-const ART  = `${BASE}/api/artworkManagement`;
+const ART = `${BASE}/api/artworkManagement`;
 
 function unwrap(v: unknown): unknown {
   let r = v;
@@ -269,24 +269,24 @@ function AttCard({ att, onRemove, onPreview }: {
 
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ArtworkManagementPage() {
-  const [activeTab, setActiveTab] = useState<"master" | "management" | "library">("master");
+  const [activeTab, setActiveTab] = useState<"master" | "management" | "library" | "subgroup">("master");
   const [showVideoModal, setShowVideoModal] = useState(false);
 
   const { categories: catWithDetails } = useCategories();
 
   // ─── Data ─────────────────────────────────────────────────────────────────
-  const [list,     setList]     = useState<ArtworkRow[]>([]);
+  const [list, setList] = useState<ArtworkRow[]>([]);
   const [dropData, setDropData] = useState<DropdownData>({ clients: [], employees: [], categories: [] });
-  const [loading,  setLoading]  = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // ─── Artwork Master - Form/Modal ──────────────────────────────────────────
-  const [showModal,  setShowModal]  = useState(false);
-  const [editMode,   setEditMode]   = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [formError,  setFormError]  = useState("");
-  const [form,       setForm]       = useState<FormState>(blankForm());
+  const [showModal, setShowModal] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [form, setForm] = useState<FormState>(blankForm());
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
-  const [uploading,  setUploading]  = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [contentPickerOpen, setContentPickerOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<AttachmentItem | null>(null);
@@ -296,11 +296,11 @@ export default function ArtworkManagementPage() {
   const [detailMap, setDetailMap] = useState<Record<string, ArtworkRow>>({});
   const [attMap, setAttMap] = useState<Record<string, AttachmentItem[]>>({});
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
-  const [masterAttOpen,    setMasterAttOpen]    = useState<string | null>(null);
+  const [masterAttOpen, setMasterAttOpen] = useState<string | null>(null);
   const [masterAttLoading, setMasterAttLoading] = useState<string | null>(null);
-  const [masterSort,       setMasterSort]       = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
-  const [masterColFilter,  setMasterColFilter]  = useState<string | null>(null);
-  const [masterFilters,    setMasterFilters]    = useState({ artworkNo: "", artworkName: "", content: "", catalog: "" });
+  const [masterSort, setMasterSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const [masterColFilter, setMasterColFilter] = useState<string | null>(null);
+  const [masterFilters, setMasterFilters] = useState({ artworkNo: "", artworkName: "", content: "", catalog: "" });
 
   // ─── FieldMaster dropdown options ────────────────────────────────────────
   const [fmOptions, setFmOptions] = useState<{
@@ -327,23 +327,210 @@ export default function ArtworkManagementPage() {
     "Engraving", "Cylinder Received", "Released to Production", "On Hold",
   ];
 
-  const [libRows,       setLibRows]       = useState<LibRow[]>([]);
-  const [libLoading,    setLibLoading]    = useState(false);
-  const [libLoaded,     setLibLoaded]     = useState(false);
+  const [libRows, setLibRows] = useState<LibRow[]>([]);
+  const [libLoading, setLibLoading] = useState(false);
+  const [libLoaded, setLibLoaded] = useState(false);
   const [libShowFilter, setLibShowFilter] = useState(true);
-  const [libSearch,     setLibSearch]     = useState("");
-  const [kpiFilter,     setKpiFilter]     = useState<string | null>(null);
-  const [libUpdating,   setLibUpdating]   = useState<string | null>(null);
-  const [openStageRow,  setOpenStageRow]  = useState<string | null>(null);
-  const [libFilters,    setLibFilters]    = useState({
+  const [libSearch, setLibSearch] = useState("");
+  const [kpiFilter, setKpiFilter] = useState<string | null>(null);
+  const [libUpdating, setLibUpdating] = useState<string | null>(null);
+  const [openStageRow, setOpenStageRow] = useState<string | null>(null);
+  const [libFilters, setLibFilters] = useState({
     customer: "", jobName: "", brand: "", packSize: "", category: "",
     substrate: "", designType: "", noOfColors: "", colorName: "",
     machine: "", cylType: "", cylStatus: "", cylVendor: "",
     artworkStage: "", brandApproved: "", lsdApproved: "", cylReceived: "",
     circum: "", cylLength: "", coilWidth: "", repeatLength: "",
   });
-  const [libSort,       setLibSort]       = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
+  const [libSort, setLibSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
   const [colFilterOpen, setColFilterOpen] = useState<string | null>(null);
+
+  // ─── Sub Group Master ─────────────────────────────────────────────────────
+  type SubGroupRow = {
+    SubGroupID: string; SubGroupNo: string; ArtworkID: string;
+    ArtworkNo: string; ParentJobName: string; ClientName: string; CategoryName: string;
+    SubGroupName: string;
+    LedgerID: string; JobName: string; ClientArtWorkNo: string; ArtWorkDescription: string;
+    DocumentType: string; DocumentNo: string; DocumentDate: string;
+    SalesEmployeeID: string; ArtworkCost: string;
+    ReceivedDate: string; ExpectedCompletionDate: string;
+    CategoryID: string; JobQty: string; JobSize: string; PaperDetails: string;
+    MachineName: string; DesignSide: string; TypeOfProduct: string;
+    Content: string; PackSize: string; BrandName: string; ProductType: string;
+    SkuType: string; BottleType: string; AddressType: string;
+    ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
+    CreatedDate: string;
+  };
+  type SubGroupForm = {
+    SubGroupID: string; ArtworkID: string; SubGroupName: string;
+    LedgerID: string; JobName: string; ClientArtWorkNo: string; ArtWorkDescription: string;
+    DocumentType: string; DocumentNo: string; DocumentDate: string;
+    SalesEmployeeID: string; ArtworkCost: string;
+    ReceivedDate: string; ExpectedCompletionDate: string;
+    CategoryID: string; JobQty: string; JobSize: string; PaperDetails: string;
+    MachineName: string; DesignSide: string; TypeOfProduct: string;
+    Content: string; PackSize: string; BrandName: string; ProductType: string;
+    SkuType: string; BottleType: string; AddressType: string;
+    ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
+  };
+  const blankSGForm = (): SubGroupForm => ({
+    SubGroupID: "", ArtworkID: "", SubGroupName: "",
+    LedgerID: "", JobName: "", ClientArtWorkNo: "", ArtWorkDescription: "",
+    DocumentType: "Direct", DocumentNo: "", DocumentDate: "",
+    SalesEmployeeID: "", ArtworkCost: "",
+    ReceivedDate: new Date().toISOString().slice(0, 10), ExpectedCompletionDate: "",
+    CategoryID: "", JobQty: "", JobSize: "", PaperDetails: "",
+    MachineName: "", DesignSide: "Single Side", TypeOfProduct: "",
+    Content: "", PackSize: "", BrandName: "", ProductType: "",
+    SkuType: "", BottleType: "", AddressType: "",
+    ArtworkName: "", SpecialSpecs: "", ArtworkStage: "", Remarks: "",
+  });
+
+  const [sgList,        setSgList]        = useState<SubGroupRow[]>([]);
+  const [sgLoading,     setSgLoading]     = useState(false);
+  const [sgLoaded,      setSgLoaded]      = useState(false);
+  const [showSgModal,   setShowSgModal]   = useState(false);
+  const [sgEditMode,    setSgEditMode]    = useState(false);
+  const [sgSaving,      setSgSaving]      = useState(false);
+  const [sgError,       setSgError]       = useState("");
+  const [sgForm,        setSgForm]        = useState<SubGroupForm>(blankSGForm());
+  const [sgSearch,      setSgSearch]      = useState("");
+  const [sgAttachments, setSgAttachments] = useState<AttachmentItem[]>([]);
+  const sgFileRef = useRef<HTMLInputElement>(null);
+
+  const loadSubGroups = async () => {
+    setSgLoading(true);
+    try {
+      const raw = await apiFetch<SubGroupRow[]>(`${ART}/subgroup/list`);
+      setSgList(Array.isArray(raw) ? raw : []);
+      setSgLoaded(true);
+    } catch { setSgList([]); } finally { setSgLoading(false); }
+  };
+
+  const openAddSG = () => {
+    setSgForm(blankSGForm()); setSgEditMode(false); setSgError("");
+    setSgAttachments([]); setShowSgModal(true);
+  };
+  const openEditSG = async (r: SubGroupRow) => {
+    setSgForm({
+      SubGroupID: r.SubGroupID, ArtworkID: r.ArtworkID, SubGroupName: r.SubGroupName,
+      LedgerID: r.LedgerID || "", JobName: r.JobName || "",
+      ClientArtWorkNo: r.ClientArtWorkNo || "", ArtWorkDescription: r.ArtWorkDescription || "",
+      DocumentType: r.DocumentType || "Direct", DocumentNo: r.DocumentNo || "",
+      DocumentDate: r.DocumentDate || "", SalesEmployeeID: r.SalesEmployeeID || "",
+      ArtworkCost: r.ArtworkCost || "", ReceivedDate: r.ReceivedDate || "",
+      ExpectedCompletionDate: r.ExpectedCompletionDate || "",
+      CategoryID: r.CategoryID || "", JobQty: r.JobQty || "", JobSize: r.JobSize || "",
+      PaperDetails: r.PaperDetails || "", MachineName: r.MachineName || "",
+      DesignSide: r.DesignSide || "Single Side", TypeOfProduct: r.TypeOfProduct || "",
+      Content: r.Content || "", PackSize: r.PackSize || "", BrandName: r.BrandName || "",
+      ProductType: r.ProductType || "", SkuType: r.SkuType || "", BottleType: r.BottleType || "",
+      AddressType: r.AddressType || "", ArtworkName: r.ArtworkName || "",
+      SpecialSpecs: r.SpecialSpecs || "", ArtworkStage: r.ArtworkStage || "",
+      Remarks: r.Remarks || "",
+    });
+    setSgEditMode(true); setSgError(""); setShowSgModal(true);
+    // Load existing attachments
+    try {
+      const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
+        `${ART}/subgroup/attachments/${r.SubGroupID}`
+      );
+      setSgAttachments((Array.isArray(atts) ? atts : []).map(a => {
+        const isBroken = a.AttachedFileName.startsWith("blob:");
+        const name = a.AttachedFileName.startsWith("http")
+          ? decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName)
+          : isBroken ? "(broken — re-upload)" : a.AttachedFileName;
+        return {
+          _id: a.FileID, name, url: a.AttachedFileName,
+          mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
+            : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+          remark: a.AttachedFileRemark,
+          uploadError: isBroken,
+        };
+      }));
+    } catch { setSgAttachments([]); }
+  };
+
+  // Auto-fill SubGroup form from parent artwork
+  const autoFillSGFromArtwork = (artworkId: string) => {
+    const parent = list.find(a => String(a.ArtworkID) === artworkId);
+    if (!parent) return;
+    setSgForm(f => ({
+      ...f,
+      ArtworkID: artworkId,
+      LedgerID: parent.LedgerID || "",
+      JobName: parent.ProductName || "",
+      ClientArtWorkNo: parent.ClientArtWorkNo || "",
+      ArtWorkDescription: parent.ArtWorkDescription || "",
+      DocumentType: parent.DocumentType || "Direct",
+      DocumentNo: parent.DocumentNo || "",
+      DocumentDate: parent.DocumentDate ? parent.DocumentDate.slice(0, 10) : "",
+      SalesEmployeeID: parent.SalesEmployeeID || "",
+      ArtworkCost: parent.ArtWorkCost || "",
+      ReceivedDate: parent.ReceivedDate ? parent.ReceivedDate.slice(0, 10) : "",
+      ExpectedCompletionDate: parent.ExpectedCompletionDate ? parent.ExpectedCompletionDate.slice(0, 10) : "",
+      CategoryID: parent.CategoryID || "",
+      JobQty: parent.JobQty || "",
+      JobSize: parent.JobSize || "",
+      PaperDetails: parent.PaperDetails || "",
+      MachineName: parent.MachineName || "",
+      DesignSide: parent.DesignSide || "Single Side",
+      TypeOfProduct: parent.TypeOfProduct || "",
+      Content: parent.Content || "",
+      PackSize: parent.PackSize || "",
+      BrandName: parent.BrandName || "",
+      ProductType: parent.ProductType || "",
+      SkuType: parent.SkuType || "",
+      BottleType: parent.BottleType || "",
+      AddressType: parent.AddressType || "",
+      ArtworkName: parent.ArtworkName || "",
+      SpecialSpecs: parent.SpecialSpecs || "",
+    }));
+  };
+  const saveSG = async () => {
+    if (!sgForm.ArtworkID) { setSgError("Parent Artwork is required."); return; }
+    if (!sgForm.SubGroupName.trim()) { setSgError("Sub Group Name is required."); return; }
+    setSgSaving(true); setSgError("");
+    try {
+      // Upload new files to S3, skip broken blobs
+      const resolvedAtts = (await Promise.all(
+        sgAttachments.map(async (a) => {
+          if (a.fileObj) {
+            try {
+              const { "Content-Type": _ct, ...hdrs } = authHeaders();
+              const fd = new FormData();
+              fd.append("file", a.fileObj, a.fileObj.name);
+              const res = await fetch(`${BASE}/api/artworkManagement/upload`, { method: "POST", headers: hdrs, body: fd });
+              if (res.ok) {
+                const { publicUrl } = await res.json();
+                URL.revokeObjectURL(a.url);
+                return { AttachedFileName: publicUrl as string, AttachedFileRemark: a.remark };
+              }
+            } catch { /* skip */ }
+            return null;
+          }
+          if (a.url.startsWith("blob:")) return null;
+          return { AttachedFileName: a.url, AttachedFileRemark: a.remark };
+        })
+      )).filter((a): a is { AttachedFileName: string; AttachedFileRemark: string } => a !== null);
+
+      const res = await apiPost<{ Status: string } | string>(
+        `${ART}/subgroup/${sgEditMode ? "update" : "save"}`,
+        { ...sgForm, Attachments: resolvedAtts }
+      );
+      const status = typeof res === "object" && res !== null ? (res as { Status: string }).Status : String(res);
+      if (status === "success") { setShowSgModal(false); loadSubGroups(); }
+      else setSgError(String(res));
+    } catch (e) { setSgError(String(e)); } finally { setSgSaving(false); }
+  };
+  const deleteSG = async (r: SubGroupRow) => {
+    if (!confirm(`Delete sub group "${r.SubGroupNo} — ${r.SubGroupName}"?`)) return;
+    try {
+      await apiPost(`${ART}/subgroup/delete`, { SubGroupID: r.SubGroupID });
+      loadSubGroups();
+    } catch (e) { alert(String(e)); }
+  };
+  const rfSG = (k: keyof SubGroupForm, v: string) => setSgForm(f => ({ ...f, [k]: v }));
 
   // ─── Search ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -432,34 +619,34 @@ export default function ArtworkManagementPage() {
     setFormError("");
     setEditMode(true);
     setForm({
-      ArtworkID:                row.ArtworkID                    ?? "",
-      JobName:                  row.ProductName                  ?? "",
-      LedgerID:                 row.LedgerID                     ?? "",
-      CategoryID:               row.CategoryID                   ?? "",
-      SalesEmployeeID:          row.SalesEmployeeID              ?? "",
-      ClientArtWorkNo:          row.ClientArtWorkNo              ?? "",
-      ArtWorkDescription:       row.ArtWorkDescription           ?? "",
-      ArtworkCost:              row.ArtWorkCost                  ?? "",
-      ReceivedDate:             row.ReceivedDate                 ?? "",
-      ExpectedCompletionDate:   row.ExpectedCompletionDate       ?? "",
-      DocumentType:             row.DocumentType                 || "Direct",
-      DocumentNo:               row.DocumentNo                   ?? "",
-      DocumentDate:             row.DocumentDate                 ?? "",
-      JobQty:                   row.JobQty                       ?? "",
-      JobSize:                  row.JobSize                      ?? "",
-      PaperDetails:             row.PaperDetails                 ?? "",
-      MachineName:              row.MachineName                  ?? "",
-      DesignSide:               row.DesignSide                   || "Single Side",
-      TypeOfProduct:            row.TypeOfProduct || dropData.categories.find(c => c.CategoryID === (row.CategoryID ?? ""))?.CategoryName || "",
-      Content:                  row.Content                      ?? "",
-      PackSize:                 row.PackSize                     ?? "",
-      BrandName:                row.BrandName                    ?? "",
-      ProductType:              row.ProductType                  ?? "",
-      SkuType:                  row.SkuType                      ?? "",
-      BottleType:               row.BottleType                   ?? "",
-      AddressType:              row.AddressType                  ?? "",
-      ArtworkName:              row.ArtworkName                  ?? "",
-      SpecialSpecs:             row.SpecialSpecs                 ?? "",
+      ArtworkID: row.ArtworkID ?? "",
+      JobName: row.ProductName ?? "",
+      LedgerID: row.LedgerID ?? "",
+      CategoryID: row.CategoryID ?? "",
+      SalesEmployeeID: row.SalesEmployeeID ?? "",
+      ClientArtWorkNo: row.ClientArtWorkNo ?? "",
+      ArtWorkDescription: row.ArtWorkDescription ?? "",
+      ArtworkCost: row.ArtWorkCost ?? "",
+      ReceivedDate: row.ReceivedDate ?? "",
+      ExpectedCompletionDate: row.ExpectedCompletionDate ?? "",
+      DocumentType: row.DocumentType || "Direct",
+      DocumentNo: row.DocumentNo ?? "",
+      DocumentDate: row.DocumentDate ?? "",
+      JobQty: row.JobQty ?? "",
+      JobSize: row.JobSize ?? "",
+      PaperDetails: row.PaperDetails ?? "",
+      MachineName: row.MachineName ?? "",
+      DesignSide: row.DesignSide || "Single Side",
+      TypeOfProduct: row.TypeOfProduct || dropData.categories.find(c => c.CategoryID === (row.CategoryID ?? ""))?.CategoryName || "",
+      Content: row.Content ?? "",
+      PackSize: row.PackSize ?? "",
+      BrandName: row.BrandName ?? "",
+      ProductType: row.ProductType ?? "",
+      SkuType: row.SkuType ?? "",
+      BottleType: row.BottleType ?? "",
+      AddressType: row.AddressType ?? "",
+      ArtworkName: row.ArtworkName ?? "",
+      SpecialSpecs: row.SpecialSpecs ?? "",
     });
 
     // Load attachments for this artwork
@@ -477,7 +664,7 @@ export default function ArtworkManagementPage() {
           name,
           url: a.AttachedFileName,
           mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
-                  : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+            : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
           remark: a.AttachedFileRemark,
           uploadError: isBroken,
         };
@@ -491,12 +678,12 @@ export default function ArtworkManagementPage() {
     if (!files || files.length === 0) return;
     // Store locally only — S3 upload happens on Save
     const newItems: AttachmentItem[] = Array.from(files).map(file => ({
-      _id:      Math.random().toString(36).slice(2),
-      name:     file.name,
-      url:      URL.createObjectURL(file),
+      _id: Math.random().toString(36).slice(2),
+      name: file.name,
+      url: URL.createObjectURL(file),
       mimeType: file.type,
-      remark:   "",
-      fileObj:  file,
+      remark: "",
+      fileObj: file,
     }));
     setAttachments(p => [...p, ...newItems]);
   };
@@ -574,11 +761,11 @@ export default function ArtworkManagementPage() {
           name: a.AttachedFileName,
           url: a.AttachedFileName,
           mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
-                  : /\.(jpe?g|png|gif|webp)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+            : /\.(jpe?g|png|gif|webp)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
           remark: a.AttachedFileRemark,
         }));
         setAttMap(m => ({ ...m, [row.ArtworkID]: mappedAtts }));
-      } catch {} finally { setLoadingDetail(null); }
+      } catch { } finally { setLoadingDetail(null); }
     }
   };
 
@@ -605,7 +792,7 @@ export default function ArtworkManagementPage() {
         name: decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName),
         url: a.AttachedFileName,
         mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
-                : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+          : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
         remark: a.AttachedFileRemark,
       }));
       setAttMap(m => ({ ...m, [id]: mapped }));
@@ -657,16 +844,16 @@ export default function ArtworkManagementPage() {
       <div className="flex gap-1 border-b border-gray-200">
         {([
           ["master",     "Artwork Master"],
+          ["subgroup",   "Sub Group Master"],
           ["management", "Artwork Management"],
           ["library",    "Artwork Library"],
         ] as const).map(([key, label]) => (
           <button key={key} onClick={() => {
-            setActiveTab(key);
-            if (key === "library" && !libLoaded) loadLibrary();
+            setActiveTab(key as typeof activeTab);
+            if (key === "library"  && !libLoaded) loadLibrary();
+            if (key === "subgroup" && !sgLoaded)  loadSubGroups();
           }}
-            className={`px-5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-              activeTab === key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"
-            }`}>
+            className={`px-5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             {label}
           </button>
         ))}
@@ -686,32 +873,32 @@ export default function ArtworkManagementPage() {
         // Master table column filter config
         type MCF = { key: keyof typeof masterFilters; getVal: (r: ArtworkRow) => string };
         const MASTER_CF: Record<string, MCF> = {
-          "ARTWORK NO.":        { key: "artworkNo",   getVal: r => r.ArtworkNo || "" },
-          "ARTWORK NAME":       { key: "artworkName", getVal: r => r.ArtworkName || r.ProductName || "" },
-          "SUB TYPE (CONTENT)": { key: "content",     getVal: r => r.Content || "" },
-          "CATALOG":            { key: "catalog",     getVal: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked" },
+          "ARTWORK NO.": { key: "artworkNo", getVal: r => r.ArtworkNo || "" },
+          "ARTWORK NAME": { key: "artworkName", getVal: r => r.ArtworkName || r.ProductName || "" },
+          "SUB TYPE (CONTENT)": { key: "content", getVal: r => r.Content || "" },
+          "CATALOG": { key: "catalog", getVal: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked" },
         };
         const MASTER_SORT_KEY: Record<string, (r: ArtworkRow) => string> = {
-          "ARTWORK NO.":        r => r.ArtworkNo || "",
-          "ARTWORK NAME":       r => r.ArtworkName || r.ProductName || "",
+          "ARTWORK NO.": r => r.ArtworkNo || "",
+          "ARTWORK NAME": r => r.ArtworkName || r.ProductName || "",
           "SUB TYPE (CONTENT)": r => r.Content || "",
-          "CATALOG":            r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked",
+          "CATALOG": r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked",
         };
 
         const masterFiltered = filtered.filter(r => {
           const mf = masterFilters;
           const catalogVal = (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked";
-          return (!mf.artworkNo   || (r.ArtworkNo||"").toLowerCase().includes(mf.artworkNo.toLowerCase()))
-            && (!mf.artworkName || (r.ArtworkName||r.ProductName||"").toLowerCase().includes(mf.artworkName.toLowerCase()))
-            && (!mf.content     || (r.Content||"").toLowerCase().includes(mf.content.toLowerCase()))
-            && (!mf.catalog     || catalogVal.toLowerCase().includes(mf.catalog.toLowerCase()));
+          return (!mf.artworkNo || (r.ArtworkNo || "").toLowerCase().includes(mf.artworkNo.toLowerCase()))
+            && (!mf.artworkName || (r.ArtworkName || r.ProductName || "").toLowerCase().includes(mf.artworkName.toLowerCase()))
+            && (!mf.content || (r.Content || "").toLowerCase().includes(mf.content.toLowerCase()))
+            && (!mf.catalog || catalogVal.toLowerCase().includes(mf.catalog.toLowerCase()));
         });
 
         const masterSorted = (masterSort && MASTER_SORT_KEY[masterSort.col])
           ? [...masterFiltered].sort((a, b) => {
-              const cmp = MASTER_SORT_KEY[masterSort.col](a).localeCompare(MASTER_SORT_KEY[masterSort.col](b), undefined, { numeric: true, sensitivity: "base" });
-              return masterSort.dir === "asc" ? cmp : -cmp;
-            })
+            const cmp = MASTER_SORT_KEY[masterSort.col](a).localeCompare(MASTER_SORT_KEY[masterSort.col](b), undefined, { numeric: true, sensitivity: "base" });
+            return masterSort.dir === "asc" ? cmp : -cmp;
+          })
           : masterFiltered;
 
         const hasColFilter = Object.values(masterFilters).some(Boolean);
@@ -729,7 +916,7 @@ export default function ArtworkManagementPage() {
                   <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
                     {masterSort && <span>Sorted by <strong>{masterSort.col}</strong> {masterSort.dir === "asc" ? "↑" : "↓"}</span>}
                     {hasColFilter && <span>{Object.values(masterFilters).filter(Boolean).length} column filter(s) active</span>}
-                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo:"", artworkName:"", content:"", catalog:"" }); }}
+                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo: "", artworkName: "", content: "", catalog: "" }); }}
                       className="ml-auto text-red-500 hover:text-red-700 font-semibold">✕ Clear all</button>
                   </div>
                 )}
@@ -737,12 +924,12 @@ export default function ArtworkManagementPage() {
                   <thead className="sticky top-0 z-10">
                     <tr style={{ background: "var(--erp-primary)" }}>
                       {([
-                        { h: "ARTWORK NO.",        s: true  },
-                        { h: "ARTWORK NAME",       s: true  },
-                        { h: "SUB TYPE (CONTENT)", s: true  },
-                        { h: "CATALOG",            s: true  },
-                        { h: "ATTACHMENTS",        s: false },
-                        { h: "",                   s: false },
+                        { h: "ARTWORK NO.", s: true },
+                        { h: "ARTWORK NAME", s: true },
+                        { h: "SUB TYPE (CONTENT)", s: true },
+                        { h: "CATALOG", s: true },
+                        { h: "ATTACHMENTS", s: false },
+                        { h: "", s: false },
                       ] as { h: string; s: boolean }[]).map(({ h, s }) => {
                         const isSortActive = masterSort?.col === h;
                         const cf = MASTER_CF[h];
@@ -819,12 +1006,12 @@ export default function ArtworkManagementPage() {
                     {/* ── Filter input row ── */}
                     <tr className="bg-gray-50 border-b border-gray-200">
                       {[
-                        { key: "artworkNo"   as const, ph: "Filter…" },
+                        { key: "artworkNo" as const, ph: "Filter…" },
                         { key: "artworkName" as const, ph: "Filter…" },
-                        { key: "content"     as const, ph: "Filter…" },
-                        { key: "catalog"     as const, ph: "Filter…" },
-                        { key: null,                   ph: ""         },
-                        { key: null,                   ph: ""         },
+                        { key: "content" as const, ph: "Filter…" },
+                        { key: "catalog" as const, ph: "Filter…" },
+                        { key: null, ph: "" },
+                        { key: null, ph: "" },
                       ].map((f, i) => (
                         <td key={i} className="px-2 py-1.5">
                           {f.key ? (
@@ -925,8 +1112,8 @@ export default function ArtworkManagementPage() {
           ) : filtered.map(row => {
             const isOpen = expanded === row.ArtworkID;
             const detail = detailMap[row.ArtworkID];
-            const atts   = attMap[row.ArtworkID] ?? [];
-            const hasPC  = detail && String(detail.ProductMasterID || 0) !== "0";
+            const atts = attMap[row.ArtworkID] ?? [];
+            const hasPC = detail && String(detail.ProductMasterID || 0) !== "0";
 
             return (
               <div key={row.ArtworkID} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -1063,7 +1250,7 @@ export default function ArtworkManagementPage() {
                           ) : (
                             <div className="grid grid-cols-2 gap-2">
                               {atts.map(att => (
-                                <AttCard key={att._id} att={att} onRemove={() => {}}
+                                <AttCard key={att._id} att={att} onRemove={() => { }}
                                   onPreview={() => setPreview(att)} />
                               ))}
                             </div>
@@ -1085,108 +1272,108 @@ export default function ArtworkManagementPage() {
         const uniq = (key: keyof LibRow) =>
           [...new Set(libRows.map(r => r[key] as string).filter(Boolean))].sort();
 
-        const uCustomers  = uniq("Customer");
-        const uJobNames   = uniq("JobName");
-        const uBrands     = uniq("Brand");
-        const uPackSizes  = uniq("PackSize");
+        const uCustomers = uniq("Customer");
+        const uJobNames = uniq("JobName");
+        const uBrands = uniq("Brand");
+        const uPackSizes = uniq("PackSize");
         const uCategories = uniq("CategoryName");
         const uSubstrates = uniq("Substrate");
-        const uTypes      = uniq("TypeOfProduct");
-        const uColors     = uniq("NoOfColors");
+        const uTypes = uniq("TypeOfProduct");
+        const uColors = uniq("NoOfColors");
         const uColorNames = [...new Set(
           libRows.flatMap(r => (r.ColorName || "").split(",").map(c => c.trim()).filter(Boolean))
         )].sort();
-        const uMachines   = uniq("Machine");
-        const uCylTypes   = [...new Set(
+        const uMachines = uniq("Machine");
+        const uCylTypes = [...new Set(
           libRows.flatMap(r => (r.CylType || "").split(",").map(c => c.trim()).filter(Boolean))
         )].sort();
-        const uCylStatuses= [...new Set(
+        const uCylStatuses = [...new Set(
           libRows.flatMap(r => (r.CylStatus || "").split(",").map(c => c.trim()).filter(Boolean))
         )].sort();
-        const uVendors    = uniq("CylVendor");
+        const uVendors = uniq("CylVendor");
 
         // ── apply all filters ─────────────────────────────────────────────
         const lf = libFilters;
         const filtered = libRows.filter(r => {
           const q = libSearch.toLowerCase();
-          const matchSearch = !q || [r.WoNo,r.OrderNo,r.Customer,r.JobName,r.Brand,r.ArtworkNo,r.ColorName,r.ProductCode]
+          const matchSearch = !q || [r.WoNo, r.OrderNo, r.Customer, r.JobName, r.Brand, r.ArtworkNo, r.ColorName, r.ProductCode]
             .some(v => v?.toLowerCase().includes(q));
           const stage = r.ArtworkStage || "Artwork Pending";
-          const brandAppr  = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Brand Approved");
-          const lsdAppr    = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("LSD Shade Approved");
-          const cylRcvd    = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Cylinder Received");
+          const brandAppr = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Brand Approved");
+          const lsdAppr = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("LSD Shade Approved");
+          const cylRcvd = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Cylinder Received");
 
-          const inc = (a: string | undefined | null, b: string) => (a||"").toLowerCase().includes(b.toLowerCase());
+          const inc = (a: string | undefined | null, b: string) => (a || "").toLowerCase().includes(b.toLowerCase());
           return matchSearch
-            && (!lf.customer     || inc(r.Customer,     lf.customer))
-            && (!lf.brand        || inc(r.Brand,        lf.brand))
-            && (!lf.packSize     || inc(r.PackSize,     lf.packSize))
-            && (!lf.category     || inc(r.CategoryName, lf.category))
-            && (!lf.substrate    || inc(r.Substrate,    lf.substrate))
-            && (!lf.designType   || inc(r.TypeOfProduct,lf.designType))
-            && (!lf.noOfColors   || inc(r.NoOfColors,   lf.noOfColors))
-            && (!lf.colorName    || r.ColorName?.split(",").some(c => c.trim().toLowerCase().includes(lf.colorName.toLowerCase())))
-            && (!lf.machine      || inc(r.Machine,      lf.machine))
-            && (!lf.cylType      || inc(r.CylType,      lf.cylType))
-            && (!lf.cylStatus    || r.CylStatus?.split(",").some(c => c.trim().toLowerCase().includes(lf.cylStatus.toLowerCase())))
-            && (!lf.cylVendor    || inc(r.CylVendor,    lf.cylVendor))
-            && (!lf.artworkStage || inc(stage,           lf.artworkStage))
+            && (!lf.customer || inc(r.Customer, lf.customer))
+            && (!lf.brand || inc(r.Brand, lf.brand))
+            && (!lf.packSize || inc(r.PackSize, lf.packSize))
+            && (!lf.category || inc(r.CategoryName, lf.category))
+            && (!lf.substrate || inc(r.Substrate, lf.substrate))
+            && (!lf.designType || inc(r.TypeOfProduct, lf.designType))
+            && (!lf.noOfColors || inc(r.NoOfColors, lf.noOfColors))
+            && (!lf.colorName || r.ColorName?.split(",").some(c => c.trim().toLowerCase().includes(lf.colorName.toLowerCase())))
+            && (!lf.machine || inc(r.Machine, lf.machine))
+            && (!lf.cylType || inc(r.CylType, lf.cylType))
+            && (!lf.cylStatus || r.CylStatus?.split(",").some(c => c.trim().toLowerCase().includes(lf.cylStatus.toLowerCase())))
+            && (!lf.cylVendor || inc(r.CylVendor, lf.cylVendor))
+            && (!lf.artworkStage || inc(stage, lf.artworkStage))
             && (!lf.brandApproved || (lf.brandApproved === "Yes" ? brandAppr : !brandAppr))
-            && (!lf.lsdApproved   || (lf.lsdApproved   === "Yes" ? lsdAppr   : !lsdAppr))
-            && (!lf.cylReceived   || (lf.cylReceived    === "Yes" ? cylRcvd   : !cylRcvd))
-            && (!lf.jobName       || inc(r.JobName,     lf.jobName))
-            && (!lf.circum        || inc(r.CircumMM,    lf.circum))
-            && (!lf.cylLength     || inc(r.CylLength,   lf.cylLength))
-            && (!lf.coilWidth     || inc(r.CylPrintWidth,lf.coilWidth))
-            && (!lf.repeatLength  || inc(r.RepeatMM,    lf.repeatLength))
+            && (!lf.lsdApproved || (lf.lsdApproved === "Yes" ? lsdAppr : !lsdAppr))
+            && (!lf.cylReceived || (lf.cylReceived === "Yes" ? cylRcvd : !cylRcvd))
+            && (!lf.jobName || inc(r.JobName, lf.jobName))
+            && (!lf.circum || inc(r.CircumMM, lf.circum))
+            && (!lf.cylLength || inc(r.CylLength, lf.cylLength))
+            && (!lf.coilWidth || inc(r.CylPrintWidth, lf.coilWidth))
+            && (!lf.repeatLength || inc(r.RepeatMM, lf.repeatLength))
             && (!kpiFilter || (() => {
               const s = r.ArtworkStage || "Artwork Pending";
-              if (kpiFilter === "CYLINDER RECEIVED")  return s === "Cylinder Received";
-              if (kpiFilter === "ENGRAVING")          return s === "Engraving";
-              if (kpiFilter === "BRAND APPROVED")     return s === "Brand Approved";
-              if (kpiFilter === "UNDER PROCESS")      return s === "Under Process";
+              if (kpiFilter === "CYLINDER RECEIVED") return s === "Cylinder Received";
+              if (kpiFilter === "ENGRAVING") return s === "Engraving";
+              if (kpiFilter === "BRAND APPROVED") return s === "Brand Approved";
+              if (kpiFilter === "UNDER PROCESS") return s === "Under Process";
               if (kpiFilter === "PENDING MAIL TO MB") return s === "Pending Mail to MB";
-              if (kpiFilter === "ON HOLD")            return s === "On Hold";
+              if (kpiFilter === "ON HOLD") return s === "On Hold";
               return true;
             })());
         });
 
         // ── sort ─────────────────────────────────────────────────────────
         const COL_KEY: Record<string, (r: LibRow) => string> = {
-          "JOB NAME":         r => r.JobName        || "",
-          "SKU SIZE":         r => r.PackSize        || "",
-          "MATERIAL":         r => r.StructureType   || "",
-          "DESIGN TYPE":      r => r.TypeOfProduct   || "",
-          "CURRENT STATUS":   r => r.ArtworkStage    || "",
-          "CUSTOMER / PARTY": r => r.Customer        || "",
-          "CYL. MAKER":       r => r.CylVendor       || "",
-          "COLORS":           r => (parseInt(r.NoOfColors||"0")||0).toString().padStart(5,"0"),
-          "BRAND / PRODUCT":  r => r.Brand           || "",
-          "SUBSTRATE":        r => r.Substrate       || "",
-          "CYLINDER STATUS":  r => r.CylStatus       || "",
-          "ARTWORK RECD.":    r => r.CreatedDate      || "",
+          "JOB NAME": r => r.JobName || "",
+          "SKU SIZE": r => r.PackSize || "",
+          "MATERIAL": r => r.StructureType || "",
+          "DESIGN TYPE": r => r.TypeOfProduct || "",
+          "CURRENT STATUS": r => r.ArtworkStage || "",
+          "CUSTOMER / PARTY": r => r.Customer || "",
+          "CYL. MAKER": r => r.CylVendor || "",
+          "COLORS": r => (parseInt(r.NoOfColors || "0") || 0).toString().padStart(5, "0"),
+          "BRAND / PRODUCT": r => r.Brand || "",
+          "SUBSTRATE": r => r.Substrate || "",
+          "CYLINDER STATUS": r => r.CylStatus || "",
+          "ARTWORK RECD.": r => r.CreatedDate || "",
         };
         const sortedRows = (libSort && COL_KEY[libSort.col])
           ? [...filtered].sort((a, b) => {
-              const cmp = COL_KEY[libSort.col](a).localeCompare(COL_KEY[libSort.col](b), undefined, { numeric: true, sensitivity: "base" });
-              return libSort.dir === "asc" ? cmp : -cmp;
-            })
+            const cmp = COL_KEY[libSort.col](a).localeCompare(COL_KEY[libSort.col](b), undefined, { numeric: true, sensitivity: "base" });
+            return libSort.dir === "asc" ? cmp : -cmp;
+          })
           : filtered;
 
         // column → filter mapping for Excel-style header dropdowns
         type CFEntry = { key: keyof typeof libFilters; getVal: (r: LibRow) => string };
         const COL_FILTER: Record<string, CFEntry> = {
-          "JOB NAME":         { key: "jobName",     getVal: r => r.JobName          || "" },
-          "SKU SIZE":         { key: "packSize",     getVal: r => r.PackSize         || "" },
-          "DESIGN TYPE":      { key: "designType",   getVal: r => r.TypeOfProduct    || "" },
-          "CURRENT STATUS":   { key: "artworkStage", getVal: r => r.ArtworkStage || "Artwork Pending" },
-          "CUSTOMER / PARTY": { key: "customer",     getVal: r => r.Customer         || "" },
-          "CYL. MAKER":       { key: "cylVendor",    getVal: r => r.CylVendor        || "" },
-          "COLORS":           { key: "noOfColors",   getVal: r => r.NoOfColors       || "" },
-          "BRAND / PRODUCT":  { key: "brand",        getVal: r => r.Brand            || "" },
-          "SUBSTRATE":        { key: "substrate",    getVal: r => r.Substrate        || "" },
-          "CYLINDER STATUS":  { key: "cylStatus",    getVal: r => r.CylStatus        || "" },
-          "MATERIAL":         { key: "category",     getVal: r => r.StructureType    || "" },
+          "JOB NAME": { key: "jobName", getVal: r => r.JobName || "" },
+          "SKU SIZE": { key: "packSize", getVal: r => r.PackSize || "" },
+          "DESIGN TYPE": { key: "designType", getVal: r => r.TypeOfProduct || "" },
+          "CURRENT STATUS": { key: "artworkStage", getVal: r => r.ArtworkStage || "Artwork Pending" },
+          "CUSTOMER / PARTY": { key: "customer", getVal: r => r.Customer || "" },
+          "CYL. MAKER": { key: "cylVendor", getVal: r => r.CylVendor || "" },
+          "COLORS": { key: "noOfColors", getVal: r => r.NoOfColors || "" },
+          "BRAND / PRODUCT": { key: "brand", getVal: r => r.Brand || "" },
+          "SUBSTRATE": { key: "substrate", getVal: r => r.Substrate || "" },
+          "CYLINDER STATUS": { key: "cylStatus", getVal: r => r.CylStatus || "" },
+          "MATERIAL": { key: "category", getVal: r => r.StructureType || "" },
         };
 
         // ── summary counts ────────────────────────────────────────────────
@@ -1199,13 +1386,13 @@ export default function ArtworkManagementPage() {
           return seen.size;
         };
         // Overall KPIs (all libRows)
-        const totalJobs      = new Set(libRows.map(r => r.ArtworkID)).size;
-        const cylRcvdAll     = distinctArtworks(s => s === "Cylinder Received");
-        const engravingAll   = distinctArtworks(s => s === "Engraving");
-        const brandApprAll   = distinctArtworks(s => s === "Brand Approved");
-        const underProcAll   = distinctArtworks(s => s === "Under Process");
-        const pendMailAll    = distinctArtworks(s => s === "Pending Mail to MB");
-        const onHoldAll      = distinctArtworks(s => s === "On Hold");
+        const totalJobs = new Set(libRows.map(r => r.ArtworkID)).size;
+        const cylRcvdAll = distinctArtworks(s => s === "Cylinder Received");
+        const engravingAll = distinctArtworks(s => s === "Engraving");
+        const brandApprAll = distinctArtworks(s => s === "Brand Approved");
+        const underProcAll = distinctArtworks(s => s === "Under Process");
+        const pendMailAll = distinctArtworks(s => s === "Pending Mail to MB");
+        const onHoldAll = distinctArtworks(s => s === "On Hold");
 
         // Filtered KPIs
         const distinctFiltered = (stagePred: (s: string) => boolean) => {
@@ -1213,13 +1400,13 @@ export default function ArtworkManagementPage() {
           filtered.forEach(r => { const s = r.ArtworkStage || "Artwork Pending"; if (stagePred(s)) seen.add(r.ArtworkID); });
           return seen.size;
         };
-        const fTotalJobs    = new Set(filtered.map(r => r.ArtworkID)).size;
-        const fCylRcvd      = distinctFiltered(s => s === "Cylinder Received");
-        const fEngraving    = distinctFiltered(s => s === "Engraving");
-        const fBrandAppr    = distinctFiltered(s => s === "Brand Approved");
-        const fUnderProc    = distinctFiltered(s => s === "Under Process");
-        const fPendMail     = distinctFiltered(s => s === "Pending Mail to MB");
-        const fOnHold       = distinctFiltered(s => s === "On Hold");
+        const fTotalJobs = new Set(filtered.map(r => r.ArtworkID)).size;
+        const fCylRcvd = distinctFiltered(s => s === "Cylinder Received");
+        const fEngraving = distinctFiltered(s => s === "Engraving");
+        const fBrandAppr = distinctFiltered(s => s === "Brand Approved");
+        const fUnderProc = distinctFiltered(s => s === "Under Process");
+        const fPendMail = distinctFiltered(s => s === "Pending Mail to MB");
+        const fOnHold = distinctFiltered(s => s === "On Hold");
 
         const hasFilter = Object.values(libFilters).some(Boolean) || !!libSearch || !!kpiFilter;
 
@@ -1228,16 +1415,16 @@ export default function ArtworkManagementPage() {
 
         // ── stage color map ───────────────────────────────────────────────
         const STAGE_COLORS: Record<string, { dot: string; bg: string; text: string; border: string }> = {
-          "Artwork Pending":       { dot:"#9ca3af", bg:"bg-gray-100",   text:"text-gray-700",   border:"border-gray-300"   },
-          "Artwork Received":      { dot:"#f59e0b", bg:"bg-yellow-100", text:"text-yellow-800", border:"border-yellow-300" },
-          "Under Process":         { dot:"#0d9488", bg:"bg-teal-100",   text:"text-teal-800",   border:"border-teal-300"   },
-          "Pending Mail to MB":    { dot:"#f59e0b", bg:"bg-amber-50",   text:"text-amber-800",  border:"border-amber-300"  },
-          "Brand Approved":        { dot:"#7c3aed", bg:"bg-purple-100", text:"text-purple-800", border:"border-purple-300" },
-          "LSD Shade Approved":    { dot:"#3b82f6", bg:"bg-blue-100",   text:"text-blue-800",   border:"border-blue-300"   },
-          "Engraving":             { dot:"#4f46e5", bg:"bg-indigo-100", text:"text-indigo-800", border:"border-indigo-300" },
-          "Cylinder Received":     { dot:"#16a34a", bg:"bg-green-100",  text:"text-green-800",  border:"border-green-300"  },
-          "Released to Production":{ dot:"#15803d", bg:"bg-green-200",  text:"text-green-900",  border:"border-green-400"  },
-          "On Hold":               { dot:"#dc2626", bg:"bg-red-100",    text:"text-red-800",    border:"border-red-300"    },
+          "Artwork Pending": { dot: "#9ca3af", bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-300" },
+          "Artwork Received": { dot: "#f59e0b", bg: "bg-yellow-100", text: "text-yellow-800", border: "border-yellow-300" },
+          "Under Process": { dot: "#0d9488", bg: "bg-teal-100", text: "text-teal-800", border: "border-teal-300" },
+          "Pending Mail to MB": { dot: "#f59e0b", bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-300" },
+          "Brand Approved": { dot: "#7c3aed", bg: "bg-purple-100", text: "text-purple-800", border: "border-purple-300" },
+          "LSD Shade Approved": { dot: "#3b82f6", bg: "bg-blue-100", text: "text-blue-800", border: "border-blue-300" },
+          "Engraving": { dot: "#4f46e5", bg: "bg-indigo-100", text: "text-indigo-800", border: "border-indigo-300" },
+          "Cylinder Received": { dot: "#16a34a", bg: "bg-green-100", text: "text-green-800", border: "border-green-300" },
+          "Released to Production": { dot: "#15803d", bg: "bg-green-200", text: "text-green-900", border: "border-green-400" },
+          "On Hold": { dot: "#dc2626", bg: "bg-red-100", text: "text-red-800", border: "border-red-300" },
         };
         const stageBadge = (s: string) => {
           const c = STAGE_COLORS[s];
@@ -1247,20 +1434,20 @@ export default function ArtworkManagementPage() {
         const selCls = "px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400 bg-white w-full";
 
         // unique values for new filters
-        const uCircums     = [...new Set(libRows.map(r => r.CircumMM).filter(Boolean))].sort();
-        const uCylLengths  = [...new Set(libRows.map(r => r.CylLength).filter(Boolean))].sort();
-        const uCoilWidths  = [...new Set(libRows.map(r => r.CylPrintWidth).filter(Boolean))].sort();
-        const uRepeatLens  = [...new Set(libRows.map(r => r.RepeatMM).filter(Boolean))].sort();
+        const uCircums = [...new Set(libRows.map(r => r.CircumMM).filter(Boolean))].sort();
+        const uCylLengths = [...new Set(libRows.map(r => r.CylLength).filter(Boolean))].sort();
+        const uCoilWidths = [...new Set(libRows.map(r => r.CylPrintWidth).filter(Boolean))].sort();
+        const uRepeatLens = [...new Set(libRows.map(r => r.RepeatMM).filter(Boolean))].sort();
 
         // KPI definitions — exact match to screenshot
         const KPI_DEF = [
-          { label: "TOTAL JOBS",        filLabel: "JOBS IN SELECTION", overall: totalJobs,   fil: fTotalJobs, border: "border-t-blue-500",   num: "text-gray-800",   clickable: true  },
-          { label: "CYLINDER RECEIVED", filLabel: "CYLINDER RECEIVED", overall: cylRcvdAll,  fil: fCylRcvd,   border: "border-t-green-500",  num: "text-green-600",  clickable: true  },
-          { label: "ENGRAVING",         filLabel: "ENGRAVING",         overall: engravingAll,fil: fEngraving, border: "border-t-indigo-600", num: "text-indigo-700", clickable: true  },
-          { label: "BRAND APPROVED",    filLabel: "BRAND APPROVED",    overall: brandApprAll,fil: fBrandAppr, border: "border-t-purple-500", num: "text-purple-700", clickable: true  },
-          { label: "UNDER PROCESS",     filLabel: "UNDER PROCESS",     overall: underProcAll,fil: fUnderProc, border: "border-t-teal-500",   num: "text-teal-700",   clickable: true  },
-          { label: "PENDING MAIL TO MB",filLabel: "PENDING MAIL TO MB",overall: pendMailAll, fil: fPendMail,  border: "border-t-amber-500",  num: "text-amber-600",  clickable: true  },
-          { label: "ON HOLD",           filLabel: "ON HOLD",           overall: onHoldAll,   fil: fOnHold,    border: "border-t-red-500",    num: "text-red-600",    clickable: true  },
+          { label: "TOTAL JOBS", filLabel: "JOBS IN SELECTION", overall: totalJobs, fil: fTotalJobs, border: "border-t-blue-500", num: "text-gray-800", clickable: true },
+          { label: "CYLINDER RECEIVED", filLabel: "CYLINDER RECEIVED", overall: cylRcvdAll, fil: fCylRcvd, border: "border-t-green-500", num: "text-green-600", clickable: true },
+          { label: "ENGRAVING", filLabel: "ENGRAVING", overall: engravingAll, fil: fEngraving, border: "border-t-indigo-600", num: "text-indigo-700", clickable: true },
+          { label: "BRAND APPROVED", filLabel: "BRAND APPROVED", overall: brandApprAll, fil: fBrandAppr, border: "border-t-purple-500", num: "text-purple-700", clickable: true },
+          { label: "UNDER PROCESS", filLabel: "UNDER PROCESS", overall: underProcAll, fil: fUnderProc, border: "border-t-teal-500", num: "text-teal-700", clickable: true },
+          { label: "PENDING MAIL TO MB", filLabel: "PENDING MAIL TO MB", overall: pendMailAll, fil: fPendMail, border: "border-t-amber-500", num: "text-amber-600", clickable: true },
+          { label: "ON HOLD", filLabel: "ON HOLD", overall: onHoldAll, fil: fOnHold, border: "border-t-red-500", num: "text-red-600", clickable: true },
         ];
 
         return (
@@ -1291,7 +1478,7 @@ export default function ArtworkManagementPage() {
                       <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider leading-tight">{k.label}</p>
                       <p className={`text-3xl font-black mt-1 ${k.num}`}>{k.overall}</p>
                       {isActive ? (
-                        <p className="text-[10px] text-red-500 font-semibold mt-0.5 flex items-center gap-0.5"><X size={9}/> Remove</p>
+                        <p className="text-[10px] text-red-500 font-semibold mt-0.5 flex items-center gap-0.5"><X size={9} /> Remove</p>
                       ) : k.label === "TOTAL JOBS" ? (
                         <p className="text-[10px] text-blue-500 mt-0.5">{kpiFilter ? "Click to show all" : "All records"}</p>
                       ) : (
@@ -1341,16 +1528,16 @@ export default function ArtworkManagementPage() {
             {/* ── 4 Bar Chart Panels ── */}
             {(() => {
               const BAR_COLORS = [
-                "#991b1b","#166534","#1e3a8a","#78350f","#581c87",
-                "#0f766e","#831843","#3f6212","#1d4ed8","#92400e",
-                "#15803d","#6d28d9","#0369a1","#b45309","#be123c",
+                "#991b1b", "#166534", "#1e3a8a", "#78350f", "#581c87",
+                "#0f766e", "#831843", "#3f6212", "#1d4ed8", "#92400e",
+                "#15803d", "#6d28d9", "#0369a1", "#b45309", "#be123c",
               ];
               const SKU_COLORS = [
-                "#1e3a8a","#1d4ed8","#2563eb","#3b82f6","#60a5fa",
-                "#93c5fd","#bfdbfe","#dbeafe","#065f46","#047857",
-                "#059669","#10b981","#34d399",
+                "#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa",
+                "#93c5fd", "#bfdbfe", "#dbeafe", "#065f46", "#047857",
+                "#059669", "#10b981", "#34d399",
               ];
-              const maxCount = (arr: [string,number][]) => arr.length ? Math.max(...arr.map(x=>x[1])) : 1;
+              const maxCount = (arr: [string, number][]) => arr.length ? Math.max(...arr.map(x => x[1])) : 1;
 
               const countBy = (key: keyof LibRow) =>
                 Object.entries(
@@ -1359,17 +1546,17 @@ export default function ArtworkManagementPage() {
                     acc[k] = (acc[k] || 0) + 1;
                     return acc;
                   }, {} as Record<string, number>)
-                ).sort((a,b) => b[1]-a[1]);
+                ).sort((a, b) => b[1] - a[1]);
 
-              const byJobName  = countBy("JobName").slice(0, 12);
-              const bySkuSize  = countBy("PackSize").slice(0, 12);
-              const byProduct  = countBy("CategoryName");
+              const byJobName = countBy("JobName").slice(0, 12);
+              const bySkuSize = countBy("PackSize").slice(0, 12);
+              const byProduct = countBy("CategoryName");
               const byStatus = [
                 { label: "Cylinder received", stage: "Cylinder Received", color: "#16a34a" },
-                { label: "Brand approved",    stage: "Brand Approved",    color: "#1d4ed8" },
-                { label: "Under process",     stage: "Under Process",     color: "#78350f" },
-                { label: "Engraving",         stage: "Engraving",         color: "#3b82f6" },
-                { label: "On hold",           stage: "On Hold",           color: "#b91c1c" },
+                { label: "Brand approved", stage: "Brand Approved", color: "#1d4ed8" },
+                { label: "Under process", stage: "Under Process", color: "#78350f" },
+                { label: "Engraving", stage: "Engraving", color: "#3b82f6" },
+                { label: "On hold", stage: "On Hold", color: "#b91c1c" },
               ].map(s => ({ ...s, count: filtered.filter(r => (r.ArtworkStage || "Artwork Pending") === s.stage).length }));
 
               const BarPanel = ({
@@ -1390,7 +1577,7 @@ export default function ArtworkManagementPage() {
                       {activeVal && (
                         <button onClick={() => onItemClick("")}
                           className="flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-700 font-semibold">
-                          <X size={9}/> clear
+                          <X size={9} /> clear
                         </button>
                       )}
                       {!activeVal && (
@@ -1439,7 +1626,7 @@ export default function ArtworkManagementPage() {
                   />
                   <BarPanel
                     title="By Product" rows={byProduct}
-                    colors={["#dc2626","#2563eb","#16a34a","#9333ea","#f59e0b","#0891b2"]}
+                    colors={["#dc2626", "#2563eb", "#16a34a", "#9333ea", "#f59e0b", "#0891b2"]}
                     activeVal={libFilters.category}
                     filterKey="category"
                     onItemClick={v => setLF("category", v)}
@@ -1451,7 +1638,7 @@ export default function ArtworkManagementPage() {
                       {kpiFilter && (
                         <button onClick={() => setKpiFilter(null)}
                           className="flex items-center gap-0.5 text-[10px] text-red-500 hover:text-red-700 font-semibold">
-                          <X size={9}/> clear
+                          <X size={9} /> clear
                         </button>
                       )}
                       {!kpiFilter && (
@@ -1501,10 +1688,10 @@ export default function ArtworkManagementPage() {
                       setLibSearch("");
                       setKpiFilter(null);
                       setLibFilters({
-                        customer:"",jobName:"",brand:"",packSize:"",category:"",substrate:"",
-                        designType:"",noOfColors:"",colorName:"",machine:"",cylType:"",
-                        cylStatus:"",cylVendor:"",artworkStage:"",brandApproved:"",lsdApproved:"",cylReceived:"",
-                        circum:"",cylLength:"",coilWidth:"",repeatLength:"",
+                        customer: "", jobName: "", brand: "", packSize: "", category: "", substrate: "",
+                        designType: "", noOfColors: "", colorName: "", machine: "", cylType: "",
+                        cylStatus: "", cylVendor: "", artworkStage: "", brandApproved: "", lsdApproved: "", cylReceived: "",
+                        circum: "", cylLength: "", coilWidth: "", repeatLength: "",
                       });
                     }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-semibold border border-red-200 rounded-lg px-2 py-1 hover:bg-red-50">
                       ↺ Reset
@@ -1652,33 +1839,33 @@ export default function ArtworkManagementPage() {
                   <thead className="sticky top-0 z-10">
                     <tr style={{ background: "var(--erp-primary)" }}>
                       {([
-                        { h: "#",                 s: false },
-                        { h: "JOB NAME",          s: true  },
-                        { h: "SKU SIZE",          s: true  },
-                        { h: "MATERIAL",          s: true  },
-                        { h: "DESIGN TYPE",       s: true  },
-                        { h: "CURRENT STATUS",    s: true  },
-                        { h: "CUSTOMER / PARTY",  s: true  },
-                        { h: "CYL. MAKER",        s: true  },
-                        { h: "COLORS",            s: true  },
-                        { h: "BRAND / PRODUCT",   s: true  },
-                        { h: "SUBSTRATE",         s: true  },
-                        { h: "CYLINDER STATUS",   s: true  },
-                        { h: "ARTWORK RECD.",      s: true  },
-                        { h: "APPRVD. TO MAKER",  s: false },
-                        { h: "BRAND APPROVAL",    s: false },
-                        { h: "LSD APPROVAL",      s: false },
-                        { h: "DEV. STATUS",       s: false },
-                        { h: "REMARKS",           s: false },
-                        { h: "ACTIONS",           s: false },
+                        { h: "#", s: false },
+                        { h: "JOB NAME", s: true },
+                        { h: "SKU SIZE", s: true },
+                        { h: "MATERIAL", s: true },
+                        { h: "DESIGN TYPE", s: true },
+                        { h: "CURRENT STATUS", s: true },
+                        { h: "CUSTOMER / PARTY", s: true },
+                        { h: "CYL. MAKER", s: true },
+                        { h: "COLORS", s: true },
+                        { h: "BRAND / PRODUCT", s: true },
+                        { h: "SUBSTRATE", s: true },
+                        { h: "CYLINDER STATUS", s: true },
+                        { h: "ARTWORK RECD.", s: true },
+                        { h: "APPRVD. TO MAKER", s: false },
+                        { h: "BRAND APPROVAL", s: false },
+                        { h: "LSD APPROVAL", s: false },
+                        { h: "DEV. STATUS", s: false },
+                        { h: "REMARKS", s: false },
+                        { h: "ACTIONS", s: false },
                       ] as { h: string; s: boolean }[]).map(({ h, s }) => {
-                        const isSortActive  = libSort?.col === h;
-                        const cf            = COL_FILTER[h];
-                        const isFiltered    = cf ? !!lf[cf.key] : false;
-                        const isColFOpen    = colFilterOpen === h;
+                        const isSortActive = libSort?.col === h;
+                        const cf = COL_FILTER[h];
+                        const isFiltered = cf ? !!lf[cf.key] : false;
+                        const isColFOpen = colFilterOpen === h;
                         const colVals = cf
                           ? [...new Set(libRows.map(r => cf.getVal(r)).filter(Boolean))].sort((a, b) =>
-                              a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+                            a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
                           : [];
                         return (
                           <th key={h} className="relative px-2 py-3 text-left text-[10px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
@@ -1726,7 +1913,7 @@ export default function ArtworkManagementPage() {
                                   — All (Clear Filter) —
                                 </button>
                                 {colVals.map(v => {
-                                  const active    = lf[cf.key] === v;
+                                  const active = lf[cf.key] === v;
                                   const inCurrent = filtered.some(r => cf.getVal(r) === v);
                                   return (
                                     <button key={v}
@@ -1751,25 +1938,25 @@ export default function ArtworkManagementPage() {
                     {/* ── Filter input row ── */}
                     <tr className="bg-gray-50 border-b border-gray-200">
                       {[
-                        { key: null          as null },
-                        { key: "jobName"     as const },
-                        { key: "packSize"    as const },
-                        { key: "category"   as const },
-                        { key: "designType"  as const },
-                        { key: "artworkStage"as const },
-                        { key: "customer"    as const },
-                        { key: "cylVendor"   as const },
-                        { key: "noOfColors"  as const },
-                        { key: "brand"       as const },
-                        { key: "substrate"   as const },
-                        { key: "cylStatus"   as const },
-                        { key: null          as null },
-                        { key: null          as null },
-                        { key: null          as null },
-                        { key: null          as null },
-                        { key: null          as null },
-                        { key: null          as null },
-                        { key: null          as null },
+                        { key: null as null },
+                        { key: "jobName" as const },
+                        { key: "packSize" as const },
+                        { key: "category" as const },
+                        { key: "designType" as const },
+                        { key: "artworkStage" as const },
+                        { key: "customer" as const },
+                        { key: "cylVendor" as const },
+                        { key: "noOfColors" as const },
+                        { key: "brand" as const },
+                        { key: "substrate" as const },
+                        { key: "cylStatus" as const },
+                        { key: null as null },
+                        { key: null as null },
+                        { key: null as null },
+                        { key: null as null },
+                        { key: null as null },
+                        { key: null as null },
+                        { key: null as null },
                       ].map((f, idx) => (
                         <td key={idx} className="px-2 py-1.5">
                           {f.key ? (
@@ -1800,12 +1987,12 @@ export default function ArtworkManagementPage() {
 
                       // Status badge style for CURRENT STATUS column
                       const statusBadgeCls = (() => {
-                        if (stage === "Cylinder Received")  return "bg-green-100 text-green-800 border border-green-200";
-                        if (stage === "Brand Approved")     return "bg-blue-100 text-blue-800 border border-blue-200";
-                        if (stage === "Engraving")          return "bg-indigo-100 text-indigo-800 border border-indigo-200";
-                        if (stage === "Under Process")      return "bg-teal-100 text-teal-800 border border-teal-200";
+                        if (stage === "Cylinder Received") return "bg-green-100 text-green-800 border border-green-200";
+                        if (stage === "Brand Approved") return "bg-blue-100 text-blue-800 border border-blue-200";
+                        if (stage === "Engraving") return "bg-indigo-100 text-indigo-800 border border-indigo-200";
+                        if (stage === "Under Process") return "bg-teal-100 text-teal-800 border border-teal-200";
                         if (stage === "Pending Mail to MB") return "bg-amber-50 text-amber-800 border border-amber-200";
-                        if (stage === "On Hold")            return "bg-red-100 text-red-800 border border-red-200";
+                        if (stage === "On Hold") return "bg-red-100 text-red-800 border border-red-200";
                         if (stage === "Released to Production") return "bg-green-200 text-green-900 border border-green-300";
                         if (stage === "LSD Shade Approved") return "bg-purple-100 text-purple-800 border border-purple-200";
                         return "bg-gray-100 text-gray-600 border border-gray-200";
@@ -1926,7 +2113,7 @@ export default function ArtworkManagementPage() {
                                   {openStageRow === r.ArtworkID && (
                                     <div className="absolute z-50 left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
                                       {ARTWORK_STAGES.map(s => {
-                                        const c = STAGE_COLORS[s] || { dot:"#9ca3af", bg:"bg-gray-50", text:"text-gray-700", border:"border-gray-200" };
+                                        const c = STAGE_COLORS[s] || { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
                                         const isCur = s === stage;
                                         return (
                                           <button key={s}
@@ -2202,6 +2389,342 @@ export default function ArtworkManagementPage() {
                     <label className={lCls}>Artwork Description</label>
                     <textarea value={form.ArtWorkDescription} onChange={e => rf("ArtWorkDescription", e.target.value)}
                       rows={2} placeholder="Describe the artwork…" className={iCls} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ TAB: Sub Group Master ══════════════════════════════════════════ */}
+      {activeTab === "subgroup" && (
+        <div className="space-y-4">
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              value={sgSearch} onChange={e => setSgSearch(e.target.value)}
+              placeholder="Search sub-group no., name, artwork…"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button onClick={loadSubGroups}
+              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
+              <RefreshCw size={15} className={sgLoading ? "animate-spin" : ""} />
+            </button>
+            <Button icon={<Plus size={16} />} onClick={openAddSG}>New Sub Group</Button>
+          </div>
+
+          {/* Table */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            {sgLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 size={28} className="animate-spin text-gray-400" />
+              </div>
+            ) : (() => {
+              const q = sgSearch.toLowerCase();
+              const rows = sgList.filter(r =>
+                !q
+                || r.SubGroupNo?.toLowerCase().includes(q)
+                || r.SubGroupName?.toLowerCase().includes(q)
+                || r.ArtworkNo?.toLowerCase().includes(q)
+                || r.ArtworkName?.toLowerCase().includes(q)
+                || r.ClientName?.toLowerCase().includes(q)
+              );
+              return rows.length === 0 ? (
+                <div className="text-center py-16 text-gray-400 text-sm">
+                  {sgLoaded ? "No sub groups found." : "Click refresh or switch to this tab to load."}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: "var(--erp-primary)" }}>
+                        {["SUB GROUP NO.", "PARENT ARTWORK", "CLIENT", "SUB GROUP NAME", "CONTENT", "PACK SIZE", "BRAND", ""].map(h => (
+                          <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.SubGroupID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                          <td className="px-4 py-3 font-semibold text-indigo-700 whitespace-nowrap">{r.SubGroupNo}</td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-gray-800">{r.ArtworkNo}</span>
+                            {r.ArtworkName && <span className="text-xs text-gray-500 ml-1">— {r.ArtworkName}</span>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{r.ClientName || "—"}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.SubGroupName}</td>
+                          <td className="px-4 py-3">
+                            {r.Content
+                              ? <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{r.Content}</span>
+                              : <span className="text-xs text-gray-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{r.PackSize || "—"}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{r.BrandName || "—"}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2 justify-end">
+                              <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEditSG(r)}>Edit</Button>
+                              <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteSG(r)}>Del</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Sub Group Master Modal ══════════════════════════════════════════ */}
+      {showSgModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[93vh] overflow-y-auto mx-4">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-semibold text-gray-800">
+                {sgEditMode ? "Edit Artwork Sub Group" : "New Artwork Sub Group"}
+              </h3>
+              <div className="flex items-center gap-3">
+                <Button onClick={saveSG} loading={sgSaving} icon={<Check size={15} />}>
+                  {sgEditMode ? "Update" : "Save"} Sub Group
+                </Button>
+                <button onClick={() => setShowSgModal(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {sgError && (
+                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{sgError}</div>
+              )}
+
+              {/* ── Attachments ── */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <SH label="Attachments" />
+                  <button onClick={() => sgFileRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 hover:bg-orange-50 rounded-lg text-xs font-semibold transition-colors">
+                    <Plus size={12} /> Add Files
+                  </button>
+                  <input ref={sgFileRef} type="file" multiple accept="*" className="hidden"
+                    onChange={e => {
+                      const files = e.target.files;
+                      if (!files || files.length === 0) return;
+                      const newItems: AttachmentItem[] = Array.from(files).map(file => ({
+                        _id: Math.random().toString(36).slice(2),
+                        name: file.name,
+                        url: URL.createObjectURL(file),
+                        mimeType: file.type,
+                        remark: "",
+                        fileObj: file,
+                      }));
+                      setSgAttachments(p => [...p, ...newItems]);
+                      e.target.value = "";
+                    }} />
+                </div>
+                {sgAttachments.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-3">
+                    {sgAttachments.map(att => (
+                      <AttCard key={att._id} att={att}
+                        onRemove={() => setSgAttachments(p => p.filter(a => a._id !== att._id))}
+                        onPreview={() => setPreview(att)} />
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => {
+                      e.preventDefault();
+                      const files = e.dataTransfer.files;
+                      if (!files || files.length === 0) return;
+                      const newItems: AttachmentItem[] = Array.from(files).map(file => ({
+                        _id: Math.random().toString(36).slice(2),
+                        name: file.name,
+                        url: URL.createObjectURL(file),
+                        mimeType: file.type,
+                        remark: "",
+                        fileObj: file,
+                      }));
+                      setSgAttachments(p => [...p, ...newItems]);
+                    }}
+                    onClick={() => sgFileRef.current?.click()}
+                    className="border-2 border-dashed border-orange-200 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
+                    <Paperclip size={22} className="text-orange-300 mx-auto mb-2" />
+                    <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
+                    <p className="text-[10px] text-orange-300 mt-1">or click to browse</p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Parent Artwork ── */}
+              <div>
+                <SH label="Parent Artwork" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className={lCls}>Parent Artwork *</label>
+                    <select
+                      value={sgForm.ArtworkID}
+                      onChange={e => { if (!sgEditMode) autoFillSGFromArtwork(e.target.value); }}
+                      disabled={sgEditMode}
+                      className={iCls}
+                    >
+                      <option value="">-- Select Parent Artwork --</option>
+                      {list.map(a => (
+                        <option key={a.ArtworkID} value={a.ArtworkID}>
+                          {a.ArtworkNo} — {a.ArtworkName || a.ProductName}
+                        </option>
+                      ))}
+                    </select>
+                    {!sgEditMode && sgForm.ArtworkID && (
+                      <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                        <Check size={10} /> Fields auto-filled from parent artwork — edit as needed
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Sub Group Name / Variant Label *</label>
+                    <input
+                      value={sgForm.SubGroupName}
+                      onChange={e => rfSG("SubGroupName", e.target.value)}
+                      placeholder="e.g. 200ml Red Label Variant, Export Pack…"
+                      className={iCls}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Product Details ── */}
+              <div>
+                <SH label="Product Details" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className={lCls}>Job Name</label>
+                    <input value={sgForm.JobName} onChange={e => {
+                      const v = e.target.value;
+                      rfSG("JobName", v);
+                      rfSG("ArtworkName", [v, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
+                    }} placeholder="Enter job name…" className={iCls} />
+                  </div>
+                  <div>
+                    <label className={lCls}>Brand Name</label>
+                    <select value={sgForm.BrandName} onChange={e => rfSG("BrandName", e.target.value)} className={iCls}>
+                      <option value="">-- Select Brand --</option>
+                      {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Pack Size</label>
+                    <select value={sgForm.PackSize} onChange={e => {
+                      const v = e.target.value;
+                      rfSG("PackSize", v);
+                      rfSG("ArtworkName", [sgForm.JobName, v, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Pack Size --</option>
+                      {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Product Type</label>
+                    <select value={sgForm.ProductType} onChange={e => rfSG("ProductType", e.target.value)} className={iCls}>
+                      <option value="">-- Select Product Type --</option>
+                      {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>SKU Type</label>
+                    <select value={sgForm.SkuType} onChange={e => {
+                      const v = e.target.value;
+                      rfSG("SkuType", v);
+                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, v].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select SKU Type --</option>
+                      {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Bottle Type</label>
+                    <select value={sgForm.BottleType} onChange={e => {
+                      const v = e.target.value;
+                      rfSG("BottleType", v);
+                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, v, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Bottle Type --</option>
+                      {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Address Type</label>
+                    <select value={sgForm.AddressType} onChange={e => {
+                      const v = e.target.value;
+                      rfSG("AddressType", v);
+                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, v, sgForm.SkuType].filter(Boolean).join("-"));
+                    }} className={iCls}>
+                      <option value="">-- Select Address Type --</option>
+                      {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+                    <input value={sgForm.ArtworkName} onChange={e => rfSG("ArtworkName", e.target.value)}
+                      className={iCls} placeholder="Auto-generated from fields above" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Special Specifications</label>
+                    <textarea value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)}
+                      rows={2} placeholder="Any special requirements or notes…" className={iCls} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Dates ── */}
+              <div>
+                <SH label="Dates" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={lCls}>Received Date</label>
+                    <input type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} className={iCls} />
+                  </div>
+                  <div>
+                    <label className={lCls}>Expected Completion Date</label>
+                    <input type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} className={iCls} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Basic Info ── */}
+              <div>
+                <SH label="Basic Information" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={lCls}>Category (Type of Product)</label>
+                    <select value={sgForm.CategoryID} onChange={e => {
+                      rfSG("CategoryID", e.target.value);
+                      const cat = dropData.categories.find(c => c.CategoryID === e.target.value);
+                      if (cat) rfSG("TypeOfProduct", cat.CategoryName);
+                    }} className={iCls}>
+                      <option value="">-- Select Category --</option>
+                      {dropData.categories.map(c => <option key={c.CategoryID} value={c.CategoryID}>{c.CategoryName}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={lCls}>Sub Type (Content)</label>
+                    <input value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} className={iCls} placeholder="e.g. Pouch, Sachet…" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Artwork Description</label>
+                    <textarea value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)}
+                      rows={2} placeholder="Describe the artwork…" className={iCls} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lCls}>Remarks</label>
+                    <textarea value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)}
+                      rows={2} placeholder="Internal notes…" className={iCls} />
                   </div>
                 </div>
               </div>

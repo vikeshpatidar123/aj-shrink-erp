@@ -11,6 +11,7 @@ import { ProductCatalogProvider } from "@/context/ProductCatalogContext";
 import { ExtrusionCatalogProvider } from "@/context/ExtrusionCatalogContext";
 import { MastersProvider } from "@/context/MastersContext";
 import { ToastProvider } from "@/components/ui/Toast";
+import { LoaderProvider } from "@/components/ui/GravureLoader";
 import ERPChatBot from "@/components/gravure/ERPChatBot";
 
 const pageTitles: Record<string, string> = {
@@ -83,6 +84,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
+    <LoaderProvider>
     <PermissionsProvider>
     <ExtrusionCatalogProvider>
     <MastersProvider>
@@ -96,6 +98,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           desktopOpen={desktopOpen}
           onClose={() => setMobileOpen(false)}
           onNavClick={() => setDesktopOpen(false)}
+          onToggle={() => setDesktopOpen(o => !o)}
         />
         <div className="flex flex-col min-w-0" style={{ flex: 1, overflow: "hidden" }}>
           <Topbar onMenuClick={handleMenuClick} title={title} />
@@ -115,6 +118,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </MastersProvider>
     </ExtrusionCatalogProvider>
     </PermissionsProvider>
+    </LoaderProvider>
     </ToastProvider>
   );
 }
