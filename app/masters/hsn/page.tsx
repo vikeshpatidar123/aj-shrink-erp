@@ -4,18 +4,19 @@ import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/producthsnmasterShrink`;
 
-// Ã¢"â‚¬Ã¢"â‚¬ Unwrap triple-encoded JSON Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// ── Unwrap triple-encoded JSON ───────────────────────────────────────────────
 function unwrap(raw: any): any {
   let r = raw;
   while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
   return r;
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬ Shared UI Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// ── Shared UI ─────────────────────────────────────────────────────────────────
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -30,7 +31,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err: boolean | string | undefined) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// Ã¢"â‚¬Ã¢"â‚¬ Types Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// ── Types ──────────────────────────────────────────────────────────────────────
 type HSNRow = {
   id: string;
   ProductHSNID: string;
@@ -46,26 +47,31 @@ type HSNRow = {
   SGSTTaxPercentage: number;
   IGSTTaxPercentage: number;
   ItemGroupID: string;
+  ItemSubGroupID: string;
+  SubGroupType: string;
+  TypeSpecification: string;
   CreatedBy: string;
   CreatedDate: string;
   IsServiceHSN: boolean | number;
   IsExciseApplicable: boolean | number;
 };
 
-type ItemGroup = { ItemGRoupID: string; ItemGroupName: string };
-
-const PRODUCT_TYPES = ["Raw Material", "Consumables", "Finish Goods", "Capital Goods", "Tax / Service"];
+// ItemGroupCategory/ClassificationMode come straight from Item Group Master --
+// no hardcoded "Product Type" list here anymore. A group's ClassificationMode
+// decides whether the Sub Group 1/2/3 cascade applies; Category is just carried
+// through onto the HSN row for the list-view filter pills.
+type ItemGroup = { ItemGroupID: string; ItemGroupName: string; ItemGroupCategory: string; ClassificationMode: string };
 
 type FormState = {
   ProductHSNName: string;
   DisplayName: string;
   HSNCode: string;
   TariffNo: string;
-  ProductCategory: string;
   ItemGroupID: string;
   ItemSubGroupID: string;
   SubGroupType: string;
   TypeSpecification: string;
+  IsServiceHSN: boolean;
   GSTTaxPercentage: string;
   VATTaxPercentage: string;
   ExciseTaxPercentage: string;
@@ -74,22 +80,21 @@ type FormState = {
   CGSTTaxPercentage: string;
   SGSTTaxPercentage: string;
   IGSTTaxPercentage: string;
-  IsServiceHSN: boolean;
 };
 
 const blank = (): FormState => ({
   ProductHSNName: "", DisplayName: "", HSNCode: "", TariffNo: "",
-  ProductCategory: "", ItemGroupID: "", ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "",
+  ItemGroupID: "", ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "",
+  IsServiceHSN: false,
   GSTTaxPercentage: "0", VATTaxPercentage: "0",
   ExciseTaxPercentage: "0", MinimumExciseAmount: "0",
   IsExciseApplicable: false,
   CGSTTaxPercentage: "0", SGSTTaxPercentage: "0", IGSTTaxPercentage: "0",
-  IsServiceHSN: false,
 });
 
 const toBool = (v: any) => v === true || v === 1 || v === "True" || v === "true";
 
-// Ã¢"â‚¬Ã¢"â‚¬ Page Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// ── Page ───────────────────────────────────────────────────────────────────────
 export default function HSNPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<HSNRow[]>([]);
@@ -99,6 +104,7 @@ export default function HSNPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<HSNRow | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<FormState>(blank());
   const [filterCategory, setFilterCategory] = useState("All");
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -108,7 +114,7 @@ export default function HSNPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Load list Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── Load list ─────────────────────────────────────────────────────────────────
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/showlist`, { headers: authHeaders() })
@@ -139,23 +145,34 @@ export default function HSNPage() {
       .catch(() => {});
   }, [loadList]);
 
+  const selectedItemGroup = useMemo(
+    () => itemGroups.find(g => String(g.ItemGroupID) === form.ItemGroupID),
+    [itemGroups, form.ItemGroupID]
+  );
+  // Sub Group 1/2/3 cascade only applies to "Hierarchical" item groups (Raw Material
+  // types like Ink/Film). "Flat" groups (Sleeve, Capital Goods...) skip straight to
+  // HSN Code -- there's nothing under them to drill into.
+  const isHierarchical = selectedItemGroup?.ClassificationMode === "Hierarchical";
+  // Category isn't a separate hardcoded pick anymore -- it's carried straight through
+  // from the selected Item Group (or "Service" when this row isn't tied to an item at all).
+  const computedProductCategory = form.IsServiceHSN ? "Service" : (selectedItemGroup?.ItemGroupCategory || "");
+
   const [sgSubGroupOpts, setSgSubGroupOpts] = useState<{id: string; name: string}[]>([]);
   const [sgTypeOpts, setSgTypeOpts] = useState<{type: string; prefix: string}[]>([]);
   const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{spec: string; prefix: string}[]>([]);
 
-  // â”€â”€ Auto-computed DisplayName — declared after sgSubGroupOpts/itemGroups â”€â”€â”€
+  // ── Auto-computed DisplayName ──────────────────────────────────────────────────
   const autoDisplayName = useMemo(() => {
-    if (!form.ProductCategory) return "";
-    if (form.ProductCategory === "Raw Material") {
+    if (form.IsServiceHSN) return form.HSNCode.trim() ? `Service — ${form.HSNCode.trim()}` : "Service";
+    if (!selectedItemGroup) return "";
+    if (isHierarchical) {
       const sg1 = sgSubGroupOpts.find(o => o.id === form.ItemSubGroupID)?.name ?? "";
       const parts = [sg1, form.SubGroupType, form.TypeSpecification].filter(Boolean).join(" ").trim();
       if (parts) return parts;
-      return itemGroups.find(g => String(g.ItemGRoupID) === form.ItemGroupID)?.ItemGroupName ?? "Raw Material";
     }
-    if (form.HSNCode.trim()) return `${form.ProductCategory} — ${form.HSNCode.trim()}`;
-    return form.ProductCategory;
-  }, [form.ProductCategory, form.ItemGroupID, form.ItemSubGroupID, form.SubGroupType,
-      form.TypeSpecification, form.HSNCode, sgSubGroupOpts, itemGroups]);
+    return selectedItemGroup.ItemGroupName;
+  }, [form.IsServiceHSN, form.HSNCode, selectedItemGroup, isHierarchical,
+      form.ItemSubGroupID, form.SubGroupType, form.TypeSpecification, sgSubGroupOpts]);
 
   const prevAutoRef = useRef("");
   useEffect(() => {
@@ -195,7 +212,7 @@ export default function HSNPage() {
     } catch { setSgTypeSpecOpts([]); }
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Open add Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── Open add ──────────────────────────────────────────────────────────────────
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -207,7 +224,7 @@ export default function HSNPage() {
     setView("form");
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Open edit Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── Open edit ─────────────────────────────────────────────────────────────────
   const openEdit = (row: HSNRow) => {
     setEditing(row);
     setError("");
@@ -216,11 +233,11 @@ export default function HSNPage() {
       DisplayName: row.DisplayName ?? "",
       HSNCode: row.HSNCode ?? "",
       TariffNo: row.TariffNo ?? "",
-      ProductCategory: row.ProductCategory ?? "",
       ItemGroupID: String(row.ItemGroupID ?? ""),
-      ItemSubGroupID: String((row as any).ItemSubGroupID ?? ""),
-      SubGroupType: (row as any).SubGroupType ?? "",
-      TypeSpecification: (row as any).TypeSpecification ?? "",
+      ItemSubGroupID: String(row.ItemSubGroupID ?? ""),
+      SubGroupType: row.SubGroupType ?? "",
+      TypeSpecification: row.TypeSpecification ?? "",
+      IsServiceHSN: toBool(row.IsServiceHSN),
       GSTTaxPercentage: String(row.GSTTaxPercentage ?? "0"),
       VATTaxPercentage: String(row.VATTaxPercentage ?? "0"),
       ExciseTaxPercentage: String(row.ExciseTaxPercentage ?? "0"),
@@ -229,13 +246,12 @@ export default function HSNPage() {
       CGSTTaxPercentage: String(row.CGSTTaxPercentage ?? "0"),
       SGSTTaxPercentage: String(row.SGSTTaxPercentage ?? "0"),
       IGSTTaxPercentage: String(row.IGSTTaxPercentage ?? "0"),
-      IsServiceHSN: toBool(row.IsServiceHSN),
     });
-    
-    // Load cascades if exist
+
+    // Restore the Sub Group cascade if this row has one
     const gID = String(row.ItemGroupID ?? "");
-    const sgID = String((row as any).ItemSubGroupID ?? "");
-    const type = (row as any).SubGroupType ?? "";
+    const sgID = String(row.ItemSubGroupID ?? "");
+    const type = row.SubGroupType ?? "";
 
     if (gID) loadSgSubGroups(gID);
     if (gID && sgID) loadSgTypes(gID, sgID);
@@ -244,40 +260,33 @@ export default function HSNPage() {
     setView("form");
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Save Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── Save ──────────────────────────────────────────────────────────────────────
   const saveHSN = async () => {
+    if (!can("/masters/hsn", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit HSN Master." : "You are not authorized to save HSN Master.");
+      return;
+    }
     setSubmitAttempted(true);
-    if (!form.ProductCategory) { setError("Product Type is required."); return; }
-    if (form.ProductCategory === "Raw Material" && !form.ItemGroupID) {
-      setError("Item Group is required for Raw Material."); return;
+    if (!form.IsServiceHSN && !form.ItemGroupID) {
+      setError("Item Group is required (or mark this as a Service HSN)."); return;
     }
     if (!form.HSNCode.trim()) { setError("HSN Code is required."); return; }
 
-    let autoName = form.ProductCategory;
-    if (form.ProductCategory === "Raw Material") {
-      const sg1Name = sgSubGroupOpts.find(o => o.id === form.ItemSubGroupID)?.name || "";
-      autoName = [sg1Name, form.SubGroupType, form.TypeSpecification].filter(Boolean).join(" ").trim();
-      if (!autoName) {
-         autoName = itemGroups.find(g => String(g.ItemGRoupID) === form.ItemGroupID)?.ItemGroupName || "Raw Material";
-      }
-    }
-    if (!autoName) autoName = "HSN " + form.HSNCode;
+    const finalDisplayName = form.DisplayName.trim() || autoDisplayName || ("HSN " + form.HSNCode);
 
     setSaving(true);
     setError("");
     try {
-      // AddColName excluded: ModifiedDate, CreatedDate, UserID, CompanyID, FYear, CreatedBy, ModifiedBy, ProductionUnitID
-      const finalDisplayName = form.DisplayName.trim() || autoName;
       const record: Record<string, any> = {
-        ProductHSNName: autoName,
+        ProductHSNName: autoDisplayName || finalDisplayName,
         HSNCode: form.HSNCode,
         DisplayName: finalDisplayName,
         TariffNo: form.TariffNo || null,
-        ProductCategory: form.ProductCategory,
-        ItemGroupID: form.ItemGroupID ? Number(form.ItemGroupID) : null,
-        ItemSubGroupID: form.ItemSubGroupID ? Number(form.ItemSubGroupID) : null,
-        SubGroupType: form.SubGroupType || null,
-        TypeSpecification: form.TypeSpecification || null,
+        ProductCategory: computedProductCategory,
+        ItemGroupID: form.IsServiceHSN ? null : (form.ItemGroupID ? Number(form.ItemGroupID) : null),
+        ItemSubGroupID: (!form.IsServiceHSN && isHierarchical && form.ItemSubGroupID) ? Number(form.ItemSubGroupID) : null,
+        SubGroupType: (!form.IsServiceHSN && isHierarchical) ? (form.SubGroupType || null) : null,
+        TypeSpecification: (!form.IsServiceHSN && isHierarchical) ? (form.TypeSpecification || null) : null,
         CGSTTaxPercentage: Number(form.CGSTTaxPercentage),
         SGSTTaxPercentage: Number(form.SGSTTaxPercentage),
         IsServiceHSN: form.IsServiceHSN,
@@ -327,8 +336,9 @@ export default function HSNPage() {
     setSaving(false);
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Delete Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── Delete ────────────────────────────────────────────────────────────────────
   const deleteHSN = async (id: string) => {
+    if (!can("/masters/hsn", "CanDelete")) { alert("You are not authorized to delete HSN Master."); return; }
     // Check if HSN is used in other modules first
     try {
       const chk = await fetch(`${BASE}/checkpermission/${id}`, { headers: authHeaders() });
@@ -353,7 +363,7 @@ export default function HSNPage() {
     }
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ List derived Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── List derived ──────────────────────────────────────────────────────────────
   const uniqueCategories = useMemo(() =>
     ["All", ...new Set(data.map(r => r.ProductCategory).filter(Boolean))],
     [data]);
@@ -362,7 +372,7 @@ export default function HSNPage() {
     filterCategory === "All" ? data : data.filter(r => r.ProductCategory === filterCategory),
     [data, filterCategory]);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ FORM VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── FORM VIEW ─────────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
       <div className="max-w-5xl mx-auto pb-10">
@@ -408,22 +418,20 @@ export default function HSNPage() {
             {/* Identity */}
             <div>
               <SectionTitle title="HSN Identity" />
+
+              <label className="flex items-center gap-2 cursor-pointer mb-6 w-fit">
+                <input type="checkbox" checked={form.IsServiceHSN}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setForm(p => ({ ...p, IsServiceHSN: checked, ItemGroupID: "", ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "" }));
+                    setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
+                  }}
+                  className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                <span className="text-sm font-medium text-gray-700">This is a Service HSN (not tied to any item)</span>
+              </label>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Field label="Product Type" required>
-                  <select value={form.ProductCategory}
-                    onChange={e => {
-                      f("ProductCategory", e.target.value);
-                      if (e.target.value !== "Raw Material") {
-                        setForm(p => ({ ...p, ItemGroupID: "", ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "" }));
-                        setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
-                      }
-                    }} className={ic(submitAttempted && !form.ProductCategory)}>
-                    <option value="">Select Type...</option>
-                    {PRODUCT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-                
-                {form.ProductCategory === "Raw Material" && (
+                {!form.IsServiceHSN && (
                   <>
                     <Field label="Item Group" required>
                       <select value={form.ItemGroupID}
@@ -431,52 +439,57 @@ export default function HSNPage() {
                           const v = e.target.value;
                           setForm(p => ({ ...p, ItemGroupID: v, ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "" }));
                           setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
-                          if (v) loadSgSubGroups(v);
-                        }} className={ic(submitAttempted && !form.ItemGroupID)}>
+                          const grp = itemGroups.find(g => String(g.ItemGroupID) === v);
+                          if (v && grp?.ClassificationMode === "Hierarchical") loadSgSubGroups(v);
+                        }} className={ic(submitAttempted && !form.IsServiceHSN && !form.ItemGroupID)}>
                         <option value="">Select Group...</option>
                         {itemGroups.map(g => (
-                          <option key={g.ItemGRoupID} value={String(g.ItemGRoupID)}>{g.ItemGroupName}</option>
+                          <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
                         ))}
                       </select>
                     </Field>
 
-                    <Field label="Sub Group 1">
-                      <select value={form.ItemSubGroupID}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setForm(p => ({ ...p, ItemSubGroupID: v, SubGroupType: "", TypeSpecification: "" }));
-                          setSgTypeOpts([]); setSgTypeSpecOpts([]);
-                          if (form.ItemGroupID && v) loadSgTypes(form.ItemGroupID, v);
-                        }} className={inputCls} disabled={!form.ItemGroupID}>
-                        <option value="">Select Sub Group 1...</option>
-                        {sgSubGroupOpts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                      </select>
-                    </Field>
+                    {isHierarchical && (
+                      <>
+                        <Field label="Sub Group 1">
+                          <select value={form.ItemSubGroupID}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setForm(p => ({ ...p, ItemSubGroupID: v, SubGroupType: "", TypeSpecification: "" }));
+                              setSgTypeOpts([]); setSgTypeSpecOpts([]);
+                              if (form.ItemGroupID && v) loadSgTypes(form.ItemGroupID, v);
+                            }} className={inputCls} disabled={!form.ItemGroupID}>
+                            <option value="">Select Sub Group 1...</option>
+                            {sgSubGroupOpts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                        </Field>
 
-                    <Field label="Sub Group 2">
-                      <select value={form.SubGroupType}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setForm(p => ({ ...p, SubGroupType: v, TypeSpecification: "" }));
-                          setSgTypeSpecOpts([]);
-                          if (form.ItemGroupID && form.ItemSubGroupID && v) loadSgTypeSpecs(form.ItemGroupID, form.ItemSubGroupID, v);
-                        }} className={inputCls} disabled={!form.ItemSubGroupID || sgTypeOpts.length === 0}>
-                        <option value="">Select Sub Group 2...</option>
-                        {sgTypeOpts.map(o => <option key={o.type} value={o.type}>{o.type}</option>)}
-                      </select>
-                    </Field>
+                        <Field label="Sub Group 2">
+                          <select value={form.SubGroupType}
+                            onChange={e => {
+                              const v = e.target.value;
+                              setForm(p => ({ ...p, SubGroupType: v, TypeSpecification: "" }));
+                              setSgTypeSpecOpts([]);
+                              if (form.ItemGroupID && form.ItemSubGroupID && v) loadSgTypeSpecs(form.ItemGroupID, form.ItemSubGroupID, v);
+                            }} className={inputCls} disabled={!form.ItemSubGroupID || sgTypeOpts.length === 0}>
+                            <option value="">Select Sub Group 2...</option>
+                            {sgTypeOpts.map(o => <option key={o.type} value={o.type}>{o.type}</option>)}
+                          </select>
+                        </Field>
 
-                    <Field label="Sub Group 3">
-                      <select value={form.TypeSpecification}
-                        onChange={e => f("TypeSpecification", e.target.value)}
-                        className={inputCls} disabled={!form.SubGroupType || sgTypeSpecOpts.length === 0}>
-                        <option value="">Select Sub Group 3...</option>
-                        {sgTypeSpecOpts.map(o => <option key={o.spec} value={o.spec}>{o.spec}</option>)}
-                      </select>
-                    </Field>
+                        <Field label="Sub Group 3">
+                          <select value={form.TypeSpecification}
+                            onChange={e => f("TypeSpecification", e.target.value)}
+                            className={inputCls} disabled={!form.SubGroupType || sgTypeSpecOpts.length === 0}>
+                            <option value="">Select Sub Group 3...</option>
+                            {sgTypeSpecOpts.map(o => <option key={o.spec} value={o.spec}>{o.spec}</option>)}
+                          </select>
+                        </Field>
+                      </>
+                    )}
                   </>
                 )}
-                
+
                 <Field label="HSN Code" required>
                   <input type="text" value={form.HSNCode}
                     onChange={e => f("HSNCode", e.target.value)}
@@ -496,6 +509,12 @@ export default function HSNPage() {
                     placeholder={autoDisplayName || "e.g. GST 18% on Services"}
                     className={inputCls} />
                 </Field>
+                {computedProductCategory && (
+                  <Field label="Product Category">
+                    <input type="text" value={computedProductCategory} readOnly
+                      className={inputCls + " bg-gray-50 text-gray-500 cursor-not-allowed"} />
+                  </Field>
+                )}
               </div>
             </div>
 
@@ -521,6 +540,7 @@ export default function HSNPage() {
                       onChange={e => f("IGSTTaxPercentage", e.target.value)} className={inputCls} />
                   </Field>
                 </div>
+                <p className="text-xs text-gray-400 mt-2">CGST + SGST must add up to GST. IGST must be 0 or equal to GST.</p>
               </div>
             )}
 
@@ -550,6 +570,7 @@ export default function HSNPage() {
                     </label>
                   </div>
                 </div>
+                <p className="text-xs text-gray-400 mt-2">CGST + SGST must add up to VAT. IGST must be 0 or equal to VAT.</p>
                 {form.IsExciseApplicable && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-4">
                     <Field label="Excise %">
@@ -564,22 +585,20 @@ export default function HSNPage() {
                 )}
               </div>
             )}
-
-
           </div>
         </div>
       </div>
     );
   }
 
-  // Ã¢"â‚¬Ã¢"â‚¬ LIST VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // ── LIST VIEW ─────────────────────────────────────────────────────────────────
   const columns: Column<HSNRow>[] = [
     { key: "ProductHSNID", header: "ID", sortable: true },
     { key: "ProductHSNName", header: "Group Name", sortable: true },
     { key: "HSNCode", header: "HSN Code", sortable: true },
     { key: "DisplayName", header: "Display Name" },
     {
-      key: "ProductCategory", header: "Product Type",
+      key: "ProductCategory", header: "Category",
       render: r => r.ProductCategory
         ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.ProductCategory}</span>
         : <span className="text-gray-400">—</span>,
@@ -617,15 +636,15 @@ export default function HSNPage() {
         </button>
       </div>
 
-      {/* Product Type filter pills */}
+      {/* Category filter pills */}
       {uniqueCategories.length > 1 && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Type</span>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Category</span>
             {uniqueCategories.map(c => (
               <button key={c} onClick={() => setFilterCategory(c)}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterCategory === c ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                {c === "All" ? "All Types" : c}
+                {c === "All" ? "All Categories" : c}
               </button>
             ))}
           </div>

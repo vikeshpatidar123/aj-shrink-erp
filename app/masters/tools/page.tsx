@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List, ChevronRight } from "lucide
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/toolmaster`;
@@ -87,6 +88,7 @@ export default function ToolMasterPage() {
   const [prefixOptions, setPrefixOptions] = useState<string[]>([]);
   const [toolNumber, setToolNumber] = useState(""); // auto-generated tool code for new tool
   const [editing, setEditing] = useState<ToolRow | null>(null);
+  const { can } = usePermissions();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -327,6 +329,10 @@ export default function ToolMasterPage() {
 
   // ── Save ───────────────────────────────────────────────────────────────────────
   const saveTool = async () => {
+    if (!can("ToolMaster.aspx", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Tool Master." : "You are not authorized to save Tool Master.");
+      return;
+    }
     setSubmitAttempted(true);
     if (!String(formValues.ToolName ?? "").trim()) {
       setError("Tool Name is required.");
@@ -433,6 +439,7 @@ export default function ToolMasterPage() {
 
   // ── Delete ─────────────────────────────────────────────────────────────────────
   const deleteTool = async (row: ToolRow) => {
+    if (!can("ToolMaster.aspx", "CanDelete")) { alert("You are not authorized to delete Tool Master."); return; }
     if (!confirm("Delete this tool?")) return;
     try {
       const permRes = await fetch(`${BASE}/checkpermission/${row.ToolID}`, { headers: authHeaders() });

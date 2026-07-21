@@ -4,13 +4,13 @@ import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
 import { usePathname } from "next/navigation";
 import { UnitProvider } from "@/context/UnitContext";
+import { PermissionsProvider } from "@/context/PermissionsContext";
 import { CategoriesProvider } from "@/context/CategoriesContext";
 import { EnquiryProvider } from "@/context/EnquiryContext";
 import { ProductCatalogProvider } from "@/context/ProductCatalogContext";
 import { ExtrusionCatalogProvider } from "@/context/ExtrusionCatalogContext";
 import { MastersProvider } from "@/context/MastersContext";
 import { ToastProvider } from "@/components/ui/Toast";
-import { LoaderProvider } from "@/components/ui/GravureLoader";
 import ERPChatBot from "@/components/gravure/ERPChatBot";
 
 const pageTitles: Record<string, string> = {
@@ -41,7 +41,6 @@ const pageTitles: Record<string, string> = {
   "/gravure/workorder": "Gravure Work Order",
   "/production": "Production Entry",
   "/gravure/production": "Gravure Production",
-  "/masters/categories":                  "Finish Goods Category Master",
   "/gravure/artwork-management":          "Artwork Library",
   "/gravure/cylinder-management":         "Cylinder Management",
   "/gravure/artwork-management/designer": "Designer Tab",
@@ -84,7 +83,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastProvider>
-    <LoaderProvider>
+    <PermissionsProvider>
     <ExtrusionCatalogProvider>
     <MastersProvider>
     <ProductCatalogProvider>
@@ -96,8 +95,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           mobileOpen={mobileOpen}
           desktopOpen={desktopOpen}
           onClose={() => setMobileOpen(false)}
-          onDesktopToggle={() => setDesktopOpen(o => !o)}
-          onNavClick={() => { if (typeof window !== "undefined" && window.innerWidth < 1024) setMobileOpen(false); }}
+          onNavClick={() => setDesktopOpen(false)}
         />
         <div className="flex flex-col min-w-0" style={{ flex: 1, overflow: "hidden" }}>
           <Topbar onMenuClick={handleMenuClick} title={title} />
@@ -116,7 +114,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </ProductCatalogProvider>
     </MastersProvider>
     </ExtrusionCatalogProvider>
-    </LoaderProvider>
+    </PermissionsProvider>
     </ToastProvider>
   );
 }

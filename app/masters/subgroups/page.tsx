@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/itemmasterShrink`;
@@ -47,6 +48,8 @@ type UnderGroup = {
   ItemGroupName: string;
   ItemGroupCategory: string;
   ItemGroupPrefix: string;
+  RequiresSubGroupPrefix?: boolean | string | number;
+  ClassificationMode?: string;
 };
 
 type SubGroupSpec = {
@@ -83,6 +86,7 @@ export default function SubGroupPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<SubGroupRow | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<FormState>(blank());
   const [filterGroup, setFilterGroup] = useState("All");
   const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -173,6 +177,10 @@ export default function SubGroupPage() {
 
   // ── Save ──────────────────────────────────────────────────────────────────────
   const saveGroup = async () => {
+    if (!can("/masters/subgroups", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit SubGroup Master." : "You are not authorized to save SubGroup Master.");
+      return;
+    }
     setSubmitAttempted(true);
     if (!String(form.ItemSubGroupName ?? "").trim()) { setError("Sub Group Name is required."); return; }
     if (!String(form.ItemSubGroupDisplayName ?? "").trim()) { setError("Display Name is required."); return; }
@@ -224,6 +232,8 @@ export default function SubGroupPage() {
         setView("list");
       } else if (result === "Exist") {
         setError("A sub group with this name already exists.");
+      } else if (result === "Prefix Exist") {
+        setError("This Sub Group Prefix is already used by another sub group. Choose a different prefix.");
       } else {
         setError("Save failed: " + result);
       }
@@ -236,6 +246,7 @@ export default function SubGroupPage() {
   // ── Save Specification ────────────────────────────────────────────────────────
   const saveSpec = async () => {
     if (!editing) return;
+    if (!can("/masters/subgroups", "CanSave")) { alert("You are not authorized to save SubGroup Master."); return; }
     if (!specForm.SubGroupType.trim()) { setError("Sub Group 2 is required."); return; }
     if (!specForm.SubGroupTypePrefix.trim()) { setError("Sub Group 2 prefix is required."); return; }
 
@@ -301,6 +312,8 @@ export default function SubGroupPage() {
         setError("");
       } else if (result === "Exist") {
         setError("This Type and Specification combination already exists.");
+      } else if (typeof result === "string" && result.includes("already used by")) {
+        setError(result);
       } else {
         setError("Specification save failed: " + result);
       }
@@ -312,6 +325,7 @@ export default function SubGroupPage() {
 
   // ── Delete ────────────────────────────────────────────────────────────────────
   const deleteGroup = async (row: SubGroupRow) => {
+    if (!can("/masters/subgroups", "CanDelete")) { alert("You are not authorized to delete SubGroup Master."); return; }
     if (!confirm("Delete this sub group and all its specifications?")) return;
     try {
       const res = await fetch(`${BASE}/delete-group`, {
@@ -331,6 +345,7 @@ export default function SubGroupPage() {
   };
 
   const deleteSpec = async (spec: SubGroupSpec) => {
+    if (!can("/masters/subgroups", "CanDelete")) { alert("You are not authorized to delete SubGroup Master."); return; }
     if (!confirm("Delete this specification?")) return;
     try {
       const res = await fetch(`${BASE}/delete-subgroup-spec`, {
@@ -389,13 +404,30 @@ export default function SubGroupPage() {
     return result;
   }, [data, filterGroup, filterSubGroupName, filterType, allSpecs, underGroups]);
 
+  // Sub Group Master (Type/Spec drill-down) only makes sense for "Hierarchical" item
+  // groups (Raw Material types like Ink/Film). "Flat" groups (Sleeve, Capital Goods...)
+  // are a single fixed identity -- their prefix lives directly on Item Group Master.
+  const isHierarchical = (g?: UnderGroup) => g?.ClassificationMode === "Hierarchical";
+
+  // Dropdown only offers Hierarchical groups going forward, but if we're editing a
+  // legacy row whose parent is a Flat group, keep that option visible so the field
+  // doesn't silently blank out and the row stays editable.
+  const underGroupOptions = useMemo(() => {
+    const hierarchical = underGroups.filter(isHierarchical);
+    if (editing?.UnderSubGroupID && !hierarchical.some(g => String(g.ItemGroupID) === String(editing.UnderSubGroupID))) {
+      const legacy = underGroups.find(g => String(g.ItemGroupID) === String(editing.UnderSubGroupID));
+      if (legacy) return [...hierarchical, legacy];
+    }
+    return hierarchical;
+  }, [underGroups, editing]);
+
   const selectedGroupIsConsumable = useMemo(() => {
     if (!form.UnderSubGroupID) return false;
     const grp = underGroups.find(g => String(g.ItemGroupID) === String(form.UnderSubGroupID));
     if (!grp) return false;
-    const cat = (grp.ItemGroupCategory || "").toLowerCase().trim();
-    const name = (grp.ItemGroupName || "").toLowerCase().trim();
-    return cat === "consumable" || cat === "consumables" || cat === "other material" || /other[\s-]*material/i.test(name);
+    // A group needs a manual prefix here only if it's NOT Hierarchical -- Hierarchical
+    // groups get their prefixes from Type/Spec rows instead (see save-subgroup-spec).
+    return !isHierarchical(grp);
   }, [form.UnderSubGroupID, underGroups]);
 
   // ── FORM VIEW ─────────────────────────────────────────────────────────────────
@@ -468,7 +500,7 @@ export default function SubGroupPage() {
                       onChange={e => { f("UnderSubGroupID", e.target.value); f("SubGroupPrefix", ""); }}
                       className={inputCls}>
                       <option value="">— Select Group —</option>
-                      {underGroups.map(g => (
+                      {underGroupOptions.map(g => (
                         <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>
                           {g.ItemGroupName}
                         </option>

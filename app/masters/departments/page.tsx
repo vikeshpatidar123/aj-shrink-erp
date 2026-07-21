@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermasterShrink`;
@@ -49,6 +50,7 @@ export default function DepartmentMasterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<DeptRow | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<FormState>(blank());
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [companyName] = useState(() =>
@@ -90,6 +92,10 @@ export default function DepartmentMasterPage() {
 
   // â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const saveDept = async () => {
+    if (!can("/masters/departments", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Department Master." : "You are not authorized to save Department Master.");
+      return;
+    }
     setSubmitAttempted(true);
     if (!String(form.DepartmentName ?? "").trim()) { setError("Department Name is required."); return; }
     setSaving(true);
@@ -144,6 +150,7 @@ export default function DepartmentMasterPage() {
 
   // â”€â”€ Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const deleteDept = async (row: DeptRow) => {
+    if (!can("/masters/departments", "CanDelete")) { alert("You are not authorized to delete Department Master."); return; }
     if (!confirm("Delete this department?")) return;
     try {
       const res = await fetch(`${BASE}/delete-department/${row.DepartmentID}`, {

@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -236,6 +237,7 @@ export default function MachineMasterPage() {
 
   // ── Form state ────────────────────────────────────────────────────────────
   const [editing, setEditing] = useState<any | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<MachineForm>(blank());
   const f = (k: keyof MachineForm, v: string) => setForm(p => ({ ...p, [k]: v }));
 
@@ -403,6 +405,10 @@ export default function MachineMasterPage() {
 
   // ── Save ──────────────────────────────────────────────────────────────────
   const saveMachine = async () => {
+    if (!can("/master/machine", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Machine Master." : "You are not authorized to save Machine Master.");
+      return;
+    }
     setSubmitAttempted(true);
     if (!form.MachineName) { setError("Machine Name is required."); return; }
     if (!form.DepartmentID) { setError("Department is required."); return; }
@@ -465,6 +471,7 @@ export default function MachineMasterPage() {
 
   // ── Delete ────────────────────────────────────────────────────────────────
   const deleteMachine = async (row: any) => {
+    if (!can("/master/machine", "CanDelete")) { alert("You are not authorized to delete Machine Master."); return; }
     const mid = String(row.MachineId ?? row.MachineID ?? "");
     if (!confirm("Delete this machine?")) return;
     await fetch(`${BASE_URL}/api/machinemasterShrink/deletemachinemaster`, {

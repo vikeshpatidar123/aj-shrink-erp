@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Save, List, Check, Loader2 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -77,9 +78,34 @@ function buildItemName(values: Record<string, any>, fields: any[], formula: stri
   return name;
 }
 
+// Some Flat groups' ItemNameFormula in the DB is stale/copy-pasted from the Raw Material
+// template (references Sub Group tokens a Flat group doesn't have — e.g. Sleeve's is
+// literally Ink's formula) and produces a blank name. ItemName is nullable at the DB level,
+// so a bad formula wouldn't error, it would just silently save an item with no name at all.
+// This is the last-resort guarantee: build something meaningful from whatever's actually
+// filled in, so a wrong/missing formula can never result in a nameless item.
+function buildFallbackItemName(groupName: string, values: Record<string, any>): string {
+  const parts: string[] = [];
+  const manufacturer = values["Manufecturer"] ?? values["Manufacturer"];
+  if (manufacturer && String(manufacturer).trim()) parts.push(String(manufacturer).trim());
+  const sizeW = values["SizeW"];
+  if (sizeW && String(sizeW).trim()) parts.push(String(sizeW).trim() + " MM");
+  const stockRef = values["StockRefCode"];
+  if (parts.length === 0 && stockRef && String(stockRef).trim()) parts.push(String(stockRef).trim());
+  return parts.length > 0 ? `${groupName} - ${parts.join(", ")}` : groupName;
+}
+
 // Fix 4: Extracted helper — identical 4-condition visibility check was repeated in two filter() calls
 function isFieldVisible(f: any): boolean {
   return f.IsDisplay !== false && f.IsDisplay !== 0 && f.IsDisplay !== "0" && f.IsDisplay !== null;
+}
+
+// Some Flat groups (Sleeve, OTHER MATERIAL) still carry hierarchy-* fields in their DB config,
+// copy-pasted from the Raw Material template. The dedicated cascade UI only renders for
+// Hierarchical groups (see hasCascadeFields), so these fields must never fall through to the
+// generic dynamic-fields grid — otherwise a Flat group shows empty, meaningless "Sub Group" boxes.
+function isHierarchyField(f: any): boolean {
+  return typeof f.FieldType === "string" && f.FieldType.startsWith("hierarchy-");
 }
 
 // ── Helper: unwrap triple-encoded JSON ─────────────────────────────────────────
@@ -101,7 +127,7 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
   const isHSN = /hsn/i.test(field.FieldName ?? "");
 
   const inner = () => {
-    if (field.FieldType === "selectbox") {
+    if (field.FieldType === "selectbox" || field.FieldType === "hsn-auto-select") {
       if (isHSN || !!field.IsLocked) {
         // HSN fields and locked cascading fields
         const finalOpts = [...options];
@@ -252,18 +278,32 @@ export default function ItemMasterPage() {
 
   // ── Dynamic form state ──────────────────────────────────────────────────────
   const [editing, setEditing] = useState<any | null>(null);
+  const { can } = usePermissions();
   const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
   const [formGroupID, setFormGroupID] = useState("");
   const [formGroupName, setFormGroupName] = useState("");
   const [formFields, setFormFields] = useState<any[]>([]);
 
-  // ── Cascade field detection — driven by DB metadata (FieldName) ────────────
-  // Sub Group 1 = ItemSubGroupID (fixed DB column name, always the same)
-  const subGroup1Field = useMemo(() => formFields.find(f => f.FieldName === "ItemSubGroupID"), [formFields]);
-  // Sub Group 2 = Quality (Film groups) OR ItemType (Ink/other groups) — detected by FieldName
-  const subGroup2Field = useMemo(() => formFields.find(f => ["Quality", "ItemType"].includes(f.FieldName)), [formFields]);
-  // Sub Group 3 = TypeSpecification / TypeSpacification (spelling varies across groups)
-  const subGroup3Field = useMemo(() => formFields.find(f => /typesp[ae]cification/i.test(f.FieldName ?? "")), [formFields]);
+  // ── Live grid state (real backend data) — declared early: hasCascadeFields below needs it ──
+  const [allGroups, setAllGroups] = useState<{ ItemGroupID: string; ItemGroupName: string; ItemGroupPrefix: string; ItemGroupCategory: string; ClassificationMode?: string }[]>([]);
+
+  // ── Cascade field detection ──────────────────────────────────────────────────
+  // Sub Group 1/2/3 are identified by FieldType first (hierarchy-select / hierarchy-cascade-2 /
+  // hierarchy-cascade-3) — NOT by FieldName. Ink/Solvent/Adhesive/Hardner each carry a hidden
+  // legacy "ItemType" field at the same FieldDrawSequence as the real "Quality" field, so a
+  // name-based lookup can silently bind to the wrong (hidden) one depending on row order.
+  const subGroup1Field = useMemo(
+    () => formFields.find(f => f.FieldType === "hierarchy-select") ?? formFields.find(f => f.FieldName === "ItemSubGroupID"),
+    [formFields]
+  );
+  const subGroup2Field = useMemo(
+    () => formFields.find(f => f.FieldType === "hierarchy-cascade-2") ?? formFields.find(f => ["Quality", "ItemType"].includes(f.FieldName)),
+    [formFields]
+  );
+  const subGroup3Field = useMemo(
+    () => formFields.find(f => f.FieldType === "hierarchy-cascade-3") ?? formFields.find(f => /typesp[ae]cification/i.test(f.FieldName ?? "")),
+    [formFields]
+  );
   // Supplier = Manufecturer / Manufacturer
   const supplierField = useMemo(() => formFields.find(f => /manufect?urer/i.test(f.FieldName ?? "")), [formFields]);
 
@@ -273,8 +313,15 @@ export default function ItemMasterPage() {
   // Alias kept for backward compat with useCallbacks that resolve locally
   const typeSpecFieldName = sg3FieldName;
 
-  // True for any group whose DB config includes an ItemSubGroupID field
-  const hasCascadeFields = !!subGroup1Field;
+  // Three-level cascade is strictly a Raw Material (Hierarchical) thing — driven by
+  // ItemGroupMaster.ClassificationMode, not by field presence. Several Flat groups (Sleeve,
+  // OTHER MATERIAL) have hierarchy-* fields copy-pasted into their config from the Raw Material
+  // template, so checking "does a hierarchy field exist" would wrongly turn the cascade on for
+  // them too. The selected group's own ClassificationMode is the only thing that decides this.
+  const hasCascadeFields = useMemo(() => {
+    const grp = allGroups.find(g => String(g.ItemGroupID) === String(formGroupID));
+    return grp?.ClassificationMode === "Hierarchical";
+  }, [formGroupID, allGroups]);
 
   // Dynamic set of field names rendered by the hardwired cascade section (excluded from DynamicField)
   const cascadeHandledNames = useMemo(() => new Set([
@@ -311,7 +358,6 @@ export default function ItemMasterPage() {
   const editPrefetchDone = useRef(false);
 
   // ── Live grid state (real backend data) ────────────────────────────────────
-  const [allGroups, setAllGroups] = useState<{ ItemGroupID: string; ItemGroupName: string; ItemGroupPrefix: string; ItemGroupCategory: string }[]>([]);
   const [gridData, setGridData] = useState<any[]>([]);
   const [gridLoading, setGridLoading] = useState(false);
   const [activeGroupID, setActiveGroupID] = useState("");
@@ -577,7 +623,10 @@ export default function ItemMasterPage() {
         opts[hn] = [];
       }
 
-      setSelectOpts(opts);
+      // Merge, not replace — loadFilteredHSN's effect can populate ProductHSNID moments
+      // before this (slower, multi-await) call finishes, and this loop never sets that key.
+      // A full replace here would silently wipe out an already-correct HSN dropdown.
+      setSelectOpts(prev => ({ ...prev, ...opts }));
       setFormValues(defaults);
       setFormStep("fill-form");
     } catch {
@@ -747,12 +796,14 @@ export default function ItemMasterPage() {
 
   // Dynamic HSN Code filtering based on Cascade Selections
   useEffect(() => {
-    if (!formGroupID || !hasCascadeFields) return;
+    if (!formGroupID) return;
     const loadFilteredHSN = async () => {
       const gID = Number(formGroupID);
-      const sg1 = Number(formValues[subGroup1Field?.FieldName ?? "ItemSubGroupID"]) || 0;
-      const type = formValues[sg2FieldName] || "";
-      const spec = formValues[sg3FieldName] || "";
+      // Flat groups (Sleeve, etc.) have no Sub Group cascade to filter by — HSN suggestion
+      // for them is scoped to ItemGroupID alone.
+      const sg1 = hasCascadeFields ? (Number(formValues[subGroup1Field?.FieldName ?? "ItemSubGroupID"]) || 0) : 0;
+      const type = hasCascadeFields ? (formValues[sg2FieldName] || "") : "";
+      const spec = hasCascadeFields ? (formValues[sg3FieldName] || "") : "";
 
       try {
         const payload = { ItemGroupID: gID, ItemSubGroupID: sg1, SubGroupType: type, TypeSpecification: spec };
@@ -789,20 +840,37 @@ export default function ItemMasterPage() {
 
   // Save item to backend
   const saveItem = async () => {
+    if (!can("/master/item", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Item Master." : "You are not authorized to save Item Master.");
+      return;
+    }
     setSubmitAttempted(true);
-    const missing = formFields.find(f => isFieldVisible(f) && f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
+    // Hierarchy fields (Sub Group 1/2/3) only apply to Hierarchical (Raw Material) groups.
+    // Several Flat groups (Sleeve, etc.) still carry these fields marked Required in their DB
+    // config, copy-pasted from the Raw Material template — since they're never rendered for a
+    // Flat group, they must never be able to block save with a field the user can't even see.
+    const missing = formFields.find(f =>
+      isFieldVisible(f) &&
+      f.IsRequiredFieldValidator &&
+      (hasCascadeFields || !isHierarchyField(f)) &&
+      !String(formValues[f.FieldName] ?? "").trim()
+    );
     if (missing) { setFormError((missing.FieldDisplayName || missing.FieldName) + " is required."); return; }
     setFormSaving(true);
     setFormError("");
     try {
+      const resolvedItemName = hasCascadeFields
+        ? sgItemName
+        : (buildItemName(formValues, formFields, itemNameFormula).trim() || buildFallbackItemName(formGroupName, formValues));
+
       const masterRecord: Record<string, any> = {
         ItemGroupID: formGroupID,
         ItemType: formGroupName,
         ...formValues,
-        ItemName: hasCascadeFields
-          ? sgItemName
-          : buildItemName(formValues, formFields, itemNameFormula),
-        ...(hasCascadeFields ? { ItemDisplayName: sgDisplayName } : {}),
+        ItemName: resolvedItemName,
+        // Flat groups have no cascade-derived display name — the grid shows this as its own
+        // "Item Display Name" column, so it must never be left blank; fall back to the resolved name.
+        ItemDisplayName: hasCascadeFields ? sgDisplayName : resolvedItemName,
       };
 
       formFields.forEach((f: any) => {
@@ -1005,6 +1073,7 @@ export default function ItemMasterPage() {
   };
 
   const deleteRow = (itemID: string, itemGroupID: string) => {
+    if (!can("/master/item", "CanDelete")) { alert("You are not authorized to delete Item Master."); return; }
     if (!confirm("Are you sure you want to delete this item?")) return;
     fetch(`${BASE_URL}/api/itemmasterShrink/deleteitem?itemID=${itemID}&itemgroupID=${itemGroupID}`, {
       method: "POST",
@@ -1111,9 +1180,9 @@ export default function ItemMasterPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 {(() => {
                   const catStr = (g: typeof allGroups[0]) => (g.ItemGroupCategory || "").toLowerCase().trim();
-                  const isCon  = (g: typeof allGroups[0]) => catStr(g) === "consumable" || catStr(g) === "consumables";
+                  const isCon = (g: typeof allGroups[0]) => catStr(g) === "consumable" || catStr(g) === "consumables";
                   const isCapG = (g: typeof allGroups[0]) => catStr(g) === "capital goods" || catStr(g) === "capital good";
-                  const rmGroups  = allGroups.filter(g => !isCon(g) && !isCapG(g));
+                  const rmGroups = allGroups.filter(g => !isCon(g) && !isCapG(g));
                   const conGroups = allGroups.filter(g => isCon(g));
                   const capGroups = allGroups.filter(g => isCapG(g));
                   const grpBtn = (grp: typeof allGroups[0]) => (
@@ -1321,7 +1390,7 @@ export default function ItemMasterPage() {
                       <SectionTitle title="Item Details" />
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {formFields
-                          .filter(f => isFieldVisible(f))
+                          .filter(f => isFieldVisible(f) && !isHierarchyField(f))
                           .map(field => (
                             <DynamicField
                               key={field.FieldName}
@@ -1425,34 +1494,34 @@ export default function ItemMasterPage() {
         <div className="flex flex-col gap-2">
           {/* Row 1: All Groups + Raw Material */}
           {(() => {
-              const cat = (g: typeof allGroups[0]) => (g.ItemGroupCategory || "").toLowerCase().trim();
-              const isCon  = (g: typeof allGroups[0]) => cat(g) === "consumable" || cat(g) === "consumables";
-              const isCapG = (g: typeof allGroups[0]) => cat(g) === "capital goods" || cat(g) === "capital good";
-              const rmGroups  = allGroups.filter(g => !isCon(g) && !isCapG(g));
-              const conGroups = allGroups.filter(g => isCon(g));
-              const capGroups = allGroups.filter(g => isCapG(g));
-              const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeGroupID === id
-                ? "bg-blue-50 text-blue-700 border-blue-300"
-                : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-                }`;
-              const Row = ({ label, groups }: { label: string; groups: typeof allGroups }) => (
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-28 flex-shrink-0">{label}</span>
-                  {groups.map(grp => (
-                    <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
-                      {grp.ItemGroupName}
-                    </button>
-                  ))}
-                </div>
-              );
-              return (
-                <>
-                  {rmGroups.length  > 0 && <Row label="Raw Material"  groups={rmGroups}  />}
-                  {conGroups.length > 0 && <Row label="Consumables"   groups={conGroups} />}
-                  {capGroups.length > 0 && <Row label="Capital Goods" groups={capGroups} />}
-                </>
-              );
-            })()}
+            const cat = (g: typeof allGroups[0]) => (g.ItemGroupCategory || "").toLowerCase().trim();
+            const isCon = (g: typeof allGroups[0]) => cat(g) === "consumable" || cat(g) === "consumables";
+            const isCapG = (g: typeof allGroups[0]) => cat(g) === "capital goods" || cat(g) === "capital good";
+            const rmGroups = allGroups.filter(g => !isCon(g) && !isCapG(g));
+            const conGroups = allGroups.filter(g => isCon(g));
+            const capGroups = allGroups.filter(g => isCapG(g));
+            const pillCls = (id: string) => `px-3 py-1 rounded-full text-xs font-medium border transition-colors ${activeGroupID === id
+              ? "bg-blue-50 text-blue-700 border-blue-300"
+              : "bg-white text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
+              }`;
+            const Row = ({ label, groups }: { label: string; groups: typeof allGroups }) => (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider w-28 flex-shrink-0">{label}</span>
+                {groups.map(grp => (
+                  <button key={grp.ItemGroupID} onClick={() => onGroupPillClick(grp)} className={pillCls(grp.ItemGroupID)}>
+                    {grp.ItemGroupName}
+                  </button>
+                ))}
+              </div>
+            );
+            return (
+              <>
+                {rmGroups.length > 0 && <Row label="Raw Material" groups={rmGroups} />}
+                {conGroups.length > 0 && <Row label="Consumables" groups={conGroups} />}
+                {capGroups.length > 0 && <Row label="Capital Goods" groups={capGroups} />}
+              </>
+            );
+          })()}
         </div>
       </div>
 

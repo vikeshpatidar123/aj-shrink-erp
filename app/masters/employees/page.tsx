@@ -4,8 +4,34 @@ import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
+
+// "Fetch from GST" is only offered for the Clients ledger group — matched by the well-known
+// LedgerGroupNameID (24 = Sundry Debtors/Clients in this schema's convention), not a hardcoded
+// LedgerGroupID, since that ID is per-company.
+const CLIENTS_LEDGER_GROUP_NAME_ID = 24;
+
+// Official GST state codes (first 2 digits of any GSTIN) → state name. This is the reliable way
+// to resolve "State" from a GST lookup — the portal's own jurisdiction/address text is free-form
+// and doesn't reliably string-match the State dropdown's master list, but these codes are a fixed,
+// government-published table that never changes.
+const GST_STATE_CODES: Record<string, string> = {
+  "01": "Jammu and Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
+  "05": "Uttarakhand", "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+  "10": "Bihar", "11": "Sikkim", "12": "Arunachal Pradesh", "13": "Nagaland", "14": "Manipur",
+  "15": "Mizoram", "16": "Tripura", "17": "Meghalaya", "18": "Assam", "19": "West Bengal",
+  "20": "Jharkhand", "21": "Odisha", "22": "Chhattisgarh", "23": "Madhya Pradesh", "24": "Gujarat",
+  "25": "Daman and Diu", "26": "Dadra and Nagar Haveli", "27": "Maharashtra",
+  "28": "Andhra Pradesh", "29": "Karnataka", "30": "Goa", "31": "Lakshadweep", "32": "Kerala",
+  "33": "Tamil Nadu", "34": "Puducherry", "35": "Andaman and Nicobar Islands", "36": "Telangana",
+  "37": "Andhra Pradesh (New)", "38": "Ladakh",
+};
+
+function isValidGstin(v: string): boolean {
+  return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v);
+}
 
 // â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function unwrap(raw: any): any {
@@ -147,6 +173,7 @@ export default function LedgerMasterPage() {
 
   // â"€â"€ Form state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const [editing, setEditing] = useState<any | null>(null);
+  const { can } = usePermissions();
   const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
   const [formGroupID, setFormGroupID] = useState("");
   const [formGroupName, setFormGroupName] = useState("");
@@ -158,8 +185,20 @@ export default function LedgerMasterPage() {
   const [formError, setFormError] = useState("");
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
+  // ── GST auto-fill (Clients group only) ──────────────────────────────────
+  const [gstPanelOpen, setGstPanelOpen] = useState(false);
+  const [gstin, setGstin] = useState("");
+  const [gstSessionId, setGstSessionId] = useState<string | null>(null);
+  const [gstCaptchaImage, setGstCaptchaImage] = useState<string | null>(null);
+  const [gstCaptchaValue, setGstCaptchaValue] = useState("");
+  const [gstCaptchaLoading, setGstCaptchaLoading] = useState(false);
+  const [gstVerifying, setGstVerifying] = useState(false);
+  const [gstError, setGstError] = useState("");
+  const [gstPreview, setGstPreview] = useState<{ label: string; value: string }[] | null>(null);
+  const [gstPreviewValues, setGstPreviewValues] = useState<Record<string, any> | null>(null);
+
   // â"€â"€ Grid state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-  const [allGroups, setAllGroups] = useState<{ LedgerGroupID: string; LedgerGroupName: string; LedgerGroupNameDisplay: string }[]>([]);
+  const [allGroups, setAllGroups] = useState<{ LedgerGroupID: string; LedgerGroupName: string; LedgerGroupNameDisplay: string; LedgerGroupNameID?: number }[]>([]);
   const [taxHsnList, setTaxHsnList] = useState<{ id: string; code: string; name: string; gst: string }[]>([]);
   const [gridData, setGridData] = useState<any[]>([]);
   const [gridLoading, setGridLoading] = useState(false);
@@ -239,7 +278,13 @@ export default function LedgerMasterPage() {
       const defaults: Record<string, any> = { ISLedgerActive: "true" };
       fields.forEach((f: any) => {
         let dv = prefill?.[f.FieldName] ?? f.FieldDefaultValue ?? "";
-        if (f.FieldType !== "checkbox" && (dv === "false" || dv === "null" || dv === null)) dv = "";
+        // Case-insensitive — a few groups' FieldDefaultValue is stored as "FALSE" (uppercase),
+        // which a case-sensitive check let through as a literal displayed value. Confirmed live:
+        // Consignee's CreditDays (an int column) got the literal text "FALSE" sent to it, and
+        // SQL Server's "Conversion failed when converting the varchar value 'FALSE' to data
+        // type int" blocked every single Consignee save.
+        const dvLower = typeof dv === "string" ? dv.toLowerCase() : dv;
+        if (f.FieldType !== "checkbox" && (dvLower === "false" || dvLower === "null" || dv === null)) dv = "";
         defaults[f.FieldName] = dv;
       });
       setFormValues(defaults);
@@ -307,7 +352,7 @@ export default function LedgerMasterPage() {
                 gst: String(h.GSTTaxPercentage ?? "0"),
               })));
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       setFormStep("fill-form");
@@ -317,17 +362,160 @@ export default function LedgerMasterPage() {
     setFormLoading(false);
   }, []);
 
+  // -- GST auto-fill: captcha + lookup --------------------------------------
+  const resetGstPanel = () => {
+    setGstin(""); setGstSessionId(null); setGstCaptchaImage(null); setGstCaptchaValue("");
+    setGstError(""); setGstPreview(null); setGstPreviewValues(null);
+  };
+
+  const openGstPanel = () => { resetGstPanel(); setGstPanelOpen(true); };
+  const closeGstPanel = () => { setGstPanelOpen(false); resetGstPanel(); };
+
+  const loadGstCaptcha = async () => {
+    setGstError(""); setGstCaptchaLoading(true); setGstCaptchaValue(""); setGstPreview(null); setGstPreviewValues(null);
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/getCaptcha`);
+      const data = await res.json();
+      if (data.error || !data.image || !data.sessionId) {
+        throw new Error(data.error || "Captcha response was incomplete.");
+      }
+      setGstSessionId(data.sessionId);
+      setGstCaptchaImage(data.image);
+    } catch (e: any) {
+      setGstSessionId(null);
+      setGstCaptchaImage(null);
+      setGstError(e.message || "Failed to load captcha.");
+    }
+    setGstCaptchaLoading(false);
+  };
+
+  // Structured address sub-fields (bno/bnm/flno/st/loc/city/dst/stcd/pncd) aren't always present --
+  // the portal sometimes only returns the flattened "adr" string. When structured fields exist we
+  // split cleanly across Address1/2/3 + City/Pincode; otherwise the whole string goes into
+  // Address1 untouched rather than guessing a comma-split that could silently misplace the City/
+  // State/Pincode into the wrong box.
+  const buildGstPreview = (d: any) => {
+    const addr = d?.pradr?.addr;
+    const flatAddr = d?.pradr?.adr || "";
+    const stateCode = typeof d?.gstin === "string" ? d.gstin.substring(0, 2) : "";
+    const stateName = GST_STATE_CODES[stateCode] || "";
+
+    const values: Record<string, any> = {
+      LegalName: d.lgnm || "",
+      LedgerName: d.tradeNam || d.lgnm || "",
+      MailingName: d.tradeNam || d.lgnm || "",
+      GSTNo: d.gstin || "",
+      Country: "India",
+      GSTVerifiedDate: new Date().toISOString().split("T")[0],
+    };
+
+    if (stateName) values.State = stateName;
+
+    if (addr) {
+      const line1 = [addr.bno, addr.bnm, addr.flno].filter(Boolean).join(", ");
+      const line2 = [addr.st, addr.loc].filter(Boolean).join(", ");
+      if (line1) values.Address1 = line1;
+      if (line2) values.Address2 = line2;
+      if (addr.landMark) values.Address3 = addr.landMark;
+      if (addr.city) values.City = addr.city;
+      if (addr.pncd) values.Pincode = addr.pncd;
+    } else if (flatAddr) {
+      values.Address1 = flatAddr;
+    }
+
+    // Best-effort match against this form's own GSTRegistrationType options -- never force an
+    // unrecognized value in.
+    const dty = (d.dty || "").toLowerCase();
+    const regTypeOpts = selectOpts["GSTRegistrationType"] || [];
+    const matchedRegType = regTypeOpts.find(o => o.label.toLowerCase() === dty || o.value.toLowerCase() === dty);
+    if (matchedRegType) values.GSTRegistrationType = matchedRegType.value;
+
+    const preview = [
+      { label: "Legal Name", value: values.LegalName },
+      { label: "Trade Name", value: values.MailingName },
+      { label: "GSTIN", value: values.GSTNo },
+      { label: "Status", value: d.sts || "" },
+      { label: "State", value: values.State || "(not matched)" },
+      { label: "Registration Type", value: matchedRegType ? matchedRegType.label : (d.dty ? `${d.dty} (not matched -- leave as-is)` : "") },
+      { label: "Address", value: values.Address1 ? [values.Address1, values.Address2, values.Address3].filter(Boolean).join(", ") : "" },
+    ].filter(row => row.value);
+
+    return { values, preview };
+  };
+
+  const verifyGst = async () => {
+    setGstError("");
+    const g = gstin.trim().toUpperCase();
+    if (!g) { setGstError("Please enter a GSTIN."); return; }
+    if (!isValidGstin(g)) { setGstError("That doesn't look like a valid 15-character GSTIN."); return; }
+    if (!gstSessionId) { setGstError("Please load the captcha first."); return; }
+    if (!gstCaptchaValue.trim()) { setGstError("Please enter the captcha text."); return; }
+
+    setGstVerifying(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/v1/getGSTDetails`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: gstSessionId, GSTIN: g, captcha: gstCaptchaValue.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.error) throw new Error(data.error);
+      if (data.errorCode || (data.error && data.error.message)) {
+        throw new Error((data.error && data.error.message) || data.message || "Verification failed.");
+      }
+      if (!data.gstin && !data.lgnm && !data.tradeNam) {
+        throw new Error(data.message || "No details returned -- the captcha may be wrong or the GSTIN invalid.");
+      }
+
+      const { values, preview } = buildGstPreview(data);
+      setGstPreviewValues(values);
+      setGstPreview(preview);
+      // Captcha is single-use server-side regardless of outcome.
+      setGstSessionId(null);
+      setGstCaptchaImage(null);
+      setGstCaptchaValue("");
+    } catch (e: any) {
+      setGstError(e.message || "Verification failed.");
+      setGstSessionId(null);
+      setGstCaptchaImage(null);
+      setGstCaptchaValue("");
+    }
+    setGstVerifying(false);
+  };
+
+  const applyGstPreview = () => {
+    if (!gstPreviewValues) return;
+    setFormValues(prev => ({ ...prev, ...gstPreviewValues }));
+    closeGstPanel();
+  };
+
   // â"€â"€ Save ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const saveLedger = async () => {
+    if (!can("/master/ledger", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Ledger Master." : "You are not authorized to save Ledger Master.");
+      return;
+    }
     setSubmitAttempted(true);
-    const missing = formFields.find(f => f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
+    // Hidden fields (IsDisplay=0) must never block save — several groups (Lead Master included)
+    // carry fields marked Required in the DB that aren't actually shown on this form; the user
+    // can't fill in something they can't see, so a hidden field can never count as "missing".
+    const isFieldVisible = (f: any) => f.IsDisplay !== false && f.IsDisplay !== 0 && f.IsDisplay !== "0" && f.IsDisplay !== null;
+    const missing = formFields.find(f => isFieldVisible(f) && f.IsRequiredFieldValidator && !String(formValues[f.FieldName] ?? "").trim());
     if (missing) { setFormError((missing.FieldDisplayName || missing.FieldName) + " is required."); return; }
     setFormSaving(true);
     setFormError("");
     try {
       // LedgerGroupID must NOT be in CostingDataLedgerMaster — backend adds it via AddColName/AddColValue
       // Sending it here causes "column specified more than once" SQL error
-      const { LedgerGroupID: _lgid, ...formValuesWithoutGroupID } = formValues;
+      //
+      // ProductHSNID/ProductHSNName must ALSO never be sent — LedgerMaster has no such columns
+      // at all (confirmed against the schema). They're configured as fields on the "Duties & Taxes"
+      // group purely so the custom HSN/SAC picker above can show a dropdown and auto-fill the real
+      // TaxPercentage column; the backend does a raw dynamic INSERT/UPDATE using whatever column
+      // names are present, so sending either of these two through was throwing "Invalid column
+      // name" and blocking every single Duties & Taxes save.
+      const { LedgerGroupID: _lgid, ProductHSNID: _phid, ProductHSNName: _phn, ...formValuesWithoutGroupID } = formValues;
       const masterRecord: Record<string, any> = { ...formValuesWithoutGroupID };
 
       // Sanitize — same pattern as ItemMaster to avoid varchar←'bigint/real errors
@@ -340,7 +528,8 @@ export default function LedgerMasterPage() {
           const n = Number(v);
           masterRecord[f.FieldName] = (v !== "" && v !== null && v !== undefined && !isNaN(n)) ? n : null;
         } else {
-          if (v === "false" || v === "null" || v === null || v === undefined || v === "") {
+          const vLower = typeof v === "string" ? v.toLowerCase() : v;
+          if (vLower === "false" || vLower === "null" || v === null || v === undefined || v === "") {
             masterRecord[f.FieldName] = null;
           }
         }
@@ -379,6 +568,7 @@ export default function LedgerMasterPage() {
 
   // â"€â"€ Delete ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const deleteLedger = async (row: any) => {
+    if (!can("/master/ledger", "CanDelete")) { alert("You are not authorized to delete Ledger Master."); return; }
     const ledgerID = row.LedgerID ?? row.id;
     if (!confirm("Delete this ledger?")) return;
     await fetch(`${BASE_URL}/api/ledgermasterShrink/deleteledger?ledgerID=${ledgerID}&ledgergroupID=${activeGroupID}`, {
@@ -510,7 +700,87 @@ export default function LedgerMasterPage() {
                 className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
                 ← Change Group
               </button>
+              {Number(allGroups.find(g => g.LedgerGroupID === formGroupID)?.LedgerGroupNameID) === CLIENTS_LEDGER_GROUP_NAME_ID && !gstPanelOpen && (
+                <button onClick={openGstPanel}
+                  className="ml-auto flex items-center gap-2 px-4 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
+                  Fetch from GST
+                </button>
+              )}
             </div>
+            {gstPanelOpen && (
+              <div className="px-6 py-5 border-b border-gray-100 bg-blue-50/40">
+                {gstError && (
+                  <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{gstError}</div>
+                )}
+
+                {!gstPreview ? (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">GSTIN</label>
+                      <input type="text" value={gstin} maxLength={15}
+                        onChange={e => setGstin(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                        placeholder="e.g. 23AAICI3328J1ZM"
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono tracking-wide w-56 focus:ring-2 focus:ring-blue-500 outline-none" />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Captcha</label>
+                      <div className="flex items-center gap-2">
+                        <div className="h-10 min-w-[140px] border border-gray-300 rounded-lg bg-white flex items-center justify-center overflow-hidden">
+                          {gstCaptchaImage ? (
+                            <img src={gstCaptchaImage} alt="captcha" className="h-full" />
+                          ) : (
+                            <span className="text-xs text-gray-400 px-3">{gstCaptchaLoading ? "Loading..." : "Not loaded"}</span>
+                          )}
+                        </div>
+                        <button onClick={loadGstCaptcha} disabled={gstCaptchaLoading}
+                          className="px-3 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-60">
+                          {gstCaptchaImage ? "Reload" : "Load Captcha"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Enter Captcha</label>
+                      <input type="text" value={gstCaptchaValue} maxLength={10} disabled={!gstCaptchaImage}
+                        onChange={e => setGstCaptchaValue(e.target.value)}
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-32 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
+                    </div>
+
+                    <button onClick={verifyGst} disabled={gstVerifying || !gstCaptchaImage}
+                      className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                      {gstVerifying ? <Loader2 size={14} className="animate-spin" /> : null}
+                      Verify GSTIN
+                    </button>
+                    <button onClick={closeGstPanel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-3">Found on GST portal, review before applying</p>
+                    <div className="bg-white rounded-lg border border-gray-200 divide-y divide-gray-100 mb-4">
+                      {gstPreview.map(row => (
+                        <div key={row.label} className="flex px-4 py-2 text-sm">
+                          <span className="w-40 text-gray-500 font-medium">{row.label}</span>
+                          <span className="text-gray-800">{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button onClick={applyGstPreview}
+                        className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+                        <Check size={14} /> Apply to Form
+                      </button>
+                      <button onClick={closeGstPanel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
+                        Discard
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-3">Every field stays editable after applying, review and adjust anything before saving.</p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="p-8">
               {formLoading ? (
@@ -544,9 +814,14 @@ export default function LedgerMasterPage() {
                             value={String(formValues.ProductHSNName ?? "")}
                             onChange={e => {
                               const selected = taxHsnList.find(h => h.id === e.target.value);
+                              const val = e.target.value ? Number(e.target.value) : null;
                               setFormValues(prev => ({
                                 ...prev,
-                                ProductHSNName: e.target.value ? Number(e.target.value) : null,
+                                // Both set so the "is this required field filled in" check passes —
+                                // neither actually reaches the backend (stripped out in saveLedger,
+                                // since LedgerMaster has no matching columns for either).
+                                ProductHSNName: val,
+                                ProductHSNID: val,
                                 ...(selected ? { TaxPercentage: selected.gst } : {}),
                               }));
                             }}

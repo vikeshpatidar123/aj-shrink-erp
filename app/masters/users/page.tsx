@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List, Users, Mail, Eye, EyeOff } 
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermasterShrink`;
@@ -154,7 +155,20 @@ const blank = (): FormState => ({
   ...blankFlags(),
 });
 
-type Tab = "profile" | "mailsettings";
+type Tab = "profile" | "mailsettings" | "moduleauth" | "submoduleauth";
+
+type CanFields = { CanView: boolean; CanSave: boolean; CanEdit: boolean; CanDelete: boolean; CanPrint: boolean; CanExport: boolean };
+type ModuleAuthRow = CanFields & { ModuleID: string; ModuleName: string; ModuleDisplayName: string; ModuleHeadName: string };
+type SubModuleAuthRow = CanFields & { GroupID: string; GroupType: "Item" | "Ledger"; GroupName: string };
+
+const CAN_COLS: { key: keyof CanFields; label: string }[] = [
+  { key: "CanView", label: "View" },
+  { key: "CanSave", label: "Save" },
+  { key: "CanEdit", label: "Edit" },
+  { key: "CanDelete", label: "Delete" },
+  { key: "CanPrint", label: "Print" },
+  { key: "CanExport", label: "Export" },
+];
 
 // ── PAGE ──────────────────────────────────────────────────────────────────────
 export default function UserMasterPage() {
@@ -164,6 +178,7 @@ export default function UserMasterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<UserRow | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<FormState>(blank());
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("profile");
@@ -177,6 +192,11 @@ export default function UserMasterPage() {
   const [states, setStates] = useState<{ State: string }[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
   const [productionUnits, setProductionUnits] = useState<any[]>([]);
+
+  // module / sub-module authority grids
+  const [moduleAuth, setModuleAuth] = useState<ModuleAuthRow[]>([]);
+  const [subModuleAuth, setSubModuleAuth] = useState<SubModuleAuthRow[]>([]);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const [companyName] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("companyName") || "User Master" : "User Master"
@@ -221,6 +241,48 @@ export default function UserMasterPage() {
     apiFetch(`${BASE}/getproductionunitlist`).then(r => setProductionUnits(Array.isArray(r) ? r : [])).catch(() => { });
   }, []);
 
+  // ── load module / sub-module authority for a user (0 = new/blank user → all unchecked) ──
+  const loadAuthority = async (userID: string) => {
+    setAuthLoading(true);
+    try {
+      const [mods, subs] = await Promise.all([
+        apiFetch(`${BASE}/getusermoduleauthority/${userID}`),
+        apiFetch(`${BASE}/getusersubmoduleauthority/${userID}`),
+      ]);
+      setModuleAuth(Array.isArray(mods) ? mods.map((m: any) => ({
+        ModuleID: String(m.ModuleID), ModuleName: m.ModuleName ?? "",
+        ModuleDisplayName: m.ModuleDisplayName ?? m.ModuleName ?? "",
+        ModuleHeadName: m.ModuleHeadName ?? "Other",
+        CanView: !!Number(m.CanView), CanSave: !!Number(m.CanSave), CanEdit: !!Number(m.CanEdit),
+        CanDelete: !!Number(m.CanDelete), CanPrint: !!Number(m.CanPrint), CanExport: !!Number(m.CanExport),
+      })) : []);
+      setSubModuleAuth(Array.isArray(subs) ? subs.map((s: any) => ({
+        GroupID: String(s.GroupID), GroupType: s.GroupType === "Ledger" ? "Ledger" : "Item",
+        GroupName: s.GroupName ?? "",
+        CanView: !!Number(s.CanView), CanSave: !!Number(s.CanSave), CanEdit: !!Number(s.CanEdit),
+        CanDelete: !!Number(s.CanDelete), CanPrint: !!Number(s.CanPrint), CanExport: !!Number(s.CanExport),
+      })) : []);
+    } catch {
+      setModuleAuth([]); setSubModuleAuth([]);
+    }
+    setAuthLoading(false);
+  };
+
+  const toggleModuleAuth = (moduleID: string, field: keyof CanFields, value: boolean) => {
+    if (moduleID === "ALL") {
+      setModuleAuth(prev => prev.map(r => ({ ...r, [field]: value })));
+    } else {
+      setModuleAuth(prev => prev.map(r => r.ModuleID === moduleID ? { ...r, [field]: value } : r));
+    }
+  };
+  const toggleSubModuleAuth = (groupKey: string, field: keyof CanFields, value: boolean) => {
+    if (groupKey === "ALL") {
+      setSubModuleAuth(prev => prev.map(r => ({ ...r, [field]: value })));
+    } else {
+      setSubModuleAuth(prev => prev.map(r => `${r.GroupType}-${r.GroupID}` === groupKey ? { ...r, [field]: value } : r));
+    }
+  };
+
   // ── open add ──────────────────────────────────────────────────────────────────
   const openAdd = () => {
     setEditing(null);
@@ -230,6 +292,7 @@ export default function UserMasterPage() {
     setSubmitAttempted(false);
     setShowPwd(false); setShowRePwd(false);
     setView("form");
+    loadAuthority("0");
   };
 
   // ── open edit ─────────────────────────────────────────────────────────────────
@@ -313,6 +376,7 @@ export default function UserMasterPage() {
       CanReceiveExcessMaterial: !!row.CanReceiveExcessMaterial,
     });
     setView("form");
+    loadAuthority(String(row.UserID));
   };
 
   // ── validate ──────────────────────────────────────────────────────────────────
@@ -330,6 +394,10 @@ export default function UserMasterPage() {
 
   // ── save ──────────────────────────────────────────────────────────────────────
   const saveUser = async () => {
+    if (!can("/master/user", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit User Master." : "You are not authorized to save User Master.");
+      return;
+    }
     setSubmitAttempted(true);
     const err = validate();
     if (err) { setError(err); return; }
@@ -396,11 +464,24 @@ export default function UserMasterPage() {
       CanReceiveExcessMaterial: form.CanReceiveExcessMaterial,
     }];
 
+    const userModuleAuthPayload = moduleAuth.map(m => ({
+      ModuleID: m.ModuleID, ModuleName: m.ModuleName,
+      CanView: m.CanView ? 1 : 0, CanSave: m.CanSave ? 1 : 0, CanEdit: m.CanEdit ? 1 : 0,
+      CanDelete: m.CanDelete ? 1 : 0, CanPrint: m.CanPrint ? 1 : 0, CanExport: m.CanExport ? 1 : 0,
+    }));
+    const userSubModuleAuthPayload = subModuleAuth.map(s => ({
+      ItemGroupID: s.GroupType === "Item" ? s.GroupID : 0,
+      LedgerGroupID: s.GroupType === "Ledger" ? s.GroupID : 0,
+      ModuleName: s.GroupName,
+      CanView: s.CanView ? 1 : 0, CanSave: s.CanSave ? 1 : 0, CanEdit: s.CanEdit ? 1 : 0,
+      CanDelete: s.CanDelete ? 1 : 0, CanPrint: s.CanPrint ? 1 : 0, CanExport: s.CanExport ? 1 : 0,
+    }));
+
     try {
       let result: any;
       if (editing) {
         const res = await fetch(`${BASE}/updateusermasterdata`, {
-          method: "PUT",
+          method: "POST",
           headers: { ...authHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify({
             LoginUserName: form.LoginUserName,
@@ -411,6 +492,9 @@ export default function UserMasterPage() {
             ModuleID: "0",
             ModuleName: "ModuleName",
             OperatorAllocation: [],
+            UserModuleAuthentication: userModuleAuthPayload,
+            UserSubModuleAuthentication: userSubModuleAuthPayload,
+            ProductionUnitData: [],
           }),
         });
         result = unwrap(await res.text());
@@ -425,6 +509,9 @@ export default function UserMasterPage() {
             SaveFlag: false,
             Userid: "",
             LoginUserName: form.LoginUserName,
+            UserModuleAuthentication: userModuleAuthPayload,
+            UserSubModuleAuthentication: userSubModuleAuthPayload,
+            ProductionUnitData: [],
           }),
         });
         result = unwrap(await res.text());
@@ -448,6 +535,7 @@ export default function UserMasterPage() {
 
   // ── delete ────────────────────────────────────────────────────────────────────
   const deleteUser = async (row: UserRow) => {
+    if (!can("/master/user", "CanDelete")) { alert("You are not authorized to delete User Master."); return; }
     if (!confirm(`Delete user "${row.UserName}"? This cannot be undone.`)) return;
     try {
       const res = await fetch(`${BASE}/deleteusermaster?Userid=${row.UserID}`, {
@@ -478,6 +566,8 @@ export default function UserMasterPage() {
     const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
       { id: "profile", label: "User Profile", icon: <Users size={14} /> },
       { id: "mailsettings", label: "Mail Settings", icon: <Mail size={14} /> },
+      { id: "moduleauth", label: "Module Authority", icon: <Check size={14} /> },
+      { id: "submoduleauth", label: "Sub-Module Authority", icon: <Check size={14} /> },
     ];
 
     return (
@@ -774,6 +864,124 @@ export default function UserMasterPage() {
                     </Field>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* ── TAB: MODULE AUTHORITY ── */}
+            {activeTab === "moduleauth" && (
+              <div>
+                <SectionTitle title="Module Authority" />
+                <p className="text-xs text-gray-400 mb-3">
+                  Grants this user access to each module. Use the &quot;All&quot; row to toggle an entire column at once.
+                </p>
+                {authLoading ? (
+                  <div className="flex items-center justify-center py-16 text-gray-400">
+                    <Loader2 className="animate-spin mr-2" size={18} /> Loading...
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-blue-700 text-white sticky top-0 z-10">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Module</th>
+                            {CAN_COLS.map(c => (
+                              <th key={c.key} className="px-3 py-2 text-center text-xs font-semibold uppercase">{c.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          <tr className="bg-blue-50">
+                            <td className="px-3 py-2 font-semibold text-blue-700">All</td>
+                            {CAN_COLS.map(c => (
+                              <td key={c.key} className="px-3 py-2 text-center">
+                                <input type="checkbox"
+                                  onChange={e => toggleModuleAuth("ALL", c.key, e.target.checked)} />
+                              </td>
+                            ))}
+                          </tr>
+                          {moduleAuth.map(row => (
+                            <tr key={row.ModuleID} className="hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">{row.ModuleHeadName}</div>
+                                <div className="text-gray-800 font-medium">{row.ModuleDisplayName}</div>
+                              </td>
+                              {CAN_COLS.map(c => (
+                                <td key={c.key} className="px-3 py-2 text-center">
+                                  <input type="checkbox" checked={row[c.key]}
+                                    onChange={e => toggleModuleAuth(row.ModuleID, c.key, e.target.checked)} />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                          {moduleAuth.length === 0 && (
+                            <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No modules found.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── TAB: SUB-MODULE AUTHORITY ── */}
+            {activeTab === "submoduleauth" && (
+              <div>
+                <SectionTitle title="Sub-Module Authority" />
+                <p className="text-xs text-gray-400 mb-3">
+                  Finer-grained access per Item Group / Ledger Group (e.g. restrict this user to only Clients, not Suppliers).
+                </p>
+                {authLoading ? (
+                  <div className="flex items-center justify-center py-16 text-gray-400">
+                    <Loader2 className="animate-spin mr-2" size={18} /> Loading...
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-blue-700 text-white sticky top-0 z-10">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Group</th>
+                            {CAN_COLS.map(c => (
+                              <th key={c.key} className="px-3 py-2 text-center text-xs font-semibold uppercase">{c.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          <tr className="bg-blue-50">
+                            <td className="px-3 py-2 font-semibold text-blue-700">All</td>
+                            {CAN_COLS.map(c => (
+                              <td key={c.key} className="px-3 py-2 text-center">
+                                <input type="checkbox"
+                                  onChange={e => toggleSubModuleAuth("ALL", c.key, e.target.checked)} />
+                              </td>
+                            ))}
+                          </tr>
+                          {subModuleAuth.map(row => (
+                            <tr key={`${row.GroupType}-${row.GroupID}`} className="hover:bg-gray-50">
+                              <td className="px-3 py-2">
+                                <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
+                                  {row.GroupType === "Item" ? "Item Group" : "Ledger Group"}
+                                </div>
+                                <div className="text-gray-800 font-medium">{row.GroupName}</div>
+                              </td>
+                              {CAN_COLS.map(c => (
+                                <td key={c.key} className="px-3 py-2 text-center">
+                                  <input type="checkbox" checked={row[c.key]}
+                                    onChange={e => toggleSubModuleAuth(`${row.GroupType}-${row.GroupID}`, c.key, e.target.checked)} />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                          {subModuleAuth.length === 0 && (
+                            <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No groups found.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

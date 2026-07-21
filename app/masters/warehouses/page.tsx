@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/WarehouseMasterShrink`;
@@ -79,6 +80,7 @@ export default function WarehouseMasterPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState<WarehouseRow | null>(null);
+  const { can } = usePermissions();
   const [form, setForm] = useState<FormState>(blank());
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [binInput, setBinInput] = useState("");
@@ -153,6 +155,10 @@ export default function WarehouseMasterPage() {
 
   // â”€â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const saveWarehouse = async () => {
+    if (!can("/masters/warehouses", editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit Warehouse Master." : "You are not authorized to save Warehouse Master.");
+      return;
+    }
     setSubmitAttempted(true);
     if (!form.WarehouseName.trim() || !form.RefWarehouseCode.trim() || form.Bins.length === 0) {
       setError("Please fill all required fields and ensure at least one Bin exists.");
@@ -196,6 +202,7 @@ export default function WarehouseMasterPage() {
 
   // â”€â”€â”€ Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const deleteWarehouse = async (row: WarehouseRow) => {
+    if (!can("/masters/warehouses", "CanDelete")) { alert("You are not authorized to delete Warehouse Master."); return; }
     if (!confirm(`Are you sure you want to delete warehouse "${row.WarehouseName}" and all its bins?`)) return;
     try {
       const res = await fetch(`${BASE}/Delete`, {
