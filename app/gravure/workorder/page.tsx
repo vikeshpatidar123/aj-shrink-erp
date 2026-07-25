@@ -4928,10 +4928,34 @@ export default function GravureWorkOrderPage() {
     <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
       {/* Page Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-4 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
+      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-3 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
         <div className="flex items-center gap-2">
           <Factory size={18} className="text-blue-600" />
           <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Work Order</h2>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+            <button onClick={() => setPageTab("pending")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${pageTab === "pending" ? "bg-white shadow text-orange-600" : "text-gray-500 hover:text-gray-700"}`}>
+              <Clock size={12} />Pending
+              {stats.pending > 0 && <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${pageTab === "pending" ? "bg-orange-100 text-orange-600" : "bg-gray-200 text-gray-600"}`}>{stats.pending}</span>}
+            </button>
+            <button onClick={() => setPageTab("workorders")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${pageTab === "workorders" ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
+              <Printer size={12} />Work Orders
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${pageTab === "workorders" ? "bg-purple-100 text-purple-700" : "bg-gray-200 text-gray-600"}`}>{workOrders.length}</span>
+            </button>
+          </div>
+          {[
+            { label: "Open",        val: stats.open,       cls: "bg-gray-100 text-gray-600" },
+            { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-100 text-yellow-700" },
+            { label: "Completed",   val: stats.completed,  cls: "bg-green-100 text-green-700" },
+          ].map(s => (
+            <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
+              {s.label} {s.val}
+            </span>
+          ))}
+          <TutorialButton title="Work Order — Tutorial" />
         </div>
       </div>
 
@@ -4941,37 +4965,7 @@ export default function GravureWorkOrderPage() {
       {/* ── Tab switcher snippet (reused in both toolbar slots) ── */}
       {/* ── PENDING ORDERS TAB ─────────────────────────────────── */}
       {pageTab === "pending" && (
-        <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
-          {/* Toolbar row — mirrors DataTable search-bar row */}
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 flex-1 sm:max-w-xs shadow-sm">
-              <Clock size={14} className="text-orange-500 flex-shrink-0" />
-              <span className="text-sm text-gray-400 select-none">Pending orders</span>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
-                <button onClick={() => setPageTab("pending")}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-orange-600">
-                  <Clock size={12} />Pending
-                  {stats.pending > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-600">{stats.pending}</span>}
-                </button>
-                <button onClick={() => setPageTab("workorders")}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
-                  <Printer size={12} />Work Orders
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{workOrders.length}</span>
-                </button>
-              </div>
-              {[
-                { label: "Open",        val: stats.open,       cls: "bg-gray-100 text-gray-600" },
-                { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-100 text-yellow-700" },
-                { label: "Completed",   val: stats.completed,  cls: "bg-green-100 text-green-700" },
-              ].map(s => (
-                <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
-                  {s.label} {s.val}
-                </span>
-              ))}
-            </div>
-          </div>
+        <div className="flex-1 overflow-hidden flex flex-col p-4">
           {/* List container */}
           <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           {pendingOrders.length === 0 ? (
@@ -5037,32 +5031,6 @@ export default function GravureWorkOrderPage() {
             initialSearch={initSearch}
             stickyHeader
             scrollContainerClass="flex-1"
-            toolbar={
-              <div className="flex items-center gap-2">
-                <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
-                  <button onClick={() => setPageTab("pending")}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
-                    <Clock size={12} />Pending
-                    {stats.pending > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.pending}</span>}
-                  </button>
-                  <button onClick={() => setPageTab("workorders")}
-                    className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-purple-700">
-                    <Printer size={12} />Work Orders
-                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{workOrders.length}</span>
-                  </button>
-                </div>
-                {[
-                  { label: "Open",        val: stats.open,       cls: "bg-gray-100 text-gray-600" },
-                  { label: "In Progress", val: stats.inProgress, cls: "bg-yellow-100 text-yellow-700" },
-                  { label: "Completed",   val: stats.completed,  cls: "bg-green-100 text-green-700" },
-                ].map(s => (
-                  <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
-                    {s.label} {s.val}
-                  </span>
-                ))}
-                <TutorialButton title="Work Order — Tutorial" />
-              </div>
-            }
             actions={row => (
               <div className="flex items-center gap-1.5 justify-end flex-wrap">
                 {/* Schedule Release checkbox */}
