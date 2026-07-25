@@ -107,46 +107,53 @@ body {
 }
 
 /* ── Form controls — indas-ui design ─────────────────── */
-/* Base in :where() → specificity 0 → Tailwind utility classes (bg-transparent, border-none, etc.) always win */
-:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])),
-:where(textarea),
-:where(select) {
-  background-color: rgb(var(--bg-surface));
-  color: rgb(var(--fg-default));
-  border-color: rgb(var(--bd-default));
-  border-radius: 0.375rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+/* Inside @layer base so Tailwind @layer utilities (bg-transparent, border-none, text-*) always win */
+@layer base {
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])),
+  :where(textarea),
+  :where(select) {
+    background-color: rgb(var(--bg-surface));
+    color: rgb(var(--fg-default));
+    border-color: rgb(var(--bd-default));
+    border-radius: 0.375rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):disabled),
+  :where(textarea:disabled),
+  :where(select:disabled) {
+    background-color: rgb(var(--bg-subtle));
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Focus — border-none and erp-topbar-input excluded (they handle their own focus) */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not(.border-none):not(.erp-topbar-input):focus,
+  textarea:not(.border-none):focus,
+  select:not(.border-none):focus {
+    outline: none;
+    border-color: rgb(var(--color-primary));
+    box-shadow: 0 0 0 2px rgba(0, 51, 102, 0.1);
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline: none;
+  }
 }
 
-/* Disabled */
-:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):disabled),
-:where(textarea:disabled),
-:where(select:disabled) {
-  background-color: rgb(var(--bg-subtle));
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Focus — excluded: borderless/transparent inputs (border-none) and dark topbar input */
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not(.border-none):not(.erp-topbar-input):focus,
-textarea:not(.border-none):focus,
-select:not(.border-none):focus {
-  outline: none !important;
-  border-color: rgb(var(--color-primary)) !important;
-  box-shadow: 0 0 0 2px rgba(0, 51, 102, 0.1) !important;
-}
-
-/* Suppress outline on all inputs (including excluded ones above) */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none !important;
-}
-
-/* Placeholder */
+/* Placeholder and topbar overrides — outside @layer so they win over everything */
 input::placeholder,
 textarea::placeholder {
   color: rgb(var(--fg-subtle)) !important;
+}
+
+input.erp-topbar-input {
+  background-color: transparent !important;
+  border: none !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+input.erp-topbar-input::placeholder {
+  color: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* ── Table row hover ───────────────────────────────────── */
@@ -370,13 +377,6 @@ input[type="radio"]:checked {
   background: rgba(255,255,255,0.22);
 }
 
-/* ── Dark topbar search input — overrides global !important ── */
-input.erp-topbar-input {
-  color: rgba(255, 255, 255, 0.88) !important;
-}
-input.erp-topbar-input::placeholder {
-  color: rgba(255, 255, 255, 0.55) !important;
-}
 
 /* ── Main content scrollbar — always visible, thin, neutral ── */
 main::-webkit-scrollbar {
