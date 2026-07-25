@@ -1,4 +1,6 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import React, { useState, useMemo, useEffect } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
@@ -6,7 +8,7 @@ import {
   BookMarked, Eye, Trash2, Clock, CheckCircle2,
   ShoppingCart, CheckCircle, AlertCircle, Lock, ArrowRight,
   RefreshCw, Save, Plus, X, Calculator, Layers, Check, Pencil,
-  ChevronRight, Eye as EyeIcon, Factory, Send, Package, Palette, Wrench, Archive, Copy, Search, Printer, FileText,
+  ChevronRight, Eye as EyeIcon, Factory, Send, Package, Palette, Wrench, Archive, Copy, Search, Printer, FileText, Info,
 } from "lucide-react";
 import {
   GravureProductCatalog, GravureOrder, GravureWorkOrder,
@@ -228,8 +230,15 @@ export default function ProductCatalogPage() {
 
   // ── Artwork picker ─────────────────────────────────────────
   type ArtworkPickerItem = { ArtworkID: string; ArtworkNo: string; ProductName: string; ClientName: string; LedgerID: string; CategoryID: string; CategoryName: string; TypeOfProduct: string; Content: string; PackSize: string; BrandName: string; ProductType: string; SkuType: string; BottleType: string; AddressType: string; ArtworkName: string; SpecialSpecs: string; };
-  const [artworkList, setArtworkList] = useState<ArtworkPickerItem[]>([]);
+  type ArtworkSubGroupItem = { SubGroupID: string; SubGroupNo: string; SubGroupName: string; Content: string; PackSize: string; BrandName: string; ProductType: string; SkuType: string; BottleType: string; AddressType: string; SpecialSpecs: string; };
+  const [artworkList,       setArtworkList]       = useState<ArtworkPickerItem[]>([]);
   const [selectedArtworkId, setSelectedArtworkId] = useState("");
+  const [sgList,            setSgList]            = useState<ArtworkSubGroupItem[]>([]);
+  const [selectedSgId,      setSelectedSgId]      = useState("");
+  const [sgLoading,         setSgLoading]         = useState(false);
+  const [showQuickChild,    setShowQuickChild]    = useState(false);
+  const [quickChildName,    setQuickChildName]    = useState("");
+  const [quickChildSaving,  setQuickChildSaving]  = useState(false);
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
@@ -247,8 +256,8 @@ export default function ProductCatalogPage() {
   const [replanPlanSort, setReplanPlanSort] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "", dir: "asc" });
   const [replanSelPlanId, setReplanSelPlanId] = useState("");
   const [upsPreviewPlan, setUpsPreviewPlan] = useState<any>(null);
-  const [cylGuideOpen, setCylGuideOpen] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<{ name: string; url: string; mimeType: string } | null>(null);
+  const [cylInvPopup, setCylInvPopup] = useState<{ code: string; x: number; y: number } | null>(null);
   const [printRow, setPrintRow] = useState<GravureProductCatalog | null>(null);
   const [contentPickerOpen, setContentPickerOpen] = useState(false);
 
@@ -392,7 +401,7 @@ export default function ProductCatalogPage() {
 
   // Load artwork list whenever the modal opens
   useEffect(() => {
-    if (!replanOpen) { setSelectedArtworkId(""); return; }
+    if (!replanOpen) { setSelectedArtworkId(""); setSelectedSgId(""); setSgList([]); return; }
     if (artworkList.length > 0) return;
     apiGet<unknown>("api/artworkManagement/listForPicker").then(raw => {
       let d = raw;
@@ -400,6 +409,58 @@ export default function ProductCatalogPage() {
       setArtworkList(Array.isArray(d) ? d : []);
     }).catch(() => {});
   }, [replanOpen]); // eslint-disable-line
+
+  // Load sub-groups when artwork changes
+  const loadSubGroups = (artworkId: string) => {
+    if (!artworkId) { setSgList([]); setSelectedSgId(""); setShowQuickChild(false); setQuickChildName(""); return; }
+    setSgLoading(true);
+    apiGet<unknown>(`api/artworkManagement/bbartwork/listByArtwork/${artworkId}`).then(raw => {
+      let d = raw;
+      while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
+      const arr = Array.isArray(d) ? d : [];
+      setSgList(arr.map((r: any) => ({
+        SubGroupID:   String(r.BBArtworkID ?? r.SubGroupID ?? ""),
+        SubGroupNo:   r.BBArtworkNo   ?? r.SubGroupNo   ?? "",
+        SubGroupName: r.BBArtworkName ?? r.SubGroupName ?? "",
+        Content:      r.Content      ?? "",
+        PackSize:     r.PackSize     ?? "",
+        BrandName:    r.BrandName    ?? "",
+        ProductType:  r.ProductType  ?? "",
+        SkuType:      r.SkuType      ?? "",
+        BottleType:   r.BottleType   ?? "",
+        AddressType:  r.AddressType  ?? "",
+        SpecialSpecs: r.SpecialSpecs ?? "",
+      })));
+    }).catch(() => setSgList([])).finally(() => setSgLoading(false));
+  };
+
+  const quickAddChildArtwork = async () => {
+    if (!quickChildName.trim() || !selectedArtworkId) return;
+    const parent = artworkList.find(a => String(a.ArtworkID) === String(selectedArtworkId));
+    setQuickChildSaving(true);
+    try {
+      await apiPost("api/artworkManagement/bbartwork/save", {
+        ArtworkID:        selectedArtworkId,
+        BBArtworkName:    quickChildName.trim(),
+        JobName:          parent?.ProductName || "",
+        LedgerID:         parent?.LedgerID || "",
+        CategoryID:       parent?.CategoryID || "",
+        Content:          parent?.Content || "",
+        PackSize:         parent?.PackSize || "",
+        BrandName:        parent?.BrandName || "",
+        ProductType:      parent?.ProductType || "",
+        SkuType:          parent?.SkuType || "",
+        BottleType:       parent?.BottleType || "",
+        AddressType:      parent?.AddressType || "",
+        ArtworkName:      parent?.ArtworkName || "",
+        SpecialSpecs:     parent?.SpecialSpecs || "",
+        Attachments:      [],
+      });
+      setQuickChildName("");
+      setShowQuickChild(false);
+      loadSubGroups(selectedArtworkId);
+    } catch { /* silent */ } finally { setQuickChildSaving(false); }
+  };
 
   const rf =<K extends keyof GravureProductCatalog>(k: K, v: GravureProductCatalog[K]) => {
     setReplanForm(p => {
@@ -425,7 +486,7 @@ export default function ProductCatalogPage() {
   const onPlyTypeChange = (index: number, plyType: string) => {
     if (!replanForm) return;
     const layers = [...replanForm.secondaryLayers];
-    layers[index] = { ...layers[index], plyType, consumableItems: [] };
+    layers[index] = { ...layers[index], plyType, consumableItems: [], itemId: "", itemName: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0 };
     rf("secondaryLayers", layers);
   };
 
@@ -718,7 +779,7 @@ export default function ProductCatalogPage() {
         if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return;
 
         // Match rubber impression sleeve where SizeW ≈ filmWidth (±10mm)
-        const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+        const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => parseFloat(s.printWidth) >= filmWidth && parseFloat(s.printWidth) <= filmWidth + 10);
         const slv = matchSlv.length > 0 ? matchSlv[0] : null;
         const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
         const sleeveCode = slv ? slv.code : "SPL-S";
@@ -804,7 +865,7 @@ export default function ProductCatalogPage() {
           const printingWidth = acUps * laneWidth;
 
           // Match rubber impression sleeve from Item Master (SizeW ≈ filmWidth ±10mm)
-          const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+          const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => parseFloat(s.printWidth) >= filmWidth && parseFloat(s.printWidth) <= filmWidth + 10);
           const slv = matchSlv.length > 0 ? matchSlv[0] : null;
           const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
           const sleeveCode = slv ? slv.code : "SPL-S";
@@ -886,7 +947,7 @@ export default function ProductCatalogPage() {
       if (filmWidth < machineMinFilm || filmWidth > machineMaxFilm) return [];
 
       // Match rubber impression sleeve (SizeW ≈ filmWidth ±10mm)
-      const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => Math.abs(parseFloat(s.printWidth) - filmWidth) <= 10);
+      const matchSlv = SLEEVE_TOOLS_LIVE.filter(s => parseFloat(s.printWidth) >= filmWidth && parseFloat(s.printWidth) <= filmWidth + 10);
       const slv = matchSlv.length > 0 ? matchSlv[0] : null;
       const sleeveWidthVal = slv ? parseFloat(slv.printWidth) : filmWidth;
       const sleeveCode = slv ? slv.code : "SPL-S";
@@ -1179,6 +1240,8 @@ export default function ProductCatalogPage() {
   const openReplan = (row: GravureProductCatalog) => {
     setIsNewCatalog(false);
     setSelectedArtworkId(String(row.artworkId || ""));
+    setSelectedSgId(String((row as any).artworkSubGroupId || ""));
+    if (row.artworkId) loadSubGroups(String(row.artworkId));
     const hydratedLayers = (row.secondaryLayers || []).map(l => {
       if (l.itemId && (!l.thickness || !l.density)) {
         const fi = items.find((x: any) => x.id === l.itemId);
@@ -1475,9 +1538,11 @@ export default function ProductCatalogPage() {
         await apiPost("api/artworkManagement/linkProductMaster", {
           ArtworkID: selectedArtworkId,
           ProductMasterID: productMasterID,
+          ArtworkSubGroupID: selectedSgId || null,
         });
       } catch { /* non-critical */ }
       setSelectedArtworkId("");
+      setSelectedSgId("");
     }
 
     showToast(
@@ -1884,7 +1949,7 @@ export default function ProductCatalogPage() {
                   <Button variant="ghost" size="sm" icon={<Eye size={13} />}
                     onClick={() => setViewPlanRow({ ...row, secondaryLayers: (row.secondaryLayers || []).filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx) })}>View</Button>
                   <Button variant="ghost" size="sm" icon={<Printer size={13} />}
-                    onClick={() => setPrintRow(row)}
+                    onClick={() => setPrintRow({ ...row, secondaryLayers: (row.secondaryLayers || []).filter((l, idx, arr) => arr.findIndex(x => x.layerNo === l.layerNo) === idx) })}
                     className="text-gray-700 hover:text-gray-900 hover:bg-gray-100">
                     Print
                   </Button>
@@ -1929,8 +1994,7 @@ export default function ProductCatalogPage() {
                     className={!row.isActive ? "text-gray-400 cursor-not-allowed" : "text-purple-700 hover:text-purple-800 hover:bg-purple-50"}>
                     Use in Estimation
                   </Button>
-                  <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
-                    onClick={() => setDeleteId(row.id)}>Delete</Button>
+                  <RowAction.Delete onClick={() => setDeleteId(row.id)} />
                 </div>
               )}
             />
@@ -1997,7 +2061,7 @@ export default function ProductCatalogPage() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     <Pill label="Substrate" value={sourceOrder.orderLines?.[0]?.substrate || sourceOrder.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
-                    <Pill label="Print Type" value={sourceOrder.orderLines?.[0]?.printType || sourceOrder.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
+                    <Pill label="Print Type" value={sourceOrder.orderLines?.[0]?.printType || sourceOrder.printType || "—"} cls="bg-purple-50 text-purple-700 border-blue-200" />
                     <Pill label="Colors" value={`${sourceOrder.noOfColors || 0} Colors`} cls="bg-blue-50 text-blue-700 border-blue-200" />
                     <Pill label="Job Width" value={`${sourceOrder.jobWidth || 0} mm`} />
                   </div>
@@ -2025,7 +2089,7 @@ export default function ProductCatalogPage() {
           title={isNewCatalog ? (replanForm.sourceOrderNo ? `Create Catalog — ${replanForm.sourceOrderNo}` : "Create Direct Catalog") : `Replan — ${replanForm.catalogNo}`} size="xl">
 
           {/* Header info */}
-          <div className={`border rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs ${isNewCatalog ? "bg-teal-50 border-teal-200" : "bg-purple-50 border-purple-200 shadow-sm"}`}>
+          <div className={`border rounded-xl p-3 mb-4 flex flex-wrap gap-4 text-xs ${isNewCatalog ? "bg-teal-50 border-teal-200" : "bg-purple-50 border-blue-200 shadow-sm"}`}>
             <div>
               <p className={`text-[10px] uppercase font-semibold ${isNewCatalog ? "text-teal-500" : "text-purple-500"}`}>PRODUCT NAME</p>
               <p className={`font-bold ${isNewCatalog ? "text-teal-800" : "text-purple-800"}`}>{replanForm.productName || "—"}</p>
@@ -2104,11 +2168,15 @@ export default function ProductCatalogPage() {
                     <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block mb-1.5">
                       Link Artwork Master (optional — auto-fills fields below)
                     </label>
-                    <select
+                    <SearchableSelect
                       value={selectedArtworkId}
-                      onChange={e => {
-                        const aw = artworkList.find(a => String(a.ArtworkID) === e.target.value);
-                        setSelectedArtworkId(e.target.value);
+                      placeholder="-- Select Artwork (optional) --"
+                      options={artworkList.map(a => ({ value: String(a.ArtworkID), label: `${a.ArtworkNo} — ${a.ProductName} (${a.ClientName})` }))}
+                      onChange={val => {
+                        const aw = artworkList.find(a => String(a.ArtworkID) === val);
+                        setSelectedArtworkId(val);
+                        setSelectedSgId("");
+                        loadSubGroups(val);
                         if (aw) {
                           rf("productName", aw.ProductName || "");
                           const ledgerId = String(aw.LedgerID);
@@ -2127,7 +2195,6 @@ export default function ProductCatalogPage() {
                           rf("addressType" as any, aw.AddressType || "");
                           rf("artworkName" as any, aw.ArtworkName || "");
                           rf("specialSpecs" as any, aw.SpecialSpecs || "");
-                          // Load artwork attachments into the Attachments section
                           const artBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
                           fetch(`${artBase}/api/artworkManagement/attachments/${aw.ArtworkID}`, { headers: authHeaders() })
                             .then(r => r.json())
@@ -2154,15 +2221,82 @@ export default function ProductCatalogPage() {
                           setReplanAttachments([]);
                         }
                       }}
-                      className="w-full text-sm border border-indigo-300 rounded-lg px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-indigo-500">
-                      <option value="">-- Select Artwork (optional) --</option>
-                      {artworkList.map(a => (
-                        <option key={a.ArtworkID} value={a.ArtworkID}>
-                          {a.ArtworkNo} — {a.ProductName} ({a.ClientName})
-                        </option>
-                      ))}
-                    </select>
+                      className="border-indigo-300"
+                    />
 
+                    {/* Child Artwork picker — shows only when an artwork is selected */}
+                    {selectedArtworkId && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                            Child Artwork
+                            {sgLoading && <span className="ml-2 text-[10px] font-normal text-gray-400">loading…</span>}
+                            {!sgLoading && sgList.length === 0 && !showQuickChild && <span className="ml-2 text-[10px] font-normal text-gray-400">(none yet)</span>}
+                          </label>
+                          {!showQuickChild && (
+                            <button
+                              type="button"
+                              onClick={() => router.push("/gravure/artwork-management")}
+                              className="flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors"
+                            >
+                              + Add Child Artwork
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Inline add form */}
+                        {showQuickChild && (
+                          <div className="flex gap-2 mb-2">
+                            <input
+                              value={quickChildName}
+                              onChange={e => setQuickChildName(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") quickAddChildArtwork(); if (e.key === "Escape") { setShowQuickChild(false); setQuickChildName(""); }}}
+                              placeholder="Child artwork name…"
+                              autoFocus
+                              className="flex-1 text-xs border border-indigo-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={quickAddChildArtwork}
+                              disabled={!quickChildName.trim() || quickChildSaving}
+                              className="text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                            >
+                              {quickChildSaving ? "Saving…" : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setShowQuickChild(false); setQuickChildName(""); }}
+                              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
+
+                        {sgList.length > 0 && (
+                          <SearchableSelect
+                            value={selectedSgId}
+                            placeholder="-- Select Child Artwork (optional) --"
+                            options={sgList.map(s => ({ value: String(s.SubGroupID), label: `${s.SubGroupNo} — ${s.SubGroupName}${s.PackSize ? ` (${s.PackSize})` : ""}` }))}
+                            onChange={val => {
+                              const sg = sgList.find(s => String(s.SubGroupID) === val);
+                              setSelectedSgId(val);
+                              if (sg) {
+                                if (sg.Content)      rf("content",      sg.Content);
+                                if (sg.PackSize)     rf("packSize"     as any, sg.PackSize);
+                                if (sg.BrandName)    rf("brandName"    as any, sg.BrandName);
+                                if (sg.ProductType)  rf("productType"  as any, sg.ProductType);
+                                if (sg.SkuType)      rf("skuType"      as any, sg.SkuType);
+                                if (sg.BottleType)   rf("bottleType"   as any, sg.BottleType);
+                                if (sg.AddressType)  rf("addressType"  as any, sg.AddressType);
+                                if (sg.SpecialSpecs) rf("specialSpecs" as any, sg.SpecialSpecs);
+                              }
+                            }}
+                            className="mt-1 border-indigo-300"
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2183,19 +2317,16 @@ export default function ProductCatalogPage() {
                       </div>
                     ) : (
                       <>
-                        <select
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                        <SearchableSelect
                           value={replanForm.customerId || ""}
-                          onChange={e => {
-                            const c = customers.find(x => x.id === e.target.value);
+                          placeholder="-- Select Customer --"
+                          options={customers.map(c => ({ value: c.id, label: c.name }))}
+                          onChange={val => {
+                            const c = customers.find(x => x.id === val);
                             rf("customerId", c?.id ?? "");
                             rf("customerName", c?.name ?? "");
-                          }}>
-                          <option value="">-- Select Customer --</option>
-                          {customers.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
+                          }}
+                        />
                         {replanForm.customerName && (
                           <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
                             <Check size={10} /> {replanForm.customerName}
@@ -2211,20 +2342,17 @@ export default function ProductCatalogPage() {
                       {/* Type of Product (was Category) */}
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Type of Product</label>
-                        <select
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                        <SearchableSelect
                           value={replanForm.categoryId || ""}
-                          onChange={e => {
-                            if (!e.target.value) { setReplanForm(p => p ? { ...p, categoryId: "", categoryName: "", content: "" } : p); return; }
+                          placeholder="-- Select Type --"
+                          options={categories.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))}
+                          onChange={val => {
+                            if (!val) { setReplanForm(p => p ? { ...p, categoryId: "", categoryName: "", content: "" } : p); return; }
                             const hasPlys = replanForm.secondaryLayers.some(l => l.plyType || (l.consumableItems || []).length > 0);
-                            if (hasPlys) { setPendingReplanCategoryId(e.target.value); }
-                            else { applyReplanCategory(e.target.value); }
-                          }}>
-                          <option value="">-- Select Type --</option>
-                          {categories.filter(c => c.status === "Active").map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
-                        </select>
+                            if (hasPlys) { setPendingReplanCategoryId(val); }
+                            else { applyReplanCategory(val); }
+                          }}
+                        />
                         {replanForm.categoryName && (
                           <p className="text-[10px] text-purple-600 mt-1 flex items-center gap-1">
                             <Check size={10} /> {replanForm.categoryName} — {replanForm.secondaryLayers.length} plys auto-loaded
@@ -2326,75 +2454,57 @@ export default function ProductCatalogPage() {
                       })()}
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Pack Size</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).packSize ?? ""}
-                          onChange={e => rf("packSize" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) && (
-                            <option value={(replanForm as any).packSize}>{(replanForm as any).packSize}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.packSizes, ...((replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) ? [(replanForm as any).packSize] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("packSize" as any, val)}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Brand Name</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).brandName ?? ""}
-                          onChange={e => rf("brandName" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) && (
-                            <option value={(replanForm as any).brandName}>{(replanForm as any).brandName}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.brandNames, ...((replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) ? [(replanForm as any).brandName] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("brandName" as any, val)}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Product Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).productType ?? ""}
-                          onChange={e => rf("productType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) && (
-                            <option value={(replanForm as any).productType}>{(replanForm as any).productType}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.productTypes, ...((replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) ? [(replanForm as any).productType] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("productType" as any, val)}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">SKU Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).skuType ?? ""}
-                          onChange={e => rf("skuType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) && (
-                            <option value={(replanForm as any).skuType}>{(replanForm as any).skuType}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.skuTypes, ...((replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) ? [(replanForm as any).skuType] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("skuType" as any, val)}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Bottle Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).bottleType ?? ""}
-                          onChange={e => rf("bottleType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) && (
-                            <option value={(replanForm as any).bottleType}>{(replanForm as any).bottleType}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.bottleTypes, ...((replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) ? [(replanForm as any).bottleType] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("bottleType" as any, val)}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Address Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
                           value={(replanForm as any).addressType ?? ""}
-                          onChange={e => rf("addressType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                          {(replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) && (
-                            <option value={(replanForm as any).addressType}>{(replanForm as any).addressType}</option>
-                          )}
-                        </select>
+                          placeholder="-- Select --"
+                          options={[...fmOptions.addressTypes, ...((replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) ? [(replanForm as any).addressType] : [])].map(v => ({ value: v, label: v }))}
+                          onChange={val => rf("addressType" as any, val)}
+                        />
                       </div>
                       <div className="sm:col-span-2">
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Artwork Name</label>
@@ -2436,13 +2546,16 @@ export default function ProductCatalogPage() {
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Print Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                        <SearchableSelect
                           value={replanForm.printType}
-                          onChange={e => rf("printType", e.target.value as GravureProductCatalog["printType"])}>
-                          <option value="Surface Print">Surface Print</option>
-                          <option value="Reverse Print">Reverse Print</option>
-                          <option value="Combination">Combination</option>
-                        </select>
+                          allowEmpty={false}
+                          options={[
+                            { value: "Surface Print", label: "Surface Print" },
+                            { value: "Reverse Print", label: "Reverse Print" },
+                            { value: "Combination",   label: "Combination" },
+                          ]}
+                          onChange={val => rf("printType", val as GravureProductCatalog["printType"])}
+                        />
                       </div>
                     </div>
 
@@ -2567,10 +2680,10 @@ export default function ProductCatalogPage() {
 
                 {/* ── Pouch Accessories — only shown for Pouch content types ── */}
                 {replanForm.content && sTypeGlobal === "Pouch" && (
-                  <div className="border border-purple-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
-                      <Wrench size={14} className="text-white" />
-                      <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+                  <div className="border border-blue-200 rounded-2xl overflow-hidden">
+                    <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2">
+                      <Wrench size={14} className="text-[#003366]" />
+                      <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Pouch Accessories &amp; Features</p>
                     </div>
                     <div className="p-4 bg-purple-50/40">
                       {/* Toggle chips — each toggles the boolean flag */}
@@ -2606,7 +2719,7 @@ export default function ProductCatalogPage() {
                       </div>
                       {/* Weight inputs — only for Zipper / Spout */}
                       {((replanForm as any).hasZipper || (replanForm as any).hasSpout) && (
-                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-blue-200 rounded-xl">
                           {(replanForm as any).hasZipper && (
                             <div className="flex flex-col gap-1 min-w-[160px]">
                               <label className="text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">Zipper Weight (g)</label>
@@ -2640,14 +2753,14 @@ export default function ProductCatalogPage() {
                 {/* ── Dimension Input + Live Diagram — hidden for MultiPackShrink (has its own layout section below) ── */}
                 {replanForm.content && CONTENT_TYPE_CONFIG[getDisplayContentType(replanForm.content)] && sTypeGlobal !== "MultiPackShrink" && (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
-                      <Calculator size={14} className="text-white" />
-                      <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {replanForm.content}</p>
-                      {(replanForm as any).hasZipper      && <span className="ml-auto px-2 py-0.5 bg-blue-400/30 text-white rounded-full text-[10px] font-semibold border border-blue-300/40">Zipper</span>}
-                      {(replanForm as any).hasSpout       && <span className="ml-auto px-2 py-0.5 bg-cyan-400/30  text-white rounded-full text-[10px] font-semibold border border-cyan-300/40">Spout</span>}
-                      {(replanForm as any).hasValve       && <span className="ml-auto px-2 py-0.5 bg-orange-400/30 text-white rounded-full text-[10px] font-semibold border border-orange-300/40">Degassing Valve</span>}
-                      {(replanForm as any).hasTearNotch   && <span className="ml-auto px-2 py-0.5 bg-rose-400/30   text-white rounded-full text-[10px] font-semibold border border-rose-300/40">Tear Notch</span>}
-                      {(replanForm as any).hasEuroHole    && <span className="ml-auto px-2 py-0.5 bg-violet-400/30 text-white rounded-full text-[10px] font-semibold border border-violet-300/40">Euro Hole</span>}
+                    <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                      <Calculator size={14} className="text-[#003366]" />
+                      <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Dimension Setup — {replanForm.content}</p>
+                      {(replanForm as any).hasZipper      && <span className="ml-auto px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full text-[10px] font-semibold">Zipper</span>}
+                      {(replanForm as any).hasSpout       && <span className="ml-auto px-2 py-0.5 bg-cyan-100  text-cyan-700  rounded-full text-[10px] font-semibold">Spout</span>}
+                      {(replanForm as any).hasValve       && <span className="ml-auto px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-semibold">Degassing Valve</span>}
+                      {(replanForm as any).hasTearNotch   && <span className="ml-auto px-2 py-0.5 bg-rose-100   text-rose-700   rounded-full text-[10px] font-semibold">Tear Notch</span>}
+                      {(replanForm as any).hasEuroHole    && <span className="ml-auto px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[10px] font-semibold">Euro Hole</span>}
                     </div>
 
                     {/* ── Sleeve / Pouch extra fields — auto-shown by content type ── */}
@@ -2838,7 +2951,7 @@ export default function ProductCatalogPage() {
                             </div>
                             <div>
                               <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Total Colors (Auto)</label>
-                              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center">{replanForm.noOfColors} Colors</div>
+                              <div className="px-3 py-2 bg-purple-50 border border-blue-200 rounded-xl text-sm font-bold text-purple-700 text-center">{replanForm.noOfColors} Colors</div>
                             </div>
                           </div>
                         </div>
@@ -3044,7 +3157,7 @@ export default function ProductCatalogPage() {
                             </div>
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Total Colors</label>
-                              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{replanForm.noOfColors} Colors</div>
+                              <div className="px-3 py-2 bg-purple-50 border border-blue-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{replanForm.noOfColors} Colors</div>
                             </div>
                           </div>
                         </div>
@@ -3209,7 +3322,7 @@ export default function ProductCatalogPage() {
                   <div className="flex items-center justify-between mb-2">
                     <SH label="Process List (from Process Master)" />
                     {apiProcesses.length > 0 ? (
-                      <button onClick={addReplanProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+                      <button onClick={addReplanProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
                         <Plus size={12} /> Add Process
                       </button>
                     ) : (
@@ -3233,13 +3346,17 @@ export default function ProductCatalogPage() {
                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">{i + 1}</span>
                               </td>
                               <td className="px-3 py-2 min-w-[200px]">
-                                <select value={String(pr.processId || "")} onChange={e => selectReplanProcess(i, e.target.value)} className={cellInput}>
-                                  <option value="">-- Select Process --</option>
-                                  {pr.processId && !apiProcesses.find(p => String(p.ProcessID) === String(pr.processId)) && (pr as any).processName && (
-                                    <option value={String(pr.processId)}>{(pr as any).processName}</option>
-                                  )}
-                                  {apiProcesses.map(p => <option key={p.ProcessID} value={String(p.ProcessID)}>{p.ProcessName} ({p.DepartmentName})</option>)}
-                                </select>
+                                <SearchableSelect
+                                  value={String(pr.processId || "")}
+                                  placeholder="-- Select Process --"
+                                  options={[
+                                    ...(pr.processId && !apiProcesses.find(p => String(p.ProcessID) === String(pr.processId)) && (pr as any).processName
+                                      ? [{ value: String(pr.processId), label: (pr as any).processName }] : []),
+                                    ...apiProcesses.map(p => ({ value: String(p.ProcessID), label: `${p.ProcessName} (${p.DepartmentName})` })),
+                                  ]}
+                                  onChange={val => selectReplanProcess(i, val)}
+                                  className="text-xs"
+                                />
                               </td>
                               <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeReplanProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                             </tr>
@@ -3274,7 +3391,7 @@ export default function ProductCatalogPage() {
                         let inputRef: HTMLInputElement | null = null;
                         return (
                           <div className="flex items-center gap-0 border border-purple-300 rounded-lg overflow-hidden bg-white">
-                            <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-purple-200 h-full flex items-center py-1.5">Add</span>
+                            <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-blue-200 h-full flex items-center py-1.5">Add</span>
                             <input
                               type="number" min={1} max={10} placeholder="1"
                               ref={el => { inputRef = el; }}
@@ -3293,7 +3410,7 @@ export default function ProductCatalogPage() {
                         const layers = [...replanForm.secondaryLayers];
                         layers.push({ id: Math.random().toString(), layerNo: layers.length + 1, plyType: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0, consumableItems: [] });
                         rf("secondaryLayers", layers);
-                      }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200">
+                      }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200">
                         <Plus size={12} /> Add Ply
                       </button>
                     </div>
@@ -3316,23 +3433,28 @@ export default function ProductCatalogPage() {
                             <div className="p-3 space-y-3">
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                                <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
-                                  <option value="">-- Select Ply Type --</option>
-                                  <option value="Film">Ply 1</option>
-                                  <option value="Printing">Ply 2</option>
-                                  <option value="Lamination">Ply 3</option>
-                                  <option value="Coating">Ply 4</option>
-                                </select>
+                                <SearchableSelect
+                                  value={l.plyType}
+                                  placeholder="-- Select Ply Type --"
+                                  options={[
+                                    { value: "Film",       label: "Ply 1" },
+                                    { value: "Printing",   label: "Ply 2" },
+                                    { value: "Lamination", label: "Ply 3" },
+                                    { value: "Coating",    label: "Ply 4" },
+                                  ]}
+                                  onChange={val => onPlyTypeChange(index, val)}
+                                />
                               </div>
                               {l.plyType && (
                                 <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                                   <div>
                                     <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
-                                    <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                    <SearchableSelect
                                       value={l.itemId || ""}
-                                      onChange={e => {
-                                        const fi = FILM_ITEMS.find((x: any) => x.id === e.target.value);
+                                      placeholder="-- Select Film Item --"
+                                      options={(FILM_ITEMS as any[]).map(fi => ({ value: fi.id, label: fi.name }))}
+                                      onChange={val => {
+                                        const fi = FILM_ITEMS.find((x: any) => x.id === val);
                                         if (!fi) return;
                                         const thickness = parseFloat((fi as any).thickness) || 0;
                                         const density = parseFloat((fi as any).density) || 0;
@@ -3349,17 +3471,13 @@ export default function ProductCatalogPage() {
                                           filmRate: parseFloat((fi as any).estimationRate || "0"),
                                         };
                                         rf("secondaryLayers", layers);
-                                      }}>
-                                      <option value="">-- Select Film Item --</option>
-                                      {FILM_ITEMS.map((fi: any) => (
-                                        <option key={fi.id} value={fi.id}>{fi.name}</option>
-                                      ))}
-                                    </select>
+                                      }}
+                                    />
                                   </div>
                                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                                     <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                                     <Input label="Thickness (μ)" type="number" value={l.thickness || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
-                                    <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
+                                    <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-blue-200 text-xs" />
                                   </div>
                                 </div>
                               )}
@@ -3439,34 +3557,35 @@ export default function ProductCatalogPage() {
                                                 {/* Item Group */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                                  <select
-                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                  <SearchableSelect
                                                     value={ci.itemGroup}
-                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}>
-                                                    <option value="">-- Group --</option>
-                                                    {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                                  </select>
+                                                    placeholder="-- Group --"
+                                                    options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
+                                                    onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}
+                                                    className="text-xs rounded-lg"
+                                                  />
                                                 </div>
                                                 {/* Sub Group */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                                  <select
-                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                  <SearchableSelect
                                                     value={ci.itemSubGroup}
-                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                                    disabled={!ci.itemGroup}>
-                                                    <option value="">-- Sub Group --</option>
-                                                    {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                                  </select>
+                                                    placeholder="-- Sub Group --"
+                                                    options={subGroups.map(sg => ({ value: sg, label: sg }))}
+                                                    onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
+                                                    disabled={!ci.itemGroup}
+                                                    className="text-xs rounded-lg"
+                                                  />
                                                 </div>
                                                 {/* Item Master */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                                  <select
-                                                    className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                                  <SearchableSelect
                                                     value={ci.itemId}
-                                                    onChange={e => {
-                                                      const it = filteredItems.find(x => x.id === e.target.value);
+                                                    placeholder="-- Select Item --"
+                                                    options={filteredItems.map(it => ({ value: it.id, label: it.name }))}
+                                                    onChange={val => {
+                                                      const it = filteredItems.find(x => x.id === val);
                                                       const updates: Record<string, unknown> = { itemId: it?.id ?? "", itemName: it?.name ?? "" };
                                                       if (ci.itemGroup === "Ink" && it) {
                                                         updates.gsm = parseFloat(String((it as any).DryGsM ?? 0)) || 0;
@@ -3474,12 +3593,9 @@ export default function ProductCatalogPage() {
                                                       }
                                                       updatePlyConsumable(index, ciIdx, updates);
                                                     }}
-                                                    disabled={!ci.itemGroup}>
-                                                    <option value="">-- Select Item --</option>
-                                                    {filteredItems.map(it => (
-                                                      <option key={it.id} value={it.id}>{it.name}</option>
-                                                    ))}
-                                                  </select>
+                                                    disabled={!ci.itemGroup}
+                                                    className="text-xs rounded-lg"
+                                                  />
                                                 </div>
 
                                                 {/* ── INK ── */}
@@ -3501,7 +3617,7 @@ export default function ProductCatalogPage() {
                                                   </div>
                                                   <div>
                                                     <label className="text-[10px] font-semibold text-purple-600 uppercase block mb-1">Liquid GSM</label>
-                                                    <div className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
+                                                    <div className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
                                                       {ci.gsm > 0 ? (ci.gsm / ((ci.solidPct ?? 40) / 100)).toFixed(2) : "—"}
                                                     </div>
                                                   </div>
@@ -3665,12 +3781,6 @@ export default function ProductCatalogPage() {
                             <RefreshCw size={11} /> Change Plan
                           </button>
                         )}
-                        {((replanForm.jobHeight || 0) > 0 || (replanForm as any).repeatLength > 0) && (
-                          <button onClick={() => setCylGuideOpen(true)}
-                            className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
-                            <Calculator size={12} /> Cyl. Circ Guide
-                          </button>
-                        )}
                         <button onClick={() => setReplanShowPlan(!replanShowPlan)}
                           className="flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-200">
                           <Eye size={12} /> {replanShowPlan ? "Hide Plan" : "Select Plan"}
@@ -3687,10 +3797,10 @@ export default function ProductCatalogPage() {
 
                     {replanShowPlan && !replanIsPlanApplied && (
                       <div className="border-2 border-indigo-100 rounded-2xl overflow-hidden shadow-lg">
-                        <div className="bg-gradient-to-r from-indigo-800 to-purple-800 p-3 flex items-center justify-between gap-3">
+                        <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] p-3 flex items-center justify-between gap-3">
                           <div>
-                            <p className="text-white font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
-                            <p className="text-indigo-200 text-[10px] mt-0.5">
+                            <p className="text-[#003366] font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">
                               {replanForm.machineName} · {replanVisiblePlans.length}/{replanAllPlans.length} plans
                               {Object.keys(planColFilters).length > 0 && (
                                 <button onClick={() => setPlanColFilters({})}
@@ -3910,11 +4020,32 @@ export default function ProductCatalogPage() {
                                     <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{plan.acUps}</td>
                                     <td className="p-2 border border-gray-100 text-center font-mono">{p.printingWidth}</td>
                                     <td className="p-2 border border-gray-100">
-                                      <span className={`font-semibold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-600"}`}>{p.sleeveCode}</span>
-                                      <br />
-                                      <span className={`text-[9px] ${p.isSpecialSleeve ? "text-rose-500" : "text-gray-400"}`}>{p.sleeveName}</span>
+                                      {p.isSpecialSleeve ? (
+                                        <div className="space-y-1">
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-full">NO SLEEVE</span>
+                                          </div>
+                                          <div className="text-[9px] text-rose-600 leading-tight">
+                                            Need {plan.filmSize}–{plan.filmSize + 10}mm sleeve
+                                          </div>
+                                          <button
+                                            onClick={e => { e.stopPropagation(); window.open("/masters/items", "_blank"); }}
+                                            className="flex items-center gap-1 text-[9px] font-semibold text-white bg-rose-500 hover:bg-rose-600 px-2 py-0.5 rounded-md transition-colors whitespace-nowrap"
+                                          >
+                                            + Create Sleeve
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <span className="font-semibold text-blue-600">{p.sleeveCode}</span>
+                                          <br />
+                                          <span className="text-[9px] text-gray-400">{p.sleeveName}</span>
+                                        </>
+                                      )}
                                     </td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-700"}`}>{p.sleeveWidthVal}</td>
+                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-700"}`}>
+                                      {p.isSpecialSleeve ? <span className="text-rose-400 text-[9px]">—</span> : p.sleeveWidthVal}
+                                    </td>
                                     <td className={`p-2 border border-gray-100 text-center font-bold ${p.sideWaste > 100 ? "text-red-600" : "text-amber-600"}`}>{p.sideWaste}</td>
                                     <td className="p-2 border border-gray-100 text-center">
                                       <div className="font-bold text-indigo-700 text-xs">{plan.filmSize}</div>
@@ -4085,7 +4216,7 @@ export default function ProductCatalogPage() {
                                           "Ink": "bg-rose-50 text-rose-700 border-rose-200",
                                           "Solvent": "bg-cyan-50 text-cyan-700 border-cyan-200",
                                           "Adhesive": "bg-amber-50 text-amber-700 border-amber-200",
-                                          "Hardner": "bg-purple-50 text-purple-700 border-purple-200",
+                                          "Hardner": "bg-purple-50 text-purple-700 border-blue-200",
                                         };
 
                                         // ── Film row ──
@@ -4284,7 +4415,7 @@ export default function ProductCatalogPage() {
                 {/* ─── Color Shade & LAB ─── */}
                 {catalogPrepTab === "shade" && (
                   <div className="space-y-3">
-                    <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                    <div className="bg-purple-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-2">
                       <Palette size={14} className="text-purple-600 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-xs font-bold text-purple-800">Color Shade & LAB Standard</p>
@@ -4317,10 +4448,12 @@ export default function ProductCatalogPage() {
                               <tr key={i} className={`hover:bg-purple-50/20 ${pass === false ? "bg-red-50/30" : pass === true ? "bg-green-50/20" : ""}`}>
                                 <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
                                 <td className="px-2 py-1.5 min-w-[160px]">
-                                  <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                  <SearchableSelect
                                     value={String((cs as any).inkItemId ?? "")}
-                                    onChange={e => {
-                                      const ink = INK_ITEMS.find(x => x.id === e.target.value);
+                                    placeholder="-- Select Ink --"
+                                    options={INK_ITEMS.map(ink => ({ value: ink.id, label: `${ink.name}${ink.colour ? ` (${ink.colour})` : ""}` }))}
+                                    onChange={val => {
+                                      const ink = INK_ITEMS.find(x => x.id === val);
                                       const COLOR_LAB: Record<string, { l: string; a: string; b: string }> = {
                                         "Red": { l: "41.0", a: "54.2", b: "38.1" },
                                         "Yellow": { l: "89.3", a: "-6.1", b: "80.4" },
@@ -4345,13 +4478,12 @@ export default function ProductCatalogPage() {
                                         inkType: ink ? autoType : c.inkType,
                                         ...(lab ? { labL: lab.l, labA: lab.a, labB: lab.b } : {}),
                                       } as any : c));
-                                    }}>
-                                    <option value="">-- Select Ink --</option>
-                                    {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
-                                  </select>
+                                    }}
+                                    className="text-xs rounded-lg"
+                                  />
                                 </td>
                                 <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
-                                <td className="px-2 py-1.5"><select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as ColorShade["inkType"] } : c))}><option value="Spot">Spot</option><option value="Process">Process</option><option value="Special">Special</option></select></td>
+                                <td className="px-2 py-1.5 min-w-[110px]"><SearchableSelect value={cs.inkType} allowEmpty={false} options={[{value:"Spot",label:"Spot"},{value:"Process",label:"Process"},{value:"Special",label:"Special"}]} onChange={val => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: val as ColorShade["inkType"] } : c))} className="text-xs rounded-lg" /></td>
                                 <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
                                 <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setCatalogColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
                               </tr>
@@ -4425,7 +4557,7 @@ export default function ProductCatalogPage() {
                             const m = cn.match(/(\d+)$/);
                             const pCode = m ? `P${m[1].padStart(4, "0")}` : cn || "—";
                             return (
-                              <tr key={i} className={`hover:bg-amber-50/20 ${ca.repeatUse ? "bg-gray-50 opacity-60" : ca.createdInMaster ? "bg-green-50/30" : ""}`}>
+                              <tr key={i} className={`hover:bg-amber-50/20 ${ca.repeatUse ? (ca.cylinderMasterID ? "bg-orange-50/40" : "bg-gray-50 opacity-60") : ca.createdInMaster ? "bg-green-50/30" : ""}`}>
                                 <td className="px-2 py-1.5 text-center font-black text-amber-700">{ca.colorNo}</td>
                                 {/* Repeat Use checkbox */}
                                 <td className="px-2 py-1.5 text-center">
@@ -4433,7 +4565,11 @@ export default function ProductCatalogPage() {
                                     <input
                                       type="checkbox"
                                       checked={!!ca.repeatUse}
-                                      onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, repeatUse: e.target.checked } : c))}
+                                      onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? {
+                                        ...c,
+                                        repeatUse: e.target.checked,
+                                        cylinderMasterID: e.target.checked ? c.cylinderMasterID : undefined,
+                                      } : c))}
                                       className="w-4 h-4 accent-orange-500 cursor-pointer"
                                     />
                                     {ca.repeatUse && <span className="text-[9px] text-orange-600 font-bold leading-none">Skip</span>}
@@ -4448,12 +4584,54 @@ export default function ProductCatalogPage() {
                                     {catalogColorShades[i]?.colorName || ca.colorName}
                                   </div>
                                 </td>
-                                {/* Cylinder Code */}
-                                <td className="px-2 py-1.5">
-                                  <input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
-                                    placeholder="e.g. CYL-001"
-                                    value={ca.cylinderNo}
-                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderNo: e.target.value } : c))} />
+                                {/* Cylinder Code — picker when Skip, free input otherwise */}
+                                <td className="px-2 py-1.5 min-w-[180px]">
+                                  <div className="flex items-center gap-1.5">
+                                    {ca.repeatUse ? (
+                                      <div className="flex-1">
+                                        <SearchableSelect
+                                          value={ca.cylinderMasterID ?? ""}
+                                          placeholder="— pick from master —"
+                                          options={CYLINDER_TOOLS.map(t => ({
+                                            value: t.id,
+                                            label: t.code,
+                                          }))}
+                                          onChange={val => {
+                                            const t = CYLINDER_TOOLS.find(x => x.id === val);
+                                            setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? {
+                                              ...c,
+                                              cylinderMasterID: val,
+                                              cylinderNo:   t?.code        ?? c.cylinderNo,
+                                              printWidth:   t?.printWidth  ?? c.printWidth,
+                                              circumference: t?.repeatLength ?? c.circumference,
+                                              cylinderType: "Existing" as const,
+                                            } : c));
+                                          }}
+                                          className="text-xs rounded-lg border-orange-300"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                                        placeholder="e.g. CYL-001"
+                                        value={ca.cylinderNo}
+                                        onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderNo: e.target.value } : c))} />
+                                    )}
+                                    {/* Cylinder inventory info button */}
+                                    {ca.cylinderNo && (
+                                      <button
+                                        type="button"
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          const rect = (e.target as HTMLElement).getBoundingClientRect();
+                                          setCylInvPopup(p => p?.code === ca.cylinderNo ? null : { code: ca.cylinderNo, x: rect.left, y: rect.bottom + 4 });
+                                        }}
+                                        className="flex-shrink-0 p-1 rounded-md text-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                        title="Cylinder inventory"
+                                      >
+                                        <Info size={13} />
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                                 {/* Cylinder Width (Print Width) — edit propagates to all rows */}
                                 <td className="px-2 py-1.5">
@@ -4473,26 +4651,34 @@ export default function ProductCatalogPage() {
                                 </td>
                                 {/* Type */}
                                 <td className="px-2 py-1.5">
-                                  <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                                  <SearchableSelect
                                     value={ca.cylinderType}
-                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as CylinderAlloc["cylinderType"] } : c))}>
-                                    <option value="New">New</option>
-                                    <option value="Existing">Existing</option>
-                                    <option value="Repeat">Repeat Cylinder</option>
-                                    <option value="Rechromed">Rechromed</option>
-                                  </select>
+                                    allowEmpty={false}
+                                    options={[
+                                      { value: "New",       label: "New" },
+                                      { value: "Existing",  label: "Existing" },
+                                      { value: "Repeat",    label: "Repeat Cylinder" },
+                                      { value: "Rechromed", label: "Rechromed" },
+                                    ]}
+                                    onChange={val => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: val as CylinderAlloc["cylinderType"] } : c))}
+                                    className="text-xs rounded-lg"
+                                  />
                                 </td>
                                 {/* Status */}
                                 <td className="px-2 py-1.5">
-                                  <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                                  <SearchableSelect
                                     value={ca.status}
-                                    onChange={e => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as CylinderAlloc["status"] } : c))}>
-                                    <option value="Pending">Pending</option>
-                                    <option value="Ordered">Ordered</option>
-                                    <option value="Available">Available</option>
-                                    <option value="In Use">In Use</option>
-                                    <option value="Under Chrome">Under Chrome</option>
-                                  </select>
+                                    allowEmpty={false}
+                                    options={[
+                                      { value: "Pending",      label: "Pending" },
+                                      { value: "Ordered",      label: "Ordered" },
+                                      { value: "Available",    label: "Available" },
+                                      { value: "In Use",       label: "In Use" },
+                                      { value: "Under Chrome", label: "Under Chrome" },
+                                    ]}
+                                    onChange={val => setCatalogCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: val as CylinderAlloc["status"] } : c))}
+                                    className="text-xs rounded-lg"
+                                  />
                                 </td>
                                 {/* Remarks */}
                                 <td className="px-2 py-1.5">
@@ -4526,7 +4712,7 @@ export default function ProductCatalogPage() {
                         <span className="text-[10px] text-gray-400 uppercase font-semibold">Status:</span>
                         {(["Pending", "Ordered", "Available", "In Use", "Under Chrome"] as const).map(s => {
                           const cnt = catalogCylAllocs.filter(c => c.status === s).length;
-                          return cnt > 0 ? <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${s === "Available" ? "bg-green-50 text-green-700 border-green-200" : s === "In Use" ? "bg-blue-50 text-blue-700 border-blue-200" : s === "Under Chrome" ? "bg-orange-50 text-orange-700 border-orange-200" : s === "Ordered" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{cnt} {s}</span> : null;
+                          return cnt > 0 ? <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${s === "Available" ? "bg-green-50 text-green-700 border-green-200" : s === "In Use" ? "bg-blue-50 text-blue-700 border-blue-200" : s === "Under Chrome" ? "bg-orange-50 text-orange-700 border-orange-200" : s === "Ordered" ? "bg-purple-50 text-purple-700 border-blue-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{cnt} {s}</span> : null;
                         })}
                         <span className="ml-auto text-[10px] text-green-700 font-semibold">
                           {catalogCylAllocs[0]?.createdInMaster ? "✓ 1 cylinder created in master" : "1 cylinder — not yet created"}
@@ -4748,7 +4934,8 @@ export default function ProductCatalogPage() {
                       </thead>
                       <tbody>
                         {r.secondaryLayers.map((l, li) => {
-                          const cons = (l.consumableItems || [])
+                          const isFilm = (l.plyType || "").toLowerCase() === "film";
+                          const cons = isFilm ? "" : (l.consumableItems || [])
                             .filter((ci: any) => ci.itemName || ci.itemSubGroup)
                             .map((ci: any) => `${ci.itemName || ci.itemSubGroup}${ci.gsm != null ? ` (${ci.gsm} ${ci.itemGroup === "Ink" ? "GSM" : ci.itemGroup === "Solvent" ? "%" : "GSM"})` : ""}`)
                             .join("  ·  ");
@@ -4756,7 +4943,7 @@ export default function ProductCatalogPage() {
                             <tr key={li}>
                               <td style={{ ...TD, textAlign: "center" }}>{li + 1}</td>
                               <td style={{ ...TD, fontWeight: 700 }}>{l.plyType || "—"}</td>
-                              <td style={TD}>{l.itemSubGroup || l.plyType || "—"}</td>
+                              <td style={TD}>{l.itemName || l.itemSubGroup || "—"}</td>
                               <td style={{ ...TD, textAlign: "center", fontWeight: 700 }}>{l.gsm || "—"}</td>
                               <td style={{ ...TD, fontSize: "8px" }}>{cons || "—"}</td>
                             </tr>
@@ -4929,6 +5116,34 @@ export default function ProductCatalogPage() {
         );
       })()}
 
+      {/* ══ CYLINDER INVENTORY POPUP ════════════════════════════ */}
+      {cylInvPopup && (
+        <>
+          <div className="fixed inset-0 z-[99990]" onClick={() => setCylInvPopup(null)} />
+          <div
+            style={{ position: "fixed", top: cylInvPopup.y, left: cylInvPopup.x, zIndex: 99991 }}
+            className="bg-white border border-gray-200 rounded-xl shadow-2xl p-4 w-72"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Info size={14} className="text-blue-500" />
+                <span className="text-xs font-bold text-gray-700">{cylInvPopup.code}</span>
+              </div>
+              <button onClick={() => setCylInvPopup(null)} className="text-gray-300 hover:text-gray-500 p-0.5">
+                <X size={13} />
+              </button>
+            </div>
+            <div className="flex flex-col items-center gap-2 py-3">
+              <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center">
+                <AlertCircle size={20} className="text-amber-500" />
+              </div>
+              <p className="text-xs font-semibold text-gray-700 text-center">Cylinder Inventory not available</p>
+              <p className="text-[10px] text-gray-400 text-center">Inventory tracking for cylinders has not been set up yet.</p>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ══ ATTACHMENT PREVIEW MODAL ═════════════════════════════ */}
       {previewAttachment && (
         <Modal open onClose={() => setPreviewAttachment(null)} title={previewAttachment.name} size="xl">
@@ -4969,104 +5184,6 @@ export default function ProductCatalogPage() {
         </Modal>
       )}
 
-      {/* ══ CYLINDER CIRCUMFERENCE GUIDE MODAL ══════════════════ */}
-      {cylGuideOpen && replanForm && (() => {
-        const sTypeGuide = (replanForm as any).structureType || "Label";
-        const jobH = replanForm.jobHeight || 0;
-        const jobW = sTypeGuide === "Sleeve" ? (replanForm.jobWidth || 0) : (replanForm.actualWidth || replanForm.jobWidth || 0);
-        const shrink = replanForm.widthShrinkage || 0;
-        const trim = replanForm.trimmingSize || 0;
-        // For Sleeve: shrink is circumferential — does NOT affect lane width
-        // For Label/Pouch: shrink is on repeat length — does NOT affect lane width either
-        const laneW = jobW;
-        // Available sleeves from stock
-        const stockSleeves = SLEEVE_TOOLS_LIVE.map(s => parseFloat(s.printWidth)).filter(w => w > 0).sort((a, b) => a - b);
-        // Circumference options: 1× to 8× jobHeight (practical range)
-        const maxRepeat = 8;
-        const rows = Array.from({ length: maxRepeat }, (_, i) => {
-          const repeatUPS = i + 1;
-          const circ = repeatUPS * jobH;
-          // For each sleeve, what AC UPS can this sleeve support?
-          const sleeveResults = stockSleeves.map(sw => {
-            const acUps = laneW > 0 ? Math.floor(sw / laneW) : 0;
-            const filmW = acUps * laneW + 2 * trim;
-            if (acUps === 0 || filmW > sw) return null;
-            return { sw, acUps, filmW, totalUPS: acUps * repeatUPS };
-          }).filter(Boolean) as { sw: number; acUps: number; filmW: number; totalUPS: number }[];
-          return { repeatUPS, circ, sleeveResults };
-        });
-        return (
-          <Modal open onClose={() => setCylGuideOpen(false)} title="Cylinder Circumference Guide" size="xl">
-            <div className="space-y-4">
-              {/* Input summary */}
-              <div className="flex flex-wrap gap-2 text-xs">
-                {[
-                  { l: "Job Height", v: `${jobH} mm`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                  { l: "Job Width", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                  { l: "Lane Width", v: `${laneW} mm`, cls: "bg-purple-50 text-purple-700 border-purple-200" },
-                  { l: "Trimming", v: trim > 0 ? `${trim}+${trim} mm` : "—", cls: "bg-orange-50 text-orange-700 border-orange-200" },
-                ].map(s => (
-                  <div key={s.l} className={`px-2.5 py-1.5 rounded-lg border font-medium ${s.cls}`}>
-                    <span className="opacity-60 text-[10px] uppercase tracking-wider block leading-none mb-0.5">{s.l}</span>
-                    <span className="font-bold">{s.v}</span>
-                  </div>
-                ))}
-              </div>
-
-              <p className="text-xs text-gray-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                <strong className="text-amber-700">How to use:</strong> Choose the <em>Repeat UPS</em> (impressions per cylinder revolution) you need → the <strong>Circumference</strong> column tells you what circumference to order for your 1100mm cylinder. Cross-check the sleeve columns to see your AC UPS and Total UPS for each sleeve size.
-              </p>
-
-              <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
-                <table className="min-w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-indigo-700 text-white">
-                      <th className="px-3 py-2.5 text-left whitespace-nowrap">Repeat UPS<br /><span className="text-indigo-300 font-normal text-[10px]">(around cylinder)</span></th>
-                      <th className="px-3 py-2.5 text-center whitespace-nowrap">Circumference<br /><span className="text-indigo-300 font-normal text-[10px]">= Repeat × {jobH}mm</span></th>
-                      {stockSleeves.map(sw => (
-                        <th key={sw} className="px-3 py-2.5 text-center whitespace-nowrap border-l border-indigo-600">
-                          Sleeve {sw}mm<br />
-                          <span className="text-indigo-300 font-normal text-[10px]">AC UPS · Film · Total UPS</span>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {rows.map(row => (
-                      <tr key={row.repeatUPS} className={row.repeatUPS % 2 === 0 ? "bg-gray-50" : "bg-white"}>
-                        <td className="px-3 py-2.5 font-bold text-indigo-700 text-sm">{row.repeatUPS}×</td>
-                        <td className="px-3 py-2.5 text-center">
-                          <span className="inline-block px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-sm border border-emerald-300">
-                            {row.circ} mm
-                          </span>
-                        </td>
-                        {row.sleeveResults.map((res, si) => (
-                          <td key={si} className="px-3 py-2.5 text-center border-l border-gray-100">
-                            {res ? (
-                              <div className="space-y-0.5">
-                                <div className="text-[10px] text-gray-500">{res.acUps} AC UPS · {res.filmW}mm film</div>
-                                <div className="inline-block px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-bold text-[11px]">
-                                  {res.totalUPS} total UPS
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-300 text-[10px]">—</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <p className="text-[10px] text-gray-400">
-                * AC UPS = how many lanes fit across the sleeve width. Total UPS = AC UPS × Repeat UPS. Cylinder print width must be ≥ film width + 100mm.
-              </p>
-            </div>
-          </Modal>
-        );
-      })()}
 
       {/* ══ UPS LAYOUT PREVIEW MODAL ═════════════════════════════ */}
       {upsPreviewPlan && replanForm && (() => {
@@ -5157,7 +5274,7 @@ export default function ProductCatalogPage() {
                   const dc = (replanForm.jobWidth * 2) + slvSeam + slvTransp; // design circ = width only
                   const baseStats = [
                     { l: "Film Width", v: `${filmW} mm`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                    { l: "AC UPS", v: String(acUps), cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                    { l: "AC UPS", v: String(acUps), cls: "bg-purple-50 text-purple-700 border-blue-200" },
                   ];
                   const cutLen = replanForm.jobHeight || 0;
                   const cutWithShrink = cutLen + shrink;
@@ -5912,7 +6029,7 @@ export default function ProductCatalogPage() {
         <Modal open={!!viewPlanRow} onClose={() => setViewPlanRow(null)}
           title={`Planning Template — ${viewPlanRow.catalogNo}`} size="xl">
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <span className="px-3 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-full font-semibold flex items-center gap-1">
+            <span className="px-3 py-1 bg-purple-50 border border-blue-200 text-purple-700 rounded-full font-semibold flex items-center gap-1">
               <Lock size={10} />Locked Template
             </span>
             <span className="px-3 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-full">{viewPlanRow.customerName}</span>
@@ -5965,7 +6082,7 @@ export default function ProductCatalogPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <Pill label="Substrate" value={viewPlanRow.substrate || "—"} cls="bg-indigo-50 text-indigo-700 border-indigo-200" />
-                  <Pill label="Print Type" value={viewPlanRow.printType || "—"} cls="bg-purple-50 text-purple-700 border-purple-200" />
+                  <Pill label="Print Type" value={viewPlanRow.printType || "—"} cls="bg-purple-50 text-purple-700 border-blue-200" />
                   <Pill label="Colors" value={`${viewPlanRow.noOfColors}C`} cls="bg-blue-50 text-blue-700 border-blue-200" />
                   <Pill label="Machine" value={viewPlanRow.machineName || "—"} cls="bg-teal-50 text-teal-700 border-teal-200" />
                   <Pill label="Job Width" value={`${viewPlanRow.jobWidth} mm`} />

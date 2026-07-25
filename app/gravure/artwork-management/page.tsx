@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Pencil, Trash2, X, Check, Loader2, Eye, EyeOff,
@@ -10,6 +11,7 @@ import { authHeaders } from "@/lib/auth";
 import { useCategories } from "@/context/CategoriesContext";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -170,6 +172,7 @@ type FormState = {
   AddressType: string;
   ArtworkName: string;
   SpecialSpecs: string;
+  AttachmentFilesName: string;
 };
 
 const blankForm = (): FormState => ({
@@ -181,6 +184,7 @@ const blankForm = (): FormState => ({
   JobQty: "", JobSize: "", PaperDetails: "", MachineName: "", DesignSide: "Single Side",
   TypeOfProduct: "", Content: "", PackSize: "", BrandName: "", ProductType: "",
   SkuType: "", BottleType: "", AddressType: "", ArtworkName: "", SpecialSpecs: "",
+  AttachmentFilesName: "",
 });
 
 // ─── Shared input style ───────────────────────────────────────────────────────
@@ -192,10 +196,11 @@ const SH = ({ label }: { label: string }) => (
 );
 
 // ─── Attachment card ──────────────────────────────────────────────────────────
-function AttCard({ att, onRemove, onPreview }: {
+function AttCard({ att, onRemove, onPreview, onRemarkChange }: {
   att: AttachmentItem;
   onRemove: () => void;
   onPreview: () => void;
+  onRemarkChange?: (val: string) => void;
 }) {
   const isPdf = att.mimeType === "application/pdf" || att.url?.toLowerCase().endsWith(".pdf");
   const isImg = att.mimeType?.startsWith("image/");
@@ -246,8 +251,17 @@ function AttCard({ att, onRemove, onPreview }: {
           </div>
         )}
       </div>
-      <div className="px-2 py-1.5">
+      <div className="px-2 pt-1.5 pb-1">
         <p className="text-[11px] text-gray-700 truncate font-medium" title={att.name}>{att.name}</p>
+        {onRemarkChange !== undefined && (
+          <input
+            value={att.remark}
+            onChange={e => onRemarkChange(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            placeholder="File label…"
+            className="mt-1 w-full text-[10px] px-1.5 py-0.5 border border-gray-200 rounded bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
+          />
+        )}
       </div>
       <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button onClick={onPreview}
@@ -269,7 +283,7 @@ function AttCard({ att, onRemove, onPreview }: {
 
 // ══════════════════════════════════════════════════════════════════════════════
 export default function ArtworkManagementPage() {
-  const [activeTab, setActiveTab] = useState<"master" | "management" | "library" | "subgroup">("master");
+  const [activeTab, setActiveTab] = useState<"master" | "management" | "library" | "bbartwork">("master");
   const [showVideoModal, setShowVideoModal] = useState(false);
 
   const { categories: catWithDetails } = useCategories();
@@ -300,7 +314,7 @@ export default function ArtworkManagementPage() {
   const [masterAttLoading, setMasterAttLoading] = useState<string | null>(null);
   const [masterSort, setMasterSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
   const [masterColFilter, setMasterColFilter] = useState<string | null>(null);
-  const [masterFilters, setMasterFilters] = useState({ artworkNo: "", artworkName: "", content: "", catalog: "" });
+  const [masterFilters, setMasterFilters] = useState({ artworkNo: "", fileName: "", artworkName: "", content: "", catalog: "" });
 
   // ─── FieldMaster dropdown options ────────────────────────────────────────
   const [fmOptions, setFmOptions] = useState<{
@@ -319,6 +333,7 @@ export default function ArtworkManagementPage() {
     Machine: string; ColorName: string;
     CylType: string; CircumMM: string; CylLength: string; CylPrintWidth: string;
     CylVendor: string; CylStatus: string; ArtworkStage: string;
+    AttachmentFilesName: string;
   };
 
   const ARTWORK_STAGES = [
@@ -345,11 +360,11 @@ export default function ArtworkManagementPage() {
   const [libSort, setLibSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
   const [colFilterOpen, setColFilterOpen] = useState<string | null>(null);
 
-  // ─── Sub Group Master ─────────────────────────────────────────────────────
-  type SubGroupRow = {
-    SubGroupID: string; SubGroupNo: string; ArtworkID: string;
+  // ─── BB Artwork ───────────────────────────────────────────────────────────
+  type BBArtworkRow = {
+    BBArtworkID: string; BBArtworkNo: string; ArtworkID: string;
     ArtworkNo: string; ParentJobName: string; ClientName: string; CategoryName: string;
-    SubGroupName: string;
+    BBArtworkName: string;
     LedgerID: string; JobName: string; ClientArtWorkNo: string; ArtWorkDescription: string;
     DocumentType: string; DocumentNo: string; DocumentDate: string;
     SalesEmployeeID: string; ArtworkCost: string;
@@ -359,10 +374,10 @@ export default function ArtworkManagementPage() {
     Content: string; PackSize: string; BrandName: string; ProductType: string;
     SkuType: string; BottleType: string; AddressType: string;
     ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
-    CreatedDate: string;
+    AttachmentFilesName: string; CreatedDate: string;
   };
-  type SubGroupForm = {
-    SubGroupID: string; ArtworkID: string; SubGroupName: string;
+  type BBArtworkForm = {
+    BBArtworkID: string; ArtworkID: string; BBArtworkName: string;
     LedgerID: string; JobName: string; ClientArtWorkNo: string; ArtWorkDescription: string;
     DocumentType: string; DocumentNo: string; DocumentDate: string;
     SalesEmployeeID: string; ArtworkCost: string;
@@ -372,9 +387,10 @@ export default function ArtworkManagementPage() {
     Content: string; PackSize: string; BrandName: string; ProductType: string;
     SkuType: string; BottleType: string; AddressType: string;
     ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
+    AttachmentFilesName: string;
   };
-  const blankSGForm = (): SubGroupForm => ({
-    SubGroupID: "", ArtworkID: "", SubGroupName: "",
+  const blankSGForm = (): BBArtworkForm => ({
+    BBArtworkID: "", ArtworkID: "", BBArtworkName: "",
     LedgerID: "", JobName: "", ClientArtWorkNo: "", ArtWorkDescription: "",
     DocumentType: "Direct", DocumentNo: "", DocumentDate: "",
     SalesEmployeeID: "", ArtworkCost: "",
@@ -384,16 +400,17 @@ export default function ArtworkManagementPage() {
     Content: "", PackSize: "", BrandName: "", ProductType: "",
     SkuType: "", BottleType: "", AddressType: "",
     ArtworkName: "", SpecialSpecs: "", ArtworkStage: "", Remarks: "",
+    AttachmentFilesName: "",
   });
 
-  const [sgList,        setSgList]        = useState<SubGroupRow[]>([]);
+  const [sgList,        setSgList]        = useState<BBArtworkRow[]>([]);
   const [sgLoading,     setSgLoading]     = useState(false);
   const [sgLoaded,      setSgLoaded]      = useState(false);
   const [showSgModal,   setShowSgModal]   = useState(false);
   const [sgEditMode,    setSgEditMode]    = useState(false);
   const [sgSaving,      setSgSaving]      = useState(false);
   const [sgError,       setSgError]       = useState("");
-  const [sgForm,        setSgForm]        = useState<SubGroupForm>(blankSGForm());
+  const [sgForm,        setSgForm]        = useState<BBArtworkForm>(blankSGForm());
   const [sgSearch,      setSgSearch]      = useState("");
   const [sgAttachments, setSgAttachments] = useState<AttachmentItem[]>([]);
   const sgFileRef = useRef<HTMLInputElement>(null);
@@ -401,7 +418,7 @@ export default function ArtworkManagementPage() {
   const loadSubGroups = async () => {
     setSgLoading(true);
     try {
-      const raw = await apiFetch<SubGroupRow[]>(`${ART}/subgroup/list`);
+      const raw = await apiFetch<BBArtworkRow[]>(`${ART}/bbartwork/list`);
       setSgList(Array.isArray(raw) ? raw : []);
       setSgLoaded(true);
     } catch { setSgList([]); } finally { setSgLoading(false); }
@@ -411,9 +428,9 @@ export default function ArtworkManagementPage() {
     setSgForm(blankSGForm()); setSgEditMode(false); setSgError("");
     setSgAttachments([]); setShowSgModal(true);
   };
-  const openEditSG = async (r: SubGroupRow) => {
+  const openEditSG = async (r: BBArtworkRow) => {
     setSgForm({
-      SubGroupID: r.SubGroupID, ArtworkID: r.ArtworkID, SubGroupName: r.SubGroupName,
+      BBArtworkID: String(r.BBArtworkID), ArtworkID: String(r.ArtworkID), BBArtworkName: r.BBArtworkName,
       LedgerID: r.LedgerID || "", JobName: r.JobName || "",
       ClientArtWorkNo: r.ClientArtWorkNo || "", ArtWorkDescription: r.ArtWorkDescription || "",
       DocumentType: r.DocumentType || "Direct", DocumentNo: r.DocumentNo || "",
@@ -428,12 +445,13 @@ export default function ArtworkManagementPage() {
       AddressType: r.AddressType || "", ArtworkName: r.ArtworkName || "",
       SpecialSpecs: r.SpecialSpecs || "", ArtworkStage: r.ArtworkStage || "",
       Remarks: r.Remarks || "",
+      AttachmentFilesName: (r as any).AttachmentFilesName || "",
     });
     setSgEditMode(true); setSgError(""); setShowSgModal(true);
     // Load existing attachments
     try {
       const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
-        `${ART}/subgroup/attachments/${r.SubGroupID}`
+        `${ART}/bbartwork/attachments/${r.BBArtworkID}`
       );
       setSgAttachments((Array.isArray(atts) ? atts : []).map(a => {
         const isBroken = a.AttachedFileName.startsWith("blob:");
@@ -452,8 +470,8 @@ export default function ArtworkManagementPage() {
   };
 
   // Auto-fill SubGroup form from parent artwork
-  const autoFillSGFromArtwork = (artworkId: string) => {
-    const parent = list.find(a => String(a.ArtworkID) === artworkId);
+  const autoFillSGFromArtwork = async (artworkId: string) => {
+    const parent = list.find(a => String(a.ArtworkID) === String(artworkId));
     if (!parent) return;
     setSgForm(f => ({
       ...f,
@@ -485,11 +503,33 @@ export default function ArtworkManagementPage() {
       AddressType: parent.AddressType || "",
       ArtworkName: parent.ArtworkName || "",
       SpecialSpecs: parent.SpecialSpecs || "",
+      AttachmentFilesName: (parent as any).AttachmentFilesName || "",
     }));
+    // Load master artwork attachments into child form
+    try {
+      const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
+        `${ART}/attachments/${artworkId}`
+      );
+      setSgAttachments((Array.isArray(atts) ? atts : []).map(a => {
+        const isBroken = a.AttachedFileName.startsWith("blob:");
+        const name = a.AttachedFileName.startsWith("http")
+          ? decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName)
+          : isBroken ? "(broken — re-upload)" : a.AttachedFileName;
+        return {
+          _id: a.FileID,
+          name,
+          url: a.AttachedFileName,
+          mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
+            : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+          remark: a.AttachedFileRemark,
+          uploadError: isBroken,
+        };
+      }));
+    } catch { setSgAttachments([]); }
   };
   const saveSG = async () => {
-    if (!sgForm.ArtworkID) { setSgError("Parent Artwork is required."); return; }
-    if (!sgForm.SubGroupName.trim()) { setSgError("Sub Group Name is required."); return; }
+    if (!sgForm.ArtworkID) { setSgError("Master Artwork is required."); return; }
+    if (!sgForm.BBArtworkName.trim()) { setSgError("Child Artwork Name is required."); return; }
     setSgSaving(true); setSgError("");
     try {
       // Upload new files to S3, skip broken blobs
@@ -515,7 +555,7 @@ export default function ArtworkManagementPage() {
       )).filter((a): a is { AttachedFileName: string; AttachedFileRemark: string } => a !== null);
 
       const res = await apiPost<{ Status: string } | string>(
-        `${ART}/subgroup/${sgEditMode ? "update" : "save"}`,
+        `${ART}/bbartwork/${sgEditMode ? "update" : "save"}`,
         { ...sgForm, Attachments: resolvedAtts }
       );
       const status = typeof res === "object" && res !== null ? (res as { Status: string }).Status : String(res);
@@ -523,14 +563,14 @@ export default function ArtworkManagementPage() {
       else setSgError(String(res));
     } catch (e) { setSgError(String(e)); } finally { setSgSaving(false); }
   };
-  const deleteSG = async (r: SubGroupRow) => {
-    if (!confirm(`Delete sub group "${r.SubGroupNo} — ${r.SubGroupName}"?`)) return;
+  const deleteSG = async (r: BBArtworkRow) => {
+    if (!confirm(`Delete Child Artwork "${r.BBArtworkNo} — ${r.BBArtworkName}"?`)) return;
     try {
-      await apiPost(`${ART}/subgroup/delete`, { SubGroupID: r.SubGroupID });
+      await apiPost(`${ART}/bbartwork/delete`, { BBArtworkID: r.BBArtworkID });
       loadSubGroups();
     } catch (e) { alert(String(e)); }
   };
-  const rfSG = (k: keyof SubGroupForm, v: string) => setSgForm(f => ({ ...f, [k]: v }));
+  const rfSG = (k: keyof BBArtworkForm, v: string) => setSgForm(f => ({ ...f, [k]: v }));
 
   // ─── Search ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
@@ -647,6 +687,7 @@ export default function ArtworkManagementPage() {
       AddressType: row.AddressType ?? "",
       ArtworkName: row.ArtworkName ?? "",
       SpecialSpecs: row.SpecialSpecs ?? "",
+      AttachmentFilesName: (row as any).AttachmentFilesName ?? "",
     });
 
     // Load attachments for this artwork
@@ -844,14 +885,14 @@ export default function ArtworkManagementPage() {
       <div className="flex gap-1 border-b border-gray-200">
         {([
           ["master",     "Artwork Master"],
-          ["subgroup",   "Sub Group Master"],
+          ["bbartwork",  "Child Artwork"],
           ["management", "Artwork Management"],
           ["library",    "Artwork Library"],
         ] as const).map(([key, label]) => (
           <button key={key} onClick={() => {
             setActiveTab(key as typeof activeTab);
-            if (key === "library"  && !libLoaded) loadLibrary();
-            if (key === "subgroup" && !sgLoaded)  loadSubGroups();
+            if (key === "library"   && !libLoaded) loadLibrary();
+            if (key === "bbartwork" && !sgLoaded)  loadSubGroups();
           }}
             className={`px-5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${activeTab === key ? "border-indigo-600 text-indigo-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
             {label}
@@ -874,12 +915,14 @@ export default function ArtworkManagementPage() {
         type MCF = { key: keyof typeof masterFilters; getVal: (r: ArtworkRow) => string };
         const MASTER_CF: Record<string, MCF> = {
           "ARTWORK NO.": { key: "artworkNo", getVal: r => r.ArtworkNo || "" },
+          "FILE NAME": { key: "fileName", getVal: r => (r as any).AttachmentFilesName || "" },
           "ARTWORK NAME": { key: "artworkName", getVal: r => r.ArtworkName || r.ProductName || "" },
           "SUB TYPE (CONTENT)": { key: "content", getVal: r => r.Content || "" },
           "CATALOG": { key: "catalog", getVal: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked" },
         };
         const MASTER_SORT_KEY: Record<string, (r: ArtworkRow) => string> = {
           "ARTWORK NO.": r => r.ArtworkNo || "",
+          "FILE NAME": r => (r as any).AttachmentFilesName || "",
           "ARTWORK NAME": r => r.ArtworkName || r.ProductName || "",
           "SUB TYPE (CONTENT)": r => r.Content || "",
           "CATALOG": r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked",
@@ -889,6 +932,7 @@ export default function ArtworkManagementPage() {
           const mf = masterFilters;
           const catalogVal = (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked";
           return (!mf.artworkNo || (r.ArtworkNo || "").toLowerCase().includes(mf.artworkNo.toLowerCase()))
+            && (!mf.fileName || ((r as any).AttachmentFilesName || "").toLowerCase().includes(mf.fileName.toLowerCase()))
             && (!mf.artworkName || (r.ArtworkName || r.ProductName || "").toLowerCase().includes(mf.artworkName.toLowerCase()))
             && (!mf.content || (r.Content || "").toLowerCase().includes(mf.content.toLowerCase()))
             && (!mf.catalog || catalogVal.toLowerCase().includes(mf.catalog.toLowerCase()));
@@ -916,15 +960,17 @@ export default function ArtworkManagementPage() {
                   <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
                     {masterSort && <span>Sorted by <strong>{masterSort.col}</strong> {masterSort.dir === "asc" ? "↑" : "↓"}</span>}
                     {hasColFilter && <span>{Object.values(masterFilters).filter(Boolean).length} column filter(s) active</span>}
-                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo: "", artworkName: "", content: "", catalog: "" }); }}
+                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo: "", fileName: "", artworkName: "", content: "", catalog: "" }); }}
                       className="ml-auto text-red-500 hover:text-red-700 font-semibold">✕ Clear all</button>
                   </div>
+
                 )}
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10">
                     <tr style={{ background: "var(--erp-primary)" }}>
                       {([
                         { h: "ARTWORK NO.", s: true },
+                        { h: "FILE NAME", s: true },
                         { h: "ARTWORK NAME", s: true },
                         { h: "SUB TYPE (CONTENT)", s: true },
                         { h: "CATALOG", s: true },
@@ -1007,6 +1053,7 @@ export default function ArtworkManagementPage() {
                     <tr className="bg-gray-50 border-b border-gray-200">
                       {[
                         { key: "artworkNo" as const, ph: "Filter…" },
+                        { key: "fileName" as const, ph: "Filter…" },
                         { key: "artworkName" as const, ph: "Filter…" },
                         { key: "content" as const, ph: "Filter…" },
                         { key: "catalog" as const, ph: "Filter…" },
@@ -1038,6 +1085,7 @@ export default function ArtworkManagementPage() {
                     {masterSorted.map((row, i) => (
                       <tr key={row.ArtworkID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                         <td className="px-4 py-3 font-semibold text-indigo-700">{row.ArtworkNo}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600 max-w-[180px] break-words">{(row as any).AttachmentFilesName || <span className="text-gray-300">—</span>}</td>
                         <td className="px-4 py-3 text-gray-800 font-medium">{row.ArtworkName || row.ProductName}</td>
                         <td className="px-4 py-3">
                           {row.Content ? (
@@ -1088,8 +1136,8 @@ export default function ArtworkManagementPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 justify-end">
-                            <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(row)}>Edit</Button>
-                            <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteArtwork(row)}>Del</Button>
+                            <RowAction.Edit onClick={() => openEdit(row)} />
+                            <RowAction.Delete onClick={() => deleteArtwork(row)} />
                           </div>
                         </td>
                       </tr>
@@ -1150,8 +1198,8 @@ export default function ArtworkManagementPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEdit(row)}>Edit</Button>
-                    <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteArtwork(row)}>Del</Button>
+                    <RowAction.Edit onClick={() => openEdit(row)} />
+                    <RowAction.Delete onClick={() => deleteArtwork(row)} />
                   </div>
                 </div>
 
@@ -1715,105 +1763,165 @@ export default function ArtworkManagementPage() {
                         className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400" />
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">🔍</span>
                     </div>
-                    <select value={lf.jobName} onChange={e => setLF("jobName", e.target.value)} className={selCls}>
-                      <option value="">All jobs</option>
-                      {uJobNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.packSize} onChange={e => setLF("packSize", e.target.value)} className={selCls}>
-                      <option value="">All SKUs</option>
-                      {uPackSizes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.brand} onChange={e => setLF("brand", e.target.value)} className={selCls}>
-                      <option value="">All brands</option>
-                      {uBrands.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.category} onChange={e => setLF("category", e.target.value)} className={selCls}>
-                      <option value="">All products</option>
-                      {uCategories.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.customer} onChange={e => setLF("customer", e.target.value)} className={selCls}>
-                      <option value="">All customers</option>
-                      {uCustomers.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={lf.jobName}
+                      onChange={val => setLF("jobName", val)}
+                      options={uJobNames.map(v => ({ value: v, label: v }))}
+                      placeholder="All jobs"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.packSize}
+                      onChange={val => setLF("packSize", val)}
+                      options={uPackSizes.map(v => ({ value: v, label: v }))}
+                      placeholder="All SKUs"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.brand}
+                      onChange={val => setLF("brand", val)}
+                      options={uBrands.map(v => ({ value: v, label: v }))}
+                      placeholder="All brands"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.category}
+                      onChange={val => setLF("category", val)}
+                      options={uCategories.map(v => ({ value: v, label: v }))}
+                      placeholder="All products"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.customer}
+                      onChange={val => setLF("customer", val)}
+                      options={uCustomers.map(v => ({ value: v, label: v }))}
+                      placeholder="All customers"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
                   </div>
 
                   {/* Row 2: Status + Cyl. Maker + Design Type + Substrate + No. of Colors + Cyl. Status */}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-                    <select value={lf.artworkStage} onChange={e => setLF("artworkStage", e.target.value)} className={selCls}>
-                      <option value="">All statuses</option>
-                      {ARTWORK_STAGES.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.cylVendor} onChange={e => setLF("cylVendor", e.target.value)} className={selCls}>
-                      <option value="">All makers</option>
-                      {uVendors.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.designType} onChange={e => setLF("designType", e.target.value)} className={selCls}>
-                      <option value="">All types</option>
-                      {uTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.substrate} onChange={e => setLF("substrate", e.target.value)} className={selCls}>
-                      <option value="">All substrates</option>
-                      {uSubstrates.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.noOfColors} onChange={e => setLF("noOfColors", e.target.value)} className={selCls}>
-                      <option value="">All</option>
-                      {uColors.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.cylStatus} onChange={e => setLF("cylStatus", e.target.value)} className={selCls}>
-                      <option value="">All cyl. status</option>
-                      {uCylStatuses.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={lf.artworkStage}
+                      onChange={val => setLF("artworkStage", val)}
+                      options={ARTWORK_STAGES.map(v => ({ value: v, label: v }))}
+                      placeholder="All statuses"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.cylVendor}
+                      onChange={val => setLF("cylVendor", val)}
+                      options={uVendors.map(v => ({ value: v, label: v }))}
+                      placeholder="All makers"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.designType}
+                      onChange={val => setLF("designType", val)}
+                      options={uTypes.map(v => ({ value: v, label: v }))}
+                      placeholder="All types"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.substrate}
+                      onChange={val => setLF("substrate", val)}
+                      options={uSubstrates.map(v => ({ value: v, label: v }))}
+                      placeholder="All substrates"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.noOfColors}
+                      onChange={val => setLF("noOfColors", val)}
+                      options={uColors.map(v => ({ value: v, label: v }))}
+                      placeholder="All"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.cylStatus}
+                      onChange={val => setLF("cylStatus", val)}
+                      options={uCylStatuses.map(v => ({ value: v, label: v }))}
+                      placeholder="All cyl. status"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
                   </div>
 
                   {/* Row 3: Brand Approval + LSD Approval + Cyl. Received + Cyl. Type + Machine + Color Name */}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-                    <select value={lf.brandApproved} onChange={e => setLF("brandApproved", e.target.value)} className={selCls}>
-                      <option value="">Brand Appr. (All)</option>
-                      <option value="Yes">Brand Approved</option>
-                      <option value="No">Not Approved</option>
-                    </select>
-                    <select value={lf.lsdApproved} onChange={e => setLF("lsdApproved", e.target.value)} className={selCls}>
-                      <option value="">LSD Appr. (All)</option>
-                      <option value="Yes">LSD Approved</option>
-                      <option value="No">Not Approved</option>
-                    </select>
-                    <select value={lf.cylReceived} onChange={e => setLF("cylReceived", e.target.value)} className={selCls}>
-                      <option value="">Cyl. Rcvd (All)</option>
-                      <option value="Yes">Cyl. Received</option>
-                      <option value="No">Not Received</option>
-                    </select>
-                    <select value={lf.cylType} onChange={e => setLF("cylType", e.target.value)} className={selCls}>
-                      <option value="">All cyl. types</option>
-                      {uCylTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.machine} onChange={e => setLF("machine", e.target.value)} className={selCls}>
-                      <option value="">All machines</option>
-                      {uMachines.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <select value={lf.colorName} onChange={e => setLF("colorName", e.target.value)} className={selCls}>
-                      <option value="">All color names</option>
-                      {uColorNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={lf.brandApproved}
+                      onChange={val => setLF("brandApproved", val)}
+                      options={[{ value: "Yes", label: "Brand Approved" }, { value: "No", label: "Not Approved" }]}
+                      placeholder="Brand Appr. (All)"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.lsdApproved}
+                      onChange={val => setLF("lsdApproved", val)}
+                      options={[{ value: "Yes", label: "LSD Approved" }, { value: "No", label: "Not Approved" }]}
+                      placeholder="LSD Appr. (All)"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.cylReceived}
+                      onChange={val => setLF("cylReceived", val)}
+                      options={[{ value: "Yes", label: "Cyl. Received" }, { value: "No", label: "Not Received" }]}
+                      placeholder="Cyl. Rcvd (All)"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.cylType}
+                      onChange={val => setLF("cylType", val)}
+                      options={uCylTypes.map(v => ({ value: v, label: v }))}
+                      placeholder="All cyl. types"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.machine}
+                      onChange={val => setLF("machine", val)}
+                      options={uMachines.map(v => ({ value: v, label: v }))}
+                      placeholder="All machines"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.colorName}
+                      onChange={val => setLF("colorName", val)}
+                      options={uColorNames.map(v => ({ value: v, label: v }))}
+                      placeholder="All color names"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
                   </div>
 
                   {/* Row 4: Coil Width + Repeat Length + Cyl. Circum + Cyl. Length */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <select value={lf.coilWidth} onChange={e => setLF("coilWidth", e.target.value)} className={selCls}>
-                      <option value="">Coil Width (MM) — All</option>
-                      {uCoilWidths.map(v => <option key={v} value={v}>{v} mm</option>)}
-                    </select>
-                    <select value={lf.repeatLength} onChange={e => setLF("repeatLength", e.target.value)} className={selCls}>
-                      <option value="">Repeat Length (MM) — All</option>
-                      {uRepeatLens.map(v => <option key={v} value={v}>{v} mm</option>)}
-                    </select>
-                    <select value={lf.circum} onChange={e => setLF("circum", e.target.value)} className={selCls}>
-                      <option value="">Cylinder Circum (MM) — All</option>
-                      {uCircums.map(v => <option key={v} value={v}>{v} mm</option>)}
-                    </select>
-                    <select value={lf.cylLength} onChange={e => setLF("cylLength", e.target.value)} className={selCls}>
-                      <option value="">Cylinder Length (MM) — All</option>
-                      {uCylLengths.map(v => <option key={v} value={v}>{v} mm</option>)}
-                    </select>
+                    <SearchableSelect
+                      value={lf.coilWidth}
+                      onChange={val => setLF("coilWidth", val)}
+                      options={uCoilWidths.map(v => ({ value: v, label: `${v} mm` }))}
+                      placeholder="Coil Width (MM) — All"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.repeatLength}
+                      onChange={val => setLF("repeatLength", val)}
+                      options={uRepeatLens.map(v => ({ value: v, label: `${v} mm` }))}
+                      placeholder="Repeat Length (MM) — All"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.circum}
+                      onChange={val => setLF("circum", val)}
+                      options={uCircums.map(v => ({ value: v, label: `${v} mm` }))}
+                      placeholder="Cylinder Circum (MM) — All"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.cylLength}
+                      onChange={val => setLF("cylLength", val)}
+                      options={uCylLengths.map(v => ({ value: v, label: `${v} mm` }))}
+                      placeholder="Cylinder Length (MM) — All"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
                   </div>
 
                   <p className="text-[10px] text-gray-400 pt-1">
@@ -2003,10 +2111,11 @@ export default function ArtworkManagementPage() {
                           className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
                           <td className="px-3 py-3 text-gray-400 text-[10px] font-medium">{i + 1}</td>
 
-                          {/* JOB NAME + artwork code */}
+                          {/* JOB NAME + artwork code + file name */}
                           <td className="px-3 py-3 min-w-[160px]">
                             <p className="font-semibold text-gray-800 leading-tight">{r.JobName || "—"}</p>
                             {r.ArtworkNo && <p className="text-[10px] text-gray-400 mt-0.5">{r.ArtworkNo}</p>}
+                            {r.AttachmentFilesName && <p className="text-[10px] text-blue-400 mt-0.5 break-words">{r.AttachmentFilesName}</p>}
                           </td>
 
                           {/* SKU SIZE */}
@@ -2154,8 +2263,8 @@ export default function ArtworkManagementPage() {
 
       {/* ═══ New / Edit Modal ═══════════════════════════════════════════════ */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[93vh] overflow-y-auto mx-4">
+        <div className="fixed inset-0 z-50 flex items-stretch bg-black/40">
+          <div className="bg-white w-full h-full overflow-y-auto flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
               <h3 className="text-lg font-semibold text-gray-800">
@@ -2171,182 +2280,153 @@ export default function ArtworkManagementPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 flex flex-col gap-5 flex-1 min-h-0 overflow-y-auto">
               {formError && (
                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{formError}</div>
               )}
 
-              {/* ── Attachments ── */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <SH label="Attachments" />
-                  <button onClick={() => fileRef.current?.click()}
-                    disabled={uploading}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 hover:bg-orange-50 rounded-lg text-xs font-semibold transition-colors">
-                    {uploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
-                    {uploading ? "Uploading…" : "Add Files"}
-                  </button>
-                  <input ref={fileRef} type="file" multiple accept="*" className="hidden"
-                    onChange={e => addFiles(e.target.files)} />
-                </div>
-
-                {attachments.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {attachments.map(att => (
-                      <AttCard key={att._id} att={att}
-                        onRemove={() => setAttachments(p => p.filter(a => a._id !== att._id))}
-                        onPreview={() => setPreview(att)} />
-                    ))}
-                  </div>
-                ) : (
-                  <div onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
-                    onClick={() => fileRef.current?.click()}
-                    className="border-2 border-dashed border-orange-200 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
-                    <Paperclip size={22} className="text-orange-300 mx-auto mb-2" />
-                    <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
-                    <p className="text-[10px] text-orange-300 mt-1">or click to browse</p>
-                  </div>
-                )}
-              </div>
-
-              {/* ── Product Details ── */}
-              <div>
-                <SH label="Product Details" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className={lCls}>Job Name</label>
-                    <input value={form.JobName} onChange={e => {
-                      const v = e.target.value;
-                      rf("JobName", v);
-                      rf("ArtworkName", [v, form.PackSize, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-"));
-                    }} placeholder="Enter job name…" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Brand Name</label>
-                    <select value={form.BrandName} onChange={e => rf("BrandName", e.target.value)} className={iCls}>
-                      <option value="">-- Select Brand --</option>
-                      {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Pack Size</label>
-                    <select value={form.PackSize} onChange={e => {
-                      const v = e.target.value;
-                      rf("PackSize", v);
-                      rf("ArtworkName", [form.JobName, v, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Pack Size --</option>
-                      {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Product Type</label>
-                    <select value={form.ProductType} onChange={e => rf("ProductType", e.target.value)} className={iCls}>
-                      <option value="">-- Select Product Type --</option>
-                      {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>SKU Type</label>
-                    <select value={form.SkuType} onChange={e => {
-                      const v = e.target.value;
-                      rf("SkuType", v);
-                      rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, form.AddressType, v].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select SKU Type --</option>
-                      {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Bottle Type</label>
-                    <select value={form.BottleType} onChange={e => {
-                      const v = e.target.value;
-                      rf("BottleType", v);
-                      rf("ArtworkName", [form.JobName, form.PackSize, v, form.AddressType, form.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Bottle Type --</option>
-                      {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Address Type</label>
-                    <select value={form.AddressType} onChange={e => {
-                      const v = e.target.value;
-                      rf("AddressType", v);
-                      rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, v, form.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Address Type --</option>
-                      {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
-                    <input value={form.ArtworkName} readOnly
-                      className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Special Specifications</label>
-                    <textarea value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)}
-                      rows={2} placeholder="Any special requirements or notes…" className={iCls} />
+              {/* ── Two-column main area ── */}
+              <div className="flex gap-6">
+                {/* LEFT: Product Details */}
+                <div className="flex-1 min-w-0">
+                  <SH label="Product Details" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={lCls}>Job Name</label>
+                      <div className="relative">
+                        <input
+                          value={form.JobName}
+                          onChange={e => {
+                            rf("JobName", e.target.value);
+                            rf("ArtworkName", [e.target.value, form.PackSize, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-"));
+                          }}
+                          placeholder="Type or select…"
+                          list="master-jobname-list"
+                          autoComplete="off"
+                          className={`${iCls} pr-8`}
+                        />
+                        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                        <datalist id="master-jobname-list">
+                          {[...new Set([
+                            ...list.map(r => r.ProductName),
+                            ...libRows.map(r => r.JobName),
+                          ].filter(Boolean))].sort().map(name => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                      </div>
+                    </div>
+                    <div>
+                      <label className={lCls}>File Name</label>
+                      <input
+                        value={form.AttachmentFilesName}
+                        onChange={e => rf("AttachmentFilesName", e.target.value)}
+                        placeholder="Enter file name…"
+                        className={iCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={lCls}>Brand Name</label>
+                      <SearchableSelect value={form.BrandName} onChange={val => rf("BrandName", val)}
+                        options={fmOptions.brandNames.map(v => ({ value: v, label: v }))} placeholder="-- Select Brand --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div>
+                      <label className={lCls}>Pack Size</label>
+                      <SearchableSelect value={form.PackSize} onChange={val => { rf("PackSize", val); rf("ArtworkName", [form.JobName, val, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
+                        options={fmOptions.packSizes.map(v => ({ value: v, label: v }))} placeholder="-- Select Pack Size --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div>
+                      <label className={lCls}>Product Type</label>
+                      <SearchableSelect value={form.ProductType} onChange={val => rf("ProductType", val)}
+                        options={fmOptions.productTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Product Type --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div>
+                      <label className={lCls}>SKU Type</label>
+                      <SearchableSelect value={form.SkuType} onChange={val => { rf("SkuType", val); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, form.AddressType, val].filter(Boolean).join("-")); }}
+                        options={fmOptions.skuTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select SKU Type --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div>
+                      <label className={lCls}>Bottle Type</label>
+                      <SearchableSelect value={form.BottleType} onChange={val => { rf("BottleType", val); rf("ArtworkName", [form.JobName, form.PackSize, val, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
+                        options={fmOptions.bottleTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Bottle Type --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div>
+                      <label className={lCls}>Address Type</label>
+                      <SearchableSelect value={form.AddressType} onChange={val => { rf("AddressType", val); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, val, form.SkuType].filter(Boolean).join("-")); }}
+                        options={fmOptions.addressTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Address Type --"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+                      <input value={form.ArtworkName} readOnly className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
+                    </div>
+                    <div className="col-span-2">
+                      <label className={lCls}>Special Specifications</label>
+                      <textarea value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)}
+                        rows={2} placeholder="Any special requirements or notes…" className={iCls} />
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* ── Dates ── */}
-              <div>
-                <SH label="Dates" />
-                <div className="grid grid-cols-2 gap-4">
+                {/* RIGHT: Dates + Basic Information */}
+                <div className="w-[420px] flex-shrink-0 space-y-5">
+                  {/* Dates */}
                   <div>
-                    <label className={lCls}>Received Date</label>
-                    <input type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Expected Completion Date</label>
-                    <input type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Basic Info ── */}
-              <div>
-                <SH label="Basic Information" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Category (Type of Product) *</label>
-                    <select value={form.CategoryID} onChange={e => {
-                      rf("CategoryID", e.target.value);
-                      rf("Content", "");
-                      const cat = dropData.categories.find(c => c.CategoryID === e.target.value);
-                      if (cat) rf("TypeOfProduct", cat.CategoryName);
-                    }} className={iCls}>
-                      <option value="">-- Select Category --</option>
-                      {dropData.categories.map(c => <option key={c.CategoryID} value={c.CategoryID}>{c.CategoryName}</option>)}
-                    </select>
-                  </div>
-                  {/* Sub Type (Content) picker — shown when category is selected */}
-                  {form.CategoryID && (() => {
-                    const selCat = catWithDetails.find(c => String(c.id) === String(form.CategoryID));
-                    const contentDetails = selCat?.contentDetails ?? [];
-                    if (contentDetails.length === 0) return null;
-                    const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
-                    return (
+                    <SH label="Dates" />
+                    <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className={lCls}>Sub Type (Content)</label>
-                        <button type="button" onClick={() => setContentPickerOpen(true)}
-                          className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 transition-colors outline-none focus:ring-2 focus:ring-indigo-400">
-                          {form.Content
-                            ? <span className="text-gray-800 font-medium truncate">{form.Content}</span>
-                            : <span className="text-gray-400">Select Sub Type</span>}
-                          <span className="ml-2 flex items-center gap-1 text-indigo-600 font-bold shrink-0">
-                            <Plus size={13} /> Select
-                          </span>
-                        </button>
-                        {form.Content && (
-                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                            <Check size={10} /> {form.Content}
-                          </p>
-                        )}
+                        <label className={lCls}>Received Date</label>
+                        <input type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} className={iCls} />
+                      </div>
+                      <div>
+                        <label className={lCls}>Expected Completion Date</label>
+                        <input type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} className={iCls} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Basic Information */}
+                  <div>
+                    <SH label="Basic Information" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lCls}>Finish Goods Category *</label>
+                        <SearchableSelect
+                          value={form.CategoryID}
+                          onChange={val => { rf("CategoryID", val); rf("Content", ""); const cat = dropData.categories.find(c => c.CategoryID === val); if (cat) rf("TypeOfProduct", cat.CategoryName); }}
+                          options={dropData.categories.map(c => ({ value: c.CategoryID, label: c.CategoryName }))}
+                          placeholder="-- Select Finish Goods Category --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
+                        />
+                      </div>
+                      {/* Sub Type (Content) picker */}
+                      {form.CategoryID && (() => {
+                        const selCat = catWithDetails.find(c => String(c.id) === String(form.CategoryID));
+                        const contentDetails = selCat?.contentDetails ?? [];
+                        if (contentDetails.length === 0) return null;
+                        const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+                        return (
+                          <div>
+                            <label className={lCls}>Sub Type (Content)</label>
+                            <button type="button" onClick={() => setContentPickerOpen(true)}
+                              className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 transition-colors outline-none focus:ring-2 focus:ring-indigo-400">
+                              {form.Content
+                                ? <span className="text-gray-800 font-medium truncate">{form.Content}</span>
+                                : <span className="text-gray-400">Select Sub Type</span>}
+                              <span className="ml-2 flex items-center gap-1 text-indigo-600 font-bold shrink-0">
+                                <Plus size={13} /> Select
+                              </span>
+                            </button>
+                            {form.Content && (
+                              <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                                <Check size={10} /> {form.Content}
+                              </p>
+                            )}
                         {contentPickerOpen && (
                           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40" onClick={() => setContentPickerOpen(false)}>
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
@@ -2388,30 +2468,64 @@ export default function ArtworkManagementPage() {
                   <div className="col-span-2">
                     <label className={lCls}>Artwork Description</label>
                     <textarea value={form.ArtWorkDescription} onChange={e => rf("ArtWorkDescription", e.target.value)}
-                      rows={2} placeholder="Describe the artwork…" className={iCls} />
+                      rows={3} placeholder="Describe the artwork…" className={iCls} />
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* ── Attachments (full width, bottom) ── */}
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <SH label="Attachments" />
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-orange-300 text-orange-600 hover:bg-orange-50 rounded-lg text-xs font-semibold transition-colors">
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                {uploading ? "Uploading…" : "Add Files"}
+              </button>
+              <input ref={fileRef} type="file" multiple accept="*" className="hidden" onChange={e => addFiles(e.target.files)} />
+            </div>
+            {attachments.length > 0 ? (
+              <div className="grid grid-cols-6 gap-3">
+                {attachments.map(att => (
+                  <AttCard key={att._id} att={att}
+                    onRemove={() => setAttachments(p => p.filter(a => a._id !== att._id))}
+                    onPreview={() => setPreview(att)}
+                    onRemarkChange={val => setAttachments(p => p.map(a => a._id === att._id ? { ...a, remark: val } : a))} />
+                ))}
+              </div>
+            ) : (
+              <div onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}
+                onClick={() => fileRef.current?.click()}
+                className="border-2 border-dashed border-orange-200 rounded-xl p-5 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
+                <Paperclip size={20} className="text-orange-300 mx-auto mb-1.5" />
+                <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
+                <p className="text-[10px] text-orange-300 mt-0.5">or click to browse</p>
+              </div>
+            )}
+          </div>
+        </div>
+          </div>
         </div>
       )}
 
-      {/* ═══ TAB: Sub Group Master ══════════════════════════════════════════ */}
-      {activeTab === "subgroup" && (
+      {/* ═══ TAB: BB Artwork ════════════════════════════════════════════════ */}
+      {activeTab === "bbartwork" && (
         <div className="space-y-4">
           {/* Toolbar */}
           <div className="flex items-center gap-3 flex-wrap">
             <input
               value={sgSearch} onChange={e => setSgSearch(e.target.value)}
-              placeholder="Search sub-group no., name, artwork…"
+              placeholder="Search Child Artwork no., name, artwork…"
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <button onClick={loadSubGroups}
               className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
               <RefreshCw size={15} className={sgLoading ? "animate-spin" : ""} />
             </button>
-            <Button icon={<Plus size={16} />} onClick={openAddSG}>New Sub Group</Button>
+            <Button icon={<Plus size={16} />} onClick={openAddSG}>New Child Artwork</Button>
           </div>
 
           {/* Table */}
@@ -2424,22 +2538,22 @@ export default function ArtworkManagementPage() {
               const q = sgSearch.toLowerCase();
               const rows = sgList.filter(r =>
                 !q
-                || r.SubGroupNo?.toLowerCase().includes(q)
-                || r.SubGroupName?.toLowerCase().includes(q)
+                || r.BBArtworkNo?.toLowerCase().includes(q)
+                || r.BBArtworkName?.toLowerCase().includes(q)
                 || r.ArtworkNo?.toLowerCase().includes(q)
                 || r.ArtworkName?.toLowerCase().includes(q)
                 || r.ClientName?.toLowerCase().includes(q)
               );
               return rows.length === 0 ? (
                 <div className="text-center py-16 text-gray-400 text-sm">
-                  {sgLoaded ? "No sub groups found." : "Click refresh or switch to this tab to load."}
+                  {sgLoaded ? "No Child Artwork records found." : "Click refresh or switch to this tab to load."}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr style={{ background: "var(--erp-primary)" }}>
-                        {["SUB GROUP NO.", "PARENT ARTWORK", "CLIENT", "SUB GROUP NAME", "CONTENT", "PACK SIZE", "BRAND", ""].map(h => (
+                        {["CHILD ARTWORK NO.", "FILE NAME", "MASTER ARTWORK", "CHILD ARTWORK NAME", "CONTENT", ""].map(h => (
                           <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
                             {h}
                           </th>
@@ -2448,25 +2562,23 @@ export default function ArtworkManagementPage() {
                     </thead>
                     <tbody>
                       {rows.map((r, i) => (
-                        <tr key={r.SubGroupID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-4 py-3 font-semibold text-indigo-700 whitespace-nowrap">{r.SubGroupNo}</td>
+                        <tr key={r.BBArtworkID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                          <td className="px-4 py-3 font-semibold text-indigo-700 whitespace-nowrap">{r.BBArtworkNo}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600 max-w-[200px] break-words">{r.AttachmentFilesName || "—"}</td>
                           <td className="px-4 py-3">
                             <span className="font-medium text-gray-800">{r.ArtworkNo}</span>
                             {r.ArtworkName && <span className="text-xs text-gray-500 ml-1">— {r.ArtworkName}</span>}
                           </td>
-                          <td className="px-4 py-3 text-gray-600 text-xs">{r.ClientName || "—"}</td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.SubGroupName}</td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{r.BBArtworkName}</td>
                           <td className="px-4 py-3">
                             {r.Content
                               ? <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{r.Content}</span>
                               : <span className="text-xs text-gray-400">—</span>}
                           </td>
-                          <td className="px-4 py-3 text-xs text-gray-600">{r.PackSize || "—"}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600">{r.BrandName || "—"}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2 justify-end">
-                              <Button variant="ghost" size="sm" icon={<Pencil size={12} />} onClick={() => openEditSG(r)}>Edit</Button>
-                              <Button variant="danger" size="sm" icon={<Trash2 size={12} />} onClick={() => deleteSG(r)}>Del</Button>
+                              <RowAction.Edit onClick={() => openEditSG(r)} />
+                              <RowAction.Delete onClick={() => deleteSG(r)} />
                             </div>
                           </td>
                         </tr>
@@ -2480,18 +2592,18 @@ export default function ArtworkManagementPage() {
         </div>
       )}
 
-      {/* ═══ Sub Group Master Modal ══════════════════════════════════════════ */}
+      {/* ═══ BB Artwork Modal ═══════════════════════════════════════════════ */}
       {showSgModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[93vh] overflow-y-auto mx-4">
+        <div className="fixed inset-0 z-50 flex items-stretch bg-black/40">
+          <div className="bg-white w-full h-full overflow-y-auto flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
               <h3 className="text-lg font-semibold text-gray-800">
-                {sgEditMode ? "Edit Artwork Sub Group" : "New Artwork Sub Group"}
+                {sgEditMode ? "Edit Child Artwork" : "New Child Artwork"}
               </h3>
               <div className="flex items-center gap-3">
                 <Button onClick={saveSG} loading={sgSaving} icon={<Check size={15} />}>
-                  {sgEditMode ? "Update" : "Save"} Sub Group
+                  {sgEditMode ? "Update" : "Save"} Child Artwork
                 </Button>
                 <button onClick={() => setShowSgModal(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
                   <X size={18} />
@@ -2499,13 +2611,187 @@ export default function ArtworkManagementPage() {
               </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 flex flex-col gap-5 flex-1 min-h-0 overflow-y-auto">
               {sgError && (
                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{sgError}</div>
               )}
 
-              {/* ── Attachments ── */}
-              <div>
+              {/* ── Two-column main area ── */}
+              <div className="flex gap-6">
+                {/* LEFT: Master Artwork + Product Details */}
+                <div className="flex-1 min-w-0 space-y-4">
+                  {/* Master Artwork */}
+                  <div>
+                    <SH label="Master Artwork" />
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <label className={lCls}>Master Artwork *</label>
+                        <SearchableSelect
+                          value={sgForm.ArtworkID}
+                          onChange={val => {
+                            rfSG("ArtworkID", val);
+                            if (!sgEditMode) autoFillSGFromArtwork(val);
+                          }}
+                          disabled={sgEditMode}
+                          options={list.map(a => ({ value: String(a.ArtworkID), label: `${a.ArtworkNo} — ${a.ArtworkName || a.ProductName}` }))}
+                          placeholder="-- Select Master Artwork --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
+                        />
+                        {!sgEditMode && sgForm.ArtworkID && (
+                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                            <Check size={10} /> Fields auto-filled from master artwork — edit as needed
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className={lCls}>Child Artwork Name / Variant Label *</label>
+                        <input value={sgForm.BBArtworkName} onChange={e => rfSG("BBArtworkName", e.target.value)}
+                          placeholder="e.g. 200ml Red Label Variant, Export Pack…" className={iCls} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Product Details */}
+                  <div>
+                    <SH label="Product Details" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lCls}>Job Name</label>
+                        <div className="relative">
+                          <input
+                            value={sgForm.JobName}
+                            onChange={e => {
+                              rfSG("JobName", e.target.value);
+                              rfSG("ArtworkName", [e.target.value, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
+                            }}
+                            placeholder="Type or select…"
+                            list="child-jobname-list"
+                            autoComplete="off"
+                            className={`${iCls} pr-8`}
+                          />
+                          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                          <datalist id="child-jobname-list">
+                            {[...new Set([
+                              ...list.map(r => r.ProductName),
+                              ...sgList.map(r => r.JobName),
+                              ...libRows.map(r => r.JobName),
+                            ].filter(Boolean))].sort().map(name => (
+                              <option key={name} value={name} />
+                            ))}
+                          </datalist>
+                        </div>
+                      </div>
+                      <div>
+                        <label className={lCls}>File Name</label>
+                        <input
+                          value={sgForm.AttachmentFilesName}
+                          onChange={e => rfSG("AttachmentFilesName", e.target.value)}
+                          placeholder="Enter file name…"
+                          className={iCls}
+                        />
+                      </div>
+                      <div>
+                        <label className={lCls}>Brand Name</label>
+                        <SearchableSelect value={sgForm.BrandName} onChange={val => rfSG("BrandName", val)}
+                          options={fmOptions.brandNames.map(v => ({ value: v, label: v }))} placeholder="-- Select Brand --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div>
+                        <label className={lCls}>Pack Size</label>
+                        <SearchableSelect value={sgForm.PackSize} onChange={val => { rfSG("PackSize", val); rfSG("ArtworkName", [sgForm.JobName, val, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-")); }}
+                          options={fmOptions.packSizes.map(v => ({ value: v, label: v }))} placeholder="-- Select Pack Size --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div>
+                        <label className={lCls}>Product Type</label>
+                        <SearchableSelect value={sgForm.ProductType} onChange={val => rfSG("ProductType", val)}
+                          options={fmOptions.productTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Product Type --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div>
+                        <label className={lCls}>SKU Type</label>
+                        <SearchableSelect value={sgForm.SkuType} onChange={val => { rfSG("SkuType", val); rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, val].filter(Boolean).join("-")); }}
+                          options={fmOptions.skuTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select SKU Type --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div>
+                        <label className={lCls}>Bottle Type</label>
+                        <SearchableSelect value={sgForm.BottleType} onChange={val => { rfSG("BottleType", val); rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, val, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-")); }}
+                          options={fmOptions.bottleTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Bottle Type --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div>
+                        <label className={lCls}>Address Type</label>
+                        <SearchableSelect value={sgForm.AddressType} onChange={val => { rfSG("AddressType", val); rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, val, sgForm.SkuType].filter(Boolean).join("-")); }}
+                          options={fmOptions.addressTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Address Type --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+                        <input value={sgForm.ArtworkName} readOnly
+                          className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} placeholder="Auto-generated from fields above" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lCls}>Special Specifications</label>
+                        <textarea value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)}
+                          rows={2} placeholder="Any special requirements or notes…" className={iCls} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* RIGHT: Dates + Basic Info */}
+                <div className="w-[420px] flex-shrink-0 space-y-5">
+                  {/* Dates */}
+                  <div>
+                    <SH label="Dates" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lCls}>Received Date</label>
+                        <input type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} className={iCls} />
+                      </div>
+                      <div>
+                        <label className={lCls}>Expected Completion Date</label>
+                        <input type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} className={iCls} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Basic Information */}
+                  <div>
+                    <SH label="Basic Information" />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={lCls}>Finish Goods Category</label>
+                        <SearchableSelect
+                          value={sgForm.CategoryID}
+                          onChange={val => { rfSG("CategoryID", val); const cat = dropData.categories.find(c => c.CategoryID === val); if (cat) rfSG("TypeOfProduct", cat.CategoryName); }}
+                          options={dropData.categories.map(c => ({ value: c.CategoryID, label: c.CategoryName }))}
+                          placeholder="-- Select Finish Goods Category --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className={lCls}>Sub Type (Content)</label>
+                        <input value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} className={iCls} placeholder="e.g. Pouch, Sachet…" />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lCls}>Artwork Description</label>
+                        <textarea value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)}
+                          rows={3} placeholder="Describe the artwork…" className={iCls} />
+                      </div>
+                      <div className="col-span-2">
+                        <label className={lCls}>Remarks</label>
+                        <textarea value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)}
+                          rows={3} placeholder="Internal notes…" className={iCls} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Attachments (full width, bottom) ── */}
+              <div className="border-t border-gray-100 pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <SH label="Attachments" />
                   <button onClick={() => sgFileRef.current?.click()}
@@ -2518,215 +2804,42 @@ export default function ArtworkManagementPage() {
                       if (!files || files.length === 0) return;
                       const newItems: AttachmentItem[] = Array.from(files).map(file => ({
                         _id: Math.random().toString(36).slice(2),
-                        name: file.name,
-                        url: URL.createObjectURL(file),
-                        mimeType: file.type,
-                        remark: "",
-                        fileObj: file,
+                        name: file.name, url: URL.createObjectURL(file),
+                        mimeType: file.type, remark: "", fileObj: file,
                       }));
                       setSgAttachments(p => [...p, ...newItems]);
                       e.target.value = "";
                     }} />
                 </div>
                 {sgAttachments.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
+                  <div className="grid grid-cols-6 gap-3">
                     {sgAttachments.map(att => (
                       <AttCard key={att._id} att={att}
                         onRemove={() => setSgAttachments(p => p.filter(a => a._id !== att._id))}
-                        onPreview={() => setPreview(att)} />
+                        onPreview={() => setPreview(att)}
+                        onRemarkChange={val => setSgAttachments(p => p.map(a => a._id === att._id ? { ...a, remark: val } : a))} />
                     ))}
                   </div>
                 ) : (
-                  <div
-                    onDragOver={e => e.preventDefault()}
+                  <div onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                       e.preventDefault();
                       const files = e.dataTransfer.files;
                       if (!files || files.length === 0) return;
                       const newItems: AttachmentItem[] = Array.from(files).map(file => ({
                         _id: Math.random().toString(36).slice(2),
-                        name: file.name,
-                        url: URL.createObjectURL(file),
-                        mimeType: file.type,
-                        remark: "",
-                        fileObj: file,
+                        name: file.name, url: URL.createObjectURL(file),
+                        mimeType: file.type, remark: "", fileObj: file,
                       }));
                       setSgAttachments(p => [...p, ...newItems]);
                     }}
                     onClick={() => sgFileRef.current?.click()}
-                    className="border-2 border-dashed border-orange-200 rounded-xl p-8 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
-                    <Paperclip size={22} className="text-orange-300 mx-auto mb-2" />
+                    className="border-2 border-dashed border-orange-200 rounded-xl p-5 text-center cursor-pointer hover:border-orange-400 hover:bg-orange-50 transition-colors">
+                    <Paperclip size={20} className="text-orange-300 mx-auto mb-1.5" />
                     <p className="text-xs text-orange-400 font-medium">Drag & drop any file — JPG, PDF, AI, PSD, PNG, etc.</p>
-                    <p className="text-[10px] text-orange-300 mt-1">or click to browse</p>
+                    <p className="text-[10px] text-orange-300 mt-0.5">or click to browse</p>
                   </div>
                 )}
-              </div>
-
-              {/* ── Parent Artwork ── */}
-              <div>
-                <SH label="Parent Artwork" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className={lCls}>Parent Artwork *</label>
-                    <select
-                      value={sgForm.ArtworkID}
-                      onChange={e => { if (!sgEditMode) autoFillSGFromArtwork(e.target.value); }}
-                      disabled={sgEditMode}
-                      className={iCls}
-                    >
-                      <option value="">-- Select Parent Artwork --</option>
-                      {list.map(a => (
-                        <option key={a.ArtworkID} value={a.ArtworkID}>
-                          {a.ArtworkNo} — {a.ArtworkName || a.ProductName}
-                        </option>
-                      ))}
-                    </select>
-                    {!sgEditMode && sgForm.ArtworkID && (
-                      <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                        <Check size={10} /> Fields auto-filled from parent artwork — edit as needed
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Sub Group Name / Variant Label *</label>
-                    <input
-                      value={sgForm.SubGroupName}
-                      onChange={e => rfSG("SubGroupName", e.target.value)}
-                      placeholder="e.g. 200ml Red Label Variant, Export Pack…"
-                      className={iCls}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Product Details ── */}
-              <div>
-                <SH label="Product Details" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className={lCls}>Job Name</label>
-                    <input value={sgForm.JobName} onChange={e => {
-                      const v = e.target.value;
-                      rfSG("JobName", v);
-                      rfSG("ArtworkName", [v, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
-                    }} placeholder="Enter job name…" className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Brand Name</label>
-                    <select value={sgForm.BrandName} onChange={e => rfSG("BrandName", e.target.value)} className={iCls}>
-                      <option value="">-- Select Brand --</option>
-                      {fmOptions.brandNames.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Pack Size</label>
-                    <select value={sgForm.PackSize} onChange={e => {
-                      const v = e.target.value;
-                      rfSG("PackSize", v);
-                      rfSG("ArtworkName", [sgForm.JobName, v, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Pack Size --</option>
-                      {fmOptions.packSizes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Product Type</label>
-                    <select value={sgForm.ProductType} onChange={e => rfSG("ProductType", e.target.value)} className={iCls}>
-                      <option value="">-- Select Product Type --</option>
-                      {fmOptions.productTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>SKU Type</label>
-                    <select value={sgForm.SkuType} onChange={e => {
-                      const v = e.target.value;
-                      rfSG("SkuType", v);
-                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, v].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select SKU Type --</option>
-                      {fmOptions.skuTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Bottle Type</label>
-                    <select value={sgForm.BottleType} onChange={e => {
-                      const v = e.target.value;
-                      rfSG("BottleType", v);
-                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, v, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Bottle Type --</option>
-                      {fmOptions.bottleTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Address Type</label>
-                    <select value={sgForm.AddressType} onChange={e => {
-                      const v = e.target.value;
-                      rfSG("AddressType", v);
-                      rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, v, sgForm.SkuType].filter(Boolean).join("-"));
-                    }} className={iCls}>
-                      <option value="">-- Select Address Type --</option>
-                      {fmOptions.addressTypes.map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
-                    <input value={sgForm.ArtworkName} onChange={e => rfSG("ArtworkName", e.target.value)}
-                      className={iCls} placeholder="Auto-generated from fields above" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Special Specifications</label>
-                    <textarea value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)}
-                      rows={2} placeholder="Any special requirements or notes…" className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Dates ── */}
-              <div>
-                <SH label="Dates" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Received Date</label>
-                    <input type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} className={iCls} />
-                  </div>
-                  <div>
-                    <label className={lCls}>Expected Completion Date</label>
-                    <input type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} className={iCls} />
-                  </div>
-                </div>
-              </div>
-
-              {/* ── Basic Info ── */}
-              <div>
-                <SH label="Basic Information" />
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={lCls}>Category (Type of Product)</label>
-                    <select value={sgForm.CategoryID} onChange={e => {
-                      rfSG("CategoryID", e.target.value);
-                      const cat = dropData.categories.find(c => c.CategoryID === e.target.value);
-                      if (cat) rfSG("TypeOfProduct", cat.CategoryName);
-                    }} className={iCls}>
-                      <option value="">-- Select Category --</option>
-                      {dropData.categories.map(c => <option key={c.CategoryID} value={c.CategoryID}>{c.CategoryName}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lCls}>Sub Type (Content)</label>
-                    <input value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} className={iCls} placeholder="e.g. Pouch, Sachet…" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Artwork Description</label>
-                    <textarea value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)}
-                      rows={2} placeholder="Describe the artwork…" className={iCls} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Remarks</label>
-                    <textarea value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)}
-                      rows={2} placeholder="Internal notes…" className={iCls} />
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -2768,8 +2881,8 @@ export default function ArtworkManagementPage() {
 
       {/* ─── YouTube Tutorial Modal ─────────────────────────────────────────── */}
       {showVideoModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-stretch bg-black/60">
+          <div className="bg-white w-full h-full overflow-y-auto flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div className="flex items-center gap-2">
