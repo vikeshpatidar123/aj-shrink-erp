@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Eye, Pencil, Trash2, ArrowRight, Layers, RefreshCw } from "lucide-react";
 import { apiGet, apiPost } from "@/lib/api";
@@ -249,7 +250,7 @@ export default function GravureEnquiryPage() {
           <Button variant="secondary" size="sm" icon={<RefreshCw size={14} className={loading ? "animate-spin" : ""} />} onClick={fetchData}>
             Refresh
           </Button>
-          <Button icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
         </div>
       </div>
 
@@ -278,9 +279,9 @@ export default function GravureEnquiryPage() {
             searchKeys={["enquiryNo", "customerName", "jobName", "substrate"]}
             actions={row => (
               <div className="flex items-center gap-1.5 justify-end">
-                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+                <RowAction.View onClick={() => setViewRow(row)} />
+                <RowAction.Edit onClick={() => openEdit(row)} />
+                <RowAction.Delete onClick={() => setDeleteId(row.id)} />
               </div>
             )}
           />

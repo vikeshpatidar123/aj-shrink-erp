@@ -9,14 +9,14 @@ import { usePermissions } from "@/context/PermissionsContext";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/categorymasterShrink`;
 
-// Ã¢"â‚¬Ã¢"â‚¬ Unwrap triple-encoded JSON Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Unwrap triple-encoded JSON
 function unwrap(raw: any): any {
   let r = raw;
   while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
   return r;
 }
 
-// Ã¢"â‚¬Ã¢"â‚¬ Shared UI Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Shared UI
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -31,7 +31,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// Ã¢"â‚¬Ã¢"â‚¬ Types Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Types
 type CategoryRow = {
   id: string;
   CategoryID: string;
@@ -155,7 +155,7 @@ const COA_DATA_FIELD_VALUES: Record<string, string[]> = {
 };
 const blankdry = () => ({ Particular: "", GSM: 0, MinimumValue: 0, MaximumValue: 0, IsEditableField: true });
 
-// Ã¢"â‚¬Ã¢"â‚¬ Page Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+// Page
 export default function CategoryMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [categories, setCategories] = useState<CategoryRow[]>([]);
@@ -179,13 +179,13 @@ export default function CategoryMasterPage() {
   const [dryDraft, setDryDraft] = useState(blankdry());
   const [plyDraft, setPlyDraft] = useState(blankply());
   const [plyDraftErr, setPlyDraftErr] = useState<Record<string, boolean>>({});
-  const [itemGroupsFull, setItemGroupsFull] = useState<{ItemGroupID: string; ItemGroupName: string}[]>([]);
+  const [itemGroupsFull, setItemGroupsFull] = useState<{ ItemGroupID: string; ItemGroupName: string }[]>([]);
   const [itemSubGroups, setItemSubGroups] = useState<string[]>([]);
-  const [allSubGroupsFull, setAllSubGroupsFull] = useState<{ItemSubGroupName: string; UnderSubGroupID: string}[]>([]);
+  const [allSubGroupsFull, setAllSubGroupsFull] = useState<{ ItemSubGroupName: string; UnderSubGroupID: string }[]>([]);
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Load list Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Load list
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/getcategory`, { headers: authHeaders() })
@@ -243,7 +243,7 @@ export default function CategoryMasterPage() {
 
   useEffect(() => { loadList(); loadSegments(); loadProcesses(); loadItemGroups(); loadAllSubGroups(); }, [loadList, loadSegments, loadProcesses, loadItemGroups, loadAllSubGroups]);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Load content + process allocations Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Load content + process allocations
   const fetchContents = useCallback(async (categoryID: string): Promise<{ contents: ContentItem[]; processAllocations: ProcessAllocation[] }> => {
     try {
       const res = await fetch(`${BASE}/getallcontents/${categoryID}`, { headers: authHeaders() });
@@ -275,7 +275,7 @@ export default function CategoryMasterPage() {
     } catch { return { contents: [], processAllocations: [] }; }
   }, []);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Load COA rows for a category Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Load COA rows for a category
   const fetchCoa = useCallback(async (categoryID: string): Promise<CoaRow[]> => {
     try {
       const res = await fetch(`${BASE}/categorywisegriddata/${categoryID}`, { headers: authHeaders() });
@@ -301,8 +301,8 @@ export default function CategoryMasterPage() {
     }
   }, []);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Load ply configuration for a category Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
-  const fetchPlyConfig = useCallback(async (categoryID: string, groups: {ItemGroupID: string; ItemGroupName: string}[]): Promise<PlyConfigRow[]> => {
+  // Load ply configuration for a category
+  const fetchPlyConfig = useCallback(async (categoryID: string, groups: { ItemGroupID: string; ItemGroupName: string }[]): Promise<PlyConfigRow[]> => {
     try {
       const res = await fetch(`${BASE}/getplyconfiguration/${categoryID}`, { headers: authHeaders() });
       const raw = unwrap(await res.text());
@@ -327,7 +327,7 @@ export default function CategoryMasterPage() {
     } catch { return []; }
   }, []);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Open add Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Open add
   const openAdd = async () => {
     setEditing(null);
     setError("");
@@ -339,7 +339,7 @@ export default function CategoryMasterPage() {
     setFormLoading(false);
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Open edit Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Open edit
   const openEdit = async (row: CategoryRow) => {
     setEditing(row);
     setError("");
@@ -351,7 +351,7 @@ export default function CategoryMasterPage() {
       fetchCoa(row.CategoryID),
       fetchPlyConfig(row.CategoryID, itemGroupsFull),
     ]);
-    
+
     console.log("COA Data on Edit Click (fetchCoa):", coaRows);
 
     setForm({
@@ -368,7 +368,7 @@ export default function CategoryMasterPage() {
     setFormLoading(false);
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Toggle content selection Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Toggle content selection
   const toggleContent = (idx: number, field: "IsSelected" | "IsDefault") => {
     const items = [...form.contents];
     items[idx] = { ...items[idx], [field]: !items[idx][field] };
@@ -385,7 +385,7 @@ export default function CategoryMasterPage() {
     f("contents", items);
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Toggle process allocation for a content Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Toggle process allocation for a content
   const toggleProcessAllocation = (processID: string, contentID: string) => {
     setForm(p => {
       const exists = p.processAllocations.some(a => a.ProcessID === processID && a.ContentID === contentID);
@@ -396,14 +396,14 @@ export default function CategoryMasterPage() {
     });
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Save Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Save
   const saveCategory = async () => {
     if (!can("/master/category", editing ? "CanEdit" : "CanSave")) {
-      alert(editing ? "You are not authorized to edit Category Master." : "You are not authorized to save Category Master.");
+      alert(editing ? "You are not authorized to edit Finish Goods Category Master." : "You are not authorized to save Finish Goods Category Master.");
       return;
     }
     setSubmitAttempted(true);
-    if (!form.CategoryName.trim()) { setError("Category Name is required."); return; }
+    if (!form.CategoryName.trim()) { setError("FG Category Name is required."); return; }
     setSaving(true);
     setError("");
     try {
@@ -490,7 +490,7 @@ export default function CategoryMasterPage() {
         loadList();
         setView("list");
       } else if (result === "Exist") {
-        setError("A category with this name already exists.");
+        setError("A FG category with this name already exists.");
       } else {
         setError("Save failed: " + result);
       }
@@ -500,10 +500,10 @@ export default function CategoryMasterPage() {
     setSaving(false);
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Delete Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Delete
   const deleteCategory = async (CategoryID: string) => {
-    if (!can("/master/category", "CanDelete")) { alert("You are not authorized to delete Category Master."); return; }
-    if (!confirm("Delete this category?")) return;
+    if (!can("/master/category", "CanDelete")) { alert("You are not authorized to delete Finish Goods Category Master."); return; }
+    if (!confirm("Delete this FG category?")) return;
     try {
       const res = await fetch(`${BASE}/deletecategorymasterdata/${CategoryID}`, { headers: authHeaders() });
       const raw = await res.text();
@@ -516,7 +516,7 @@ export default function CategoryMasterPage() {
     }
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ List derived Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // List derived
   const uniqueSegments = useMemo(() =>
     ["All", ...new Set(categories.map(c => c.SegmentName).filter(Boolean))],
     [categories]);
@@ -525,7 +525,7 @@ export default function CategoryMasterPage() {
     filterSegment === "All" ? categories : categories.filter(c => c.SegmentName === filterSegment),
     [categories, filterSegment]);
 
-  // Ã¢"â‚¬Ã¢"â‚¬ Process modal Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // Process modal
   const activeContent = processModalContentId
     ? form.contents.find(c => c.ContentID === processModalContentId)
     : null;
@@ -589,10 +589,10 @@ export default function CategoryMasterPage() {
     );
   };
 
-  // Ã¢"â‚¬Ã¢"â‚¬ FORM VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // FORM VIEW
   if (view === "form") {
     const tabs = [
-      { key: "detail" as const, label: "Category Detail" },
+      { key: "detail" as const, label: "FG Category Detail" },
       { key: "content" as const, label: "Content Allocation" },
       { key: "coa" as const, label: "COA Parameters" },
       { key: "ply" as const, label: "Ply Configuration" },
@@ -601,12 +601,12 @@ export default function CategoryMasterPage() {
     return (
       <>
         <ProcessModal />
-        <div className="max-w-5xl mx-auto pb-10">
+        <div className="w-full pb-10">
           {/* Header */}
           <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
             <div>
-              <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Category Master</p>
-              <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Category" : "New Category"}</h2>
+              <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Finish Goods Category Master</p>
+              <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit FG Category" : "New FG Category"}</h2>
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
@@ -615,7 +615,7 @@ export default function CategoryMasterPage() {
               <button onClick={saveCategory} disabled={saving}
                 className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                Save Category
+                Save FG Category
               </button>
             </div>
           </div>
@@ -650,14 +650,14 @@ export default function CategoryMasterPage() {
               ) : (
 
                 <>
-                  {/* Ã¢"â‚¬Ã¢"â‚¬ DETAIL TAB Ã¢"â‚¬Ã¢"â‚¬ */}
+                  {/* DETAIL TAB */}
                   {activeTab === "detail" && (
                     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div>
-                        <SectionTitle title="Category Identity" />
+                        <SectionTitle title="FG Category Identity" />
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="md:col-span-2">
-                            <Field label="Category Name" required>
+                            <Field label="FG Category Name" required>
                               <input type="text" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
                                 placeholder="e.g. Gravure - Solvent Base 2 Ply" className={ic(submitAttempted && !form.CategoryName.trim())} />
                             </Field>
@@ -678,7 +678,7 @@ export default function CategoryMasterPage() {
                     </div>
                   )}
 
-                  {/* Ã¢"â‚¬Ã¢"â‚¬ CONTENT ALLOCATION TAB Ã¢"â‚¬Ã¢"â‚¬ */}
+                  {/* CONTENT ALLOCATION TAB */}
                   {activeTab === "content" && (
                     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <div className="flex items-center justify-between">
@@ -761,7 +761,7 @@ export default function CategoryMasterPage() {
                     </div>
                   )}
 
-                  {/* Ã¢"â‚¬Ã¢"â‚¬ COA PARAMETERS TAB Ã¢"â‚¬Ã¢"â‚¬ */}
+                  {/* COA PARAMETERS TAB */}
                   {activeTab === "coa" && (
                     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                       <SectionTitle title="COA Parameter Allocation" />
@@ -920,7 +920,7 @@ export default function CategoryMasterPage() {
                     </div>
                   )}
 
-                  {/* Ã¢"â‚¬Ã¢"â‚¬ PLY CONFIGURATION TAB Ã¢"â‚¬Ã¢"â‚¬ */}
+                  {/* PLY CONFIGURATION TAB */}
                   {activeTab === "ply" && (() => {
                     return (
                       <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -1120,7 +1120,7 @@ export default function CategoryMasterPage() {
                           <button onClick={saveCategory} disabled={saving}
                             className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
                             {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                            Save Category
+                            Save FG Category
                           </button>
                         </div>
                       </div>
@@ -1136,32 +1136,23 @@ export default function CategoryMasterPage() {
     );
   }
 
-  // Ã¢"â‚¬Ã¢"â‚¬ LIST VIEW Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬Ã¢"â‚¬
+  // LIST VIEW
   const columns: Column<CategoryRow>[] = [
-    { key: "CategoryID", header: "ID", sortable: true },
-    { key: "CategoryName", header: "Category Name", sortable: true },
-    {
-      key: "SegmentName", header: "Segment",
-      render: r => r.SegmentName
-        ? <span className="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">{r.SegmentName}</span>
-        : <span className="text-gray-400">—</span>,
-    },
+    { key: "CategoryName", header: "FG Category Name", sortable: true },
     { key: "Layer", header: "Ply", render: r => r.Layer || <span className="text-gray-400">—</span> },
     { key: "Remark", header: "Remark", render: r => r.Remark ? <span className="text-xs text-gray-500">{r.Remark}</span> : <span className="text-gray-400">—</span> },
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Category Master</h2>
+          <h2 className="text-xl font-bold text-gray-800">Finish Goods Category Master</h2>
           <p className="text-sm text-gray-500">
-            {loading ? "Loading..." : `${filtered.length} of ${categories.length} categories`}
+            {loading ? "Loading..." : `${filtered.length} of ${categories.length} FG categories`}
           </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Category
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add FG Category</Button>
       </div>
 
       {/* Segment filter pills */}

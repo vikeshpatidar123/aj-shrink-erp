@@ -1,8 +1,14 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Plus, X, Search, Check, List, ChevronRight, RefreshCw, Trash2, Download } from "lucide-react";
+import { Plus, X, Search, List, RefreshCw, Boxes, Download } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
 import { getCompanyName } from "@/lib/useCompanyName";
+import { DataTable, Column } from "@/components/tables/DataTable";
+import Button from "@/components/ui/Button";
+import Modal from "@/components/ui/Modal";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
+import { Textarea } from "@/components/ui/Input";
+import { useToast } from "@/components/ui/Toast";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -20,6 +26,8 @@ interface IndentLine {
   ItemCode: string | null;
   ItemName: string | null;
   ItemDescription: string | null;
+  GSM: number | null;
+  SizeW: number | null;
   RequiredQuantity: number;
   RequiredQuantityPurchaseUnit: number;
   RequiredQuantityPacks: number;
@@ -71,6 +79,23 @@ interface PRLine {
   POQtyInSU: number;
   JobContentNo: string;
   JobName: string;
+  JobBookingJobCardContentsID: number;
+  GSM: number;
+  SizeW: number;
+  ItemNarration: string;
+  ExpectedDelivery: string;
+  CustomerName: string;
+  PWONo: string;
+}
+
+interface JobCardOption {
+  JobBookingID: number;
+  JobBookingJobCardContentsID: number;
+  JobCardContentNo: string;
+  JobName: string | null;
+  PlanContName: string | null;
+  PWONo: string | null;
+  CustomerName: string | null;
 }
 
 interface OverflowItem {
@@ -81,6 +106,8 @@ interface OverflowItem {
   ItemCode: string;
   ItemName: string;
   ItemDescription: string | null;
+  GSM: number | null;
+  SizeW: number | null;
   BookedStock: number;
   AllocatedStock: number;
   PhysicalStock: number;
@@ -88,6 +115,27 @@ interface OverflowItem {
   PurchaseUnit: string | null;
   WtPerPacking: number;
   UnitPerPacking: number;
+}
+
+interface IndentRow extends IndentLine {
+  Source: "Job Card" | "Stock";
+  FreeStock: number;
+}
+
+interface BatchApiResult {
+  BatchID: number;
+  BatchNo: string;
+  SupplierBatchNo: string;
+  ItemID: number;
+  ItemCode: string;
+  ItemName: string;
+  StockUnit: string;
+  ItemGroup: string;
+  WarehouseID: number;
+  WarehouseName: string;
+  Bin: string;
+  GRNNo: string;
+  SystemQty: number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -115,9 +163,17 @@ const toNum = (v: any) => Number(v ?? 0);
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PurchaseRequisitionPage() {
+  const { showToast } = useToast();
+
   // view
   const [view, setView] = useState<"list" | "form">("list");
   const [tab, setTab] = useState<"indent" | "reqs">("indent");
+
+  // global search (list view header)
+  const [search, setSearch] = useState("");
+
+  // job cards (for per-line job selection)
+  const [jobCards, setJobCards] = useState<JobCardOption[]>([]);
 
   // list data
   const [indentLines, setIndentLines] = useState<IndentLine[]>([]);
@@ -129,11 +185,12 @@ export default function PurchaseRequisitionPage() {
   const [selKeys, setSelKeys] = useState<Set<number>>(new Set());
 
   // indent filter
-  const [indentSearch, setIndentSearch] = useState("");
-  const [indentGroup, setIndentGroup] = useState("All");
+  const [indentSource, setIndentSource] = useState<"All" | "Job Card" | "Stock">("All");
 
-  // requisition filter
-  const [reqSearch, setReqSearch] = useState("");
+  // stock quick-view modal
+  const [stockView, setStockView] = useState<{ itemCode: string; itemName: string } | null>(null);
+  const [stockBatches, setStockBatches] = useState<BatchApiResult[]>([]);
+  const [stockLoading, setStockLoading] = useState(false);
 
   // form state
   const [editTxnID, setEditTxnID] = useState<number | null>(null);
@@ -184,8 +241,29 @@ export default function PurchaseRequisitionPage() {
       const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/ItemsForOverflow`, { headers: authHeaders() });
       setPickerItems(await unwrap(res));
     } catch (e: any) {
-      alert("Failed to load items: " + e.message);
+      showToast("error", "Failed to load items", e.message);
     } finally { setPickerLoading(false); }
+  };
+
+  const ensureJobCards = async () => {
+    if (jobCards.length) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/JobCards`, { headers: authHeaders() });
+      const data = await unwrap(res);
+      setJobCards(Array.isArray(data) ? data : []);
+    } catch { /* non-fatal */ }
+  };
+
+  const openStockView = async (row: IndentRow) => {
+    setStockView({ itemCode: row.ItemCode ?? "", itemName: row.ItemName ?? "" });
+    setStockLoading(true);
+    try {
+      const res = await fetch(`${BASE_URL}/api/ItemPhy/batches?search=${encodeURIComponent(row.ItemCode ?? "")}`, { headers: authHeaders() });
+      setStockBatches(await unwrap(res));
+    } catch (e: any) {
+      showToast("error", "Failed to load stock", e.message);
+      setStockBatches([]);
+    } finally { setStockLoading(false); }
   };
 
   // ── Navigation ──────────────────────────────────────────────────────────────
@@ -194,16 +272,20 @@ export default function PurchaseRequisitionPage() {
     setEditTxnID(null);
     setLines([]); setReqDate(todayISO()); setNarration("");
     await fetchVoucherNo();
+    void ensureJobCards();
     setView("form");
+    setShowPicker(true); setPickerSearch(""); setPickerGroup("All");
+    if (!pickerItems.length) await fetchPickerItems();
   };
 
   const openFromIndent = async () => {
     if (selKeys.size === 0) return;
     const sel = indentLines.filter(l => selKeys.has(l.TransactionDetailID));
     setEditTxnID(null);
-    setLines(sel.map(il2pr));
+    setLines(enrichWithJobs(sel.map(il2pr), jobCards));
     setReqDate(todayISO()); setNarration("");
     await fetchVoucherNo();
+    void ensureJobCards();
     setView("form");
   };
 
@@ -216,9 +298,8 @@ export default function PurchaseRequisitionPage() {
       );
       const rows: any[] = await unwrap(res);
 
-      // ErrMsg pattern — backend caught a SQL error
       if (rows.length > 0 && rows[0].ErrMsg) {
-        alert("Failed to load items: " + rows[0].ErrMsg);
+        showToast("error", "Failed to load", rows[0].ErrMsg);
         return;
       }
 
@@ -229,42 +310,49 @@ export default function PurchaseRequisitionPage() {
 
       const ls: PRLine[] = rows.map((r: any, idx: number) => {
         const packs = toNum(r.RequiredNoOfPacks);
-        const qpp   = toNum(r.QuantityPerPack);
+        const qpp = toNum(r.QuantityPerPack);
         return {
           lineKey: `e${toNum(r.ItemID)}-${idx}`,
-          ItemID:          toNum(r.ItemID),
-          ItemGroupID:     toNum(r.ItemGroupID),
-          ItemGroupName:   r.ItemGroupName   ?? "",
+          ItemID: toNum(r.ItemID),
+          ItemGroupID: toNum(r.ItemGroupID),
+          ItemGroupName: r.ItemGroupName ?? "",
           ItemSubGroupName: r.ItemSubGroupName ?? "",
-          ItemCode:        r.ItemCode        ?? "",
-          ItemName:        r.ItemName        ?? "",
+          ItemCode: r.ItemCode ?? "",
+          ItemName: r.ItemName ?? "",
           IndentDetailID: 0, IndentTxnID: 0, IndentQty: 0,
-          BookedStock:     toNum(r.BookedStock),
-          AllocatedStock:  toNum(r.AllocatedStock),
-          PhysicalStock:   toNum(r.PhysicalStock),
-          StockUnit:       r.StockUnit       ?? "",
-          PurchaseUnit:    r.PurchaseUnit    ?? "",
+          BookedStock: toNum(r.BookedStock),
+          AllocatedStock: toNum(r.AllocatedStock),
+          PhysicalStock: toNum(r.PhysicalStock),
+          StockUnit: r.StockUnit ?? "",
+          PurchaseUnit: r.PurchaseUnit ?? "",
           PhysicalStockInPU: toNum(r.CurrentStockInPurchaseUnit),
-          WtPerPacking:    toNum(r.WtPerPacking),
-          UnitPerPacking:  toNum(r.UnitPerPacking),
+          WtPerPacking: toNum(r.WtPerPacking),
+          UnitPerPacking: toNum(r.UnitPerPacking),
           RequiredNoOfPacks: packs,
-          QuantityPerPack:   qpp,
+          QuantityPerPack: qpp,
           POQtyInPU: packs * qpp || toNum(r.RequiredQuantity),
           POQtyInSU: toNum(r.RequiredQuantity),
           JobContentNo: r.RefJobCardContentNo ?? "",
           JobName: "",
+          JobBookingJobCardContentsID: toNum(r.RefJobBookingJobCardContentsID),
+          GSM: toNum(r.GSM),
+          SizeW: toNum(r.SizeW),
+          ItemNarration: r.ItemNarration ?? "",
+          ExpectedDelivery: r.ExpectedDeliveryDate ? isoFromAny(r.ExpectedDeliveryDate) : "",
+          CustomerName: "",
+          PWONo: "",
         };
       });
 
-      setLines(ls);
+      setLines(enrichWithJobs(ls, jobCards));
+      void ensureJobCards();
       setView("form");
-    } catch (e: any) { alert("Load failed: " + e.message); }
+    } catch (e: any) { showToast("error", "Load failed", e.message); }
     finally { setFormLoading(false); }
   };
 
-  // IndentLine → PRLine
-  const il2pr = (il: IndentLine): PRLine => ({
-    lineKey: `il${il.TransactionDetailID}`,
+  const il2pr = (il: IndentLine, idx: number = 0): PRLine => ({
+    lineKey: `il${il.TransactionDetailID}-${idx}`,
     ItemID: il.ItemID, ItemGroupID: il.ItemGroupID,
     ItemGroupName: il.ItemGroupName ?? "",
     ItemSubGroupName: il.ItemSubGroupName ?? "",
@@ -282,12 +370,22 @@ export default function PurchaseRequisitionPage() {
     POQtyInSU: il.RequiredQuantity,
     JobContentNo: il.JobBookingContentNo ?? "",
     JobName: il.JobName ?? "",
+    JobBookingJobCardContentsID: 0,
+    GSM: toNum(il.GSM),
+    SizeW: toNum(il.SizeW),
+    ItemNarration: "",
+    ExpectedDelivery: "",
+    CustomerName: "",
+    PWONo: "",
   });
 
   // ── Line ops ────────────────────────────────────────────────────────────────
 
   const addFromPicker = (item: OverflowItem) => {
-    if (lines.some(l => l.ItemID === item.ItemID)) { alert("Item already in list."); return; }
+    if (lines.some(l => l.ItemID === item.ItemID)) {
+      showToast("warning", "Item already in list");
+      return;
+    }
     setLines(p => [...p, {
       lineKey: `pk${item.ItemID}${Date.now()}`,
       ItemID: item.ItemID, ItemGroupID: item.ItemGroupID,
@@ -303,6 +401,10 @@ export default function PurchaseRequisitionPage() {
       RequiredNoOfPacks: 0, QuantityPerPack: 0,
       POQtyInPU: 0, POQtyInSU: 0,
       JobContentNo: "", JobName: "",
+      JobBookingJobCardContentsID: 0,
+      GSM: toNum(item.GSM), SizeW: toNum(item.SizeW),
+      ItemNarration: "", ExpectedDelivery: "",
+      CustomerName: "", PWONo: "",
     }]);
     setShowPicker(false); setPickerSearch(""); setPickerGroup("All");
   };
@@ -311,21 +413,69 @@ export default function PurchaseRequisitionPage() {
     setLines(p => p.map(l => {
       if (l.lineKey !== key) return l;
       const pk = field === "RequiredNoOfPacks" ? val : l.RequiredNoOfPacks;
-      const qp = field === "QuantityPerPack"   ? val : l.QuantityPerPack;
+      const qp = field === "QuantityPerPack" ? val : l.QuantityPerPack;
       return { ...l, [field]: val, POQtyInPU: pk * qp, POQtyInSU: pk * qp };
     }));
   };
 
   const removeLine = (key: string) => setLines(p => p.filter(l => l.lineKey !== key));
 
+  const setLinePWO = (key: string, contentsId: string) => {
+    const jc = jobCards.find(j => String(j.JobBookingJobCardContentsID) === contentsId);
+    setLines(p => p.map(l => l.lineKey === key ? {
+      ...l,
+      JobBookingJobCardContentsID: jc?.JobBookingJobCardContentsID ?? 0,
+      JobContentNo: jc?.JobCardContentNo ?? "",
+      JobName: jc?.JobName ?? "",
+      CustomerName: jc?.CustomerName ?? "",
+      PWONo: jc?.PWONo ?? "",
+    } : l));
+  };
+
+  const updateLineStr = (key: string, field: "ItemNarration" | "ExpectedDelivery", val: string) =>
+    setLines(p => p.map(l => l.lineKey === key ? { ...l, [field]: val } : l));
+
+  const enrichWithJobs = useCallback((arr: PRLine[], cards: JobCardOption[]): PRLine[] => {
+    if (!cards.length) return arr;
+    let changed = false;
+    const next = arr.map(l => {
+      if (!l.JobContentNo) return l;
+      const jc = cards.find(j => j.JobCardContentNo === l.JobContentNo);
+      if (!jc) return l;
+      if (l.CustomerName === (jc.CustomerName ?? "") &&
+        l.JobName === (jc.JobName ?? l.JobName) &&
+        l.JobBookingJobCardContentsID === jc.JobBookingJobCardContentsID) return l;
+      changed = true;
+      return {
+        ...l,
+        JobBookingJobCardContentsID: jc.JobBookingJobCardContentsID,
+        JobName: jc.JobName ?? l.JobName,
+        CustomerName: jc.CustomerName ?? "",
+        PWONo: jc.PWONo ?? "",
+      };
+    });
+    return changed ? next : arr;
+  }, []);
+
+  useEffect(() => {
+    setLines(prev => enrichWithJobs(prev, jobCards));
+  }, [jobCards, enrichWithJobs]);
+
   // ── Save ────────────────────────────────────────────────────────────────────
 
   const save = async () => {
-    if (!lines.length) { alert("Add at least one item."); return; }
+    if (!lines.length) { showToast("warning", "Add at least one item"); return; }
     const zeroQtyItems = lines.filter(l => l.POQtyInPU <= 0);
     if (zeroQtyItems.length) {
-      alert(`Required quantity must be greater than 0 for: ${zeroQtyItems.map(l => l.ItemName).join(", ")}`);
+      showToast("warning", "Quantity required", `Set qty > 0 for: ${zeroQtyItems.map(l => l.ItemName).join(", ")}`);
       return;
+    }
+    if (!editTxnID) {
+      const noDateItems = lines.filter(l => !l.ExpectedDelivery);
+      if (noDateItems.length) {
+        showToast("warning", "Expected Delivery Date required", noDateItems.map(l => l.ItemName).join(", "));
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -342,7 +492,9 @@ export default function PurchaseRequisitionPage() {
           CurrentStockInStockUnit: l.PhysicalStock,
           CurrentStockInPurchaseUnit: l.PhysicalStockInPU,
           RefJobCardContentNo: l.JobContentNo,
-          RefJobBookingJobCardContentsID: 0,
+          RefJobBookingJobCardContentsID: l.JobBookingJobCardContentsID ?? 0,
+          ItemNarration: l.ItemNarration,
+          ExpectedDeliveryDate: l.ExpectedDelivery || null,
           IsVoucherItemApproved: 1,
         })),
         UpdateIndentDetails: lines
@@ -362,18 +514,18 @@ export default function PurchaseRequisitionPage() {
       const res = await fetch(url, { method: "POST", headers: authHeaders(), body: JSON.stringify(body) });
       const result = await unwrap(res);
       if (result === "TransactionUsed") {
-        alert("This requisition is linked to a Purchase Order and cannot be edited.");
+        showToast("warning", "Cannot edit", "This requisition is linked to a Purchase Order.");
         return;
       }
       if (result === "RequisitionApproved") {
-        alert("One or more items are already approved. Cannot edit.");
+        showToast("warning", "Cannot edit", "One or more items are already approved.");
         return;
       }
-      alert(typeof result === "string" ? result : "Saved successfully!");
+      showToast("success", typeof result === "string" ? result : "Saved successfully!");
       await fetchLists();
       setSelKeys(new Set());
       setView("list"); setTab("reqs");
-    } catch (e: any) { alert("Save failed: " + e.message); }
+    } catch (e: any) { showToast("error", "Save failed", e.message); }
     finally { setSaving(false); }
   };
 
@@ -390,22 +542,23 @@ export default function PurchaseRequisitionPage() {
       });
       const result = await unwrap(res);
       if (result === "TransactionUsed") {
-        alert("Cannot delete — this requisition is already linked to a Purchase Order.");
+        showToast("warning", "Cannot delete", "This requisition is already linked to a Purchase Order.");
         return;
       }
       if (typeof result === "string" && result.startsWith("Error")) {
-        alert(result);
+        showToast("error", "Delete failed", result);
         return;
       }
+      showToast("success", "Deleted successfully");
       await fetchLists();
-    } catch (e: any) { alert("Delete failed: " + e.message); }
+    } catch (e: any) { showToast("error", "Delete failed", e.message); }
     finally { setDeleting(false); }
   };
 
   // ── Export CSV ───────────────────────────────────────────────────────────────
 
   const exportCSV = () => {
-    if (!filteredReqs.length) { alert("No records to export."); return; }
+    if (!filteredReqs.length) { showToast("info", "No records to export"); return; }
     const header = ["Voucher No", "Date", "No. of Items", "Total Qty", "Created By", "Narration", "FYear"];
     const rows = filteredReqs.map(r => [
       r.VoucherNo ?? "",
@@ -430,30 +583,92 @@ export default function PurchaseRequisitionPage() {
 
   const totalPOQty = lines.reduce((s, l) => s + l.POQtyInPU, 0);
 
-  const indentGroups = useMemo(() =>
-    ["All", ...Array.from(new Set(indentLines.map(l => l.ItemGroupName ?? "").filter(Boolean)))],
+  const augmentedIndent: IndentRow[] = useMemo(() =>
+    indentLines.map(l => ({
+      ...l,
+      Source: l.JobBookingContentNo ? "Job Card" : "Stock",
+      FreeStock: toNum(l.PhysicalStock) - toNum(l.AllocatedStock),
+    })),
     [indentLines]);
 
+  const jobCardCount = useMemo(() => augmentedIndent.filter(r => r.Source === "Job Card").length, [augmentedIndent]);
+  const stockCount   = useMemo(() => augmentedIndent.filter(r => r.Source === "Stock").length, [augmentedIndent]);
+
   const filteredIndent = useMemo(() => {
-    const s = indentSearch.toLowerCase();
-    return indentLines.filter(l =>
-      (indentGroup === "All" || l.ItemGroupName === indentGroup) &&
-      (!s ||
-        (l.ItemName ?? "").toLowerCase().includes(s) ||
-        (l.ItemCode ?? "").toLowerCase().includes(s) ||
-        (l.VoucherNo ?? "").toLowerCase().includes(s))
+    const s = search.trim().toLowerCase();
+    return augmentedIndent.filter(l =>
+      (indentSource === "All" || l.Source === indentSource) &&
+      (!s || [l.ItemName, l.ItemCode, l.VoucherNo, l.ItemGroupName, l.ItemSubGroupName]
+        .some(v => (v ?? "").toLowerCase().includes(s)))
     );
-  }, [indentLines, indentSearch, indentGroup]);
+  }, [augmentedIndent, indentSource, search]);
 
   const filteredReqs = useMemo(() => {
-    const s = reqSearch.toLowerCase();
+    const s = search.trim().toLowerCase();
     if (!s) return reqHeaders;
     return reqHeaders.filter(r =>
-      (r.VoucherNo ?? "").toLowerCase().includes(s) ||
-      (r.Narration ?? "").toLowerCase().includes(s) ||
-      (r.CreatedBy ?? "").toLowerCase().includes(s)
-    );
-  }, [reqHeaders, reqSearch]);
+      [r.VoucherNo, r.Narration, r.CreatedBy].some(v => (v ?? "").toLowerCase().includes(s)));
+  }, [reqHeaders, search]);
+
+  const toggleSel = (id: number) => {
+    setSelKeys(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const indentColumns: Column<IndentRow>[] = useMemo(() => [
+    {
+      key: "sel", header: "", width: "w-8",
+      render: row => (
+        <input
+          type="checkbox" checked={selKeys.has(row.TransactionDetailID)}
+          onChange={() => toggleSel(row.TransactionDetailID)}
+          onClick={e => e.stopPropagation()}
+          className="rounded border-none"
+        />
+      ),
+    },
+    { key: "VoucherNo", header: "Indent No.", render: r => <span className="font-mono text-[rgb(var(--color-primary))]">{r.VoucherNo ?? "—"}</span> },
+    { key: "VoucherDate", header: "Indent Date", render: r => fmtDate(r.VoucherDate) },
+    { key: "ItemGroupName", header: "Item Group", render: r => r.ItemGroupName ?? "—" },
+    { key: "ItemSubGroupName", header: "Sub Group", render: r => r.ItemSubGroupName ?? "—" },
+    {
+      key: "ItemCode", header: "Item Code",
+      render: r => (
+        <div>
+          <span className="font-mono text-[rgb(var(--color-primary))] block">{r.ItemCode}</span>
+          {r.ItemDescription && <span className="text-[rgb(var(--fg-muted))] text-xs block leading-tight mt-0.5">{r.ItemDescription}</span>}
+        </div>
+      ),
+    },
+    { key: "ItemName", header: "Item Name", render: r => r.ItemName ?? "—" },
+    { key: "GSM", header: "Face GSM", render: r => r.GSM ?? "—" },
+    { key: "SizeW", header: "Width (mm)", render: r => r.SizeW ?? "—" },
+    { key: "RequiredQuantity", header: "Indent Qty", render: r => toNum(r.RequiredQuantity).toLocaleString() },
+    { key: "PhysicalStock", header: "Current Stock", render: r => toNum(r.PhysicalStock).toLocaleString() },
+    { key: "BookedStock", header: "Booked Stock", render: r => toNum(r.BookedStock).toLocaleString() },
+    { key: "FreeStock", header: "Free Stock", render: r => toNum(r.FreeStock).toLocaleString() },
+    { key: "StockUnit", header: "Stock Unit", render: r => r.StockUnit ?? "—" },
+    {
+      key: "Source", header: "Source",
+      render: r => (
+        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${r.Source === "Job Card" ? "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]" : "bg-amber-100 text-amber-700"}`}>
+          {r.Source}
+        </span>
+      ),
+    },
+  ], [selKeys]);
+
+  const reqColumns: Column<ReqHeader>[] = useMemo(() => [
+    { key: "VoucherNo", header: "Voucher No.", render: r => <span className="font-mono text-[rgb(var(--color-primary))] font-semibold">{r.VoucherNo ?? "—"}</span> },
+    { key: "VoucherDate", header: "Date", render: r => fmtDate(r.VoucherDate) },
+    { key: "NoOfItems", header: "Items", render: r => r.NoOfItems },
+    { key: "TotalQuantity", header: "Total Qty", render: r => toNum(r.TotalQuantity).toLocaleString() },
+    { key: "CreatedBy", header: "Created By", render: r => r.CreatedBy ?? "—" },
+    { key: "Narration", header: "Narration", render: r => <span className="max-w-[200px] truncate block">{r.Narration ?? "—"}</span> },
+  ], []);
 
   const pickerGroups = useMemo(() =>
     ["All", ...Array.from(new Set(pickerItems.map(i => i.ItemGroupName ?? "").filter(Boolean)))],
@@ -475,100 +690,98 @@ export default function PurchaseRequisitionPage() {
 
   if (view === "form") {
     return (
-      <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+      <div className="w-full pb-10">
 
         {/* Header ribbon */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-[rgb(var(--bg-surface))] p-4 rounded-xl border border-[rgb(var(--bd-default))] shadow-sm">
           <div>
-            <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
+            <p className="text-xs text-[rgb(var(--fg-muted))] font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
             <div className="flex flex-wrap items-center gap-2 mt-0.5">
-              <h2 className="text-lg font-bold text-gray-800">Purchase Requisition</h2>
+              <h2 className="text-lg font-bold text-[rgb(var(--fg-default))]">Purchase Requisition</h2>
               {editTxnID && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">Editing</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]">Editing</span>
               )}
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold text-blue-600 bg-blue-100 border border-blue-200">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary-subtle))] border border-[rgb(var(--bd-default))]">
                 {voucherNo}
               </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setView("list")}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <List size={15} />
-              <span className="hidden sm:inline">List ({reqHeaders.length})</span>
-              <span className="sm:hidden">List</span>
-            </button>
-            <button
-              onClick={save}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
-            >
-              <Check size={15} /> {saving ? "Saving…" : "Save"}
-            </button>
+            <Button variant="action-back" size="sm" icon={<List size={15} />} onClick={() => setView("list")}>
+              List ({reqHeaders.length})
+            </Button>
+            <Button variant="action-save" size="sm" loading={saving} onClick={save}>
+              Save
+            </Button>
           </div>
         </div>
 
         {/* Content card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl shadow-sm border border-[rgb(var(--bd-default))] overflow-hidden">
 
           {/* Info bar */}
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50/30 flex flex-wrap items-center gap-6">
+          <div className="px-6 py-3 border-b border-[rgb(var(--bd-default))] bg-[rgb(var(--bg-subtle))] flex flex-wrap items-center gap-5">
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Req. No.</label>
+              <label className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider whitespace-nowrap">Req. No.</label>
               <input
                 readOnly value={voucherNo}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono font-semibold text-blue-700 bg-blue-50 focus:outline-none w-52"
+                className="border border-[rgb(var(--bd-default))] rounded-md px-3 py-1.5 text-xs font-mono font-semibold text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary-subtle))] focus:outline-none w-48"
               />
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</label>
+              <label className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider whitespace-nowrap">Date</label>
               <input
                 type="date" value={reqDate} onChange={e => setReqDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="border border-[rgb(var(--bd-default))] rounded-md px-3 py-1.5 text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
               />
             </div>
             <div className="ml-auto">
-              <button
+              <Button
+                variant="action-create" size="sm" icon={<Plus size={14} />}
                 onClick={async () => {
                   setShowPicker(true); setPickerSearch(""); setPickerGroup("All");
                   if (!pickerItems.length) await fetchPickerItems();
                 }}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
               >
-                <Plus size={14} /> Add Item
-              </button>
+                Add Item
+              </Button>
             </div>
           </div>
 
           {/* Desktop table */}
           <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full text-xs border-collapse" style={{ minWidth: 1280 }}>
+            <table className="w-full text-xs border-collapse" style={{ minWidth: 2280 }}>
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))]">
                   {[
-                    { label: "Item\nCode",           right: false },
-                    { label: "Item Group",           right: false },
-                    { label: "Sub Group",            right: false },
-                    { label: "Item Name",            right: false },
-                    { label: "Indent\nQty",          right: true  },
-                    { label: "Booked\nStock",        right: true  },
-                    { label: "Allocated\nStock",     right: true  },
-                    { label: "Curr.\nStock",         right: true  },
-                    { label: "Stock\nUnit",          right: false },
-                    { label: "Stock\n(In P.U.)",     right: true  },
-                    { label: "Purchase\nUnit",       right: false },
-                    { label: "No. Of\nPacks/Rolls",  right: true  },
-                    { label: "Qty /\nPack/Roll",     right: true  },
-                    { label: "P.O.Qty\n(P.U.)",      right: true  },
-                    { label: "P.O.Qty\n(S.U.)",      right: true  },
-                    { label: "",                     right: false },
+                    { label: "Item\nCode", right: false },
+                    { label: "Item Group", right: false },
+                    { label: "Sub Group", right: false },
+                    { label: "Item Name", right: false },
+                    { label: "Face\nGSM", right: true },
+                    { label: "Width", right: true },
+                    { label: "No. Of\nPacks/Rolls", right: true },
+                    { label: "Qty /\nPack/Roll", right: true },
+                    { label: "Purchase\nQuantity (In SU)", right: true },
+                    { label: "Purchase\nQuantity (In PU)", right: true },
+                    { label: "Item\nRemark", right: false },
+                    { label: "Indent\nQty", right: true },
+                    { label: "Booked\nStock", right: true },
+                    { label: "Current Stock\n(In S.U.)", right: true },
+                    { label: "Stock\nUnit", right: false },
+                    { label: "Current Stock\n(In P.U.)", right: true },
+                    { label: "Purchase\nUnit", right: false },
+                    { label: "Job\nName", right: false },
+                    { label: "PWO No", right: false },
+                    { label: "ERP\nNo", right: false },
+                    { label: "Expec.\nDel.Date *", right: false },
+                    { label: "Customer\nName", right: false },
+                    { label: "", right: false },
                   ].map((c, i) => (
                     <th
                       key={i}
-                      className={`px-3 py-3 font-semibold text-gray-500 uppercase tracking-wider whitespace-pre-line leading-tight ${c.right ? "text-right" : "text-left"}`}
-                      style={{ fontSize: 11 }}
+                      className={`px-3 py-2.5 font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider whitespace-pre-line leading-tight ${c.right ? "text-right" : "text-left"}`}
+                      style={{ fontSize: 10 }}
                     >
                       {c.label}
                     </th>
@@ -578,48 +791,90 @@ export default function PurchaseRequisitionPage() {
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={16} className="text-center py-24 text-gray-400 text-sm">
+                    <td colSpan={23} className="text-center py-24 text-[rgb(var(--fg-subtle))] text-sm">
                       No items — click &ldquo;+ Add Item&rdquo; to begin
                     </td>
                   </tr>
                 ) : lines.map((l, idx) => (
                   <tr
                     key={l.lineKey}
-                    className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}
+                    className={`border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] transition-colors ${idx % 2 === 0 ? "bg-[rgb(var(--bg-surface))]" : "bg-[rgb(var(--bg-subtle))]"}`}
                   >
-                    <td className="px-3 py-2 font-mono text-blue-700 whitespace-nowrap">{l.ItemCode}</td>
-                    <td className="px-3 py-2 text-gray-700 whitespace-nowrap">{l.ItemGroupName}</td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{l.ItemSubGroupName || "—"}</td>
-                    <td className="px-3 py-2 text-gray-800" style={{ maxWidth: 200 }}>{l.ItemName}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{l.IndentQty || "—"}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{l.BookedStock.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right text-gray-500">{l.AllocatedStock.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right text-gray-600">{l.PhysicalStock.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-gray-500">{l.StockUnit}</td>
-                    <td className="px-3 py-2 text-right text-gray-600">{l.PhysicalStockInPU.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-gray-500">{l.PurchaseUnit}</td>
-                    <td className="px-2 py-1">
+                    <td className="px-3 py-2 font-mono text-[rgb(var(--color-primary))] whitespace-nowrap">{l.ItemCode}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-default))] whitespace-nowrap">{l.ItemGroupName}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-muted))] whitespace-nowrap">{l.ItemSubGroupName || "—"}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-default))]" style={{ maxWidth: 200 }}>{l.ItemName}</td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-muted))]">{l.GSM || "—"}</td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-muted))]">{l.SizeW || "—"}</td>
+                    <td className="px-2 py-1.5">
                       <input
                         type="number" min={0}
                         value={l.RequiredNoOfPacks || ""}
                         onChange={e => updateLine(l.lineKey, "RequiredNoOfPacks", Number(e.target.value))}
-                        className="w-20 text-right px-2 py-1 border border-gray-300 rounded text-xs font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                        onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                        className="w-20 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                         placeholder="0"
                       />
                     </td>
-                    <td className="px-2 py-1">
+                    <td className="px-2 py-1.5">
                       <input
                         type="number" min={0}
                         value={l.QuantityPerPack || ""}
                         onChange={e => updateLine(l.lineKey, "QuantityPerPack", Number(e.target.value))}
-                        className="w-24 text-right px-2 py-1 border border-gray-300 rounded text-xs font-semibold text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                        onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                        className="w-24 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                         placeholder="0"
                       />
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold text-blue-700">{l.POQtyInPU.toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right font-semibold text-gray-700">{l.POQtyInSU.toLocaleString()}</td>
-                    <td className="px-2 py-1 text-center">
-                      <button onClick={() => removeLine(l.lineKey)} className="text-gray-300 hover:text-red-500 transition-colors">
+                    <td className="px-3 py-2 text-right font-semibold text-[rgb(var(--color-primary))]">{l.POQtyInSU.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-[rgb(var(--color-primary))]">{l.POQtyInPU.toLocaleString()}</td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="text"
+                        value={l.ItemNarration}
+                        onChange={e => updateLineStr(l.lineKey, "ItemNarration", e.target.value)}
+                        className="w-28 px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                        placeholder="Remark…"
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-muted))]">{l.IndentQty || "—"}</td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-muted))]">{l.BookedStock.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-default))]">{l.PhysicalStock.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-muted))]">{l.StockUnit}</td>
+                    <td className="px-3 py-2 text-right text-[rgb(var(--fg-default))]">{l.PhysicalStockInPU.toLocaleString()}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-muted))]">{l.PurchaseUnit}</td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-default))] whitespace-nowrap" style={{ maxWidth: 160 }}>
+                      <span className="block truncate" title={l.JobName || undefined}>{l.JobName || "—"}</span>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <select
+                        value={l.JobBookingJobCardContentsID ? String(l.JobBookingJobCardContentsID) : ""}
+                        onChange={e => setLinePWO(l.lineKey, e.target.value)}
+                        className="w-36 px-1.5 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                        title={l.PWONo || undefined}
+                      >
+                        <option value="">Select SOP</option>
+                        {jobCards.map(j => (
+                          <option key={j.JobBookingJobCardContentsID} value={String(j.JobBookingJobCardContentsID)}>
+                            {j.PWONo || j.JobCardContentNo}{j.JobName ? ` · ${j.JobName}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-subtle))]">—</td>
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="date"
+                        value={l.ExpectedDelivery}
+                        onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
+                        className={`w-32 px-2 py-1 border rounded-md text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))] ${l.ExpectedDelivery ? "border-[rgb(var(--bd-default))]" : "border-red-300"}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2 text-[rgb(var(--fg-default))] whitespace-nowrap" style={{ maxWidth: 160 }}>
+                      <span className="block truncate" title={l.CustomerName || undefined}>{l.CustomerName || "—"}</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <button onClick={() => removeLine(l.lineKey)} className="text-[rgb(var(--fg-subtle))] hover:text-red-500 transition-colors p-1 rounded">
                         <X size={14} />
                       </button>
                     </td>
@@ -628,10 +883,10 @@ export default function PurchaseRequisitionPage() {
               </tbody>
               {lines.length > 0 && (
                 <tfoot>
-                  <tr className="bg-blue-50 border-t-2 border-blue-200">
-                    <td colSpan={13} className="px-3 py-2 text-right text-xs font-bold text-blue-800">Total P.O. Qty (P.U.)</td>
-                    <td className="px-3 py-2 text-right text-sm font-bold text-blue-800">{totalPOQty.toLocaleString()}</td>
-                    <td colSpan={2} />
+                  <tr className="bg-[rgb(var(--color-primary-subtle))] border-t-2 border-[rgb(var(--color-primary))]">
+                    <td colSpan={9} className="px-3 py-2 text-right text-xs font-bold text-[rgb(var(--color-primary))]">Total Purchase Qty (In PU)</td>
+                    <td className="px-3 py-2 text-right text-sm font-bold text-[rgb(var(--color-primary))]">{totalPOQty.toLocaleString()}</td>
+                    <td colSpan={13} />
                   </tr>
                 </tfoot>
               )}
@@ -641,67 +896,108 @@ export default function PurchaseRequisitionPage() {
           {/* Mobile card view */}
           <div className="lg:hidden">
             {lines.length === 0 ? (
-              <div className="text-center py-16 text-gray-400 text-sm">Tap &ldquo;+ Add Item&rdquo; to begin</div>
+              <div className="text-center py-16 text-[rgb(var(--fg-subtle))] text-sm">Tap &ldquo;+ Add Item&rdquo; to begin</div>
             ) : (
               <div className="space-y-3 p-4">
                 {lines.map(l => (
-                  <div key={l.lineKey} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2">
+                  <div key={l.lineKey} className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))] flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-xs font-mono font-bold text-blue-700">{l.ItemCode}</p>
-                        <p className="text-sm font-semibold text-gray-900 truncate">{l.ItemName}</p>
-                        <p className="text-xs text-gray-500">{l.ItemGroupName}{l.ItemSubGroupName ? ` · ${l.ItemSubGroupName}` : ""}</p>
+                        <p className="text-xs font-mono font-bold text-[rgb(var(--color-primary))]">{l.ItemCode}</p>
+                        <p className="text-sm font-semibold text-[rgb(var(--fg-default))] truncate">{l.ItemName}</p>
+                        <p className="text-xs text-[rgb(var(--fg-muted))]">{l.ItemGroupName}{l.ItemSubGroupName ? ` · ${l.ItemSubGroupName}` : ""}</p>
                       </div>
-                      <button onClick={() => removeLine(l.lineKey)} className="flex-shrink-0 p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                      <button onClick={() => removeLine(l.lineKey)} className="flex-shrink-0 p-2 rounded-lg text-[rgb(var(--fg-subtle))] hover:text-red-500 hover:bg-red-50 transition-colors">
                         <X size={16} />
                       </button>
                     </div>
-                    <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
+                    <div className="grid grid-cols-3 divide-x divide-[rgb(var(--bd-default))] border-b border-[rgb(var(--bd-default))]">
                       {[
                         { label: "Curr. Stock", val: `${l.PhysicalStock} ${l.StockUnit}` },
-                        { label: "Allocated",   val: l.AllocatedStock.toLocaleString() },
-                        { label: "Indent Qty",  val: l.IndentQty || "—" },
+                        { label: "Allocated", val: l.AllocatedStock.toLocaleString() },
+                        { label: "Indent Qty", val: l.IndentQty || "—" },
                       ].map(({ label, val }) => (
                         <div key={label} className="px-3 py-2.5 text-center">
-                          <p className="text-xs text-gray-400 font-medium">{label}</p>
-                          <p className="text-sm font-semibold text-gray-800 mt-0.5">{val}</p>
+                          <p className="text-xs text-[rgb(var(--fg-subtle))] font-medium">{label}</p>
+                          <p className="text-sm font-semibold text-[rgb(var(--fg-default))] mt-0.5">{val}</p>
                         </div>
                       ))}
                     </div>
-                    <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-gray-100">
+                    <div className="grid grid-cols-2 gap-3 px-4 py-3 border-b border-[rgb(var(--bd-default))]">
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">No. of Packs/Rolls</p>
+                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">No. of Packs/Rolls</p>
                         <input
                           type="number" min={0} value={l.RequiredNoOfPacks || ""}
                           onChange={e => updateLine(l.lineKey, "RequiredNoOfPacks", Number(e.target.value))}
-                          className="w-full text-right px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                          className="w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                           placeholder="0"
                         />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-1.5">Qty / Pack/Roll</p>
+                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">Qty / Pack/Roll</p>
                         <input
                           type="number" min={0} value={l.QuantityPerPack || ""}
                           onChange={e => updateLine(l.lineKey, "QuantityPerPack", Number(e.target.value))}
-                          className="w-full text-right px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
+                          className="w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                           placeholder="0"
                         />
                       </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">Item Remark</p>
+                        <input
+                          type="text" value={l.ItemNarration}
+                          onChange={e => updateLineStr(l.lineKey, "ItemNarration", e.target.value)}
+                          className="w-full px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                          placeholder="Remark…"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">Expec. Del. Date <span className="text-red-500">*</span></p>
+                        <input
+                          type="date" value={l.ExpectedDelivery}
+                          onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-md text-sm text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))] ${l.ExpectedDelivery ? "border-[rgb(var(--bd-default))]" : "border-red-300"}`}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">PWO No</p>
+                        <select
+                          value={l.JobBookingJobCardContentsID ? String(l.JobBookingJobCardContentsID) : ""}
+                          onChange={e => setLinePWO(l.lineKey, e.target.value)}
+                          className="w-full px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                        >
+                          <option value="">Select SOP</option>
+                          {jobCards.map(j => (
+                            <option key={j.JobBookingJobCardContentsID} value={String(j.JobBookingJobCardContentsID)}>
+                              {j.PWONo || j.JobCardContentNo}{j.JobName ? ` · ${j.JobName}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        {(l.JobName || l.CustomerName) && (
+                          <p className="text-xs text-[rgb(var(--fg-muted))] mt-1">
+                            {l.JobName && <span>Job: <span className="text-[rgb(var(--fg-default))] font-medium">{l.JobName}</span></span>}
+                            {l.JobName && l.CustomerName && " · "}
+                            {l.CustomerName && <span>Customer: <span className="text-[rgb(var(--fg-default))] font-medium">{l.CustomerName}</span></span>}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 divide-x divide-gray-100 bg-blue-50">
+                    <div className="grid grid-cols-2 divide-x divide-[rgb(var(--bd-default))] bg-[rgb(var(--color-primary-subtle))]">
                       <div className="px-4 py-2.5 text-center">
-                        <p className="text-xs text-blue-600 font-medium">P.O. Qty (P.U.)</p>
-                        <p className="text-base font-bold text-blue-700">{l.POQtyInPU.toLocaleString()}</p>
+                        <p className="text-xs text-[rgb(var(--color-primary))] font-medium">P.O. Qty (P.U.)</p>
+                        <p className="text-base font-bold text-[rgb(var(--color-primary))]">{l.POQtyInPU.toLocaleString()}</p>
                       </div>
                       <div className="px-4 py-2.5 text-center">
-                        <p className="text-xs text-gray-600 font-medium">P.O. Qty (S.U.)</p>
-                        <p className="text-base font-bold text-gray-800">{l.POQtyInSU.toLocaleString()}</p>
+                        <p className="text-xs text-[rgb(var(--fg-muted))] font-medium">P.O. Qty (S.U.)</p>
+                        <p className="text-base font-bold text-[rgb(var(--fg-default))]">{l.POQtyInSU.toLocaleString()}</p>
                       </div>
                     </div>
                   </div>
                 ))}
-                <div className="bg-blue-600 rounded-xl px-4 py-3 flex items-center justify-between">
-                  <span className="text-sm font-semibold text-blue-100">Total P.O. Qty (P.U.)</span>
+                <div className="bg-[rgb(var(--color-primary))] rounded-xl px-4 py-3 flex items-center justify-between">
+                  <span className="text-sm font-semibold text-white/80">Total P.O. Qty (P.U.)</span>
                   <span className="text-xl font-bold text-white">{totalPOQty.toLocaleString()}</span>
                 </div>
               </div>
@@ -709,88 +1005,86 @@ export default function PurchaseRequisitionPage() {
           </div>
 
           {/* Narration */}
-          <div className="px-6 py-4 border-t border-gray-100">
-            <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Narration / Remark</label>
-            <textarea
-              value={narration} onChange={e => setNarration(e.target.value)} rows={2}
+          <div className="px-6 py-4 border-t border-[rgb(var(--bd-default))]">
+            <Textarea
+              label="Narration / Remark"
+              value={narration}
+              onChange={e => setNarration(e.target.value)}
+              rows={2}
               placeholder="Optional notes…"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
         </div>
 
         {/* Item picker modal */}
-        {showPicker && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1200px] max-h-[88vh] flex flex-col overflow-hidden">
-              <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
-                <h3 className="font-semibold text-sm tracking-wide">Add Item to Requisition</h3>
-                <button onClick={() => setShowPicker(false)} className="text-blue-200 hover:text-white transition-colors">
-                  <X size={18} />
-                </button>
+        <Modal
+          open={showPicker}
+          onClose={() => setShowPicker(false)}
+          title="Add Item to Requisition"
+          size="xl"
+        >
+          <div className="flex flex-col gap-3 -mx-4 -mt-4 sm:-mx-6 sm:-mt-5">
+            <div className="px-5 py-3 border-b border-[rgb(var(--bd-default))] space-y-2.5">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--fg-muted))]" />
+                <input
+                  autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+                  placeholder="Search by item name or code…"
+                  className="w-full pl-9 pr-4 py-2 border border-[rgb(var(--bd-default))] rounded-md text-xs bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-default))] placeholder:text-[rgb(var(--fg-subtle))]"
+                />
               </div>
-              <div className="px-5 py-3 border-b border-gray-100 space-y-2.5 shrink-0">
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
-                    placeholder="Search by item name or code…"
-                    className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {pickerGroups.map(g => (
-                    <button
-                      key={g} onClick={() => setPickerGroup(g)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pickerGroup === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700"}`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                {pickerLoading ? (
-                  <div className="text-center py-12 text-gray-400">Loading items…</div>
-                ) : (
-                  <table className="w-full text-xs">
-                    <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        {["Code", "Item Name", "Group", "Sub Group", "Curr. Stock", "Purch. Unit", "Stock UOM"].map((h, i) => (
-                          <th key={i} className={`px-4 py-2 font-semibold text-gray-500 uppercase tracking-wider ${i >= 4 ? "text-right" : "text-left"}`}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredPicker.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-12 text-gray-400">No items found</td></tr>
-                      ) : filteredPicker.map(item => (
-                        <tr
-                          key={item.ItemID} onClick={() => addFromPicker(item)}
-                          className="border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors"
-                        >
-                          <td className="px-4 py-2.5">
-                            <span className="font-mono text-blue-700 font-semibold block">{item.ItemCode}</span>
-                            {item.ItemDescription && <span className="text-gray-400 text-xs block leading-tight mt-0.5">{item.ItemDescription}</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-gray-800 font-medium">{item.ItemName}</td>
-                          <td className="px-4 py-2.5 text-gray-500">{item.ItemGroupName}</td>
-                          <td className="px-4 py-2.5 text-gray-500">{item.ItemSubGroupName || "—"}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-600">{toNum(item.PhysicalStock).toLocaleString()}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-600">{item.PurchaseUnit}</td>
-                          <td className="px-4 py-2.5 text-right text-gray-600">{item.StockUnit}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-              <div className="px-5 py-2.5 border-t border-gray-100 text-right shrink-0">
-                <p className="text-xs text-gray-400">Click any row to add item to requisition</p>
+              <div className="flex gap-2 flex-wrap">
+                {pickerGroups.map(g => (
+                  <button
+                    key={g} onClick={() => setPickerGroup(g)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pickerGroup === g ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+                  >
+                    {g}
+                  </button>
+                ))}
               </div>
             </div>
+            <div className="overflow-y-auto" style={{ maxHeight: "55vh" }}>
+              {pickerLoading ? (
+                <div className="text-center py-12 text-[rgb(var(--fg-subtle))]">Loading items…</div>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))]">
+                    <tr>
+                      {["Code", "Item Name", "Group", "Sub Group", "Curr. Stock", "Purch. Unit", "Stock UOM"].map((h, i) => (
+                        <th key={i} className={`px-4 py-2 font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider ${i >= 4 ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPicker.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-12 text-[rgb(var(--fg-subtle))]">No items found</td></tr>
+                    ) : filteredPicker.map(item => (
+                      <tr
+                        key={item.ItemID} onClick={() => addFromPicker(item)}
+                        className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-2.5">
+                          <span className="font-mono text-[rgb(var(--color-primary))] font-semibold block">{item.ItemCode}</span>
+                          {item.ItemDescription && <span className="text-[rgb(var(--fg-subtle))] text-xs block leading-tight mt-0.5">{item.ItemDescription}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-[rgb(var(--fg-default))] font-medium">{item.ItemName}</td>
+                        <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemGroupName}</td>
+                        <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemSubGroupName || "—"}</td>
+                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-default))]">{toNum(item.PhysicalStock).toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.PurchaseUnit}</td>
+                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.StockUnit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="px-5 py-2 border-t border-[rgb(var(--bd-default))] text-right">
+              <p className="text-xs text-[rgb(var(--fg-subtle))]">Click any row to add item to requisition</p>
+            </div>
           </div>
-        )}
+        </Modal>
       </div>
     );
   }
@@ -800,66 +1094,32 @@ export default function PurchaseRequisitionPage() {
   // ════════════════════════════════════════════════════════════════════════════
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
+    <div className="w-full space-y-4">
 
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-gray-800">Purchase Requisition</h2>
-          <p className="text-sm text-gray-500">
-            {tab === "indent" ? `${filteredIndent.length} indent lines` : `${filteredReqs.length} requisitions`}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={fetchLists}
-            className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Refresh"
-          >
-            <RefreshCw size={15} />
-          </button>
-          {tab === "reqs" && filteredReqs.length > 0 && (
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              title="Export to CSV"
-            >
-              <Download size={14} /> Export
-            </button>
-          )}
-          {tab === "indent" && selKeys.size > 0 && (
-            <button
-              onClick={openFromIndent}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
-            >
-              <ChevronRight size={15} /> Create Req. ({selKeys.size})
-            </button>
-          )}
-          <button
-            onClick={openBlank}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <Plus size={16} /> New Requisition
-          </button>
-        </div>
+      {/* Page heading */}
+      <div className="text-center pt-1">
+        <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Requisition</h2>
+        <p className="text-sm text-[rgb(var(--fg-muted))]">
+          {tab === "indent" ? `${filteredIndent.length} indent lines` : `${filteredReqs.length} requisitions`}
+        </p>
       </div>
 
-      {/* Tab panel */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Controls row */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
 
-        {/* Tab bar */}
-        <div className="flex border-b border-gray-200">
+        {/* Tab pills */}
+        <div className="flex items-center gap-2">
           {([
-            { key: "indent" as const, label: "Indent List",         count: indentLines.length, amber: true  },
-            { key: "reqs"   as const, label: "Requisition Records",  count: reqHeaders.length,  amber: false },
+            { key: "indent" as const, label: "Indent List", count: indentLines.length, amber: true },
+            { key: "reqs" as const, label: "Requisitions", count: reqHeaders.length, amber: false },
           ]).map(t => (
             <button
               key={t.key} onClick={() => setTab(t.key)}
-              className={`px-6 py-3 text-sm font-semibold transition-colors border-b-2 -mb-px ${tab === t.key ? "text-blue-600 border-blue-600 bg-white" : "text-gray-500 border-transparent hover:text-gray-700"}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${tab === t.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))] shadow-sm" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
             >
               {t.label}
               {t.count > 0 && (
-                <span className={`ml-2 px-1.5 py-0.5 rounded text-xs ${t.amber ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}>
+                <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${tab === t.key ? "bg-white/20 text-white" : t.amber ? "bg-amber-100 text-amber-700" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]"}`}>
                   {t.count}
                 </span>
               )}
@@ -867,207 +1127,138 @@ export default function PurchaseRequisitionPage() {
           ))}
         </div>
 
+        {/* Actions */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+            <Search size={14} className="text-[rgb(var(--fg-muted))] flex-shrink-0" />
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-40 sm:w-56 border-none"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-[rgb(var(--fg-muted))] hover:text-[rgb(var(--fg-default))]">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} />} onClick={fetchLists} />
+          {tab === "reqs" && filteredReqs.length > 0 && (
+            <Button variant="action-download" size="sm" icon={<Download size={14} />} onClick={exportCSV}>
+              Export
+            </Button>
+          )}
+          <Button
+            variant="action-create" size="sm" icon={<Plus size={15} />}
+            onClick={() => (tab === "indent" && selKeys.size > 0 ? openFromIndent() : openBlank())}
+          >
+            Create{tab === "indent" && selKeys.size > 0 ? ` (${selKeys.size})` : ""}
+          </Button>
+        </div>
+      </div>
+
+      {/* Content panel */}
+      <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+
         {listLoading ? (
-          <div className="text-center py-16 text-gray-400">Loading…</div>
+          <div className="text-center py-16 text-[rgb(var(--fg-subtle))]">Loading…</div>
         ) : listErr ? (
           <div className="text-center py-16 text-sm">
             <span className="text-red-500">{listErr}</span>
-            <button onClick={fetchLists} className="ml-2 text-blue-600 underline">Retry</button>
+            <button onClick={fetchLists} className="ml-2 text-[rgb(var(--color-primary))] underline">Retry</button>
           </div>
         ) : tab === "indent" ? (
 
-          /* ── INDENT LIST ──────────────────────────────────────────────────── */
-          <div>
-            <div className="px-5 py-3 border-b border-gray-100 space-y-2">
-              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-                <Search size={14} className="text-gray-400 shrink-0" />
-                <input
-                  type="text" placeholder="Search indent lines…"
-                  value={indentSearch} onChange={e => setIndentSearch(e.target.value)}
-                  className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-                />
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {indentGroups.map(g => (
-                  <button
-                    key={g} onClick={() => setIndentGroup(g)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${indentGroup === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-700"}`}
-                  >
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-2 w-10">
-                      <input
-                        type="checkbox"
-                        checked={filteredIndent.length > 0 && filteredIndent.every(l => selKeys.has(l.TransactionDetailID))}
-                        onChange={() => {
-                          const allChecked = filteredIndent.every(l => selKeys.has(l.TransactionDetailID));
-                          const next = new Set(selKeys);
-                          filteredIndent.forEach(l => allChecked ? next.delete(l.TransactionDetailID) : next.add(l.TransactionDetailID));
-                          setSelKeys(next);
-                        }}
-                        className="rounded"
-                      />
-                    </th>
-                    {[
-                      { h: "Indent No.",  r: false },
-                      { h: "Date",        r: false },
-                      { h: "Item Group",  r: false },
-                      { h: "Sub Group",   r: false },
-                      { h: "Item Code",   r: false },
-                      { h: "Item Name",   r: false },
-                      { h: "Indent Qty",  r: true  },
-                      { h: "Curr. Stock", r: true  },
-                      { h: "Unit",        r: false },
-                      { h: "Booked",      r: true  },
-                      { h: "Allocated",   r: true  },
-                    ].map(({ h, r }, i) => (
-                      <th key={i} className={`px-3 py-2 font-semibold text-gray-500 uppercase tracking-wider ${r ? "text-right" : "text-left"}`} style={{ fontSize: 11 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredIndent.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="text-center py-16 text-gray-400 text-sm">No open indent lines found</td>
-                    </tr>
-                  ) : filteredIndent.map((l, idx) => {
-                    const checked = selKeys.has(l.TransactionDetailID);
-                    return (
-                      <tr
-                        key={`${l.TransactionDetailID}-${l.ItemID}-${idx}`}
-                        onClick={() => {
-                          const next = new Set(selKeys);
-                          checked ? next.delete(l.TransactionDetailID) : next.add(l.TransactionDetailID);
-                          setSelKeys(next);
-                        }}
-                        className={`border-t border-gray-100 cursor-pointer transition-colors ${checked ? "bg-green-50" : idx % 2 === 0 ? "bg-white hover:bg-blue-50/30" : "bg-gray-50/40 hover:bg-blue-50/30"}`}
-                      >
-                        <td className="px-3 py-2 text-center" onClick={e => e.stopPropagation()}>
-                          <input
-                            type="checkbox" checked={checked}
-                            onChange={() => {
-                              const next = new Set(selKeys);
-                              checked ? next.delete(l.TransactionDetailID) : next.add(l.TransactionDetailID);
-                              setSelKeys(next);
-                            }}
-                            className="rounded"
-                          />
-                        </td>
-                        <td className="px-3 py-2 font-mono text-blue-700">{l.VoucherNo ?? "—"}</td>
-                        <td className="px-3 py-2 text-gray-600">{fmtDate(l.VoucherDate)}</td>
-                        <td className="px-3 py-2 text-gray-700">{l.ItemGroupName ?? "—"}</td>
-                        <td className="px-3 py-2 text-gray-600">{l.ItemSubGroupName ?? "—"}</td>
-                        <td className="px-3 py-2">
-                          <span className="font-mono text-blue-600 block">{l.ItemCode}</span>
-                          {l.ItemDescription && <span className="text-gray-400 text-xs block leading-tight mt-0.5">{l.ItemDescription}</span>}
-                        </td>
-                        <td className="px-3 py-2 text-gray-800">{l.ItemName}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-gray-800">{toNum(l.RequiredQuantity).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-gray-600">{toNum(l.PhysicalStock).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-gray-500">{l.StockUnit}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{toNum(l.BookedStock).toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right text-gray-500">{toNum(l.AllocatedStock).toLocaleString()}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {selKeys.size > 0 && (
-              <div className="px-5 py-3 border-t border-gray-100 bg-green-50 flex items-center justify-between">
-                <span className="text-sm text-green-700 font-medium">
-                  {selKeys.size} item{selKeys.size !== 1 ? "s" : ""} selected
-                </span>
-                <button
-                  onClick={openFromIndent}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
-                >
-                  <ChevronRight size={14} /> Create Requisition
-                </button>
-              </div>
-            )}
+          /* ── INDENT LIST ──────────────────────────────────── */
+          <div className="p-4">
+            <DataTable
+              data={filteredIndent}
+              columns={indentColumns}
+              actions={row => (
+                <Button variant="secondary" size="xs" icon={<Boxes size={12} />} onClick={() => openStockView(row)}>
+                  Stock
+                </Button>
+              )}
+              toolbar={
+                <div className="flex items-center gap-2 flex-wrap">
+                  {([
+                    { key: "All" as const, label: `All (${augmentedIndent.length})` },
+                    { key: "Job Card" as const, label: `Job Card (${jobCardCount})` },
+                    { key: "Stock" as const, label: `Stock (${stockCount})` },
+                  ]).map(p => (
+                    <button
+                      key={p.key} onClick={() => setIndentSource(p.key)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${indentSource === p.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  {selKeys.size > 0 && (
+                    <button onClick={() => setSelKeys(new Set())} className="text-xs text-[rgb(var(--fg-muted))] hover:text-red-600 underline ml-1">
+                      Clear selection
+                    </button>
+                  )}
+                </div>
+              }
+            />
           </div>
 
         ) : (
 
-          /* ── REQUISITION RECORDS ──────────────────────────────────────────── */
-          <div>
-            <div className="px-5 py-3 border-b border-gray-100">
-              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-                <Search size={14} className="text-gray-400 shrink-0" />
-                <input
-                  type="text" placeholder="Search by voucher no, narration, created by…"
-                  value={reqSearch} onChange={e => setReqSearch(e.target.value)}
-                  className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
-                />
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {[
-                      { h: "Voucher No.",  r: false },
-                      { h: "Date",         r: false },
-                      { h: "Items",        r: true  },
-                      { h: "Total Qty",    r: true  },
-                      { h: "Created By",   r: false },
-                      { h: "Narration",    r: false },
-                      { h: "Actions",      r: true  },
-                    ].map(({ h, r }, i) => (
-                      <th key={i} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${r ? "text-right" : "text-left"}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredReqs.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-16 text-gray-400 text-sm">No requisitions found</td>
-                    </tr>
-                  ) : filteredReqs.map((r, i) => (
-                    <tr key={r.TransactionID} className={`border-t border-gray-100 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{r.VoucherNo ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(r.VoucherDate)}</td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-700">{r.NoOfItems}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-700">{toNum(r.TotalQuantity).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{r.CreatedBy ?? "—"}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[200px] truncate">{r.Narration ?? "—"}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => openEdit(r)}
-                            disabled={formLoading || deleting}
-                            className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors disabled:opacity-50"
-                          >
-                            {formLoading ? "…" : "Edit"}
-                          </button>
-                          <button
-                            onClick={() => deleteReq(r)}
-                            disabled={deleting || formLoading}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                            title="Delete"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          /* ── REQUISITION RECORDS ──────────────────────────── */
+          <div className="p-4">
+            <DataTable
+              data={filteredReqs}
+              columns={reqColumns}
+              actions={r => (
+                <RowActions>
+                  <RowAction.Edit onClick={() => openEdit(r)} disabled={formLoading || deleting} />
+                  <RowAction.Delete onClick={() => deleteReq(r)} disabled={deleting || formLoading} />
+                </RowActions>
+              )}
+            />
           </div>
         )}
       </div>
+
+      {/* Stock quick-view modal */}
+      <Modal
+        open={!!stockView}
+        onClose={() => setStockView(null)}
+        title={stockView ? `Stock — ${stockView.itemName}` : "Stock"}
+        size="lg"
+        subHeader={stockView && (
+          <p className="text-xs text-[rgb(var(--fg-muted))] font-mono pb-2">{stockView.itemCode}</p>
+        )}
+      >
+        {stockLoading ? (
+          <div className="text-center py-12 text-[rgb(var(--fg-subtle))]">Loading…</div>
+        ) : stockBatches.length === 0 ? (
+          <div className="text-center py-12 text-[rgb(var(--fg-subtle))] text-sm">No batches found for this item</div>
+        ) : (
+          <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))]">
+                <tr>
+                  {["Batch No.", "Warehouse", "Bin", "System Qty"].map((h, i) => (
+                    <th key={i} className={`px-4 py-2.5 font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider ${i === 3 ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {stockBatches.map(b => (
+                  <tr key={b.BatchID} className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-[rgb(var(--color-primary))]">{b.BatchNo}</td>
+                    <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{b.WarehouseName}</td>
+                    <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{b.Bin}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-[rgb(var(--fg-default))]">{toNum(b.SystemQty).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

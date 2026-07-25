@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, Users, Mail, Eye, EyeOff } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -9,7 +10,7 @@ import { usePermissions } from "@/context/PermissionsContext";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/othermasterShrink`;
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// helpers
 function unwrap(v: any): any {
   let r = v;
   while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
@@ -20,7 +21,7 @@ async function apiFetch(url: string, opts?: RequestInit) {
   return unwrap(await r.text());
 }
 
-// ── shared UI ─────────────────────────────────────────────────────────────────
+// shared UI
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -36,7 +37,7 @@ const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm tex
 const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50") : inputCls;
 const selectCls = `${inputCls} cursor-pointer`;
 
-// ── types ─────────────────────────────────────────────────────────────────────
+// types
 type UserRow = {
   id: string;
   UserID: string;
@@ -170,7 +171,7 @@ const CAN_COLS: { key: keyof CanFields; label: string }[] = [
   { key: "CanExport", label: "Export" },
 ];
 
-// ── PAGE ──────────────────────────────────────────────────────────────────────
+// PAGE
 export default function UserMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<UserRow[]>([]);
@@ -204,7 +205,7 @@ export default function UserMasterPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // ── load list ─────────────────────────────────────────────────────────────────
+  // load list
   const loadList = useCallback(() => {
     setLoading(true);
     setError("");
@@ -229,7 +230,7 @@ export default function UserMasterPage() {
   }, []);
   useEffect(() => { loadList(); }, [loadList]);
 
-  // ── load dropdowns ────────────────────────────────────────────────────────────
+  // load dropdowns
   useEffect(() => {
     apiFetch(`${BASE}/underuser`).then(r => setUnderUsers(Array.isArray(r) ? r : [])).catch(() => { });
     apiFetch(`${BASE}/userdesignation`).then(r => {
@@ -241,7 +242,7 @@ export default function UserMasterPage() {
     apiFetch(`${BASE}/getproductionunitlist`).then(r => setProductionUnits(Array.isArray(r) ? r : [])).catch(() => { });
   }, []);
 
-  // ── load module / sub-module authority for a user (0 = new/blank user → all unchecked) ──
+  // load module / sub-module authority for a user (0 = new/blank user → all unchecked)
   const loadAuthority = async (userID: string) => {
     setAuthLoading(true);
     try {
@@ -283,7 +284,7 @@ export default function UserMasterPage() {
     }
   };
 
-  // ── open add ──────────────────────────────────────────────────────────────────
+  // open add
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -295,7 +296,7 @@ export default function UserMasterPage() {
     loadAuthority("0");
   };
 
-  // ── open edit ─────────────────────────────────────────────────────────────────
+  // open edit
   const openEdit = (row: UserRow) => {
     setEditing(row);
     setError("");
@@ -379,7 +380,7 @@ export default function UserMasterPage() {
     loadAuthority(String(row.UserID));
   };
 
-  // ── validate ──────────────────────────────────────────────────────────────────
+  // validate
   const validate = (): string => {
     if (!form.UserName.trim()) return "User Name is required.";
     if (!form.LoginUserName.trim()) return "Login User Name is required.";
@@ -392,7 +393,7 @@ export default function UserMasterPage() {
     return "";
   };
 
-  // ── save ──────────────────────────────────────────────────────────────────────
+  // save
   const saveUser = async () => {
     if (!can("/master/user", editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit User Master." : "You are not authorized to save User Master.");
@@ -533,7 +534,7 @@ export default function UserMasterPage() {
     setSaving(false);
   };
 
-  // ── delete ────────────────────────────────────────────────────────────────────
+  // delete
   const deleteUser = async (row: UserRow) => {
     if (!can("/master/user", "CanDelete")) { alert("You are not authorized to delete User Master."); return; }
     if (!confirm(`Delete user "${row.UserName}"? This cannot be undone.`)) return;
@@ -547,9 +548,8 @@ export default function UserMasterPage() {
     } catch (e: any) { alert("Error: " + e.message); }
   };
 
-  // ── list columns ──────────────────────────────────────────────────────────────
+  // list columns
   const columns: Column<UserRow>[] = [
-    { key: "UserID", header: "ID", sortable: true },
     { key: "UserName", header: "User Name", sortable: true },
     { key: "LoginUserName", header: "Login Name", sortable: true },
     { key: "Designation", header: "Designation", sortable: true },
@@ -559,9 +559,7 @@ export default function UserMasterPage() {
     { key: "ProductionUnitName", header: "Production Unit", sortable: true },
   ];
 
-  // ══════════════════════════════════════════════════════════════════════════════
   // FORM VIEW
-  // ══════════════════════════════════════════════════════════════════════════════
   if (view === "form") {
     const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
       { id: "profile", label: "User Profile", icon: <Users size={14} /> },
@@ -571,7 +569,7 @@ export default function UserMasterPage() {
     ];
 
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -628,7 +626,7 @@ export default function UserMasterPage() {
           </div>
 
           <div className="p-6">
-            {/* ── TAB: USER PROFILE ── */}
+            {/* TAB: USER PROFILE */}
             {activeTab === "profile" && (
               <div>
                 <SectionTitle title="Basic Information" />
@@ -750,7 +748,7 @@ export default function UserMasterPage() {
               </div>
             )}
 
-            {/* ── TAB: MAIL SETTINGS ── */}
+            {/* TAB: MAIL SETTINGS */}
             {activeTab === "mailsettings" && (
               <div className="space-y-8">
                 <div>
@@ -867,7 +865,7 @@ export default function UserMasterPage() {
               </div>
             )}
 
-            {/* ── TAB: MODULE AUTHORITY ── */}
+            {/* TAB: MODULE AUTHORITY */}
             {activeTab === "moduleauth" && (
               <div>
                 <SectionTitle title="Module Authority" />
@@ -925,7 +923,7 @@ export default function UserMasterPage() {
               </div>
             )}
 
-            {/* ── TAB: SUB-MODULE AUTHORITY ── */}
+            {/* TAB: SUB-MODULE AUTHORITY */}
             {activeTab === "submoduleauth" && (
               <div>
                 <SectionTitle title="Sub-Module Authority" />
@@ -990,11 +988,9 @@ export default function UserMasterPage() {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════════════════════
   // LIST VIEW
-  // ══════════════════════════════════════════════════════════════════════════════
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">User Master</h2>
@@ -1002,10 +998,7 @@ export default function UserMasterPage() {
             {loading ? "Loading..." : `${data.length} user${data.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add User
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add User</Button>
       </div>
 
       {error && (
@@ -1019,8 +1012,8 @@ export default function UserMasterPage() {
           searchKeys={["UserName", "LoginUserName", "Designation", "EmailID", "ContactNo"]}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteUser(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteUser(row)} />
             </div>
           )}
         />

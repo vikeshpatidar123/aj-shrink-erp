@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
-import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
+import { DataTable } from "@/components/tables/DataTable";
 import CoaTab from "./CoaTab";
 import InvoiceTab from "./InvoiceTab";
 
@@ -567,132 +567,74 @@ export default function DispatchPage() {
       </div>
 
       {/* ── List Table ── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {listLoading ? (
-          <div className="flex items-center justify-center h-40">
-            <Loader2 size={24} className="animate-spin text-blue-500" />
-          </div>
-        ) : tab === "pending" ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead style={{ background: "var(--erp-primary)" }}>
-                <tr>
-                  {PEND_COLS.map(({ h, key }, ci) => {
-                    const isSortActive = key && pendSort?.col === key;
-                    const uniqVals = key ? [...new Set(pendingList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
-                    return (
-                      <th key={ci} className="px-2 py-2.5 text-left text-[11px] font-semibold text-white/90 uppercase tracking-wide whitespace-nowrap">
-                        {key ? (
-                          <div className="flex items-center gap-1">
-                            <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
-                              onClick={() => setPendSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
-                              {h}
-                              <span className="flex flex-col leading-none ml-0.5">
-                                <span className={`text-[7px] ${isSortActive && pendSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
-                                <span className={`text-[7px] ${isSortActive && pendSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
-                              </span>
-                            </span>
-                            <ColFilterIcon values={uniqVals} active={pendColFilters[key] ?? ""}
-                              onChange={v => setPendColFilters(p => ({ ...p, [key]: v }))} />
-                          </div>
-                        ) : h}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {pendSorted.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="text-center py-12 text-gray-400 text-sm">
-                      No jobs pending for dispatch
-                    </td>
-                  </tr>
-                ) : pendSorted.map((row, i) => (
-                  <tr key={`${row.JobBookingID}-${i}`}
-                    className="hover:bg-blue-50 transition-colors cursor-pointer"
-                    onClick={() => openNew(row)}>
-                    <td className={td}>{i + 1}</td>
-                    <td className={td}><span className="font-medium text-blue-700">{row.JobBookingNo}</span></td>
-                    <td className={td}>{row.JobName}</td>
-                    <td className={td}>{row.ClientName}</td>
-                    <td className={td}>{row.SalesOrderNo}</td>
-                    <td className={td}>{row.PONo}</td>
-                    <td className={`${td} text-right font-medium text-green-700`}>{num(row.FinishGoodsQty).toLocaleString()}</td>
-                    <td className={`${td} text-right`}>{num(row.TotalFGOuterCartons)}</td>
-                    <td className={`${td} text-right`}>{num(row.PendingQuantity).toLocaleString()}</td>
-                    <td className={td}>
-                      <Button size="sm" variant="primary" icon={<Plus size={12} />}
-                        onClick={e => { e.stopPropagation(); openNew(row); }}>
-                        Dispatch
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-100">
-              <thead style={{ background: "var(--erp-primary)" }}>
-                <tr>
-                  {PROC_COLS.map(({ h, key }, ci) => {
-                    const isSortActive = key && procSort?.col === key;
-                    const uniqVals = key ? [...new Set(processedList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
-                    return (
-                      <th key={ci} className="px-2 py-2.5 text-left text-[11px] font-semibold text-white/90 uppercase tracking-wide whitespace-nowrap">
-                        {key ? (
-                          <div className="flex items-center gap-1">
-                            <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
-                              onClick={() => setProcSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
-                              {h}
-                              <span className="flex flex-col leading-none ml-0.5">
-                                <span className={`text-[7px] ${isSortActive && procSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
-                                <span className={`text-[7px] ${isSortActive && procSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
-                              </span>
-                            </span>
-                            <ColFilterIcon values={uniqVals} active={procColFilters[key] ?? ""}
-                              onChange={v => setProcColFilters(p => ({ ...p, [key]: v }))} />
-                          </div>
-                        ) : h}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {procSorted.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-12 text-gray-400 text-sm">
-                      No dispatches found in the selected date range
-                    </td>
-                  </tr>
-                ) : procSorted.map((row, i) => (
-                  <tr key={row.FGTransactionID} className="hover:bg-gray-50 transition-colors">
-                    <td className={td}>{i + 1}</td>
-                    <td className={td}><span className="font-medium text-blue-700">{row.VoucherNo}</span></td>
-                    <td className={td}>{row.VoucherDate}</td>
-                    <td className={td}>{row.LedgerName}</td>
-                    <td className={td}>{row.JobBookingNo}</td>
-                    <td className={td}>{row.JobName}</td>
-                    <td className={`${td} text-right`}>{num(row.TotalOuterCarton)}</td>
-                    <td className={`${td} text-right`}>{num(row.TotalQuantity).toLocaleString()}</td>
-                    <td className={td}>{row.VehicleNo}</td>
-                    <td className={`${td} text-right`}>{num(row.NetAmount).toLocaleString()}</td>
-                    <td className={td}>
-                      <Button size="sm" variant="secondary" icon={<Pencil size={12} />}
-                        onClick={() => openEdit(row)}>
-                        Edit
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {tab === "pending" ? (
+        <DataTable<PendingRow>
+          data={pendingList}
+          loading={listLoading}
+          getRowId={r => String(r.OrderBookingDetailsID ?? r.JobBookingID)}
+          columns={[
+            {
+              key: "JobBookingNo", header: "Job No.",
+              render: r => <span className="font-medium text-blue-700">{r.JobBookingNo}</span>,
+            },
+            { key: "JobName", header: "Job Name" },
+            { key: "ClientName", header: "Customer" },
+            { key: "SalesOrderNo", header: "Sales Order" },
+            { key: "PONo", header: "PO No." },
+            {
+              key: "FinishGoodsQty", header: "FG Stock Qty",
+              render: r => <span className="font-medium text-green-700">{num(r.FinishGoodsQty).toLocaleString()}</span>,
+            },
+            {
+              key: "TotalFGOuterCartons", header: "Boxes",
+              render: r => <span>{num(r.TotalFGOuterCartons)}</span>,
+            },
+            {
+              key: "PendingQuantity", header: "Pending Qty",
+              render: r => <span>{num(r.PendingQuantity).toLocaleString()}</span>,
+            },
+          ]}
+          actions={r => (
+            <Button size="sm" variant="secondary" pill icon={<Plus size={12} />} onClick={() => openNew(r)}>
+              Dispatch
+            </Button>
+          )}
+        />
+      ) : (
+        <DataTable<ProcessedRow>
+          data={processedList}
+          loading={listLoading}
+          getRowId={r => String(r.FGTransactionID)}
+          columns={[
+            {
+              key: "VoucherNo", header: "Note No.",
+              render: r => <span className="font-medium text-blue-700">{r.VoucherNo}</span>,
+            },
+            { key: "VoucherDate", header: "Date" },
+            { key: "LedgerName", header: "Customer" },
+            { key: "JobBookingNo", header: "Job No." },
+            { key: "JobName", header: "Job Name" },
+            {
+              key: "TotalOuterCarton", header: "Boxes",
+              render: r => <span>{num(r.TotalOuterCarton)}</span>,
+            },
+            {
+              key: "TotalQuantity", header: "Total Qty",
+              render: r => <span>{num(r.TotalQuantity).toLocaleString()}</span>,
+            },
+            { key: "VehicleNo", header: "Vehicle" },
+            {
+              key: "NetAmount", header: "Net Amt",
+              render: r => <span>{num(r.NetAmount).toLocaleString()}</span>,
+            },
+          ]}
+          actions={r => (
+            <Button size="sm" variant="secondary" pill icon={<Pencil size={12} />} onClick={() => openEdit(r)}>
+              Edit
+            </Button>
+          )}
+        />
+      )}
 
       {/* ══ Dispatch Modal ══════════════════════════════════════════════════════ */}
       <Modal

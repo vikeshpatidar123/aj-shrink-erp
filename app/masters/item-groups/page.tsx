@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, List, Check } from "lucide-react";
 import { getCompanyName } from "@/lib/useCompanyName";
@@ -285,9 +286,7 @@ export default function ItemGroupPage() {
           <h2 className="text-xl font-bold text-gray-800">Item Group Master</h2>
           <p className="text-sm text-gray-500">{filteredData.length} of {data.length} groups</p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Group
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Group</Button>
       </div>
 
       {/* Filter Bar */}
@@ -320,8 +319,8 @@ export default function ItemGroupPage() {
             searchKeys={["ItemGroupName", "TabName", "Description", "ItemGroupPrefix"]}
             actions={(row) => (
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row)}>Delete</Button>
+                <RowAction.Edit onClick={() => openEdit(row)} />
+                <RowAction.Delete onClick={() => deleteRow(row)} />
               </div>
             )}
           />

@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { Wrench } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
+import { Badge } from "@/components/ui/Badge";
 import {
   toolInventory as toolInventoryData, ToolInventory,
   ToolType, ToolStatus, ToolCondition,
@@ -11,43 +12,41 @@ import {
 const TOOL_TYPES: ToolType[] = ["Cylinder", "Sleeve", "Die", "Anilox Roll", "Doctor Blade", "Impression Roller", "Slitter Knife"];
 const STATUSES: ToolStatus[] = ["Available", "In Use", "Under Maintenance", "Retired"];
 
-// ─── Badge helpers ───────────────────────────────────────────
-const STATUS_CLS: Record<ToolStatus, string> = {
-  Available:          "bg-green-100 text-green-700",
-  "In Use":           "bg-blue-100 text-blue-700",
-  "Under Maintenance":"bg-amber-100 text-amber-700",
-  Retired:            "bg-gray-100 text-gray-500",
+// ─── Badge variant maps ───────────────────────────────────────
+type BadgeVariant = "green" | "red" | "yellow" | "blue" | "purple" | "gray" | "orange" | "teal";
+
+const STATUS_VARIANT: Record<ToolStatus, BadgeVariant> = {
+  Available:           "green",
+  "In Use":            "blue",
+  "Under Maintenance": "yellow",
+  Retired:             "gray",
 };
 
-const CONDITION_CLS: Record<ToolCondition, string> = {
-  New:  "bg-green-100 text-green-700",
-  Good: "bg-blue-100 text-blue-700",
-  Fair: "bg-amber-100 text-amber-700",
-  Worn: "bg-red-100 text-red-700",
+const CONDITION_VARIANT: Record<ToolCondition, BadgeVariant> = {
+  New:  "green",
+  Good: "blue",
+  Fair: "yellow",
+  Worn: "red",
 };
 
-const TYPE_CLS: Record<ToolType, string> = {
-  Cylinder:           "bg-purple-100 text-purple-700",
-  Sleeve:             "bg-indigo-100 text-indigo-700",
-  Die:                "bg-pink-100 text-pink-700",
-  "Anilox Roll":      "bg-cyan-100 text-cyan-700",
-  "Doctor Blade":     "bg-orange-100 text-orange-700",
-  "Impression Roller":"bg-teal-100 text-teal-700",
-  "Slitter Knife":    "bg-red-100 text-red-700",
+const TYPE_VARIANT: Record<ToolType, BadgeVariant> = {
+  Cylinder:            "purple",
+  Sleeve:              "purple",
+  Die:                 "red",
+  "Anilox Roll":       "teal",
+  "Doctor Blade":      "orange",
+  "Impression Roller": "teal",
+  "Slitter Knife":     "red",
 };
-
-const Badge = ({ label, cls }: { label: string; cls: string }) => (
-  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cls}`}>{label}</span>
-);
 
 // ─── Columns ─────────────────────────────────────────────────
 const columns: Column<ToolInventory>[] = [
   { key: "code",      header: "Code",        render: r => <span className="font-mono text-xs text-gray-700">{r.code}</span> },
   { key: "toolName",  header: "Tool Name",   render: r => <span className="font-medium text-gray-800">{r.toolName}</span> },
-  { key: "toolType",  header: "Type",        render: r => <Badge label={r.toolType} cls={TYPE_CLS[r.toolType]} /> },
+  { key: "toolType",  header: "Type",        render: r => <Badge label={r.toolType} variant={TYPE_VARIANT[r.toolType]} /> },
   { key: "serialNo",  header: "Serial No",   render: r => <span className="font-mono text-xs">{r.serialNo || "—"}</span> },
-  { key: "condition", header: "Condition",   render: r => <Badge label={r.condition} cls={CONDITION_CLS[r.condition]} /> },
-  { key: "status",    header: "Status",      render: r => <Badge label={r.status} cls={STATUS_CLS[r.status]} /> },
+  { key: "condition", header: "Condition",   render: r => <Badge label={r.condition} variant={CONDITION_VARIANT[r.condition]} /> },
+  { key: "status",    header: "Status",      render: r => <Badge label={r.status} variant={STATUS_VARIANT[r.status]} /> },
   { key: "location",  header: "Location",    render: r => <span className="text-xs text-gray-600">{r.location}</span> },
 ];
 

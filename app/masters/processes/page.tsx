@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, Check, List, X } from "lucide-react";
 import { getCompanyName } from "@/lib/useCompanyName";
@@ -493,7 +494,6 @@ export default function ProcessMasterPage() {
   const tabs: { key: TabKey; label: string }[] = [
     { key: "detail", label: "Process Detail" },
     { key: "machines", label: "Machine Allocation" },
-    { key: "slabs", label: "Slabs" },
     { key: "inspection", label: "Inspection Parameters" },
     { key: "lineclearance", label: "Line Clearance" },
   ];
@@ -501,7 +501,7 @@ export default function ProcessMasterPage() {
   // -- FORM VIEW ------------------------------------------------------------
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
             <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
@@ -811,7 +811,7 @@ export default function ProcessMasterPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Process Master</h2>
@@ -819,9 +819,7 @@ export default function ProcessMasterPage() {
             {loading ? "Loading..." : `${filteredData.length} of ${data.length} processes`}
           </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Process
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Process</Button>
       </div>
 
       {/* Department filter */}
@@ -848,8 +846,8 @@ export default function ProcessMasterPage() {
           searchKeys={["ProcessName", "DisplayProcessName", "DepartmentName"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.ProcessID)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteRow(row.ProcessID)} />
             </div>
           )}
         />

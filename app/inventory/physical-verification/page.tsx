@@ -6,6 +6,7 @@ import {
   Camera, Keyboard, List, ClipboardCheck, TrendingUp, TrendingDown,
   Minus, PackagePlus, Search,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import {
   grnRecords, GRNLine,
   WAREHOUSES,
@@ -483,10 +484,7 @@ export default function PhysicalVerificationPage() {
             <h2 className="text-xl font-bold text-gray-800">Physical Verification</h2>
             <p className="text-sm text-gray-500">{filteredData.length} verification records</p>
           </div>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={16} /> New Verification
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Verification</Button>
         </div>
 
         {/* Filter bar */}

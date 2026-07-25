@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, ChevronRight } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -806,10 +807,7 @@ export default function ToolMasterPage() {
               : `${listData.length} tool${listData.length !== 1 ? "s" : ""}${selectedGroup ? ` — ${selectedGroup.ToolGroupName}` : ""}`}
           </p>
         </div>
-        <button onClick={openAdd} disabled={!selectedGroupID}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50">
-          <Plus size={16} /> Add Tool
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd} disabled={!selectedGroupID}>Add Tool</Button>
       </div>
 
       {/* Tool Group filter pills */}
@@ -838,8 +836,8 @@ export default function ToolMasterPage() {
           searchKeys={["ToolCode", "ToolName", "ToolLocation", "ToolRefCode"]}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteTool(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteTool(row)} />
             </div>
           )}
         />

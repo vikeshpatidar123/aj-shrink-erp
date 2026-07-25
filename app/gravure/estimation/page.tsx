@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useMemo, useEffect } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
@@ -28,6 +29,7 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // ─── Master-filtered lists ────────────────────────────────────
 const FILM_ITEMS     = items.filter(i => i.group === "Film"     && i.active);
@@ -194,7 +196,7 @@ const GROUP_COLORS: Record<string, string> = {
   Film:     "bg-indigo-50 text-indigo-700 border-indigo-200",
   Ink:      "bg-blue-50  text-blue-700  border-blue-200",
   Adhesive: "bg-orange-50 text-orange-700 border-orange-200",
-  Solvent:  "bg-purple-50 text-purple-700 border-purple-200",
+  Solvent:  "bg-purple-50 text-purple-700 border-blue-200",
   Hardner:  "bg-pink-50  text-pink-700  border-pink-200",
 };
 
@@ -2713,16 +2715,13 @@ export default function GravureEstimationPage() {
               <TutorialButton title="Gravure Estimation — Tutorial" />
               <Button icon={<RefreshCw size={13} />} variant="secondary" onClick={loadList} disabled={loadingData}
                 className="text-xs py-1.5 px-3">Refresh</Button>
-              <Button icon={<Plus size={13} />} onClick={openAdd}
-                className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
-                New Estimation
-              </Button>
+              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openAdd} className="text-xs py-1.5 px-3">New Estimation</Button>
             </div>
           }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintRow(row)}>Print</Button>
+              <RowAction.View onClick={() => setViewRow(row)} />
+              <RowAction.Print onClick={() => setPrintRow(row)} />
               {bookedEstIds.has(row.id) ? (
                 <span className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-bold text-green-700 bg-green-100 border border-green-300 rounded-lg whitespace-nowrap cursor-not-allowed">
                   <BookCheck size={11} /> Order Booked
@@ -2759,8 +2758,8 @@ export default function GravureEstimationPage() {
                   <ShoppingCart size={11} /> Book Order
                 </button>
               )}
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEditFromApi(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEditFromApi(row)} />
+              <RowAction.Delete onClick={() => setDeleteId(row.id)} />
             </div>
           )}
         />
@@ -2788,7 +2787,7 @@ export default function GravureEstimationPage() {
              <div className="mb-3 flex items-end gap-4 flex-wrap">
                <div>
                  <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest block mb-1">Estimation No</label>
-                 <div className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 rounded-xl w-fit">
+                 <div className="flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-blue-200 rounded-xl w-fit">
                    <span className="text-xs font-mono font-bold text-purple-700 tracking-widest">
                      {editing ? editing.estimationNo : previewCode}
                    </span>
@@ -2948,78 +2947,82 @@ export default function GravureEstimationPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Pack Size</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).packSize ?? ""}
-                          onChange={e => f("packSize" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => (
-                            <option key={ps} value={ps}>{ps}</option>
-                          ))}
-                          {(form as any).packSize && !((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).includes((form as any).packSize) && (
-                            <option value={(form as any).packSize}>{(form as any).packSize}</option>
-                          )}
-                        </select>
+                          onChange={val => f("packSize" as any, val)}
+                          placeholder="-- Select --"
+                          options={[
+                            ...((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => ({ value: ps, label: ps })),
+                            ...((form as any).packSize && !((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).includes((form as any).packSize)
+                              ? [{ value: (form as any).packSize, label: (form as any).packSize }]
+                              : []),
+                          ]}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Brand Name</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).brandName ?? ""}
-                          onChange={e => f("brandName" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => (
-                            <option key={bn} value={bn}>{bn}</option>
-                          ))}
-                          {(form as any).brandName && !((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).includes((form as any).brandName) && (
-                            <option value={(form as any).brandName}>{(form as any).brandName}</option>
-                          )}
-                        </select>
+                          onChange={val => f("brandName" as any, val)}
+                          placeholder="-- Select --"
+                          options={[
+                            ...((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => ({ value: bn, label: bn })),
+                            ...((form as any).brandName && !((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).includes((form as any).brandName)
+                              ? [{ value: (form as any).brandName, label: (form as any).brandName }]
+                              : []),
+                          ]}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Product Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).productType ?? ""}
-                          onChange={e => f("productType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
+                          onChange={val => f("productType" as any, val)}
+                          placeholder="-- Select --"
+                          options={["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => ({ value: t, label: t }))}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">SKU Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).skuType ?? ""}
-                          onChange={e => f("skuType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => (
-                            <option key={sk} value={sk}>{sk}</option>
-                          ))}
-                          {(form as any).skuType && !((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).includes((form as any).skuType) && (
-                            <option value={(form as any).skuType}>{(form as any).skuType}</option>
-                          )}
-                        </select>
+                          onChange={val => f("skuType" as any, val)}
+                          placeholder="-- Select --"
+                          options={[
+                            ...((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => ({ value: sk, label: sk })),
+                            ...((form as any).skuType && !((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).includes((form as any).skuType)
+                              ? [{ value: (form as any).skuType, label: (form as any).skuType }]
+                              : []),
+                          ]}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Bottle Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).bottleType ?? ""}
-                          onChange={e => f("bottleType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          {["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
+                          onChange={val => f("bottleType" as any, val)}
+                          placeholder="-- Select --"
+                          options={["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => ({ value: t, label: t }))}
+                        />
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Address Type</label>
-                        <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <SearchableSelect
+                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           value={(form as any).addressType ?? ""}
-                          onChange={e => f("addressType" as any, e.target.value)}>
-                          <option value="">-- Select --</option>
-                          <option value="Single">Single</option>
-                          <option value="Multi">Multi</option>
-                          <option value="QR Code">QR Code</option>
-                        </select>
+                          onChange={val => f("addressType" as any, val)}
+                          placeholder="-- Select --"
+                          options={[
+                            { value: "Single", label: "Single" },
+                            { value: "Multi", label: "Multi" },
+                            { value: "QR Code", label: "QR Code" },
+                          ]}
+                        />
                       </div>
                       <div className="sm:col-span-2">
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Artwork Name</label>
@@ -3081,10 +3084,10 @@ export default function GravureEstimationPage() {
 
                 {/* ── Pouch Accessories — toggle chips (shown for all Pouch content types) ── */}
                 {form.content && getStructureType(form.content) === "Pouch" && (
-                  <div className="border border-purple-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
-                      <Wrench size={14} className="text-white" />
-                      <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+                  <div className="border border-blue-200 rounded-2xl overflow-hidden">
+                    <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2">
+                      <Wrench size={14} className="text-[#003366]" />
+                      <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Pouch Accessories &amp; Features</p>
                     </div>
                     <div className="p-4 bg-purple-50/40">
                       <div className="flex flex-wrap gap-2 mb-3">
@@ -3118,7 +3121,7 @@ export default function GravureEstimationPage() {
                         })}
                       </div>
                       {((form as any).hasZipper || (form as any).hasSpout) && (
-                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                        <div className="flex flex-wrap gap-4 p-3 bg-white border border-blue-200 rounded-xl">
                           {(form as any).hasZipper && (
                             <div>
                               <label className="text-[10px] font-semibold text-indigo-600 uppercase block mb-1">Zipper Weight (g)</label>
@@ -3152,14 +3155,14 @@ export default function GravureEstimationPage() {
                 {/* ── Dimension Setup block (with live diagram) ── */}
                 {form.content && CONTENT_TYPE_CONFIG[getDisplayContentType(form.content)] ? (
                   <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
-                      <Calculator size={14} className="text-white" />
-                      <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {form.content}</p>
-                      {(form as any).hasZipper      && <span className="ml-2 px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">Zipper</span>}
-                      {(form as any).hasSpout       && <span className="ml-1 px-2 py-0.5 rounded-full bg-cyan-400/80 text-white text-[10px] font-bold">Spout</span>}
-                      {(form as any).hasValve       && <span className="ml-1 px-2 py-0.5 rounded-full bg-orange-400/80 text-white text-[10px] font-bold">Valve</span>}
-                      {(form as any).hasTearNotch   && <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-400/80 text-white text-[10px] font-bold">Tear Notch</span>}
-                      {(form as any).hasEuroHole    && <span className="ml-1 px-2 py-0.5 rounded-full bg-violet-400/80 text-white text-[10px] font-bold">Euro Hole</span>}
+                    <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                      <Calculator size={14} className="text-[#003366]" />
+                      <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Dimension Setup — {form.content}</p>
+                      {(form as any).hasZipper      && <span className="ml-2 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">Zipper</span>}
+                      {(form as any).hasSpout       && <span className="ml-1 px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold">Spout</span>}
+                      {(form as any).hasValve       && <span className="ml-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold">Valve</span>}
+                      {(form as any).hasTearNotch   && <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">Tear Notch</span>}
+                      {(form as any).hasEuroHole    && <span className="ml-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">Euro Hole</span>}
                     </div>
                     <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                       {/* Left: inputs */}
@@ -3308,7 +3311,7 @@ export default function GravureEstimationPage() {
                             </div>
                             <div>
                               <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Total Colors (Auto)</label>
-                              <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center">{form.noOfColors} Colors</div>
+                              <div className="px-3 py-2 bg-purple-50 border border-blue-200 rounded-xl text-sm font-bold text-purple-700 text-center">{form.noOfColors} Colors</div>
                             </div>
                           </div>
                         </div>
@@ -3339,13 +3342,17 @@ export default function GravureEstimationPage() {
                             </div>
                             <div>
                               <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Print Type</label>
-                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                              <SearchableSelect
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                                 value={form.printType}
-                                onChange={e => f("printType", e.target.value)}>
-                                <option value="Surface Print">Surface Print</option>
-                                <option value="Reverse Print">Reverse Print</option>
-                                <option value="Combination">Combination</option>
-                              </select>
+                                onChange={val => f("printType", val)}
+                                allowEmpty={false}
+                                options={[
+                                  { value: "Surface Print", label: "Surface Print" },
+                                  { value: "Reverse Print", label: "Reverse Print" },
+                                  { value: "Combination", label: "Combination" },
+                                ]}
+                              />
                             </div>
                           </div>
                         </div>
@@ -3508,7 +3515,7 @@ export default function GravureEstimationPage() {
                     };
                     return (
                       <div className="flex items-center gap-0 border border-purple-300 rounded-lg overflow-hidden bg-white">
-                        <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-purple-200 py-1.5">Add</span>
+                        <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-blue-200 py-1.5">Add</span>
                         <input type="number" min={1} max={10} placeholder="1" ref={el => { inputRef = el; }}
                           className="w-12 text-xs font-mono text-center border-none outline-none px-1 py-1.5 bg-white"
                           onKeyDown={e => { if (e.key === "Enter") addBulk(e.target as HTMLInputElement); }} />
@@ -3521,7 +3528,7 @@ export default function GravureEstimationPage() {
                     const layers = [...form.secondaryLayers];
                     layers.push({ id: Math.random().toString(), layerNo: layers.length + 1, plyType: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0, consumableItems: [] });
                     f("secondaryLayers", layers);
-                  }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200">
+                  }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200">
                     <Plus size={12} /> Add Ply
                   </button>
                 </div>
@@ -3546,14 +3553,18 @@ export default function GravureEstimationPage() {
                           {/* Ply Type */}
                           <div>
                             <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                            <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                              value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
-                              <option value="">-- Select Ply Type --</option>
-                              <option value="Film">Ply 1</option>
-                              <option value="Printing">Ply 2</option>
-                              <option value="Lamination">Ply 3</option>
-                              <option value="Coating">Ply 4</option>
-                            </select>
+                            <SearchableSelect
+                              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
+                              value={l.plyType}
+                              onChange={val => onPlyTypeChange(index, val)}
+                              placeholder="-- Select Ply Type --"
+                              options={[
+                                { value: "Film", label: "Ply 1" },
+                                { value: "Printing", label: "Ply 2" },
+                                { value: "Lamination", label: "Ply 3" },
+                                { value: "Coating", label: "Ply 4" },
+                              ]}
+                            />
                           </div>
 
                           {/* Film substrate */}
@@ -3561,51 +3572,52 @@ export default function GravureEstimationPage() {
                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
-                                <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                <SearchableSelect
+                                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none"
                                   value={l.itemId || ""}
-                                  onChange={e => {
-                                    const fi = apiFilmItems.find(f => String(f.ItemID) === e.target.value);
+                                  onChange={val => {
+                                    const fi = apiFilmItems.find(f => String(f.ItemID) === val);
                                     const density  = fi?.Density    || 0;
                                     const thickness = fi?.Thickness  || 0;
                                     const gsm = thickness > 0 && density > 0 ? parseFloat((thickness * density).toFixed(3)) : 0;
                                     const layers = [...form.secondaryLayers];
                                     layers[index] = {
                                       ...l,
-                                      itemId:       e.target.value,
+                                      itemId:       val,
                                       itemName:     fi ? (fi.ItemDisplayName || fi.ItemName) : "",
                                       itemSubGroup: fi?.ItemSubGroupName || "",
                                       density, thickness, gsm,
                                       filmRate: fi?.EstimationRate || l.filmRate || 0,
                                     };
                                     f("secondaryLayers", layers);
-                                  }}>
-                                  <option value="">-- Select Film Item --</option>
-                                  {apiFilmItems
+                                  }}
+                                  placeholder="-- Select Film Item --"
+                                  options={apiFilmItems
                                     .filter((fi, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(fi.ItemID)) === idx)
-                                    .map(fi => <option key={fi.ItemID} value={String(fi.ItemID)}>{fi.ItemDisplayName || fi.ItemName}</option>)}
-                                </select>
+                                    .map(fi => ({ value: String(fi.ItemID), label: fi.ItemDisplayName || fi.ItemName }))}
+                                />
                               </div>
                               <div className="grid grid-cols-4 gap-2">
                                 <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                                 <div>
                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                  <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                    value={l.thickness}
-                                    onChange={e => {
-                                      const t = Number(e.target.value);
+                                  <SearchableSelect
+                                    className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
+                                    value={l.thickness === 0 ? "" : String(l.thickness)}
+                                    onChange={val => {
+                                      const t = Number(val);
                                       const layers = [...form.secondaryLayers];
                                       layers[index] = { ...l, thickness: t, gsm: parseFloat((t * l.density).toFixed(3)) };
                                       f("secondaryLayers", layers);
-                                    }}>
-                                    <option value={0}>Select</option>
-                                    {/* Include current thickness even if not in sub-group list */}
-                                    {(l.thickness && !thicknesses.includes(l.thickness)
+                                    }}
+                                    placeholder="Select"
+                                    options={(l.thickness && !thicknesses.includes(l.thickness)
                                       ? [...thicknesses, l.thickness].sort((a, b) => a - b)
                                       : thicknesses
-                                    ).map(t => <option key={t} value={t}>{t}</option>)}
-                                  </select>
+                                    ).map(t => ({ value: String(t), label: String(t) }))}
+                                  />
                                 </div>
-                                <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
+                                <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-blue-200 text-xs" />
                                 <div>
                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Rate (₹/Kg)</label>
                                   <div className="flex gap-1 items-stretch">
@@ -3708,37 +3720,40 @@ export default function GravureEstimationPage() {
                                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
                                             value={ci.itemGroup}
-                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, coveragePct: undefined, ohPct: undefined, ncoPct: undefined })}>
-                                            <option value="">-- Group --</option>
-                                            {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                          </select>
+                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, coveragePct: undefined, ohPct: undefined, ncoPct: undefined })}
+                                            placeholder="-- Group --"
+                                            options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
+                                          />
                                         </div>
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
                                             value={ci.itemSubGroup}
-                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                            disabled={!ci.itemGroup}>
-                                            <option value="">-- Sub Group --</option>
-                                            {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                          </select>
+                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
+                                            disabled={!ci.itemGroup}
+                                            placeholder="-- Sub Group --"
+                                            options={subGroups.map(sg => ({ value: sg, label: sg }))}
+                                          />
                                         </div>
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
                                             value={ci.itemId}
-                                            onChange={e => {
-                                              const apiIt  = filteredApiItems.find(x => String(x.ItemID) === e.target.value);
-                                              const staticIt = filteredItems.find(x => x.id === e.target.value);
+                                            onChange={val => {
+                                              const apiIt  = filteredApiItems.find(x => String(x.ItemID) === val);
+                                              const staticIt = filteredItems.find(x => x.id === val);
                                               // Rate comes from Item Master EstimationRate (API first, static fallback)
                                               const masterRate = apiIt?.EstimationRate
                                                 ?? parseFloat(staticIt?.estimationRate ?? "0")
                                                 ?? 0;
                                               const masterUnit = apiIt?.EstimationUnit || staticIt?.estimationUnit || "Kg";
                                               const patch: Partial<PlyConsumableItem> = {
-                                                itemId:   e.target.value,
+                                                itemId:   val,
                                                 itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
                                                 rate:     masterRate,
                                                 rateUnit: masterUnit,
@@ -3750,18 +3765,14 @@ export default function GravureEstimationPage() {
                                               }
                                               updatePlyConsumable(index, ciIdx, patch);
                                             }}
-                                            disabled={!ci.itemGroup}>
-                                            <option value="">-- Select Item --</option>
-                                            {filteredApiItems.length > 0
+                                            disabled={!ci.itemGroup}
+                                            placeholder="-- Select Item --"
+                                            options={filteredApiItems.length > 0
                                               ? filteredApiItems
                                                   .filter((it, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(it.ItemID)) === idx)
-                                                  .map(it => (
-                                                    <option key={it.ItemID} value={String(it.ItemID)}>
-                                                      {it.ItemName}{it.EstimationRate > 0 ? ` — ₹${it.EstimationRate}/${it.EstimationUnit || "Kg"}` : ""}
-                                                    </option>
-                                                  ))
-                                              : filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}{it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}</option>)}
-                                          </select>
+                                                  .map(it => ({ value: String(it.ItemID), label: `${it.ItemName}${it.EstimationRate > 0 ? ` — ₹${it.EstimationRate}/${it.EstimationUnit || "Kg"}` : ""}` }))
+                                              : filteredItems.map(it => ({ value: it.id, label: `${it.name}${it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}` }))}
+                                          />
                                         </div>
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">
@@ -4174,7 +4185,7 @@ export default function GravureEstimationPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-gray-600">Process List (from Process Master)</p>
-                <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+                <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
                   <Plus size={12} /> Add Process
                 </button>
               </div>
@@ -4208,54 +4219,44 @@ export default function GravureEstimationPage() {
                         return (
                         <tr key={i} className="hover:bg-gray-50">
                           <td className="px-3 py-2 min-w-[220px]">
-                            <select
+                            <SearchableSelect
                               value={pm ? pm.id : ""}
-                              onChange={e => selectProcess(i, e.target.value)}
-                              className={cellInput}
-                            >
-                              <option value="">-- Select Process --</option>
-                              {/* Fallback: if stored process has no match in loaded list, show whatever we have */}
-                              {!pm && (pr.processName || pr.processId) && (
-                                <option value={pr.processId || pr.processName}>
-                                  {pr.processName || `Process ${pr.processId}`}
-                                </option>
-                              )}
-                              {ROTO_PROCESSES.map((p: any) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.displayName || p.name}
-                                </option>
-                              ))}
-                            </select>
+                              onChange={val => selectProcess(i, val)}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"
+                              placeholder="-- Select Process --"
+                              options={[
+                                ...(!pm && (pr.processName || pr.processId)
+                                  ? [{ value: pr.processId || pr.processName, label: pr.processName || `Process ${pr.processId}` }]
+                                  : []),
+                                ...ROTO_PROCESSES.map((p: any) => ({ value: p.id, label: p.displayName || p.name })),
+                              ]}
+                            />
                           </td>
                           <td className="px-3 py-2 min-w-[170px]">
                             {liveMachineIds.length > 1 ? (
                               // Multiple machines allocated — pick one
-                              <select
+                              <SearchableSelect
                                 value={pr.machineId || ""}
-                                onChange={e => updateProcessMachine(i, e.target.value)}
-                                className="border border-indigo-300 bg-indigo-50 rounded px-2 py-1 text-[10px] text-indigo-700 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full"
-                              >
-                                <option value="">— select machine —</option>
-                                {liveMachineIds.map(mid => {
+                                onChange={val => updateProcessMachine(i, val)}
+                                className="border border-indigo-300 bg-indigo-50 rounded px-2 py-1 text-[10px] text-indigo-700 w-full"
+                                placeholder="— select machine —"
+                                options={liveMachineIds.map(mid => {
                                   const m = PRINT_MACHINES.find((x: any) => x.id === mid);
-                                  return <option key={mid} value={mid}>{m?.name || mid}</option>;
+                                  return { value: mid, label: m?.name || mid };
                                 })}
-                              </select>
+                              />
                             ) : displayMachineName ? (
                               // Single machine auto-filled — show badge
                               <span className="px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-[10px] font-medium">{displayMachineName}</span>
                             ) : (
                               // No machine in Process Master — allow manual assignment
-                              <select
+                              <SearchableSelect
                                 value={pr.machineId || ""}
-                                onChange={e => updateProcessMachine(i, e.target.value)}
-                                className="border border-gray-300 bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-full"
-                              >
-                                <option value="">— assign machine —</option>
-                                {PRINT_MACHINES.map((m: any) => (
-                                  <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
-                              </select>
+                                onChange={val => updateProcessMachine(i, val)}
+                                className="border border-gray-300 bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-500 w-full"
+                                placeholder="— assign machine —"
+                                options={PRINT_MACHINES.map((m: any) => ({ value: m.id, label: m.name }))}
+                              />
                             )}
                           </td>
                           <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
@@ -4276,7 +4277,7 @@ export default function GravureEstimationPage() {
                         );
                       })}
                     </tbody>
-                    <tfoot className="bg-purple-50 border-t border-purple-200">
+                    <tfoot className="bg-purple-50 border-t border-blue-200">
                       <tr>
                         <td colSpan={6} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Process Cost</td>
                         <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{costs.processCost.toLocaleString()}</td>
@@ -4593,7 +4594,7 @@ export default function GravureEstimationPage() {
                 </div>
 
                 {selectedPlanId && (
-                  <div className="border-t border-purple-200 bg-purple-50 px-4 py-2.5 flex items-center justify-between text-xs">
+                  <div className="border-t border-blue-200 bg-purple-50 px-4 py-2.5 flex items-center justify-between text-xs">
                     <span className="text-purple-700 font-medium flex items-center gap-1.5"><Check size={12} className="text-green-600" /> Plan selected — Grand Total: <strong className="text-purple-900">₹{(selectedPlan?.grandTotal ?? 0).toLocaleString()}</strong></span>
                     <Button onClick={() => {
                       setIsPlanApplied(true);
@@ -4640,7 +4641,7 @@ export default function GravureEstimationPage() {
                   </div>
                   <button
                     onClick={() => setExtraQtys(p => [...p, 0])}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-xl border border-purple-200 transition">
+                    className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-xl border border-blue-200 transition">
                     <Plus size={12} /> Add Quantity
                   </button>
                 </div>
@@ -4791,7 +4792,7 @@ export default function GravureEstimationPage() {
                     );
                   })}
                 </tbody>
-                <tfoot className="bg-purple-50 border-t-2 border-purple-200">
+                <tfoot className="bg-purple-50 border-t-2 border-blue-200">
                   <tr>
                     <td colSpan={15} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase text-right">Total Material Cost</td>
                     <td className="px-3 py-2.5 text-sm font-black text-purple-800">₹{activeCosts.materialCost.toLocaleString()}</td>
@@ -4830,19 +4831,16 @@ export default function GravureEstimationPage() {
                     {form.materials.map((m, i) => (
                       <tr key={i}>
                         <td className="px-2 py-1.5 min-w-[180px]">
-                          <select
+                          <SearchableSelect
                             value={m.itemId || ""}
-                            onChange={e => {
-                              if (e.target.value) selectMaterialItem(i, e.target.value);
+                            onChange={val => {
+                              if (val) selectMaterialItem(i, val);
                               else updateMaterial(i, { itemId: "", itemCode: "", itemName: "", rate: 0 });
                             }}
                             className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white"
-                          >
-                            <option value="">— select item —</option>
-                            {(ALL_MAT_ITEMS as any[]).map((it: any) => (
-                              <option key={it.id} value={it.id}>{it.name} ({it.group})</option>
-                            ))}
-                          </select>
+                            placeholder="— select item —"
+                            options={(ALL_MAT_ITEMS as any[]).map((it: any) => ({ value: it.id, label: `${it.name} (${it.group})` }))}
+                          />
                           {!m.itemId && (
                             <input
                               type="text"
@@ -5583,7 +5581,7 @@ export default function GravureEstimationPage() {
                       Total Amount
                     </td>
                     {allQtys.map((qty, qi) => qty > 0 ? (
-                      <td key={qi} className={`border-b-2 border-r border-purple-200 px-3 py-2.5 text-right font-black text-lg ${qi === 0 ? "text-purple-800" : "text-blue-800"}`}>
+                      <td key={qi} className={`border-b-2 border-r border-blue-200 px-3 py-2.5 text-right font-black text-lg ${qi === 0 ? "text-purple-800" : "text-blue-800"}`}>
                         ₹{(allCosts[qi]?.totalAmount ?? 0).toLocaleString()}
                         {form.minimumOrderValue > 0 && allQtys[qi] > 0 && allQtys[qi] < form.minimumOrderValue && (
                           <span className="block text-[9px] text-amber-700 font-bold">Min.Qty: {form.minimumOrderValue} {form.unit}</span>
@@ -5644,7 +5642,7 @@ export default function GravureEstimationPage() {
 
           {false && (
                 <div className="space-y-3">
-                  <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 flex items-start gap-2">
+                  <div className="bg-purple-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-2">
                     <Palette size={14} className="text-purple-600 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-xs font-bold text-purple-800">Color Shade &amp; LAB Standard</p>
@@ -5692,10 +5690,11 @@ export default function GravureEstimationPage() {
                             <tr key={i} className="hover:bg-purple-50/20">
                               <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
                               <td className="px-2 py-1.5 min-w-[160px]">
-                                <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                <SearchableSelect
+                                  className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
                                   value={cs.inkItemId ?? ""}
-                                  onChange={e => {
-                                    const ink = INK_ITEMS.find(x => x.id === e.target.value);
+                                  onChange={val => {
+                                    const ink = INK_ITEMS.find(x => x.id === val);
                                     const lab = ink?.colour ? (COLOR_LAB[ink.colour] ?? null) : null;
                                     const autoType: EstColorShade["inkType"] = ink?.colour && PROCESS_COLOURS.has(ink.colour) ? "Process" : "Spot";
                                     setColorShades(p => p.map((c, ci) => ci === i ? {
@@ -5706,18 +5705,24 @@ export default function GravureEstimationPage() {
                                       inkType: ink ? autoType : c.inkType,
                                       ...(lab ? { labL: lab.l, labA: lab.a, labB: lab.b } : {}),
                                     } : c));
-                                  }}>
-                                  <option value="">-- Select Ink --</option>
-                                  {INK_ITEMS.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{(ink as any).colour ? ` (${(ink as any).colour})` : ""}</option>)}
-                                </select>
+                                  }}
+                                  placeholder="-- Select Ink --"
+                                  options={INK_ITEMS.map(ink => ({ value: ink.id, label: `${ink.name}${(ink as any).colour ? ` (${(ink as any).colour})` : ""}` }))}
+                                />
                               </td>
                               <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
                               <td className="px-2 py-1.5">
-                                <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400" value={cs.inkType} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: e.target.value as EstColorShade["inkType"] } : c))}>
-                                  <option value="Spot">Spot</option>
-                                  <option value="Process">Process</option>
-                                  <option value="Special">Special</option>
-                                </select>
+                                <SearchableSelect
+                                  className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                                  value={cs.inkType}
+                                  onChange={val => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, inkType: val as EstColorShade["inkType"] } : c))}
+                                  allowEmpty={false}
+                                  options={[
+                                    { value: "Spot", label: "Spot" },
+                                    { value: "Process", label: "Process" },
+                                    { value: "Special", label: "Special" },
+                                  ]}
+                                />
                               </td>
                               <td className="px-2 py-1.5"><input placeholder="PMS 485 C" className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.pantoneRef} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, pantoneRef: e.target.value } : c))} /></td>
                               <td className="px-2 py-1.5 bg-indigo-50/40"><input type="number" step={0.01} placeholder="L*" className="w-20 text-xs border border-indigo-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-indigo-400 bg-white" value={cs.labL} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, labL: e.target.value } : c))} /></td>
@@ -5876,7 +5881,7 @@ export default function GravureEstimationPage() {
                         <div className="flex items-center gap-2 mb-2 flex-wrap text-[11px]">
                           <span className="font-semibold text-gray-500 uppercase text-[10px]">Status:</span>
                           {Object.entries(statusCounts).map(([st, cnt]) => (
-                            <span key={st} className={`px-2 py-0.5 rounded-full border font-bold ${st === "Available" ? "bg-green-50 text-green-700 border-green-200" : st === "Ordered" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                            <span key={st} className={`px-2 py-0.5 rounded-full border font-bold ${st === "Available" ? "bg-green-50 text-green-700 border-green-200" : st === "Ordered" ? "bg-purple-50 text-purple-700 border-blue-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
                               {cnt} {st}
                             </span>
                           ))}
@@ -5906,11 +5911,11 @@ export default function GravureEstimationPage() {
                                   </td>
                                   <td className="px-2 py-1.5"><input className="w-24 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50" value={ca.colorName} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
                                   <td className="px-2 py-1.5">
-                                    <select
-                                      className="w-36 text-xs border border-amber-300 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+                                    <SearchableSelect
+                                      className="w-36 text-xs border border-amber-300 rounded-lg px-2 py-1 font-mono outline-none bg-white"
                                       value={ca.cylinderMasterID || ""}
-                                      onChange={e => {
-                                        const cyl = CYLINDER_TOOLS_LIVE.find(t => t.id === e.target.value);
+                                      onChange={val => {
+                                        const cyl = CYLINDER_TOOLS_LIVE.find(t => t.id === val);
                                         setCylAllocs(p => p.map((c, ci) => ci === i ? {
                                           ...c,
                                           cylinderMasterID: cyl?.id ?? "",
@@ -5920,12 +5925,10 @@ export default function GravureEstimationPage() {
                                           purchaseRate: cyl?.purchaseRate ?? 0,
                                           purchaseUnit: cyl?.purchaseUnit ?? "SQM",
                                         } : c));
-                                      }}>
-                                      <option value="">-- Select Cylinder --</option>
-                                      {CYLINDER_TOOLS_LIVE.map(t => (
-                                        <option key={t.id} value={t.id}>{t.code} — {t.name}</option>
-                                      ))}
-                                    </select>
+                                      }}
+                                      placeholder="-- Select Cylinder --"
+                                      options={CYLINDER_TOOLS_LIVE.map(t => ({ value: t.id, label: `${t.code} — ${t.name}` }))}
+                                    />
                                   </td>
                                   <td className="px-2 py-1.5">
                                     <span className="block text-[10px] font-mono text-gray-500 text-center">{ca.printWidth || "—"}</span>
@@ -5935,14 +5938,33 @@ export default function GravureEstimationPage() {
                                   </td>
                                   <td className="px-2 py-1.5 text-center"><span className="px-2 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[10px] font-bold">{ca.repeatUPS}×</span></td>
                                   <td className="px-2 py-1.5">
-                                    <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400" value={ca.cylinderType} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as EstCylAlloc["cylinderType"] } : c))}>
-                                      <option value="New">New</option><option value="Existing">Existing</option><option value="Repeat">Repeat Cylinder</option><option value="Rechromed">Rechromed</option>
-                                    </select>
+                                    <SearchableSelect
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                                      value={ca.cylinderType}
+                                      onChange={val => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: val as EstCylAlloc["cylinderType"] } : c))}
+                                      allowEmpty={false}
+                                      options={[
+                                        { value: "New", label: "New" },
+                                        { value: "Existing", label: "Existing" },
+                                        { value: "Repeat", label: "Repeat Cylinder" },
+                                        { value: "Rechromed", label: "Rechromed" },
+                                      ]}
+                                    />
                                   </td>
                                   <td className="px-2 py-1.5">
-                                    <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400" value={ca.status} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as EstCylAlloc["status"] } : c))}>
-                                      <option value="Pending">Pending</option><option value="Ordered">Ordered</option><option value="Available">Available</option><option value="In Use">In Use</option><option value="Under Chrome">Under Chrome</option>
-                                    </select>
+                                    <SearchableSelect
+                                      className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                                      value={ca.status}
+                                      onChange={val => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: val as EstCylAlloc["status"] } : c))}
+                                      allowEmpty={false}
+                                      options={[
+                                        { value: "Pending", label: "Pending" },
+                                        { value: "Ordered", label: "Ordered" },
+                                        { value: "Available", label: "Available" },
+                                        { value: "In Use", label: "In Use" },
+                                        { value: "Under Chrome", label: "Under Chrome" },
+                                      ]}
+                                    />
                                   </td>
                                   <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400" value={ca.remarks} onChange={e => setCylAllocs(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
                                   <td className="px-2 py-1.5 text-center bg-green-50/40">
@@ -6438,7 +6460,7 @@ export default function GravureEstimationPage() {
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-purple-50 border-t border-purple-200">
+                    <tfoot className="bg-purple-50 border-t border-blue-200">
                       <tr><td colSpan={5} className="px-3 py-2 text-xs font-bold text-purple-700">Process Total</td><td className="px-3 py-2 font-bold text-purple-800">₹{viewRow.processCost.toLocaleString()}</td></tr>
                     </tfoot>
                   </table>
@@ -6452,7 +6474,7 @@ export default function GravureEstimationPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 {[
                   { label: "Material Cost",   val: `₹${viewRow.materialCost.toLocaleString()}`,  cls: "bg-blue-50 border-blue-200" },
-                  { label: "Process Cost",    val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-purple-200" },
+                  { label: "Process Cost",    val: `₹${viewRow.processCost.toLocaleString()}`,   cls: "bg-purple-50 border-blue-200" },
                   { label: `Cylinder (${viewRow.noOfColors}C × ₹${viewRow.cylinderCostPerColor})`, val: `₹${viewRow.cylinderCost.toLocaleString()}`, cls: "bg-indigo-50 border-indigo-200" },
                   { label: "Other Cost",       val: `₹${(viewRow.setupCost || 0).toLocaleString()}`, cls: "bg-amber-50 border-amber-200" },
                   { label: "Packing Cost",    val: `₹${(viewRow.packingCost ?? calcCosts(viewRow).packingCost ?? 0).toLocaleString()}`, cls: "bg-orange-50 border-orange-200" },
@@ -7170,7 +7192,7 @@ export default function GravureEstimationPage() {
                   const cutWithShrink = cutLen + shrink;
                   const baseStats = [
                     { l: "Film Width", v: `${filmW} mm`,  cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                    { l: "AC UPS",     v: String(acUps),  cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                    { l: "AC UPS",     v: String(acUps),  cls: "bg-purple-50 text-purple-700 border-blue-200" },
                     { l: isSleeve ? "Layflat" : "Job Width", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
                   ];
                   const typeStats = isSleeve ? [
@@ -7445,7 +7467,7 @@ export default function GravureEstimationPage() {
                     <td className="px-3 py-2.5">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         enq.status === "Pending"   ? "bg-yellow-50 text-yellow-700 border-yellow-200" :
-                        enq.status === "Estimated" ? "bg-purple-50 text-purple-700 border-purple-200" :
+                        enq.status === "Estimated" ? "bg-purple-50 text-purple-700 border-blue-200" :
                         enq.status === "Converted" ? "bg-green-50 text-green-700 border-green-200" :
                         "bg-red-50 text-red-600 border-red-200"
                       }`}>{enq.status}</span>

@@ -2688,6 +2688,7 @@ export type GravureWorkOrder = {
   colorShades?: any[];
   materialAllocs?: any[];
   cylinderAllocs?: any[];
+  isReleasedForSchedule?: number;
 };
 
 export type GravureItemIssueItem = {

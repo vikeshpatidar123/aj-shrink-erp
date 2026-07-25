@@ -9,6 +9,8 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
+import { DataTable } from "@/components/tables/DataTable";
+import RowAction from "@/components/ui/RowAction";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const API = "api/gravureOutsourceShrink";
@@ -443,18 +445,8 @@ export default function GravureOutsourcePage() {
         <div className="ml-auto flex items-center gap-2">
           {tab === "list" && (
             <>
-              <button
-                onClick={() => { resetSendForm(); setTab("send"); loadDropdowns(); }}
-                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors"
-              >
-                <Plus size={13} /> New Send
-              </button>
-              <button
-                onClick={() => { resetGRNForm(); setTab("grn"); }}
-                className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded transition-colors"
-              >
-                <ArrowDownToLine size={13} /> New GRN
-              </button>
+              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={() => { resetSendForm(); setTab("send"); loadDropdowns(); }}>New Send</Button>
+              <Button variant="secondary" pill icon={<ArrowDownToLine size={13} />} onClick={() => { resetGRNForm(); setTab("grn"); }}>New GRN</Button>
             </>
           )}
           {tab !== "list" && (
@@ -523,60 +515,49 @@ export default function GravureOutsourcePage() {
             </div>
           </div>
 
-          {/* Table — fills remaining height */}
-          <div className="flex-1 overflow-auto bg-white">
-            <table className="w-full text-xs border-collapse">
-              <thead className="sticky top-0 z-10" style={{ background: "var(--erp-primary)" }}>
-                <tr>
-                  {["#","Voucher No","Date","Vendor","Work Order","Job","Process","Qty Sent","Received","Pending","Status","Actions"].map(h => (
-                    <th key={h} className="px-3 py-2.5 text-left text-[10px] font-bold text-white/90 uppercase tracking-wide whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {listLoading ? (
-                  <tr><td colSpan={12} className="text-center py-12 text-gray-400"><Loader2 size={18} className="animate-spin inline mr-2" />Loading…</td></tr>
-                ) : listRows.length === 0 ? (
-                  <tr><td colSpan={12} className="text-center py-12 text-gray-400">No records found for this date range</td></tr>
-                ) : listRows.map((row, i) => (
-                  <tr key={row.OutsourceID} className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${i % 2 === 1 ? "bg-gray-50/40" : ""}`}>
-                    <td className="px-3 py-2 text-gray-400 tabular-nums">{i + 1}</td>
-                    <td className="px-3 py-2 font-semibold text-blue-700 whitespace-nowrap">{row.VoucherNo}</td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.VoucherDate}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{row.VendorName}</td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.WorkOrderNo}</td>
-                    <td className="px-3 py-2 max-w-[140px] truncate" title={row.JobName}>{row.JobName}</td>
-                    <td className="px-3 py-2 whitespace-nowrap">{row.ProcessName}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{num(row.QuantitySent).toLocaleString()} {row.Unit}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-green-700">{num(row.QuantityReceived).toLocaleString()}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-amber-700 font-medium">{num(row.PendingQty).toLocaleString()}</td>
-                    <td className="px-3 py-2"><StatusBadge s={row.Status} /></td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        <button onClick={() => printSendSlip(row, row.VendorName)} title="Print"
-                          className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
-                          <Printer size={13} />
-                        </button>
-                        <button onClick={() => loadForEdit(row)} title="Edit"
-                          className="p-1 rounded hover:bg-blue-100 text-blue-400 hover:text-blue-700 transition-colors">
-                          <Pencil size={13} />
-                        </button>
-                        <button onClick={() => setDeleteTarget({ id: row.OutsourceID, type: "send" })} title="Delete"
-                          className="p-1 rounded hover:bg-red-100 text-red-300 hover:text-red-600 transition-colors">
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Footer count strip */}
-          <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-4 py-1.5 text-xs text-gray-500">
-            {listRows.length} record{listRows.length !== 1 ? "s" : ""}
-          </div>
+          {/* Table */}
+          <DataTable<SendRow>
+            data={listRows}
+            loading={listLoading}
+            getRowId={r => String(r.OutsourceID)}
+            columns={[
+              {
+                key: "VoucherNo", header: "Voucher No.",
+                render: r => <span className="font-semibold text-blue-700">{r.VoucherNo}</span>,
+              },
+              { key: "VoucherDate", header: "Date" },
+              { key: "VendorName", header: "Vendor" },
+              { key: "WorkOrderNo", header: "Work Order" },
+              { key: "JobName", header: "Job", wrap: true, size: 180 },
+              { key: "ProcessName", header: "Process" },
+              {
+                key: "QuantitySent", header: "Qty Sent",
+                render: r => <span className="tabular-nums">{num(r.QuantitySent).toLocaleString()} {r.Unit}</span>,
+              },
+              {
+                key: "QuantityReceived", header: "Received",
+                render: r => <span className="tabular-nums text-green-700">{num(r.QuantityReceived).toLocaleString()}</span>,
+              },
+              {
+                key: "PendingQty", header: "Pending",
+                render: r => <span className="tabular-nums text-amber-700 font-medium">{num(r.PendingQty).toLocaleString()}</span>,
+              },
+              {
+                key: "Status", header: "Status",
+                render: r => <StatusBadge s={r.Status} />,
+              },
+            ]}
+            actions={r => (
+              <>
+                <button onClick={() => printSendSlip(r, r.VendorName)} title="Print"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
+                  <Printer size={14} />
+                </button>
+                <RowAction.Edit onClick={() => loadForEdit(r)} />
+                <RowAction.Delete onClick={() => setDeleteTarget({ id: r.OutsourceID, type: "send" })} />
+              </>
+            )}
+          />
         </div>
       )}
 

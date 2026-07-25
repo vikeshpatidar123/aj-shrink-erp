@@ -719,7 +719,7 @@ export default function ExtrusionProductCatalogPage() {
             {stats.total} catalog entries · {stats.active} active · {stats.pending} orders without catalog
           </p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openNew}>New Catalog</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Catalog</Button>
       </div>
 
       {/* ── Stat cards ── */}

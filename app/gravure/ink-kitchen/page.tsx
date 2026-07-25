@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import {
@@ -10,6 +11,7 @@ import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -213,163 +215,135 @@ function RecipeForm({
   };
 
   return (
-    <div className="max-w-3xl mx-auto pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+    <div className="flex flex-col h-full min-h-screen">
+      {/* Sticky Header */}
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
-          <h2 className="text-xl font-bold text-gray-800">Shade Recipe {editing ? "Edit" : "New"}</h2>
+          <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
+          <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+            <FlaskConical size={16} className="text-blue-600" />
+            Shade Recipe {editing ? `— Edit ${editing.ShadeRecipeNo}` : "New"}
+          </h2>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => { setForm(blankRecipeForm); setIngredients([]); }}
+            className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+            Clear
+          </button>
           <button onClick={onBack}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
             <List size={15} /> Back
           </button>
           <button onClick={onSave} disabled={saving || !form.shadeRecipeName.trim() || ingredients.length === 0 || Math.abs(totalPct - 100) > 0.01}
             className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
-            <Save size={15} /> {saving ? "Saving…" : "Save"}
+            <Save size={15} /> {saving ? "Saving…" : "Save Recipe"}
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-6">
-        {editing && (
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-xs font-semibold text-blue-700">
-            Editing: {editing.ShadeRecipeNo}
-          </div>
-        )}
-
-        <div>
-          <SectionTitle title="Recipe Details" />
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* Two-column body */}
+      <div className="flex gap-6 p-6 flex-1 min-h-0">
+        {/* LEFT: Recipe Details + Lab Values */}
+        <div className="w-[480px] flex-shrink-0 space-y-5">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+            <SectionTitle title="Recipe Details" />
             <Field label="Shade Recipe Name" required>
-              <input type="text" value={form.shadeRecipeName}
-                onChange={e => f("shadeRecipeName", e.target.value)}
-                placeholder="e.g. Pantone 485C Red"
-                className={inputCls} />
+              <input type="text" value={form.shadeRecipeName} onChange={e => f("shadeRecipeName", e.target.value)}
+                placeholder="e.g. Pantone 485C Red" className={inputCls} />
             </Field>
             <Field label="Target Ink Item" required>
-              <select value={form.itemId} onChange={e => f("itemId", e.target.value)} className={selectCls}>
-                <option value="">— select ink —</option>
-                {inkItems.map((i, ix) => (
-                  <option key={`${i.id}_${ix}`} value={i.id}>{i.itemCode} — {i.itemName}</option>
-                ))}
-              </select>
+              <SearchableSelect value={form.itemId} onChange={val => f("itemId", val)}
+                options={inkItems.map(i => ({ value: i.id, label: `${i.itemCode} — ${i.itemName}` }))}
+                placeholder="— select ink —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
             </Field>
             <Field label="Reference (Pantone / Sample)">
-              <input type="text" value={form.reference}
-                onChange={e => f("reference", e.target.value)}
-                placeholder="Pantone 485C"
-                className={inputCls} />
+              <input type="text" value={form.reference} onChange={e => f("reference", e.target.value)}
+                placeholder="Pantone 485C" className={inputCls} />
             </Field>
-            <Field label="Film Item">
-              <select value={form.paperQuality}
-                onChange={e => {
-                  const item = films.find(p => p.itemName === e.target.value);
-                  setForm({ ...form, paperQuality: e.target.value, paperFinish: item?.finish ?? "" });
-                }}
-                className={selectCls}>
-                <option value="">— select film —</option>
-                {films.map(p => (
-                  <option key={p.id} value={p.itemName}>
-                    {p.itemName}{p.sizeW ? ` — ${p.sizeW}mm` : ""}{p.thickness ? ` × ${p.thickness}µ` : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Film Finish">
-              <select value={form.paperFinish} onChange={e => f("paperFinish", e.target.value)} className={selectCls}>
-                <option value="">— select finish —</option>
-                {[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => (
-                  <option key={fin} value={fin}>{fin}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </div>
-
-        <div>
-          <SectionTitle title="Lab Colour Values (L*a*b*)" />
-          <div className="grid grid-cols-3 gap-4">
-            {(["labL", "labA", "labB"] as const).map((k, i) => (
-              <Field key={k} label={`${["L*", "a*", "b*"][i]}`}>
-                <input type="number" step="0.01" value={form[k]}
-                  onChange={e => f(k, e.target.value)}
-                  className={inputCls} />
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Film Item">
+                <SearchableSelect value={form.paperQuality}
+                  onChange={val => { const item = films.find(p => p.itemName === val); setForm({ ...form, paperQuality: val, paperFinish: item?.finish ?? "" }); }}
+                  options={films.map(p => ({ value: p.itemName, label: `${p.itemName}${p.sizeW ? ` — ${p.sizeW}mm` : ""}${p.thickness ? ` × ${p.thickness}µ` : ""}` }))}
+                  placeholder="— select film —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
               </Field>
-            ))}
+              <Field label="Film Finish">
+                <SearchableSelect value={form.paperFinish} onChange={val => f("paperFinish", val)}
+                  options={[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => ({ value: fin, label: fin }))}
+                  placeholder="— select finish —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
+              </Field>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <SectionTitle title="Lab Colour Values (L*a*b*)" />
+            <div className="grid grid-cols-3 gap-4">
+              {(["labL", "labA", "labB"] as const).map((k, i) => (
+                <Field key={k} label={["L*", "A*", "B*"][i]}>
+                  <input type="number" step="0.01" value={form[k]} onChange={e => f(k, e.target.value)} className={inputCls} />
+                </Field>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <SectionTitle title="Ink Ingredients (must total 100%)" />
-            <button onClick={addRow}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
-              <Plus size={13} /> Add Ink
-            </button>
-          </div>
+        {/* RIGHT: Ink Ingredients */}
+        <div className="flex-1 min-w-0">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 h-full flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <SectionTitle title="Ink Ingredients (must total 100%)" />
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-bold px-2 py-1 rounded-lg ${Math.abs(totalPct - 100) < 0.01 && ingredients.length > 0 ? "bg-green-50 text-green-700 border border-green-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+                  Total: {totalPct.toFixed(2)}%
+                </span>
+                <button onClick={addRow}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
+                  <Plus size={13} /> Add Ink
+                </button>
+              </div>
+            </div>
 
-          <div className={`mb-2 text-xs font-semibold ${Math.abs(totalPct - 100) < 0.01 && ingredients.length > 0 ? "text-green-600" : "text-amber-600"}`}>
-            Total: {totalPct.toFixed(2)}% {ingredients.length > 0 && Math.abs(totalPct - 100) > 0.01 && "(must be 100%)"}
-          </div>
-
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                <tr>
-                  <th className="px-3 py-2 text-left">Ink Item</th>
-                  <th className="px-3 py-2 text-right w-32">% Percentage</th>
-                  <th className="px-3 py-2 text-right w-12">Del</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {ingredients.length === 0 && (
-                  <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 text-xs">No ingredients yet. Click "Add Ink" to begin.</td></tr>
-                )}
-                {ingredients.map((row, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-3 py-2">
-                      <select value={row.subItemId} onChange={e => setIngredientItem(i, e.target.value)}
-                        className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm bg-white focus:ring-1 focus:ring-blue-400 outline-none">
-                        <option value="">— select —</option>
-                        {/* Fallback: show saved item even if not in inkItems list */}
-                        {row.subItemId && !inkItems.find(ink => ink.id === row.subItemId) && (
-                          <option value={row.subItemId}>{row.subItemCode} — {row.subItemName}</option>
-                        )}
-                        {inkItems.map((ink, ix) => (
-                          <option key={`${ink.id}_${ix}`} value={ink.id}>{ink.itemCode} — {ink.itemName}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input type="number" step="0.01" min="0" max="100" value={row.percentage}
-                        onChange={e => updateRow(i, { percentage: e.target.value })}
-                        className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-blue-400 outline-none" />
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600">
-                        <X size={14} />
-                      </button>
-                    </td>
+            <div className="flex-1 border border-gray-200 rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-xs text-gray-500 uppercase sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2.5 text-left">Ink Item</th>
+                    <th className="px-3 py-2.5 text-right w-36">% Percentage</th>
+                    <th className="px-3 py-2.5 text-right w-12">Del</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {ingredients.length === 0 && (
+                    <tr><td colSpan={3} className="px-3 py-10 text-center text-gray-400 text-xs">No ingredients yet. Click "Add Ink" to begin.</td></tr>
+                  )}
+                  {ingredients.map((row, i) => (
+                    <tr key={i} className="hover:bg-gray-50">
+                      <td className="px-3 py-2">
+                        <SearchableSelect value={row.subItemId} onChange={val => setIngredientItem(i, val)}
+                          options={[
+                            ...(row.subItemId && !inkItems.find(ink => ink.id === row.subItemId)
+                              ? [{ value: row.subItemId, label: `${row.subItemCode} — ${row.subItemName}` }]
+                              : []),
+                            ...inkItems.map(ink => ({ value: ink.id, label: `${ink.itemCode} — ${ink.itemName}` })),
+                          ]}
+                          placeholder="— select —" className="border-gray-200 rounded-md px-2 py-1.5 text-sm" />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input type="number" step="0.01" min="0" max="100" value={row.percentage}
+                          onChange={e => updateRow(i, { percentage: e.target.value })}
+                          className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-blue-400 outline-none" />
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600">
+                          <X size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex justify-between pt-4 border-t border-gray-100">
-          <button onClick={() => { setForm(blankRecipeForm); setIngredients([]); }}
-            className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-            Clear
-          </button>
-          <button onClick={onSave}
-            disabled={saving || !form.shadeRecipeName.trim() || ingredients.length === 0 || Math.abs(totalPct - 100) > 0.01}
-            className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
-            <Check size={15} /> {saving ? "Saving…" : "Save Recipe"}
-          </button>
         </div>
       </div>
     </div>
@@ -413,118 +387,85 @@ function SprForm({
   const f = (k: keyof typeof blankSprForm, v: string) => setForm({ ...form, [k]: v });
 
   return (
-    <div className="max-w-2xl mx-auto pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+    <div className="flex flex-col h-full min-h-screen">
+      {/* Sticky Header */}
+      <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
-          <h2 className="text-xl font-bold text-gray-800">Production Request {editing ? "Edit" : "New"}</h2>
+          <p className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
+          <h2 className="text-base font-bold text-gray-800 flex items-center gap-2">
+            <ClipboardList size={16} className="text-amber-600" />
+            Production Request {editing ? `— Edit ${editing.SPRNo}` : "New"}
+          </h2>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setForm(blankSprForm)}
+            className="px-4 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50">
+            Clear
+          </button>
           <button onClick={onBack}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
             <List size={15} /> Back
           </button>
-          <button onClick={onSave}
-            disabled={saving || !form.inkId || !form.shadeName.trim() || !form.requiredQty}
+          <button onClick={onSave} disabled={saving || !form.inkId || !form.shadeName.trim() || !form.requiredQty}
             className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
-            <Save size={15} /> {saving ? "Saving…" : "Save"}
+            <Save size={15} /> {saving ? "Saving…" : "Save Request"}
           </button>
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
-        {editing && (
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-semibold text-amber-700">
-            Editing: {editing.SPRNo}
+      {/* Two-column body */}
+      <div className="flex gap-6 p-6">
+        {/* LEFT: Main fields */}
+        <div className="flex-1 min-w-0 bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+          <SectionTitle title="Production Request Details" />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <Field label="Production Work Order (PWO)">
+                <SearchableSelect value={form.jobBookingId} onChange={val => f("jobBookingId", val)}
+                  options={jobs.map(j => ({ value: j.id, label: `${j.jobNo} — ${j.jobName}` }))}
+                  placeholder="— select PWO —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
+              </Field>
+            </div>
+            <Field label="Ink Item" required>
+              <SearchableSelect value={form.inkId}
+                onChange={val => { const ink = inkItems.find(i => i.id === val); setForm({ ...form, inkId: val, shadeName: ink?.shadeName ?? form.shadeName }); }}
+                options={inkItems.map(i => ({ value: i.id, label: `${i.itemCode} — ${i.itemName}` }))}
+                placeholder="— select ink —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
+            </Field>
+            <Field label="Shade Name" required>
+              <input type="text" value={form.shadeName} onChange={e => f("shadeName", e.target.value)}
+                placeholder="e.g. Red, Pantone 485C" className={inputCls} />
+            </Field>
+            <Field label="Required Qty (kg)" required>
+              <input type="number" step="0.001" min="0" value={form.requiredQty} onChange={e => f("requiredQty", e.target.value)}
+                placeholder="0.000" className={inputCls} />
+            </Field>
+            <Field label="Required Date">
+              <input type="date" value={form.requiredDate} onChange={e => f("requiredDate", e.target.value)} className={inputCls} />
+            </Field>
           </div>
-        )}
-
-        <SectionTitle title="Production Request Details" />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Production Work Order (PWO)">
-            <select value={form.jobBookingId} onChange={e => f("jobBookingId", e.target.value)} className={selectCls}>
-              <option value="">— select PWO —</option>
-              {jobs.map(j => (
-                <option key={j.id} value={j.id}>{j.jobNo} — {j.jobName}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Ink Item" required>
-            <select value={form.inkId}
-              onChange={e => {
-                const ink = inkItems.find(i => i.id === e.target.value);
-                setForm({ ...form, inkId: e.target.value, shadeName: ink?.shadeName ?? form.shadeName });
-              }}
-              className={selectCls}>
-              <option value="">— select ink —</option>
-              {inkItems.map(i => (
-                <option key={i.id} value={i.id}>{i.itemCode} — {i.itemName}</option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="Shade Name" required>
-            <input type="text" value={form.shadeName}
-              onChange={e => f("shadeName", e.target.value)}
-              placeholder="e.g. Red, Pantone 485C"
-              className={inputCls} />
-          </Field>
-
-          <Field label="Required Qty (kg)" required>
-            <input type="number" step="0.001" min="0" value={form.requiredQty}
-              onChange={e => f("requiredQty", e.target.value)}
-              placeholder="0.000"
-              className={inputCls} />
-          </Field>
-
-          <Field label="Reference">
-            <input type="text" value={form.reference}
-              onChange={e => f("reference", e.target.value)}
-              placeholder="Pantone code / sample ref"
-              className={inputCls} />
-          </Field>
-
-          <Field label="Required Date">
-            <input type="date" value={form.requiredDate}
-              onChange={e => f("requiredDate", e.target.value)}
-              className={inputCls} />
-          </Field>
-
-          <Field label="Film Item">
-            <select value={form.paperQuality}
-              onChange={e => {
-                const item = films.find(p => p.itemName === e.target.value);
-                setForm({ ...form, paperQuality: e.target.value, paperFinish: item?.finish ?? "" });
-              }}
-              className={selectCls}>
-              <option value="">— select film —</option>
-              {films.map(p => <option key={p.id} value={p.itemName}>{p.itemName}</option>)}
-            </select>
-          </Field>
-
-          <Field label="Film Finish">
-            <select value={form.paperFinish} onChange={e => f("paperFinish", e.target.value)} className={selectCls}>
-              <option value="">— select finish —</option>
-              {[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => (
-                <option key={fin} value={fin}>{fin}</option>
-              ))}
-            </select>
-          </Field>
         </div>
 
-        <div className="flex justify-between pt-4 border-t border-gray-100">
-          <button onClick={() => setForm(blankSprForm)}
-            className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-            Clear
-          </button>
-          <button onClick={onSave}
-            disabled={saving || !form.inkId || !form.shadeName.trim() || !form.requiredQty}
-            className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 shadow-sm">
-            <Check size={15} /> {saving ? "Saving…" : "Save Request"}
-          </button>
+        {/* RIGHT: Reference + Film */}
+        <div className="w-[380px] flex-shrink-0">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
+            <SectionTitle title="Reference & Film" />
+            <Field label="Reference">
+              <input type="text" value={form.reference} onChange={e => f("reference", e.target.value)}
+                placeholder="Pantone code / sample ref" className={inputCls} />
+            </Field>
+            <Field label="Film Item">
+              <SearchableSelect value={form.paperQuality}
+                onChange={val => { const item = films.find(p => p.itemName === val); setForm({ ...form, paperQuality: val, paperFinish: item?.finish ?? "" }); }}
+                options={films.map(p => ({ value: p.itemName, label: p.itemName }))}
+                placeholder="— select film —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
+            </Field>
+            <Field label="Film Finish">
+              <SearchableSelect value={form.paperFinish} onChange={val => f("paperFinish", val)}
+                options={[...new Set(films.map(p => p.finish).filter(Boolean))].sort().map(fin => ({ value: fin, label: fin }))}
+                placeholder="— select finish —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
+            </Field>
+          </div>
         </div>
       </div>
     </div>
@@ -631,8 +572,8 @@ function MixingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 overflow-y-auto py-8">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 my-auto">
+    <div className="fixed inset-0 z-50 flex items-stretch bg-black/50">
+      <div className="bg-white w-full h-full overflow-y-auto flex flex-col">
         {/* Modal header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
@@ -658,14 +599,13 @@ function MixingModal({
             {loadingRecipes ? (
               <div className="text-xs text-gray-400 py-2">Loading recipes…</div>
             ) : (
-              <select value={selRecipe} onChange={e => setSelRecipe(e.target.value)} className={selectCls}>
-                <option value="">— select recipe —</option>
-                {recipes.map(r => (
-                  <option key={r.ShadeRecipeID} value={r.ShadeRecipeID}>
-                    {r.ShadeRecipeNo} — {r.ShadeRecipeName}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={selRecipe}
+                onChange={val => setSelRecipe(val)}
+                options={recipes.map(r => ({ value: String(r.ShadeRecipeID), label: `${r.ShadeRecipeNo} — ${r.ShadeRecipeName}` }))}
+                placeholder="— select recipe —"
+                className="border-gray-300 rounded-lg text-sm text-gray-900"
+              />
             )}
             {recipes.length === 0 && !loadingRecipes && (
               <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
@@ -682,12 +622,13 @@ function MixingModal({
                 className={inputCls} />
             </Field>
             <Field label="Output Warehouse" required>
-              <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)} className={selectCls}>
-                <option value="">— select —</option>
-                {warehouses.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}{w.bin ? " / " + w.bin : ""}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                value={warehouseId}
+                onChange={val => setWarehouseId(val)}
+                options={warehouses.map(w => ({ value: w.id, label: `${w.name}${w.bin ? " / " + w.bin : ""}` }))}
+                placeholder="— select —"
+                className="border-gray-300 rounded-lg text-sm text-gray-900"
+              />
             </Field>
           </div>
 
@@ -1110,7 +1051,7 @@ export default function InkKitchenPage() {
         />
       )}
 
-      <div className="max-w-7xl mx-auto space-y-4">
+      <div className="space-y-4">
         {/* Page header */}
         <div className="flex items-center justify-between">
           <div>
@@ -1258,10 +1199,7 @@ export default function InkKitchenPage() {
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm text-gray-500">{recipes.length} shade recipes</p>
-                <button onClick={openNewRecipe}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
-                  <Plus size={15} /> New Recipe
-                </button>
+                <Button variant="secondary" pill icon={<Plus size={15} />} onClick={openNewRecipe}>New Recipe</Button>
               </div>
               {recipesLoading ? (
                 <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
@@ -1272,10 +1210,8 @@ export default function InkKitchenPage() {
                   searchKeys={["ShadeRecipeNo", "ShadeRecipeName", "InkName", "Ingredients", "Reference"]}
                   actions={row => (
                     <div className="flex items-center gap-2 justify-end">
-                      <Button variant="ghost" size="sm" icon={<Pencil size={13} />}
-                        onClick={() => openEditRecipe(row)}>Edit</Button>
-                      <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
-                        onClick={() => deleteRecipe(row)}>Delete</Button>
+                      <RowAction.Edit onClick={() => openEditRecipe(row)} />
+                      <RowAction.Delete onClick={() => deleteRecipe(row)} />
                     </div>
                   )}
                 />
@@ -1293,10 +1229,7 @@ export default function InkKitchenPage() {
                     {sprs.filter(s => !s.IsShadeProduced).length} pending
                   </span>
                 </div>
-                <button onClick={openNewSpr}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
-                  <Plus size={15} /> New Request
-                </button>
+                <Button variant="secondary" pill icon={<Plus size={15} />} onClick={openNewSpr}>New Request</Button>
               </div>
               {sprsLoading ? (
                 <div className="py-10 text-center text-sm text-gray-400">Loading…</div>
@@ -1308,12 +1241,10 @@ export default function InkKitchenPage() {
                   actions={row => (
                     <div className="flex items-center gap-2 justify-end">
                       {!row.IsShadeProduced && (
-                        <Button variant="ghost" size="sm" icon={<Pencil size={13} />}
-                          onClick={() => openEditSpr(row)}>Edit</Button>
+                        <RowAction.Edit onClick={() => openEditSpr(row)} />
                       )}
                       {!row.IsShadeProduced && (
-                        <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
-                          onClick={() => deleteSpr(row)}>Delete</Button>
+                        <RowAction.Delete onClick={() => deleteSpr(row)} />
                       )}
                     </div>
                   )}

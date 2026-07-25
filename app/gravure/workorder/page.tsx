@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { QRCodeSVG } from "qrcode.react";
@@ -28,6 +29,7 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 const INK_COLORS = ["Cyan", "Magenta", "Yellow", "Black", "White", "Red", "Green", "Blue", "Orange", "Gold", "Silver", "Violet", "Brown", "Pink"];
 
@@ -299,6 +301,8 @@ export default function GravureWorkOrderPage() {
   const [replanOpen, setReplan] = useState(false);
   const [unwindPreview, setUnwindPreview] = useState<number | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [woIsReleased, setWoIsReleased] = useState(false);
+  const [schedRelLoading, setSchedRelLoading] = useState<string | null>(null);
   const [modalTab, setModalTab] = useState<"basic" | "planning" | "material">("basic");
   const [pendingWOCategoryId, setPendingWOCategoryId] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(false);
@@ -1558,6 +1562,7 @@ export default function GravureWorkOrderPage() {
       cylinderAllocs: restoredCylAllocs,
       filmReqs: restoredFilmReqs,
       materialAllocs: restoredMatAllocs,
+      isReleasedForSchedule: Number(r.isReleasedForSchedule ?? 0),
       // Extra field for plan restore (not in type, accessed via cast in openEdit)
       _savedPlanJSON: restoredSavedPlan,
     } as any as GravureWorkOrder;
@@ -2722,9 +2727,29 @@ export default function GravureWorkOrderPage() {
       setShowPlan(false);
     }
 
+    setWoIsReleased((wo as any).isReleasedForSchedule === 1);
     setModalTab("basic");
     setPrepTab("film");
     setModal(true);
+  };
+
+  // ── Schedule Release toggle ─────────────────────────────────
+  const toggleSchedRelease = async (wo: GravureWorkOrder, checked: boolean) => {
+    const id = wo.id;
+    setSchedRelLoading(id);
+    try {
+      await apiPost("api/gravureWorkOrderShrink/toggleScheduleRelease", {
+        JobBookingID: Number(id),
+        IsReleased: checked ? 1 : 0,
+      });
+      setWOs(prev => prev.map(w =>
+        w.id === id ? { ...w, isReleasedForSchedule: checked ? 1 : 0 } : w
+      ));
+    } catch {
+      setNotif({ type: "error", title: "Error", msg: "Failed to update schedule release." });
+    } finally {
+      setSchedRelLoading(null);
+    }
   };
 
   // ── Save ───────────────────────────────────────────────────
@@ -2880,6 +2905,16 @@ export default function GravureWorkOrderPage() {
   // ── Form Modal inner content ───────────────────────────────
   const formContent = (
     <div className="space-y-4">
+      {/* Schedule Release read-only banner */}
+      {woIsReleased && (
+        <div className="flex items-center gap-3 bg-amber-50 border-2 border-amber-300 rounded-xl px-4 py-3">
+          <AlertCircle size={18} className="text-amber-600 flex-shrink-0" />
+          <div>
+            <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Work Order Released for Schedule — View Only</p>
+            <p className="text-xs text-amber-700 mt-0.5">Uncheck "Schedule Release" in the list to enable editing.</p>
+          </div>
+        </div>
+      )}
       {/* Modal tabs */}
       <div className="flex bg-gray-100 p-1 rounded-xl gap-1">
         {(["basic", "planning", "material"] as const).map(t => (
@@ -2913,7 +2948,7 @@ export default function GravureWorkOrderPage() {
             {/* Source-specific top banner for non-Direct */}
             {form.sourceOrderType !== "Direct" && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-3">
-                <div className={`rounded-xl border px-3 py-2 text-xs ${form.sourceOrderType === "Estimation" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-purple-50 border-purple-200 text-purple-700"}`}>
+                <div className={`rounded-xl border px-3 py-2 text-xs ${form.sourceOrderType === "Estimation" ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-purple-50 border-blue-200 text-purple-700"}`}>
                   <p className="font-bold uppercase text-[10px] tracking-widest mb-0.5">Source</p>
                   <p className="font-semibold">{form.sourceOrderType === "Estimation" ? "📋 Estimation" : "📦 Catalog"}</p>
                 </div>
@@ -3014,7 +3049,7 @@ export default function GravureWorkOrderPage() {
               <Input label="Back Colors" type="number" value={form.backColors || ""} onChange={e => f("backColors", Number(e.target.value))} min={0} max={12} />
               <div>
                 <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Total Colors (Auto)</label>
-                <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700">{form.noOfColors} Colors</div>
+                <div className="px-3 py-2 bg-purple-50 border border-blue-200 rounded-xl text-sm font-bold text-purple-700">{form.noOfColors} Colors</div>
               </div>
               <Select label="Print Type" value={form.printType} onChange={e => f("printType", e.target.value as typeof form.printType)}
                 options={[{ value: "Surface Print", label: "Surface Print" }, { value: "Reverse Print", label: "Reverse Print" }, { value: "Combination", label: "Combination" }]} />
@@ -3029,10 +3064,10 @@ export default function GravureWorkOrderPage() {
 
           {/* ── Pouch Accessories — toggle chips ── */}
           {form.content && getStructureType(form.content) === "Pouch" && (
-            <div className="border border-purple-200 rounded-2xl overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 flex items-center gap-2">
-                <Wrench size={14} className="text-white" />
-                <p className="text-xs font-bold text-white uppercase tracking-widest">Pouch Accessories &amp; Features</p>
+            <div className="border border-blue-200 rounded-2xl overflow-hidden">
+              <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2">
+                <Wrench size={14} className="text-[#003366]" />
+                <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Pouch Accessories &amp; Features</p>
               </div>
               <div className="p-4 bg-purple-50/40">
                 <div className="flex flex-wrap gap-2 mb-3">
@@ -3066,7 +3101,7 @@ export default function GravureWorkOrderPage() {
                   })}
                 </div>
                 {((form as any).hasZipper || (form as any).hasSpout) && (
-                  <div className="flex flex-wrap gap-4 p-3 bg-white border border-purple-200 rounded-xl">
+                  <div className="flex flex-wrap gap-4 p-3 bg-white border border-blue-200 rounded-xl">
                     {(form as any).hasZipper ? (
                       <div>
                         <label className="text-[10px] font-semibold text-indigo-600 uppercase block mb-1">Zipper Weight (g)</label>
@@ -3100,16 +3135,16 @@ export default function GravureWorkOrderPage() {
           {/* ── Dimension Setup + Live Diagram (when content type is known) ── */}
           {form.content && CONTENT_TYPE_CONFIG[normalizeContentType(form.content)] && (
             <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
-                <Calculator size={14} className="text-white" />
-                <p className="text-xs font-bold text-white uppercase tracking-widest">Dimension Setup — {form.content}</p>
-                {(form as any).hasZipper      ? <span className="px-2 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold">Zipper</span> : null}
-                {(form as any).hasSpout       ? <span className="px-2 py-0.5 rounded-full bg-cyan-400/80 text-white text-[10px] font-bold">Spout</span> : null}
-                {(form as any).hasValve       ? <span className="px-2 py-0.5 rounded-full bg-orange-400/80 text-white text-[10px] font-bold">Valve</span> : null}
-                {(form as any).hasTearNotch   ? <span className="px-2 py-0.5 rounded-full bg-rose-400/80 text-white text-[10px] font-bold">Tear Notch</span> : null}
-                {(form as any).hasEuroHole    ? <span className="px-2 py-0.5 rounded-full bg-violet-400/80 text-white text-[10px] font-bold">Euro Hole</span> : null}
+              <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                <Calculator size={14} className="text-[#003366]" />
+                <p className="text-xs font-bold text-[#003366] uppercase tracking-widest">Dimension Setup — {form.content}</p>
+                {(form as any).hasZipper      ? <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">Zipper</span> : null}
+                {(form as any).hasSpout       ? <span className="px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold">Spout</span> : null}
+                {(form as any).hasValve       ? <span className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold">Valve</span> : null}
+                {(form as any).hasTearNotch   ? <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold">Tear Notch</span> : null}
+                {(form as any).hasEuroHole    ? <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold">Euro Hole</span> : null}
                 {(form as any).structureType && (
-                  <span className="ml-auto px-2 py-0.5 bg-white/20 text-white text-[10px] font-bold rounded-full uppercase">
+                  <span className="ml-auto px-2 py-0.5 bg-[rgba(0,51,102,0.1)] text-[#003366] text-[10px] font-bold rounded-full uppercase">
                     {(form as any).structureType}
                   </span>
                 )}
@@ -3417,7 +3452,7 @@ export default function GravureWorkOrderPage() {
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Total Colors</label>
-                        <div className="px-3 py-2 bg-purple-50 border border-purple-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{form.noOfColors} Colors</div>
+                        <div className="px-3 py-2 bg-purple-50 border border-blue-200 rounded-xl text-sm font-bold text-purple-700 text-center mt-[18px]">{form.noOfColors} Colors</div>
                       </div>
                     </div>
                   </div>
@@ -3568,7 +3603,7 @@ export default function GravureWorkOrderPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <SH label="Process List" />
-              <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+              <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
                 <Plus size={12} /> Add Process
               </button>
             </div>
@@ -3586,10 +3621,13 @@ export default function GravureWorkOrderPage() {
                     {form.processes.map((pr, i) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-3 py-2 min-w-[200px]">
-                          <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
-                            <option value="">-- Select Process --</option>
-                            {ROTO_PROCESSES_LIVE.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
-                          </select>
+                          <SearchableSelect
+                            value={pr.processId}
+                            onChange={val => selectProcess(i, val)}
+                            options={ROTO_PROCESSES_LIVE.map(pm => ({ value: pm.id, label: `${pm.name} (${pm.department})` }))}
+                            placeholder="-- Select Process --"
+                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"
+                          />
                         </td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                       </tr>
@@ -3621,7 +3659,7 @@ export default function GravureWorkOrderPage() {
                   };
                   return (
                     <div className="flex items-center gap-0 border border-purple-300 rounded-lg overflow-hidden bg-white">
-                      <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-purple-200 py-1.5">Add</span>
+                      <span className="text-[10px] font-semibold text-purple-600 px-2 bg-purple-50 whitespace-nowrap border-r border-blue-200 py-1.5">Add</span>
                       <input type="number" min={1} max={10} placeholder="1" ref={el => { inputRef = el; }}
                         className="w-12 text-xs font-mono text-center border-none outline-none px-1 py-1.5 bg-white"
                         onKeyDown={e => { if (e.key === "Enter") addBulk(e.target as HTMLInputElement); }} />
@@ -3634,7 +3672,7 @@ export default function GravureWorkOrderPage() {
                   const layers = [...form.secondaryLayers];
                   layers.push({ id: Math.random().toString(), layerNo: layers.length + 1, plyType: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0, consumableItems: [] });
                   f("secondaryLayers", layers);
-                }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200">
+                }} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200">
                   <Plus size={12} /> Add Ply
                 </button>
               </div>
@@ -3655,53 +3693,61 @@ export default function GravureWorkOrderPage() {
                         {/* Ply Type */}
                         <div>
                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                          <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                            value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
-                            <option value="">-- Select Ply Type --</option>
-                            <option value="Film">Ply 1</option>
-                            <option value="Printing">Ply 2</option>
-                            <option value="Lamination">Ply 3</option>
-                            <option value="Coating">Ply 4</option>
-                          </select>
+                          <SearchableSelect
+                            value={l.plyType}
+                            onChange={val => onPlyTypeChange(index, val)}
+                            options={[
+                              { value: "Film", label: "Ply 1" },
+                              { value: "Printing", label: "Ply 2" },
+                              { value: "Lamination", label: "Ply 3" },
+                              { value: "Coating", label: "Ply 4" },
+                            ]}
+                            placeholder="-- Select Ply Type --"
+                            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
+                          />
                         </div>
                         {/* Film Substrate */}
                         {l.plyType && (
                           <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
-                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                              <SearchableSelect
                                 value={l.itemSubGroup}
-                                onChange={e => {
-                                  const subGroup = e.target.value;
+                                onChange={val => {
+                                  const subGroup = val;
                                   const sg = FILM_SUBGROUPS.find(s => s.subGroup === subGroup);
                                   const layers = [...form.secondaryLayers];
                                   layers[index] = { ...l, itemSubGroup: subGroup, density: sg?.density ?? 0, thickness: 0, gsm: 0 };
                                   f("secondaryLayers", layers);
-                                }}>
-                                <option value="">Select Film Type</option>
-                                {l.itemSubGroup && !FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup) && (
-                                  <option value={l.itemSubGroup}>{l.itemSubGroup} {l.itemName ? `(${l.itemName})` : "(from catalog)"}</option>
-                                )}
-                                {FILM_SUBGROUPS.map(opt => <option key={opt.subGroup} value={opt.subGroup}>{opt.subGroup}</option>)}
-                              </select>
+                                }}
+                                options={[
+                                  ...(l.itemSubGroup && !FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)
+                                    ? [{ value: l.itemSubGroup, label: `${l.itemSubGroup} ${l.itemName ? `(${l.itemName})` : "(from catalog)"}` }]
+                                    : []),
+                                  ...FILM_SUBGROUPS.map(opt => ({ value: opt.subGroup, label: opt.subGroup })),
+                                ]}
+                                placeholder="Select Film Type"
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none"
+                              />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                  value={l.thickness}
-                                  onChange={e => {
-                                    const thickness = Number(e.target.value);
+                                <SearchableSelect
+                                  value={l.thickness ? String(l.thickness) : ""}
+                                  onChange={val => {
+                                    const thickness = Number(val);
                                     const layers = [...form.secondaryLayers];
                                     layers[index] = { ...l, thickness, gsm: parseFloat((thickness * l.density).toFixed(3)) };
                                     f("secondaryLayers", layers);
-                                  }}>
-                                  <option value={0}>Select</option>
-                                  {thicknesses.map(t => <option key={t} value={t}>{t}</option>)}
-                                </select>
+                                  }}
+                                  options={thicknesses.map(t => ({ value: String(t), label: String(t) }))}
+                                  placeholder="Select"
+                                  className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
+                                />
                               </div>
-                              <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-purple-200 text-xs" />
+                              <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-blue-200 text-xs" />
                             </div>
                           </div>
                         )}
@@ -3761,34 +3807,36 @@ export default function GravureWorkOrderPage() {
                                       {/* Item Group */}
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                        <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        <SearchableSelect
                                           value={ci.itemGroup}
-                                          onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, solidPct: undefined, ohPct: undefined, ncoPct: undefined })}>
-                                          <option value="">-- Group --</option>
-                                          {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                        </select>
+                                          onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, solidPct: undefined, ohPct: undefined, ncoPct: undefined })}
+                                          options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
+                                          placeholder="-- Group --"
+                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                        />
                                       </div>
                                       {/* Sub Group */}
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                        <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        <SearchableSelect
                                           value={ci.itemSubGroup}
-                                          onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                          disabled={!ci.itemGroup}>
-                                          <option value="">-- Sub Group --</option>
-                                          {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                        </select>
+                                          onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
+                                          options={subGroups.map(sg => ({ value: sg, label: sg }))}
+                                          placeholder="-- Sub Group --"
+                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          disabled={!ci.itemGroup}
+                                        />
                                       </div>
                                       {/* Item Master */}
                                       <div>
                                         <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                        <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                        <SearchableSelect
                                           value={ci.itemId}
-                                          onChange={e => {
-                                            const apiIt = filteredApiItems.find(x => String(x.ItemID) === e.target.value);
-                                            const staticIt = filteredStaticItems.find(x => x.id === e.target.value);
+                                          onChange={val => {
+                                            const apiIt = filteredApiItems.find(x => String(x.ItemID) === val);
+                                            const staticIt = filteredStaticItems.find(x => x.id === val);
                                             const patch: Record<string, unknown> = {
-                                              itemId:   e.target.value,
+                                              itemId:   val,
                                               itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
                                             };
                                             if (ci.itemGroup === "Ink" && apiIt) {
@@ -3797,12 +3845,13 @@ export default function GravureWorkOrderPage() {
                                             }
                                             updatePlyConsumable(index, ciIdx, patch);
                                           }}
-                                          disabled={!ci.itemGroup}>
-                                          <option value="">-- Select Item --</option>
-                                          {filteredApiItems.length > 0
-                                            ? filteredApiItems.map(it => <option key={it.ItemID} value={String(it.ItemID)}>{it.ItemName}</option>)
-                                            : filteredStaticItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
-                                        </select>
+                                          options={filteredApiItems.length > 0
+                                            ? filteredApiItems.map(it => ({ value: String(it.ItemID), label: it.ItemName }))
+                                            : filteredStaticItems.map(it => ({ value: it.id, label: it.name }))}
+                                          placeholder="-- Select Item --"
+                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          disabled={!ci.itemGroup}
+                                        />
                                       </div>
                                       {/* Ink */}
                                       {ci.itemGroup === "Ink" && (<>
@@ -3823,7 +3872,7 @@ export default function GravureWorkOrderPage() {
                                         </div>
                                         <div>
                                           <label className="text-[10px] font-semibold text-purple-600 uppercase block mb-1">Liquid GSM</label>
-                                          <div className="w-full text-xs border border-purple-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
+                                          <div className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-purple-50 font-mono font-bold text-purple-700 min-h-[30px]">
                                             {liquidGSM > 0 ? liquidGSM : "—"}
                                           </div>
                                         </div>
@@ -3969,10 +4018,10 @@ export default function GravureWorkOrderPage() {
 
               {showPlan && !isPlanApplied && (
                 <div className="border-2 border-indigo-100 rounded-2xl overflow-hidden shadow-lg">
-                  <div className="bg-gradient-to-r from-indigo-800 to-purple-800 p-3 flex items-center justify-between gap-3">
+                  <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] p-3 flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-white font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
-                      <p className="text-indigo-200 text-[10px] mt-0.5">
+                      <p className="text-[#003366] font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
+                      <p className="text-gray-500 text-[10px] mt-0.5">
                         {form.machineName} · {catalogSavedPlan ? "1 plan (from catalog)" : `${visiblePlans.length}/${allPlans.length} plans`}
                         {!catalogSavedPlan && Object.keys(planColFilters).length > 0 && (
                           <button onClick={() => setPlanColFilters({})}
@@ -3997,10 +4046,10 @@ export default function GravureWorkOrderPage() {
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full text-[10px] whitespace-nowrap border-collapse">
-                      <thead className="bg-slate-800 text-slate-300">
+                      <thead style={{ background: "#f1f5f9", color: "var(--erp-primary)" }}>
                         <tr>
-                          <th className="p-2 border border-slate-700 text-center">Select</th>
-                          <th className="p-2 border border-slate-700 text-center w-8">View</th>
+                          <th className="p-2 text-center" style={{ border: "1px solid #e2e8f0" }}>Select</th>
+                          <th className="p-2 text-center w-8" style={{ border: "1px solid #e2e8f0" }}>View</th>
                           {([
                             { key: "machineName", label: "Machine" },
                             { key: "acUps", label: "AC UPS" },
@@ -4030,13 +4079,13 @@ export default function GravureWorkOrderPage() {
                             const visVals = fSearch ? uniqueVals.filter(v => v.toLowerCase().includes(fSearch.toLowerCase())) : uniqueVals;
                             const draft = planFilterDraft[col.key] ?? new Set<string>();
                             return (
-                              <th key={col.key} className="p-0 border border-slate-700 text-center relative">
-                                <div className="flex items-center justify-between px-2 py-2 gap-1 cursor-pointer hover:bg-slate-700 select-none"
+                              <th key={col.key} className="p-0 text-center relative" style={{ border: "1px solid #e2e8f0" }}>
+                                <div className="flex items-center justify-between px-2 py-2 gap-1 cursor-pointer hover:bg-[#e8f0f8] select-none"
                                   onClick={() => togglePlanSort(col.key)}>
                                   <span className="text-[10px]">{col.label}{planSort.key === col.key ? (planSort.dir === "asc" ? " ▲" : " ▼") : ""}</span>
                                   <button
                                     onClick={e => { e.stopPropagation(); isOpen ? setPlanFilterOpen(null) : openPlanFilter(col.key); }}
-                                    className={`flex-shrink-0 p-0.5 rounded transition-colors ${isFiltered ? "text-yellow-300" : "text-slate-400 hover:text-white"}`}
+                                    className={`flex-shrink-0 p-0.5 rounded transition-colors ${isFiltered ? "text-orange-500" : "text-gray-400 hover:text-[#003366]"}`}
                                     title="Filter">▼</button>
                                 </div>
                                 {isOpen && (
@@ -4404,17 +4453,18 @@ export default function GravureWorkOrderPage() {
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
                                       <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Preferred Vendor</label>
-                                      <select className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none focus:ring-2 focus:ring-blue-400"
+                                      <SearchableSelect
                                         value={req.vendor ?? ""}
-                                        onChange={e => setReq({ vendor: e.target.value })}>
-                                        <option value="">-- Select Vendor --</option>
-                                        {(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).map(v => (
-                                          <option key={v.id} value={v.name}>{v.name}</option>
-                                        ))}
-                                        {req.vendor && !(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).some(v => v.name === req.vendor) && (
-                                          <option value={req.vendor}>{req.vendor}</option>
-                                        )}
-                                      </select>
+                                        onChange={val => setReq({ vendor: val })}
+                                        options={[
+                                          ...(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).map(v => ({ value: v.name, label: v.name })),
+                                          ...(req.vendor && !(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).some(v => v.name === req.vendor)
+                                            ? [{ value: req.vendor, label: req.vendor }]
+                                            : []),
+                                        ]}
+                                        placeholder="-- Select Vendor --"
+                                        className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
+                                      />
                                     </div>
                                     <Input label="Expected Rate (₹/Kg)" type="number" value={req.expectedRate ?? ""}
                                       onChange={e => setReq({ expectedRate: Number(e.target.value) })} />
@@ -4475,7 +4525,7 @@ export default function GravureWorkOrderPage() {
           {/* ─── Color Shade & LAB Values ─── */}
           {prepTab === "shade" && (
             <div className="space-y-3">
-              <div className="bg-purple-50 border border-purple-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <div className="bg-purple-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-2">
                 <Palette size={14} className="text-purple-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="text-xs font-bold text-purple-800">Color Shade & LAB Standard</p>
@@ -4496,19 +4546,20 @@ export default function GravureWorkOrderPage() {
                         <tr key={i} className="hover:bg-purple-50/20">
                           <td className="px-2 py-1.5 text-center font-black text-purple-700">{cs.colorNo}</td>
                           <td className="px-2 py-1.5 min-w-[180px]">
-                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                            <SearchableSelect
                               value={(cs as any).inkItemId ?? ""}
-                              onChange={e => {
-                                const ink = INK_ITEMS_LIVE.find(x => x.id === e.target.value);
+                              onChange={val => {
+                                const ink = INK_ITEMS_LIVE.find(x => x.id === val);
                                 setColorShades(p => p.map((c, ci) => ci === i ? {
                                   ...c,
                                   inkItemId: ink?.id ?? "",
                                   colorName: ink?.colour || ink?.name || c.colorName,
                                 } as any : c));
-                              }}>
-                              <option value="">-- Select Ink --</option>
-                              {INK_ITEMS_LIVE.map(ink => <option key={ink.id} value={ink.id}>{ink.name}{ink.colour ? ` (${ink.colour})` : ""}</option>)}
-                            </select>
+                              }}
+                              options={INK_ITEMS_LIVE.map(ink => ({ value: ink.id, label: ink.name + (ink.colour ? ` (${ink.colour})` : "") }))}
+                              placeholder="-- Select Ink --"
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            />
                           </td>
                           <td className="px-2 py-1.5"><input className="w-28 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.colorName} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, colorName: e.target.value } : c))} /></td>
                           <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-36 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-purple-400" value={cs.remarks} onChange={e => setColorShades(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
@@ -4573,23 +4624,24 @@ export default function GravureWorkOrderPage() {
                             <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${ma.materialType === "Film" ? "bg-blue-100 text-blue-700 border-blue-200" : ma.materialType === "Ink" ? "bg-violet-100 text-violet-700 border-violet-200" : ma.materialType === "Solvent" ? "bg-orange-100 text-orange-700 border-orange-200" : ma.materialType === "Adhesive" ? "bg-teal-100 text-teal-700 border-teal-200" : "bg-gray-100 text-gray-700 border-gray-200"}`}>{ma.materialType}</span>
                           </td>
                           <td className="px-2 py-1.5 min-w-[180px]">
-                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                            <SearchableSelect
                               value={(ma as any).itemId ?? ""}
-                              onChange={async e => {
-                                const it = itemsForType.find(x => x.id === e.target.value);
+                              onChange={async val => {
+                                const it = itemsForType.find(x => x.id === val);
                                 setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, itemId: it?.id ?? "", materialName: it?.name ?? m.materialName, batchId: "", lotNo: "", location: "" } as any : m));
                                 setBatchOptions(p => ({ ...p, [ma.id]: [] }));
                                 setBinOptions(p => ({ ...p, [ma.id]: [] }));
-                                if (e.target.value) {
+                                if (val) {
                                   try {
-                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbatchesbyitem?itemId=${e.target.value}`);
+                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbatchesbyitem?itemId=${val}`);
                                     setBatchOptions(p => ({ ...p, [ma.id]: Array.isArray(res) ? res : [] }));
                                   } catch { /* ignore */ }
                                 }
-                              }}>
-                              <option value="">{ma.materialName || "-- Select Item --"}</option>
-                              {itemsForType.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
-                            </select>
+                              }}
+                              options={itemsForType.map(it => ({ value: it.id, label: it.name }))}
+                              placeholder={ma.materialName || "-- Select Item --"}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            />
                           </td>
                           <td className="px-2 py-1.5 text-center font-mono text-blue-700 font-bold">{ma.requiredQty > 0 ? ma.requiredQty : "—"}</td>
                           <td className="px-2 py-1.5 text-center">
@@ -4597,34 +4649,32 @@ export default function GravureWorkOrderPage() {
                           </td>
                           <td className="px-2 py-1.5 text-center text-gray-500">{ma.unit}</td>
                           <td className="px-2 py-1.5 min-w-[140px]">
-                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                            <SearchableSelect
                               value={(ma as any).batchId ?? ""}
-                              onChange={async e => {
-                                const batch = (batchOptions[ma.id] || []).find((b: any) => String(b.BatchID) === e.target.value);
-                                setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, batchId: e.target.value, lotNo: batch?.BatchNo ?? e.target.value, location: "" } as any : m));
+                              onChange={async val => {
+                                const batch = (batchOptions[ma.id] || []).find((b: any) => String(b.BatchID) === val);
+                                setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, batchId: val, lotNo: batch?.BatchNo ?? val, location: "" } as any : m));
                                 setBinOptions(p => ({ ...p, [ma.id]: [] }));
-                                if (e.target.value) {
+                                if (val) {
                                   try {
-                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbinsbybatch?batchId=${e.target.value}`);
+                                    const res = await apiGet<any[]>(`api/gravureWorkOrderShrink/getbinsbybatch?batchId=${val}`);
                                     setBinOptions(p => ({ ...p, [ma.id]: Array.isArray(res) ? res : [] }));
                                   } catch { /* ignore */ }
                                 }
-                              }}>
-                              <option value="">{ma.lotNo || "-- Select Batch --"}</option>
-                              {(batchOptions[ma.id] || []).map((b: any) => (
-                                <option key={b.BatchID} value={String(b.BatchID)}>{b.BatchNo}{b.SupplierBatchNo ? ` (${b.SupplierBatchNo})` : ""}</option>
-                              ))}
-                            </select>
+                              }}
+                              options={(batchOptions[ma.id] || []).map((b: any) => ({ value: String(b.BatchID), label: b.BatchNo + (b.SupplierBatchNo ? ` (${b.SupplierBatchNo})` : "") }))}
+                              placeholder={ma.lotNo || "-- Select Batch --"}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            />
                           </td>
                           <td className="px-2 py-1.5 min-w-[130px]">
-                            <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                            <SearchableSelect
                               value={ma.location}
-                              onChange={e => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, location: e.target.value } : m))}>
-                              <option value="">{ma.location || "-- Select Bin --"}</option>
-                              {(binOptions[ma.id] || []).map((b: any) => (
-                                <option key={b.BinID} value={b.WarehouseName + (b.BinName ? ` / ${b.BinName}` : "")}>{b.WarehouseName}{b.BinName ? ` / ${b.BinName}` : ""}</option>
-                              ))}
-                            </select>
+                              onChange={val => setMaterialAllocs(p => p.map((m, mi) => mi === i ? { ...m, location: val } : m))}
+                              options={(binOptions[ma.id] || []).map((b: any) => ({ value: b.WarehouseName + (b.BinName ? ` / ${b.BinName}` : ""), label: b.WarehouseName + (b.BinName ? ` / ${b.BinName}` : "") }))}
+                              placeholder={ma.location || "-- Select Bin --"}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            />
                           </td>
                           <td className="px-2 py-1.5 text-center">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${ma.status === "Allocated" ? "bg-green-50 text-green-700 border-green-200" : ma.status === "Partial" ? "bg-yellow-50 text-yellow-700 border-yellow-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{ma.status}</span>
@@ -4714,23 +4764,24 @@ export default function GravureWorkOrderPage() {
                             });
                             const dedupedTools = Array.from(seenCodes.values()).sort((a, b) => a.code.localeCompare(b.code));
                             return (
-                              <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400"
+                              <SearchableSelect
                                 value={currentToolId}
-                                onChange={e => {
-                                  const tool = allToolsRaw.find(t => t.id === e.target.value);
+                                onChange={val => {
+                                  const tool = allToolsRaw.find(t => t.id === val);
                                   setCylinderAllocs(p => p.map((c, ci) => ci === i ? {
                                     ...c,
                                     toolId: tool?.id ?? "",
                                     cylinderNo: tool?.code ?? c.cylinderNo,
                                     circumference: selectedPlan ? String(selectedPlan.cylCirc) : ((tool as any)?.repeatLength ? String((tool as any).repeatLength) : c.circumference),
                                   } as any : c));
-                                }}>
-                                <option value="">{ca.cylinderNo || "-- Select Cylinder --"}</option>
-                                {dedupedTools.map(t => {
+                                }}
+                                options={dedupedTools.map(t => {
                                   const circ = t.circumferenceMM || t.repeatLength || "";
-                                  return <option key={t.id} value={t.id}>{t.code}{circ ? ` (${circ}mm)` : ""}</option>;
+                                  return { value: t.id, label: t.code + (circ ? ` (${circ}mm)` : "") };
                                 })}
-                              </select>
+                                placeholder={ca.cylinderNo || "-- Select Cylinder --"}
+                                className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                              />
                             );
                           })()}
                           {/* ── Cylinder Life Info + Check ── */}
@@ -4818,14 +4869,22 @@ export default function GravureWorkOrderPage() {
                         </td>
                         <td className="px-2 py-1.5"><input type="number" className="w-20 text-xs border border-gray-200 rounded-lg px-2 py-1 font-mono outline-none focus:ring-2 focus:ring-amber-400 text-center" value={ca.circumference} onChange={e => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, circumference: e.target.value } : c))} /></td>
                         <td className="px-2 py-1.5">
-                          <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400" value={ca.cylinderType} onChange={e => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: e.target.value as CylinderAlloc["cylinderType"] } : c))}>
-                            <option value="Existing">Existing</option><option value="New">New</option><option value="Rechromed">Rechromed</option>
-                          </select>
+                          <SearchableSelect
+                            value={ca.cylinderType}
+                            onChange={val => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, cylinderType: val as CylinderAlloc["cylinderType"] } : c))}
+                            options={[{ value: "Existing", label: "Existing" }, { value: "New", label: "New" }, { value: "Rechromed", label: "Rechromed" }]}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            allowEmpty={false}
+                          />
                         </td>
                         <td className="px-2 py-1.5">
-                          <select className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-2 focus:ring-amber-400" value={ca.status} onChange={e => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: e.target.value as CylinderAlloc["status"] } : c))}>
-                            <option value="Pending">Pending</option><option value="Available">Available</option><option value="In Use">In Use</option><option value="Under Chrome">Under Chrome</option><option value="Ordered">Ordered</option>
-                          </select>
+                          <SearchableSelect
+                            value={ca.status}
+                            onChange={val => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, status: val as CylinderAlloc["status"] } : c))}
+                            options={[{ value: "Pending", label: "Pending" }, { value: "Available", label: "Available" }, { value: "In Use", label: "In Use" }, { value: "Under Chrome", label: "Under Chrome" }, { value: "Ordered", label: "Ordered" }]}
+                            className="text-xs border border-gray-200 rounded-lg px-2 py-1 bg-white outline-none"
+                            allowEmpty={false}
+                          />
                         </td>
                         <td className="px-2 py-1.5"><input placeholder="Notes…" className="w-32 text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-amber-400" value={ca.remarks} onChange={e => setCylinderAllocs(p => p.map((c, ci) => ci === i ? { ...c, remarks: e.target.value } : c))} /></td>
                       </tr>
@@ -4841,7 +4900,7 @@ export default function GravureWorkOrderPage() {
                   {(["Pending", "Available", "In Use", "Under Chrome", "Ordered"] as const).map(s => {
                     const cnt = cylinderAllocs.filter(c => c.status === s).length;
                     return cnt > 0 ? (
-                      <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${s === "Available" ? "bg-green-50 text-green-700 border-green-200" : s === "In Use" ? "bg-blue-50 text-blue-700 border-blue-200" : s === "Under Chrome" ? "bg-orange-50 text-orange-700 border-orange-200" : s === "Ordered" ? "bg-purple-50 text-purple-700 border-purple-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{cnt} {s}</span>
+                      <span key={s} className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${s === "Available" ? "bg-green-50 text-green-700 border-green-200" : s === "In Use" ? "bg-blue-50 text-blue-700 border-blue-200" : s === "Under Chrome" ? "bg-orange-50 text-orange-700 border-orange-200" : s === "Ordered" ? "bg-purple-50 text-purple-700 border-blue-200" : "bg-gray-50 text-gray-500 border-gray-200"}`}>{cnt} {s}</span>
                     ) : null;
                   })}
                 </div>
@@ -4851,11 +4910,13 @@ export default function GravureWorkOrderPage() {
 
           <div className="flex justify-between pt-2">
             <Button variant="secondary" onClick={() => setModalTab("planning")}>← Back</Button>
-            <Button icon={saving ? <RefreshCw size={14} className="animate-spin" /> : <Printer size={14} />}
-              onClick={save} variant={isSelectedPlanSpecial ? "danger" : "primary"}
-              disabled={saving}>
-              {saving ? "Saving…" : editing ? "Update Work Order" : isSelectedPlanSpecial ? "⚠ Cannot Save — Create Tool First" : "Create Work Order"}
-            </Button>
+            {!woIsReleased && (
+              <Button icon={saving ? <RefreshCw size={14} className="animate-spin" /> : <Printer size={14} />}
+                onClick={save} variant={isSelectedPlanSpecial ? "danger" : "primary"}
+                disabled={saving}>
+                {saving ? "Saving…" : editing ? "Update Work Order" : isSelectedPlanSpecial ? "⚠ Cannot Save — Create Tool First" : "Create Work Order"}
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -4996,13 +5057,30 @@ export default function GravureWorkOrderPage() {
             }
             actions={row => (
               <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
+                {/* Schedule Release checkbox */}
+                <label
+                  className={`flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold px-2 py-1 rounded-lg border transition-colors ${
+                    (row as any).isReleasedForSchedule
+                      ? "bg-green-50 border-green-300 text-green-700"
+                      : "bg-gray-50 border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                  title={`${(row as any).isReleasedForSchedule ? "Released for schedule — click to unlock" : "Click to release for schedule"}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-green-600 w-3.5 h-3.5"
+                    checked={!!(row as any).isReleasedForSchedule}
+                    disabled={schedRelLoading === row.id}
+                    onChange={e => toggleSchedRelease(row, e.target.checked)}
+                  />
+                  {schedRelLoading === row.id ? "…" : "Schedule"}
+                </label>
+                <RowAction.View onClick={() => setViewRow(row)} />
                 <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintWO(row)}>Job Card</Button>
                 <Button variant="ghost" size="sm" icon={<Layers size={13} />} onClick={() => setViewPlanWO(row)}>View Plan</Button>
-                <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} onClick={() => openReplan(row)}>Replan</Button>
                 <Button variant="ghost" size="sm" icon={<BookMarked size={13} />} onClick={() => openSaveToCatalog(row)}>Save to Catalog</Button>
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+                <RowAction.Edit onClick={() => openEdit(row)} />
+                <RowAction.Delete onClick={() => setDeleteId(row.id)} />
               </div>
             )}
           />
@@ -5016,6 +5094,7 @@ export default function GravureWorkOrderPage() {
         setModal(false); setCatalogSavedPlan(null); setEditing(null);
         setFilmReqs([]); setColorShades([]); setMaterialAllocs([]); setCylinderAllocs([]);
         setIsPlanApplied(false); setShowPlan(false);
+        setWoIsReleased(false);
         orderDetIdRef.current = 0;
       }}
         title={editing ? `Edit Work Order — ${editing.workOrderNo}` : form.sourceOrderType !== "Direct" ? `New Work Order — From ${form.orderNo}` : "New Direct Work Order"}
@@ -5073,7 +5152,7 @@ export default function GravureWorkOrderPage() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <SH label="Process List" />
-              <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
+              <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
                 <Plus size={12} /> Add Process
               </button>
             </div>
@@ -5091,10 +5170,13 @@ export default function GravureWorkOrderPage() {
                     {form.processes.map((pr, i) => (
                       <tr key={i} className="hover:bg-gray-50">
                         <td className="px-3 py-2 min-w-[200px]">
-                          <select value={pr.processId} onChange={e => selectProcess(i, e.target.value)} className={cellInput}>
-                            <option value="">-- Select Process --</option>
-                            {ROTO_PROCESSES_LIVE.map(pm => <option key={pm.id} value={pm.id}>{pm.name} ({pm.department})</option>)}
-                          </select>
+                          <SearchableSelect
+                            value={pr.processId}
+                            onChange={val => selectProcess(i, val)}
+                            options={ROTO_PROCESSES_LIVE.map(pm => ({ value: pm.id, label: `${pm.name} (${pm.department})` }))}
+                            placeholder="-- Select Process --"
+                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"
+                          />
                         </td>
                         <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
                       </tr>
@@ -5160,7 +5242,7 @@ export default function GravureWorkOrderPage() {
             )}
             {viewRow.inks.length > 0 && (
               <div><p className="text-[10px] text-gray-400 uppercase font-semibold mb-2">Ink Colors</p>
-                <div className="flex flex-wrap gap-1.5">{viewRow.inks.map(c => <span key={c} className="px-2.5 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded-full text-xs font-medium">{c}</span>)}</div>
+                <div className="flex flex-wrap gap-1.5">{viewRow.inks.map(c => <span key={c} className="px-2.5 py-1 bg-purple-50 text-purple-700 border border-blue-200 rounded-full text-xs font-medium">{c}</span>)}</div>
               </div>
             )}
             {viewRow.specialInstructions && (
@@ -5688,7 +5770,7 @@ export default function GravureWorkOrderPage() {
                   const cutWithShrink = jobH + shrink;
                   const baseStats = [
                     { l: "Film Width", v: `${filmW} mm`, cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-                    { l: "AC UPS", v: String(acUps), cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                    { l: "AC UPS", v: String(acUps), cls: "bg-purple-50 text-purple-700 border-blue-200" },
                     { l: isSleeve ? "Layflat" : "Job Width", v: `${jobW} mm`, cls: "bg-blue-50 text-blue-700 border-blue-200" },
                   ];
                   const typeStats = isSleeve ? [
@@ -5887,7 +5969,7 @@ export default function GravureWorkOrderPage() {
             <span className="px-3 py-1 bg-blue-50 border border-blue-200 text-blue-700 rounded-full font-semibold">Work Order</span>
             <span className="px-3 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-full">{viewPlanWO.customerName}</span>
             <span className="px-3 py-1 bg-gray-50 border border-gray-200 text-gray-600 rounded-full">{viewPlanWO.jobName}</span>
-            <span className="px-3 py-1 bg-purple-50 border border-purple-200 text-purple-700 rounded-full font-semibold">{viewPlanWO.noOfColors}C · {viewPlanWO.printType}</span>
+            <span className="px-3 py-1 bg-purple-50 border border-blue-200 text-purple-700 rounded-full font-semibold">{viewPlanWO.noOfColors}C · {viewPlanWO.printType}</span>
             {viewPlanWO.machineName && <span className="px-3 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full">{viewPlanWO.machineName}</span>}
           </div>
           <div className="max-h-[70vh] overflow-y-auto pr-1">
@@ -5948,10 +6030,13 @@ export default function GravureWorkOrderPage() {
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Material</label>
-                <select className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={newCylForm.cylinderMaterial} onChange={e => setNewCylForm(p => ({ ...p, cylinderMaterial: e.target.value }))}>
-                  <option>Steel</option><option>Aluminium</option><option>Copper</option>
-                </select>
+                <SearchableSelect
+                  value={newCylForm.cylinderMaterial}
+                  onChange={val => setNewCylForm(p => ({ ...p, cylinderMaterial: val }))}
+                  options={[{ value: "Steel", label: "Steel" }, { value: "Aluminium", label: "Aluminium" }, { value: "Copper", label: "Copper" }]}
+                  className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none"
+                  allowEmpty={false}
+                />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
@@ -6011,7 +6096,7 @@ export default function GravureWorkOrderPage() {
       {catSaveWO && (
         <Modal open={!!catSaveWO} onClose={() => setCatSaveWO(null)} title="Save Work Order as Product Catalog Template" size="sm">
           <div className="space-y-4">
-            <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 text-xs text-purple-700">
+            <div className="bg-purple-50 border border-blue-200 rounded-xl p-3 text-xs text-purple-700">
               <p className="font-bold mb-1">Work Order: {catSaveWO.workOrderNo}</p>
               <p>Customer: {catSaveWO.customerName} · {catSaveWO.noOfColors}C · {catSaveWO.substrate || "—"}</p>
               <p className="mt-1">{catSaveWO.processes.length} processes · {catSaveWO.secondaryLayers.length} plys · ₹{catSaveWO.perMeterRate.toFixed(2)}/{catSaveWO.unit || "unit"}</p>

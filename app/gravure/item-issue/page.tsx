@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState } from "react";
 import { Plus, Eye, Pencil, Trash2, PackageMinus } from "lucide-react";
 import { gravureItemIssues as initData, gravureWorkOrders, GravureItemIssue, GravureItemIssueItem } from "@/data/dummyData";
@@ -99,7 +100,7 @@ export default function GravureItemIssuePage() {
           </div>
           <p className="text-sm text-gray-500">Issue substrates, inks, adhesives & solvents for gravure work orders</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Issue</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Issue</Button>
       </div>
 
       {/* Stats */}
@@ -124,9 +125,9 @@ export default function GravureItemIssuePage() {
           searchKeys={["issueNo", "customerName", "jobName", "workOrderNo"]}
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setData(d => d.filter(r => r.id !== row.id))}>Delete</Button>
+              <RowAction.View onClick={() => setViewRow(row)} />
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => setData(d => d.filter(r => r.id !== row.id))} />
             </div>
           )}
         />

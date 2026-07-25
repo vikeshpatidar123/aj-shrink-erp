@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -15,7 +16,7 @@ function unwrap(v: any): any {
   return r;
 }
 
-// â”€â”€ Shared UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Shared UI
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -27,7 +28,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Types
 type DeptRow = {
   id: string;
   DepartmentID: string;
@@ -42,7 +43,7 @@ type FormState = {
 
 const blank = (): FormState => ({ DepartmentName: "" });
 
-// â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Page
 export default function DepartmentMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<DeptRow[]>([]);
@@ -57,7 +58,7 @@ export default function DepartmentMasterPage() {
     typeof window !== "undefined" ? localStorage.getItem("companyName") || "Department Master" : "Department Master"
   );
 
-  // â”€â”€ Load list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Load list
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/department`, { headers: authHeaders() })
@@ -72,7 +73,7 @@ export default function DepartmentMasterPage() {
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  // â”€â”€ Open add â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Open add
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -81,7 +82,7 @@ export default function DepartmentMasterPage() {
     setView("form");
   };
 
-  // â”€â”€ Open edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Open edit
   const openEdit = (row: DeptRow) => {
     setEditing(row);
     setError("");
@@ -90,7 +91,7 @@ export default function DepartmentMasterPage() {
     setView("form");
   };
 
-  // â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Save
   const saveDept = async () => {
     if (!can("/masters/departments", editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit Department Master." : "You are not authorized to save Department Master.");
@@ -148,7 +149,7 @@ export default function DepartmentMasterPage() {
     setSaving(false);
   };
 
-  // â”€â”€ Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Delete
   const deleteDept = async (row: DeptRow) => {
     if (!can("/masters/departments", "CanDelete")) { alert("You are not authorized to delete Department Master."); return; }
     if (!confirm("Delete this department?")) return;
@@ -165,10 +166,10 @@ export default function DepartmentMasterPage() {
     }
   };
 
-  // â”€â”€ FORM VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // FORM VIEW
   if (view === "form") {
     return (
-      <div className="max-w-2xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -219,14 +220,13 @@ export default function DepartmentMasterPage() {
     );
   }
 
-  // â”€â”€ LIST VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // LIST VIEW
   const columns: Column<DeptRow>[] = [
-    { key: "DepartmentID", header: "ID", sortable: true },
     { key: "DepartmentName", header: "Department Name", sortable: true },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Department Master</h2>
@@ -234,10 +234,7 @@ export default function DepartmentMasterPage() {
             {loading ? "Loading..." : `${data.length} department${data.length !== 1 ? "s" : ""}`}
           </p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Department
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Department</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -247,8 +244,8 @@ export default function DepartmentMasterPage() {
           searchKeys={["DepartmentName"]}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteDept(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteDept(row)} />
             </div>
           )}
         />

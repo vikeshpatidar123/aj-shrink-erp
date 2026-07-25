@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -116,6 +117,34 @@ export default function SalesPersonPage() {
 
   const [editing, setEditing] = useState<any | null>(null);
   const { can } = usePermissions();
+
+  // Per-LedgerGroupID rights (Sales Person Master only ever operates on the "Employees" group,
+  // but the backend still enforces a per-group UserSubModuleAuthentication check on save/update/
+  // delete, so the UI must mirror that here rather than letting a user submit only to be rejected).
+  const [groupRights, setGroupRights] = useState<Record<string, Record<string, boolean>>>({});
+  useEffect(() => {
+    const userID = typeof window !== "undefined" ? localStorage.getItem("userID") : null;
+    if (!userID) return;
+    fetch(`${BASE_URL}/api/othermasterShrink/getusersubmoduleauthority/${userID}`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const rows = unwrap(text);
+        if (!Array.isArray(rows)) return;
+        const map: Record<string, Record<string, boolean>> = {};
+        rows.forEach((r: any) => {
+          if (r.GroupType !== "Ledger") return;
+          map[String(r.GroupID)] = {
+            CanView: !!Number(r.CanView), CanSave: !!Number(r.CanSave), CanEdit: !!Number(r.CanEdit),
+            CanDelete: !!Number(r.CanDelete), CanPrint: !!Number(r.CanPrint), CanExport: !!Number(r.CanExport),
+          };
+        });
+        setGroupRights(map);
+      })
+      .catch(() => { /* fail-open: page-level /master/ledger check still applies */ });
+  }, []);
+  const canGroupAction = (action: "CanSave" | "CanEdit" | "CanDelete") =>
+    can("/master/ledger", action) && (Object.keys(groupRights).length === 0 || !!groupRights[ledgerGroupID]?.[action]);
+
   const [formFields, setFormFields] = useState<any[]>([]);
   const [formValues, setFormValues] = useState<Record<string, any>>({});
   const [selectOpts, setSelectOpts] = useState<Record<string, SelectOpt[]>>({});
@@ -249,7 +278,7 @@ export default function SalesPersonPage() {
   };
 
   const saveSalesPerson = async () => {
-    if (!can("/master/ledger", editing ? "CanEdit" : "CanSave")) {
+    if (!canGroupAction(editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit Sales Person Master." : "You are not authorized to save Sales Person Master.");
       return;
     }
@@ -311,7 +340,7 @@ export default function SalesPersonPage() {
   };
 
   const deleteSalesPerson = async (row: any) => {
-    if (!can("/master/ledger", "CanDelete")) { alert("You are not authorized to delete Sales Person Master."); return; }
+    if (!canGroupAction("CanDelete")) { alert("You are not authorized to delete Sales Person Master."); return; }
     if (!confirm(`Delete "${row.LedgerName ?? "this sales person"}"?`)) return;
     await fetch(`${BASE}/deleteledger?ledgerID=${row.LedgerID}&ledgergroupID=${ledgerGroupID}`, {
       method: "POST", headers: authHeaders(),
@@ -333,7 +362,7 @@ export default function SalesPersonPage() {
 
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
             <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Sales Person Master</p>
@@ -394,15 +423,13 @@ export default function SalesPersonPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Sales Person Master</h2>
           <p className="text-sm text-gray-500">{gridData.length} sales persons</p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Sales Person
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Sales Person</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -417,8 +444,8 @@ export default function SalesPersonPage() {
             searchKeys={["LedgerName", "MailingName", "MobileNo", "Email"]}
             actions={(row) => (
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteSalesPerson(row)}>Delete</Button>
+                <RowAction.Edit disabled={!canGroupAction("CanEdit")} title={!canGroupAction("CanEdit") ? "You are not authorized to edit Sales Person Master." : undefined} onClick={() => openEdit(row)} />
+                <RowAction.Delete disabled={!canGroupAction("CanDelete")} title={!canGroupAction("CanDelete") ? "You are not authorized to delete Sales Person Master." : undefined} onClick={() => deleteSalesPerson(row)} />
               </div>
             )}
           />

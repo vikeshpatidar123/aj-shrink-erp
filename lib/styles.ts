@@ -33,7 +33,10 @@ export const cardCls =
 export const panelHeaderCls =
   "flex items-center justify-between mb-5 pb-3 border-b border-gray-100";
 
-// ── Status badge helpers ────────────────────────────────────────────────────
+// ── Status badge helpers (LEGACY — DO NOT USE IN NEW CODE) ─────────────────
+// Use statusBadge() from components/ui/Badge.tsx instead.
+// This version returns a CSS class string; the canonical version returns JSX.
+// Kept for backward-compat with pages that have not yet been migrated.
 // Usage: <span className={statusBadge("Active")}>{status}</span>
 const STATUS_MAP: Record<string, string> = {
   // Generic

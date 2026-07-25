@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -15,7 +16,7 @@ function unwrap(v: any): any {
   return r;
 }
 
-// ── Shared UI ─────────────────────────────────────────────────────────────────
+// Shared UI
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -30,7 +31,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// Types
 type SubGroupRow = {
   id: string;
   ItemSubGroupUniqueID: string;
@@ -77,7 +78,7 @@ const blank = (): FormState => ({
   SubGroupPrefix: "",
 });
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 export default function SubGroupPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<SubGroupRow[]>([]);
@@ -104,7 +105,7 @@ export default function SubGroupPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // ── Loaders ───────────────────────────────────────────────────────────────────
+  // Loaders
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/group`, { headers: authHeaders() })
@@ -139,7 +140,7 @@ export default function SubGroupPage() {
       .catch(() => setUnderGroups([]));
   }, [loadList, loadAllSpecs]);
 
-  // ── Open add ──────────────────────────────────────────────────────────────────
+  // Open add
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -150,7 +151,7 @@ export default function SubGroupPage() {
     setView("form");
   };
 
-  // ── Open edit ─────────────────────────────────────────────────────────────────
+  // Open edit
   const openEdit = (row: SubGroupRow) => {
     setEditing(row);
     setError("");
@@ -175,7 +176,7 @@ export default function SubGroupPage() {
     setView("form");
   };
 
-  // ── Save ──────────────────────────────────────────────────────────────────────
+  // Save
   const saveGroup = async () => {
     if (!can("/masters/subgroups", editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit SubGroup Master." : "You are not authorized to save SubGroup Master.");
@@ -243,7 +244,7 @@ export default function SubGroupPage() {
     setSaving(false);
   };
 
-  // ── Save Specification ────────────────────────────────────────────────────────
+  // Save Specification
   const saveSpec = async () => {
     if (!editing) return;
     if (!can("/masters/subgroups", "CanSave")) { alert("You are not authorized to save SubGroup Master."); return; }
@@ -323,7 +324,7 @@ export default function SubGroupPage() {
     setSpecSaving(false);
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────────
+  // Delete
   const deleteGroup = async (row: SubGroupRow) => {
     if (!can("/masters/subgroups", "CanDelete")) { alert("You are not authorized to delete SubGroup Master."); return; }
     if (!confirm("Delete this sub group and all its specifications?")) return;
@@ -365,7 +366,7 @@ export default function SubGroupPage() {
     }
   };
 
-  // ── Derived ───────────────────────────────────────────────────────────────────
+  // Derived
   const getGroupName = (r: SubGroupRow) => {
     const grp = underGroups.find(g => String(g.ItemGroupID) === String(r.UnderSubGroupID));
     return grp?.ItemGroupName || r.GroupName || "";
@@ -430,10 +431,10 @@ export default function SubGroupPage() {
     return !isHierarchical(grp);
   }, [form.UnderSubGroupID, underGroups]);
 
-  // ── FORM VIEW ─────────────────────────────────────────────────────────────────
+  // FORM VIEW
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -706,9 +707,8 @@ export default function SubGroupPage() {
     );
   }
 
-  // ── LIST VIEW ─────────────────────────────────────────────────────────────────
+  // LIST VIEW
   const columns: Column<SubGroupRow>[] = [
-    { key: "ItemSubGroupID", header: "Group ID", sortable: true },
     { key: "ItemSubGroupName", header: "Sub Group Name", sortable: true },
     { key: "ItemSubGroupDisplayName", header: "Display Name" },
     {
@@ -730,7 +730,7 @@ export default function SubGroupPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Sub Group Master</h2>
@@ -738,10 +738,7 @@ export default function SubGroupPage() {
             {loading ? "Loading..." : `${filtered.length} of ${data.length} sub groups`}
           </p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Sub Group
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Sub Group</Button>
       </div>
 
       {/* Cascading filter: Group → Sub Group → Type */}
@@ -808,8 +805,8 @@ export default function SubGroupPage() {
           searchKeys={["ItemSubGroupName", "ItemSubGroupDisplayName", "GroupName"]}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteGroup(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteGroup(row)} />
             </div>
           )}
         />

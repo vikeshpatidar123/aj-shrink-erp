@@ -1814,10 +1814,7 @@ export default function ProductCatalogPage() {
                   <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.processed}</span>
                 </button>
               </div>
-              <Button icon={<Plus size={13} />} onClick={openDirectCreate}
-                className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
-                Create Direct Catalog
-              </Button>
+              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openDirectCreate} className="text-xs py-1.5 px-3">Create Direct Catalog</Button>
             </div>
           </div>
           {/* List container */}

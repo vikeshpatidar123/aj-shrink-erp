@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState } from "react";
 import { Plus, Eye, Pencil, Trash2 } from "lucide-react";
 import {
@@ -139,7 +140,7 @@ export default function ExtrusionEnquiryPage() {
           <h2 className="text-lg font-semibold text-gray-800">Extrusion Enquiry</h2>
           <p className="text-sm text-gray-500">Capture customer film requirements · Roll width · Quantity · Delivery</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
       </div>
 
       {/* Stats */}
@@ -160,9 +161,9 @@ export default function ExtrusionEnquiryPage() {
           searchKeys={["enquiryNo", "customerName", "productName"]}
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />}    onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="ghost" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+              <RowAction.View    onClick={() => setViewRow(row)} />
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => setDeleteId(row.id)} />
             </div>
           )}
         />

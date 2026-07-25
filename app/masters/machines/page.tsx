@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -91,18 +92,17 @@ const blank = () => ({
   // Labor
   NumberOfOperators: "", AvgLaborSalaryPerYear: "",
   // Dimensions / speed (common)
-  MinWidth: "", MaxWidth: "", MinLength: "", MaxLength: "",
   MinRollWidth: "", MaxRollWidth: "", MinCircumference: "", MaxCircumference: "",
-  MachineSpeed: "", ElectricConsumption: "",
+  MachineSpeed: "",
   // Make ready (common)
-  MakeReadyWastageSheet: "", MakeReadyWastageRunningMeter: "",
-  MakeReadyCharges: "", MakeReadyTime: "", MakeReadyTimeMode: "Per Color",
+  MakeReadyWastageSheet: "", MakeReadyWastageRunningMeter: "", MakeReadyWastageMode: "Flat",
+  MakeReadyTime: "", MakeReadyTimeMode: "Per Color",
   MakeReadyPerHourCost: "", JobChangeOverTime: "",
   // Charges & wastage (common)
   ChargesType: "Per Hour", PerHourCost: "", WastageType: "",
   WastageCalculationOn: "", PerHourCostingParameter: "", OtherCharges: "",
   // Printing specific
-  Colors: "", Gripper: "", PrintingMargin: "",
+  Colors: "", Gripper: "",
   MinPrintW: "", MaxPrintW: "", MinPrintL: "", MaxPrintL: "",
   MinimumSheet: "", BasicPrintingCharges: "", RoundofImpressionsWith: "",
   PlateCharges: "", PlateChargesType: "",
@@ -120,23 +120,8 @@ function CommonSpecs({ form, f }: { form: MachineForm; f: (k: keyof MachineForm,
       <div>
         <SectionTitle title="Machine Dimensions" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Min Width">
-            <SuffixInput value={form.MinWidth} onChange={(e: any) => f("MinWidth", e.target.value)} suffix="mm" placeholder="e.g. 500" type="number" />
-          </Field>
-          <Field label="Max Width">
-            <SuffixInput value={form.MaxWidth} onChange={(e: any) => f("MaxWidth", e.target.value)} suffix="mm" placeholder="e.g. 1600" type="number" />
-          </Field>
-          <Field label="Min Length">
-            <SuffixInput value={form.MinLength} onChange={(e: any) => f("MinLength", e.target.value)} suffix="mm" placeholder="e.g. 250" type="number" />
-          </Field>
-          <Field label="Max Length">
-            <SuffixInput value={form.MaxLength} onChange={(e: any) => f("MaxLength", e.target.value)} suffix="mm" placeholder="e.g. 2000" type="number" />
-          </Field>
           <Field label="Machine Speed">
             <SuffixInput value={form.MachineSpeed} onChange={(e: any) => f("MachineSpeed", e.target.value)} suffix={form.SpeedUnit || "m/min"} placeholder="e.g. 500" type="number" />
-          </Field>
-          <Field label="Electric Consumption">
-            <SuffixInput value={form.ElectricConsumption} onChange={(e: any) => f("ElectricConsumption", e.target.value)} suffix="kW" placeholder="e.g. 30" type="number" />
           </Field>
         </div>
       </div>
@@ -145,10 +130,10 @@ function CommonSpecs({ form, f }: { form: MachineForm; f: (k: keyof MachineForm,
         <SectionTitle title="Make Ready" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <Field label="Make Ready Wastage">
-            <SuffixInput value={form.MakeReadyWastageRunningMeter} onChange={(e: any) => f("MakeReadyWastageRunningMeter", e.target.value)} suffix="mtr" placeholder="e.g. 50" type="number" />
+            <input type="number" value={form.MakeReadyWastageRunningMeter} onChange={e => f("MakeReadyWastageRunningMeter", e.target.value)} className={inputCls} placeholder="e.g. 50" />
           </Field>
-          <Field label="Make Ready Charges">
-            <PrefixInput value={form.MakeReadyCharges} onChange={(e: any) => f("MakeReadyCharges", e.target.value)} prefix="₹" placeholder="e.g. 1500" type="number" />
+          <Field label="Make Ready Wastage Mode">
+            <SearchSel value={form.MakeReadyWastageMode} onChange={v => f("MakeReadyWastageMode", v)} options={["Flat", "Per Color", "Per Job"].map(x => ({ value: x, label: x }))} />
           </Field>
           <Field label="Make Ready Time">
             <SuffixInput value={form.MakeReadyTime} onChange={(e: any) => f("MakeReadyTime", e.target.value)} suffix="min" placeholder="e.g. 20" type="number" />
@@ -192,9 +177,6 @@ function PrintingExtras({ form, f }: { form: MachineForm; f: (k: keyof MachineFo
           <Field label="No. of Colors">
             <input type="number" value={form.Colors} onChange={e => f("Colors", e.target.value)} className={inputCls} placeholder="e.g. 4" min="1" />
           </Field>
-          <Field label="Printing Margin">
-            <SuffixInput value={form.PrintingMargin} onChange={(e: any) => f("PrintingMargin", e.target.value)} suffix="mm" placeholder="e.g. 15" type="number" />
-          </Field>
         </div>
       </div>
 
@@ -207,10 +189,10 @@ function PrintingExtras({ form, f }: { form: MachineForm; f: (k: keyof MachineFo
           <Field label="Max Print Width">
             <SuffixInput value={form.MaxPrintW} onChange={(e: any) => f("MaxPrintW", e.target.value)} suffix="mm" placeholder="e.g. 1500" type="number" />
           </Field>
-          <Field label="Min Print Length">
+          <Field label="Min Print Circumference">
             <SuffixInput value={form.MinPrintL} onChange={(e: any) => f("MinPrintL", e.target.value)} suffix="mm" placeholder="e.g. 100" type="number" />
           </Field>
-          <Field label="Max Print Length">
+          <Field label="Max Print Circumference">
             <SuffixInput value={form.MaxPrintL} onChange={(e: any) => f("MaxPrintL", e.target.value)} suffix="mm" placeholder="e.g. 1200" type="number" />
           </Field>
         </div>
@@ -356,19 +338,14 @@ export default function MachineMasterPage() {
       LoanDuration: row.LoanDuration != null ? String(row.LoanDuration) : "",
       NumberOfOperators: row.NumberOfOperators != null ? String(row.NumberOfOperators) : "",
       AvgLaborSalaryPerYear: row.AvgLaborSalaryPerYear != null ? String(row.AvgLaborSalaryPerYear) : "",
-      MinWidth: row.MinWidth != null ? String(row.MinWidth) : "",
-      MaxWidth: row.MaxWidth != null ? String(row.MaxWidth) : "",
-      MinLength: row.MinLength != null ? String(row.MinLength) : "",
-      MaxLength: row.MaxLength != null ? String(row.MaxLength) : "",
       MinRollWidth: row.MinRollWidth != null ? String(row.MinRollWidth) : "",
       MaxRollWidth: row.MaxRollWidth != null ? String(row.MaxRollWidth) : "",
       MinCircumference: row.MinCircumference != null ? String(row.MinCircumference) : "",
       MaxCircumference: row.MaxCircumference != null ? String(row.MaxCircumference) : "",
       MachineSpeed: row.MachineSpeed != null ? String(row.MachineSpeed) : "",
-      ElectricConsumption: row.ElectricConsumption != null ? String(row.ElectricConsumption) : "",
       MakeReadyWastageSheet: row.MakeReadyWastageSheet != null ? String(row.MakeReadyWastageSheet) : "",
       MakeReadyWastageRunningMeter: row.MakeReadyWastageRunningMeter != null ? String(row.MakeReadyWastageRunningMeter) : "",
-      MakeReadyCharges: row.MakeReadyCharges != null ? String(row.MakeReadyCharges) : "",
+      MakeReadyWastageMode: row.MakeReadyWastageMode ?? "Flat",
       MakeReadyTime: row.MakeReadyTime != null ? String(row.MakeReadyTime) : "",
       MakeReadyTimeMode: row.MakeReadyTimeMode ?? "Per Color",
       MakeReadyPerHourCost: row.MakeReadyPerHourCost != null ? String(row.MakeReadyPerHourCost) : "",
@@ -381,7 +358,6 @@ export default function MachineMasterPage() {
       OtherCharges: row.OtherCharges != null ? String(row.OtherCharges) : "",
       Colors: row.Colors != null ? String(row.Colors) : "",
       Gripper: row.Gripper != null ? String(row.Gripper) : "",
-      PrintingMargin: row.PrintingMargin != null ? String(row.PrintingMargin) : "",
       MinPrintW: row.MinPrintW != null ? String(row.MinPrintW) : "",
       MaxPrintW: row.MaxPrintW != null ? String(row.MaxPrintW) : "",
       MinPrintL: row.MinPrintL != null ? String(row.MinPrintL) : "",
@@ -417,12 +393,11 @@ export default function MachineMasterPage() {
     try {
       const { ...machineData } = form;
       const numericFields = [
-        "Colors", "Gripper", "PrintingMargin", "MakeReadyWastageSheet", "MakeReadyWastageRunningMeter",
-        "MakeReadyCharges", "MakeReadyTime", "MakeReadyPerHourCost", "JobChangeOverTime",
+        "Colors", "Gripper", "MakeReadyWastageSheet", "MakeReadyWastageRunningMeter",
+        "MakeReadyTime", "MakeReadyPerHourCost", "JobChangeOverTime",
         "MinimumSheet", "BasicPrintingCharges", "RoundofImpressionsWith",
-        "MinWidth", "MaxWidth", "MinLength", "MaxLength",
         "MinRollWidth", "MaxRollWidth", "MinCircumference", "MaxCircumference",
-        "MachineSpeed", "ElectricConsumption", "PerHourCost", "OtherCharges",
+        "MachineSpeed", "PerHourCost", "OtherCharges",
         "PlateCharges", "MinPrintW", "MaxPrintW", "MinPrintL", "MaxPrintL",
         "MachineWidth", "AverageRollLength", "AverageRollChangeWastage", "RollChangeTime",
         "AvgBreakDownRunningMeters", "AvgBreakDownTime",
@@ -440,6 +415,17 @@ export default function MachineMasterPage() {
       record.IsVariableCutOff = record.IsVariableCutOff === "true" ? "true" : "false";
       record.IsSpecialMachine = record.IsSpecialMachine === "true" ? "true" : "false";
       record.IsOnLoan = record.IsOnLoan === "true" ? 1 : 0;
+
+      // MinWidth/MaxWidth/MinLength/MaxLength are no longer their own UI fields (removed as
+      // redundant with Printing Area below), but Planning/Costing still reads them as separate
+      // DB columns from MinPrintW/MaxPrintW/MinPrintL/MaxPrintL (see the Planning_Machines query
+      // in Api_shiring_serviceController.cs, used for every printing domain type). Mirror the
+      // Print Width/Circumference values into them here so Planning keeps getting real numbers
+      // instead of every machine saved from now on having 0 for its sheet/web size bounds.
+      record.MinWidth = record.MinPrintW;
+      record.MaxWidth = record.MaxPrintW;
+      record.MinLength = record.MinPrintL;
+      record.MaxLength = record.MaxPrintL;
 
       const isEdit = !!editing;
       const payload: Record<string, any> = {
@@ -504,7 +490,7 @@ export default function MachineMasterPage() {
   if (view === "form") {
     const isEdit = !!editing;
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -710,15 +696,13 @@ export default function MachineMasterPage() {
 
   // ── LIST VIEW ─────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Machine Master</h2>
           <p className="text-sm text-gray-500">{filteredMachines.length} of {machines.length} machines</p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm">
-          <Plus size={16} /> Add Machine
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Machine</Button>
       </div>
 
       {/* Department filter */}
@@ -747,8 +731,8 @@ export default function MachineMasterPage() {
             searchKeys={["MachineName", "MachineCode", "MachineType", "DepartmentName", "ProductionUnitName"]}
             actions={(row) => (
               <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteMachine(row)}>Delete</Button>
+                <RowAction.Edit onClick={() => openEdit(row)} />
+                <RowAction.Delete onClick={() => deleteMachine(row)} />
               </div>
             )}
           />

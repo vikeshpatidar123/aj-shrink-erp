@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { subGroups as initData, SubGroup } from "@/data/dummyData";
@@ -59,7 +60,7 @@ export default function GroupPage() {
           <h2 className="text-lg font-semibold text-gray-800">SubGroup Master</h2>
           <p className="text-sm text-gray-500">{data.length} subgroups registered</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>Add SubGroup</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add SubGroup</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -68,8 +69,8 @@ export default function GroupPage() {
           searchKeys={["name", "category"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => setDeleteId(row.id)} />
             </div>
           )}
         />

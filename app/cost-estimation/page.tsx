@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useMemo } from "react";
 import { Plus, Eye, Pencil, Calculator, ChevronDown, ChevronUp } from "lucide-react";
 import {
@@ -259,7 +260,7 @@ export default function CostEstimationPage() {
           <h2 className="text-lg font-semibold text-gray-800">Cost Estimation & Planning</h2>
           <p className="text-sm text-gray-500">Recipe-based auto cost calculation · Layer GSM · Material planning</p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Estimation</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Estimation</Button>
       </div>
 
       {/* Summary cards */}
@@ -282,8 +283,8 @@ export default function CostEstimationPage() {
           searchKeys={["estimationNo", "customerName", "recipeName"]}
           actions={(row) => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+              <RowAction.View onClick={() => setViewRow(row)} />
+              <RowAction.Edit onClick={() => openEdit(row)} />
             </div>
           )}
         />

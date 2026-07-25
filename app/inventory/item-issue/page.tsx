@@ -6,6 +6,7 @@ import {
   Trash2, Plus, Camera, Keyboard, Search, PackageMinus, List,
   Users, RefreshCw, AlertCircle, ChevronRight,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
@@ -1258,10 +1259,7 @@ export default function ItemIssuePage() {
             <h2 className="text-xl font-bold text-gray-800">Item Issue</h2>
             <p className="text-sm text-gray-500">{filteredList.length} issue vouchers</p>
           </div>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={16} /> New Issue
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Issue</Button>
         </div>
 
         {/* Filter bar */}

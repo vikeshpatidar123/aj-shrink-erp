@@ -130,7 +130,7 @@ export default function ToolReceiptPage() {
             <p className="text-xs text-gray-500">{data.length} receipts</p>
           </div>
         </div>
-        <Button onClick={openNew} icon={<Plus size={16} />}>New Receipt</Button>
+        <Button variant="secondary" pill onClick={openNew} icon={<Plus size={16} />}>New Receipt</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

@@ -5,6 +5,7 @@ import {
   Camera, Keyboard, Trash2, QrCode,
   Layers, Package, ArrowLeft, FileText, ChevronRight, ChevronDown, RefreshCw,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { authHeaders, getSession } from "@/lib/auth";
@@ -1107,10 +1108,7 @@ export default function PurchaseGRNPage() {
             <h2 className="text-xl font-bold text-gray-800">Purchase GRN</h2>
             <p className="text-sm text-gray-500">Goods Receipt Note · {grnList.length} records</p>
           </div>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={16} /> New GRN
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New GRN</Button>
         </div>
 
         {/* Date filter */}

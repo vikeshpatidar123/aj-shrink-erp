@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -9,14 +10,14 @@ import { usePermissions } from "@/context/PermissionsContext";
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const BASE = `${BASE_URL}/api/producthsnmasterShrink`;
 
-// ── Unwrap triple-encoded JSON ───────────────────────────────────────────────
+// Unwrap triple-encoded JSON
 function unwrap(raw: any): any {
   let r = raw;
   while (typeof r === "string") { try { r = JSON.parse(r); } catch { break; } }
   return r;
 }
 
-// ── Shared UI ─────────────────────────────────────────────────────────────────
+// Shared UI
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -31,7 +32,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 const ic = (err: boolean | string | undefined) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// Types
 type HSNRow = {
   id: string;
   ProductHSNID: string;
@@ -94,7 +95,7 @@ const blank = (): FormState => ({
 
 const toBool = (v: any) => v === true || v === 1 || v === "True" || v === "true";
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// Page
 export default function HSNPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<HSNRow[]>([]);
@@ -114,7 +115,7 @@ export default function HSNPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // ── Load list ─────────────────────────────────────────────────────────────────
+  // Load list
   const loadList = useCallback(() => {
     setLoading(true);
     fetch(`${BASE}/showlist`, { headers: authHeaders() })
@@ -161,7 +162,7 @@ export default function HSNPage() {
   const [sgTypeOpts, setSgTypeOpts] = useState<{type: string; prefix: string}[]>([]);
   const [sgTypeSpecOpts, setSgTypeSpecOpts] = useState<{spec: string; prefix: string}[]>([]);
 
-  // ── Auto-computed DisplayName ──────────────────────────────────────────────────
+  // Auto-computed DisplayName
   const autoDisplayName = useMemo(() => {
     if (form.IsServiceHSN) return form.HSNCode.trim() ? `Service — ${form.HSNCode.trim()}` : "Service";
     if (!selectedItemGroup) return "";
@@ -212,7 +213,7 @@ export default function HSNPage() {
     } catch { setSgTypeSpecOpts([]); }
   };
 
-  // ── Open add ──────────────────────────────────────────────────────────────────
+  // Open add
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -224,7 +225,7 @@ export default function HSNPage() {
     setView("form");
   };
 
-  // ── Open edit ─────────────────────────────────────────────────────────────────
+  // Open edit
   const openEdit = (row: HSNRow) => {
     setEditing(row);
     setError("");
@@ -260,7 +261,7 @@ export default function HSNPage() {
     setView("form");
   };
 
-  // ── Save ──────────────────────────────────────────────────────────────────────
+  // Save
   const saveHSN = async () => {
     if (!can("/masters/hsn", editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit HSN Master." : "You are not authorized to save HSN Master.");
@@ -336,7 +337,7 @@ export default function HSNPage() {
     setSaving(false);
   };
 
-  // ── Delete ────────────────────────────────────────────────────────────────────
+  // Delete
   const deleteHSN = async (id: string) => {
     if (!can("/masters/hsn", "CanDelete")) { alert("You are not authorized to delete HSN Master."); return; }
     // Check if HSN is used in other modules first
@@ -363,7 +364,7 @@ export default function HSNPage() {
     }
   };
 
-  // ── List derived ──────────────────────────────────────────────────────────────
+  // List derived
   const uniqueCategories = useMemo(() =>
     ["All", ...new Set(data.map(r => r.ProductCategory).filter(Boolean))],
     [data]);
@@ -372,10 +373,10 @@ export default function HSNPage() {
     filterCategory === "All" ? data : data.filter(r => r.ProductCategory === filterCategory),
     [data, filterCategory]);
 
-  // ── FORM VIEW ─────────────────────────────────────────────────────────────────
+  // FORM VIEW
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -591,9 +592,8 @@ export default function HSNPage() {
     );
   }
 
-  // ── LIST VIEW ─────────────────────────────────────────────────────────────────
+  // LIST VIEW
   const columns: Column<HSNRow>[] = [
-    { key: "ProductHSNID", header: "ID", sortable: true },
     { key: "ProductHSNName", header: "Group Name", sortable: true },
     { key: "HSNCode", header: "HSN Code", sortable: true },
     { key: "DisplayName", header: "Display Name" },
@@ -622,7 +622,7 @@ export default function HSNPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">HSN Master</h2>
@@ -630,10 +630,7 @@ export default function HSNPage() {
             {loading ? "Loading..." : `${filtered.length} of ${data.length} HSN codes`}
           </p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add HSN
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add HSN</Button>
       </div>
 
       {/* Category filter pills */}
@@ -658,8 +655,8 @@ export default function HSNPage() {
           searchKeys={["ProductHSNName", "HSNCode", "DisplayName", "ProductCategory"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteHSN(row.ProductHSNID)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteHSN(row.ProductHSNID)} />
             </div>
           )}
         />

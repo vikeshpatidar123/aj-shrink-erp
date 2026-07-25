@@ -6,6 +6,7 @@ import {
   Camera, Keyboard, Search, RotateCcw, List, RefreshCw, AlertCircle,
   ArrowLeftRight, Package,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
@@ -889,10 +890,7 @@ export default function ReturnToStockPage() {
             <h2 className="text-xl font-bold text-gray-800">Return to Stock</h2>
             <p className="text-sm text-gray-500">{filteredList.length} vouchers</p>
           </div>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={16} /> New Return
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Return</Button>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">

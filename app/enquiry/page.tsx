@@ -6,13 +6,16 @@ import { useUnit } from "@/context/UnitContext";
 import { useEnquiries, CombinedEnquiry, ProcessRef } from "@/context/EnquiryContext";
 import { useToast } from "@/components/ui/Toast";
 import { apiGet, apiGetSafe } from "@/lib/api";
-import { DataTable, Column } from "@/components/tables/DataTable";
+import { DataGrid } from "@/components/datagrid/DataGrid";
+import { createActionsColumn } from "@/components/datagrid/columns/ActionsColumn";
+import { ColumnDef } from "@tanstack/react-table";
 import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
 import { useMasters } from "@/context/MastersContext";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 type BU = "Extrusion" | "Gravure";
 
@@ -59,6 +62,10 @@ export default function EnquiryPage() {
   const { unit: globalUnit } = useUnit();
   const { enquiries: data, loading: listLoading, saveEnquiry, deleteEnquiry, refreshEnquiries } = useEnquiries();
   const { showToast } = useToast();
+
+  // ── Date filter state ──────────────────────────────────
+  const [dateFrom, setDateFrom] = useState<Date | null>(null);
+  const [dateTo,   setDateTo]   = useState<Date | null>(null);
 
   // ── Real item masters from API ─────────────────────────
   const { filmItems: apiFilmItems, inkItems: apiInkItems } = useMasters();
@@ -231,6 +238,24 @@ export default function EnquiryPage() {
   // Filter table by global unit
   const displayData = data.filter(d => d.businessUnit === globalUnit);
 
+  // Filter by date range
+  const dateFilteredData = useMemo(() => {
+    if (!dateFrom && !dateTo) return displayData;
+    return displayData.filter(row => {
+      if (!row.date) return true;
+      const rowDate = new Date(row.date);
+      if (dateFrom) {
+        const from = new Date(dateFrom); from.setHours(0, 0, 0, 0);
+        if (rowDate < from) return false;
+      }
+      if (dateTo) {
+        const to = new Date(dateTo); to.setHours(23, 59, 59, 999);
+        if (rowDate > to) return false;
+      }
+      return true;
+    });
+  }, [displayData, dateFrom, dateTo]);
+
   const openAdd = async () => {
     setEditing(null);
     setForm({ ...blank, businessUnit: "Gravure", uom: "Meter" });
@@ -347,14 +372,42 @@ export default function EnquiryPage() {
   const pending   = displayData.filter(d => d.status === "Pending").length;
   const converted = displayData.filter(d => d.status === "Converted").length;
 
-  const columns: Column<CombinedEnquiry>[] = [
-    { key: "enquiryNo",     header: "Enquiry No",    sortable: true },
-    { key: "date",          header: "Date",           sortable: true },
-    { key: "customerName",  header: "Customer",       sortable: true },
-    { key: "jobName",       header: "Job / Product" },
-    { key: "salesPersonName", header: "Sales Person" },
-    { key: "salesType",     header: "Sales Type" },
-    { key: "quantity", header: "Qty", render: r => <span>{r.quantity.toLocaleString()} {r.uom}</span> },
+  const columns: ColumnDef<CombinedEnquiry>[] = [
+    { accessorKey: "enquiryNo",      header: "Enquiry No" },
+    { accessorKey: "date",           header: "Enquiry Date" },
+    { accessorKey: "customerName",   header: "Customer Name" },
+    { accessorKey: "jobName",        header: "Job Name" },
+    { accessorKey: "salesPersonName",header: "Sales Person" },
+    { accessorKey: "salesType",      header: "Sales Type" },
+    {
+      accessorKey: "planWidth",
+      header: "Recom. Width (mm)",
+      cell: ({ row }) => row.original.planWidth ? <span>{row.original.planWidth}</span> : <span className="text-[rgb(var(--fg-muted))]">—</span>,
+    },
+    {
+      accessorKey: "planHeight",
+      header: "Recom. Height (mm)",
+      cell: ({ row }) => row.original.planHeight ? <span>{row.original.planHeight}</span> : <span className="text-[rgb(var(--fg-muted))]">—</span>,
+    },
+    {
+      accessorKey: "quantity",
+      header: "Qty",
+      cell: ({ row }) => <span>{row.original.quantity?.toLocaleString()} {row.original.uom}</span>,
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => statusBadge(row.original.status),
+    },
+    createActionsColumn<CombinedEnquiry>({
+      onView:   (row) => setViewRow(row),
+      onEdit:   (row) => openEdit(row),
+      onDelete: (row) => setDeleteId(row.id),
+      showView: true,
+      showEdit: true,
+      showDelete: true,
+      mode: "buttons",
+    }),
   ];
 
   return (
@@ -362,134 +415,148 @@ export default function EnquiryPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-y-3">
-        <div>
-          <div className="flex items-center gap-2 mb-0.5">
-            <ClipboardList size={18} className="text-purple-600" />
-            <h2 className="text-lg font-semibold text-gray-800">Gravure Enquiry</h2>
-          </div>
-          <p className="text-sm text-gray-500">{total} enquiries — {pending} Pending · {converted} Converted</p>
+        <div className="flex items-center gap-2">
+          <ClipboardList size={18} className="text-purple-600" />
+          <h2 className="text-lg font-semibold text-gray-800">Enquiry</h2>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {[
-          { label: "Total",     val: total,     cls: "bg-gray-50 text-gray-700 border-gray-200" },
-          { label: "Pending",   val: pending,   cls: "bg-yellow-50 text-yellow-700 border-yellow-200" },
-          { label: "Converted", val: converted, cls: "bg-green-50 text-green-700 border-green-200" },
-        ].map(s => (
-          <div key={s.label} className={`rounded-xl border p-4 ${s.cls}`}>
-            <p className="text-xs font-medium">{s.label}</p>
-            <p className="text-2xl font-bold mt-1">{s.val}</p>
-          </div>
-        ))}
+        <button
+          onClick={openAdd}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all hover:bg-gray-100 active:scale-95 border border-gray-300 bg-white text-gray-700 shadow-sm"
+        >
+          <Plus size={15} /> Create
+        </button>
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-        {listLoading ? (
-          <div className="text-center py-10 text-sm text-gray-400">Loading enquiries…</div>
-        ) : (
-          <DataTable
-            data={displayData}
-            columns={columns}
-            searchKeys={["enquiryNo", "customerName", "jobName"]}
-            actions={row => (
-              <div className="flex items-center gap-1.5 justify-end flex-wrap">
-                <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDeleteId(row.id)}>Delete</Button>
-              </div>
-            )}
-          />
-        )}
-      </div>
+      <DataGrid
+        data={dateFilteredData}
+        columns={columns}
+        title="Enquiry List"
+        loading={listLoading}
+        enableSearch
+        enableFiltering
+        enableExport
+        enableImport={false}
+        enablePagination
+        enableColumnResizing
+        enableColumnVisibility
+        enableSorting
+        enableVisualization
+        enableDateFilter
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateFromChange={setDateFrom}
+        onDateToChange={setDateTo}
+        enableRowSelection
+        enableColumnReordering
+        enableGrouping
+        getRowId={(row) => row.id}
+      />
 
       {/* ══ FORM MODAL ══════════════════════════════════════════ */}
       <Modal open={modalOpen} onClose={() => setModal(false)}
-        title={editing ? "Edit Enquiry" : "New Enquiry"} size="xl">
-        <div className="space-y-5">
+        title={editing ? "Edit Enquiry" : "Enquiry Creation"} size="xl">
+        <div className="space-y-4">
 
-          {/* Gravure Unit badge */}
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border font-semibold text-sm bg-purple-50 border-purple-300 text-purple-800">
-            🖨️ Gravure Enquiry
+          {/* ── 3 Section Cards ──────────────────────────────── */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            {/* Enquiry Info */}
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Enquiry Info</p>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Enquiry No</label>
+                <input readOnly value={nextEnquiryNo}
+                  className="w-full text-sm border border-gray-100 rounded-lg px-3 py-2 bg-gray-50 font-semibold text-teal-700 focus:outline-none" />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Enquiry Date</label>
+                <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Sales Type</label>
+                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
+                  {SALES_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Customer Info */}
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer Info</p>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Lead / Customer Name <span className="text-red-500">*</span></label>
+                <select value={form.customerId}
+                  onChange={e => { const c = customers.find(x => x.LedgerID === e.target.value); f("customerId", e.target.value); f("customerName", c?.LedgerName || ""); }}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
+                  <option value="">Select Lead/Customer</option>
+                  {customers.map(c => <option key={c.LedgerID} value={String(c.LedgerID ?? "")}>{c.LedgerName}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Concern Person</label>
+                <input value={form.concernPerson} onChange={e => f("concernPerson", e.target.value)}
+                  placeholder="Select Concern Person"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Category</label>
+                <select value={form.categoryId}
+                  onChange={e => { const cat = categories.find(x => x.CategoryID === e.target.value); f("categoryId", e.target.value); f("categoryName", cat?.CategoryName || ""); f("selectedContent", ""); setDimValues({}); fetchContents(e.target.value); }}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
+                  <option value="">Select Category</option>
+                  {categories.map(c => <option key={c.CategoryID} value={String(c.CategoryID ?? "")}>{c.CategoryName}</option>)}
+                </select>
+              </div>
+            </div>
+
+            {/* Job Details */}
+            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Job Details</p>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Job Name <span className="text-red-500">*</span></label>
+                <input value={form.jobName} onChange={e => f("jobName", e.target.value)}
+                  placeholder="Enter job name"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-medium text-gray-500 block mb-1">Quantity <span className="text-red-500">*</span></label>
+                  <input type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))}
+                    placeholder="e.g. 10000"
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-gray-500 block mb-1">UOM <span className="text-red-500">*</span></label>
+                  <select value={form.uom} onChange={e => f("uom", e.target.value)}
+                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
+                    <option value="Meter">Meter</option>
+                    <option value="Kg">Kg</option>
+                    <option value="Nos">Nos</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] font-medium text-gray-500 block mb-1">Sales Person <span className="text-red-500">*</span></label>
+                <select value={form.salesPersonId}
+                  onChange={e => { const s = salesPersons.find(x => x.LedgerID === e.target.value); f("salesPersonId", e.target.value); f("salesPersonName", s?.LedgerName || ""); }}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
+                  <option value="">Select sales person</option>
+                  {salesPersons.map(s => <option key={s.LedgerID} value={String(s.LedgerID ?? "")}>{s.LedgerName}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
 
-          {/* Basic Information */}
+          {/* ── Remark ──────────────────────────────────────── */}
           <div>
-            <SH label="Basic Information" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <Input
-                label="Enquiry No."
-                value={nextEnquiryNo}
-                readOnly
-                className="bg-gray-50 font-semibold text-teal-700 border-teal-100"
-              />
-              <Input label="Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
-              <Select
-                label="Customer *"
-                value={form.customerId}
-                onChange={e => {
-                  const c = customers.find(x => x.LedgerID === e.target.value);
-                  f("customerId", e.target.value);
-                  f("customerName", c?.LedgerName || "");
-                }}
-                options={[
-                  { value: "", label: "-- Select Customer --" },
-                  ...customers.map(c => ({ value: String(c.LedgerID ?? ""), label: String(c.LedgerName ?? "") }))
-                ]}
-              />
-              <Input label="Job / Product Name *" value={form.jobName}
-                onChange={e => f("jobName", e.target.value)} placeholder="Describe the job" />
-              <Input label="Quantity *" type="number" value={form.quantity}
-                onChange={e => f("quantity", Number(e.target.value))} />
-              <Select label="Unit" value={form.uom} onChange={e => f("uom", e.target.value)}
-                options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }, { value: "Nos", label: "Nos" }]} />
-
-              <Select
-                label="Sales Person"
-                value={form.salesPersonId}
-                onChange={e => {
-                  const s = salesPersons.find(x => x.LedgerID === e.target.value);
-                  f("salesPersonId", e.target.value);
-                  f("salesPersonName", s?.LedgerName || "");
-                }}
-                options={[
-                  { value: "", label: "-- Select Sales Person --" },
-                  ...salesPersons.map(s => ({ value: String(s.LedgerID ?? ""), label: String(s.LedgerName ?? "") }))
-                ]}
-              />
-              <Select
-                label="Sales Type"
-                value={form.salesType}
-                onChange={e => f("salesType", e.target.value)}
-                options={SALES_TYPES.map(t => ({ value: t, label: t }))}
-              />
-              <Input
-                label="Concern Person"
-                value={form.concernPerson}
-                onChange={e => f("concernPerson", e.target.value)}
-                placeholder="Name of contact person"
-              />
-
-              <Select
-                label="Category"
-                value={form.categoryId}
-                onChange={e => {
-                  const cat = categories.find(x => x.CategoryID === e.target.value);
-                  f("categoryId", e.target.value);
-                  f("categoryName", cat?.CategoryName || "");
-                  f("selectedContent", "");
-                  setDimValues({});
-                  fetchContents(e.target.value);
-                }}
-                options={[
-                  { value: "", label: "-- Select Category --" },
-                  ...categories.map(c => ({ value: String(c.CategoryID ?? ""), label: String(c.CategoryName ?? "") }))
-                ]}
-              />
-            </div>
+            <label className="text-[11px] font-medium text-gray-500 block mb-1">Remark</label>
+            <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
+              placeholder="Special requirements, urgency, other notes..."
+              rows={2}
+              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-blue-400" />
           </div>
 
           {/* Content Cards (shown after category is selected) */}
@@ -544,9 +611,6 @@ export default function EnquiryPage() {
             </div>
           )}
 
-          <Textarea label="Remarks" value={form.remarks} onChange={e => f("remarks", e.target.value)}
-            placeholder="Special requirements, urgency, other notes..." />
-
           {/* Plan Window & Allocation — only shown after content is selected */}
           {contentSelected ? (
           <div className="pt-4 mt-2 border-t border-gray-100">
@@ -563,10 +627,10 @@ export default function EnquiryPage() {
 
                 {/* Dimension Input + Live Diagram */}
                 {CONTENT_TYPE_CONFIG[getDisplayContentType(form.selectedContent)] ? (
-                  <div className="border border-indigo-200 rounded-2xl overflow-hidden">
-                    <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 flex items-center gap-2 flex-wrap">
-                      <span className="text-white text-xs font-semibold">Packaging Dimensions</span>
-                      <span className="ml-auto text-white/70 text-[10px] truncate max-w-[200px]">{getDisplayContentType(form.selectedContent)}</span>
+                  <div className="border border-blue-200 rounded-2xl overflow-hidden">
+                    <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] px-4 py-2.5 flex items-center gap-2 flex-wrap">
+                      <span className="text-[#003366] text-xs font-semibold">Packaging Dimensions</span>
+                      <span className="ml-auto text-gray-500 text-[10px] truncate max-w-[200px]">{getDisplayContentType(form.selectedContent)}</span>
                     </div>
                     <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
                       <div>
@@ -630,19 +694,29 @@ export default function EnquiryPage() {
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Wastage Type</label>
-                    <select value={form.wastageType || "Machine Default"} onChange={e => f("wastageType", e.target.value)}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="Machine Default">Machine Default</option>
-                      <option value="Manual">Manual</option>
-                    </select>
+                    <SearchableSelect
+                      value={form.wastageType || "Machine Default"}
+                      onChange={val => f("wastageType", val)}
+                      options={[
+                        { value: "Machine Default", label: "Machine Default" },
+                        { value: "Manual", label: "Manual" },
+                      ]}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
+                      allowEmpty={false}
+                    />
                   </div>
                   <div>
                     <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Finished Format</label>
-                    <select value={form.finishedFormat || "Roll Form"} onChange={e => f("finishedFormat", e.target.value)}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="Roll Form">Roll Form</option>
-                      <option value="Pouch Form">Pouch Form</option>
-                    </select>
+                    <SearchableSelect
+                      value={form.finishedFormat || "Roll Form"}
+                      onChange={val => f("finishedFormat", val)}
+                      options={[
+                        { value: "Roll Form", label: "Roll Form" },
+                        { value: "Pouch Form", label: "Pouch Form" },
+                      ]}
+                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
+                      allowEmpty={false}
+                    />
                   </div>
                 </div>
 
@@ -718,14 +792,18 @@ export default function EnquiryPage() {
                             {/* Ply Type */}
                             <div>
                               <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                              <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400"
-                                value={l.plyType} onChange={e => onPlyTypeChange(index, e.target.value)}>
-                                <option value="">-- Select Ply Type --</option>
-                                <option value="Film">Ply 1</option>
-                                <option value="Printing">Ply 2</option>
-                                <option value="Lamination">Ply 3</option>
-                                <option value="Coating">Ply 4</option>
-                              </select>
+                              <SearchableSelect
+                                value={l.plyType}
+                                onChange={val => onPlyTypeChange(index, val)}
+                                options={[
+                                  { value: "Film", label: "Ply 1" },
+                                  { value: "Printing", label: "Ply 2" },
+                                  { value: "Lamination", label: "Ply 3" },
+                                  { value: "Coating", label: "Ply 4" },
+                                ]}
+                                placeholder="-- Select Ply Type --"
+                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
+                              />
                             </div>
 
                             {/* Film Item — single dropdown, auto-fills density/thickness/GSM */}
@@ -733,10 +811,10 @@ export default function EnquiryPage() {
                               <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                                 <div>
                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
-                                  <select className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none focus:ring-2 focus:ring-purple-400"
+                                  <SearchableSelect
                                     value={l.itemId || ""}
-                                    onChange={e => {
-                                      const fi = FILM_ITEMS.find(x => x.id === e.target.value);
+                                    onChange={val => {
+                                      const fi = FILM_ITEMS.find(x => x.id === val);
                                       const layers = [...(form.secondaryLayers || [])];
                                       if (!fi) { layers[index] = { ...l, itemId: "", itemName: "", itemSubGroup: "", density: 0, thickness: 0, gsm: 0 }; f("secondaryLayers", layers); return; }
                                       const thickness = parseFloat(fi.thickness) || 0;
@@ -744,10 +822,11 @@ export default function EnquiryPage() {
                                       const gsm       = parseFloat((thickness * density).toFixed(3));
                                       layers[index]   = { ...l, itemId: fi.id, itemName: fi.name, itemSubGroup: fi.subGroup, density, thickness, gsm };
                                       f("secondaryLayers", layers);
-                                    }}>
-                                    <option value="">-- Select Film Item --</option>
-                                    {FILM_ITEMS.map(fi => <option key={fi.id} value={fi.id}>{fi.name}</option>)}
-                                  </select>
+                                    }}
+                                    options={FILM_ITEMS.map(fi => ({ value: fi.id, label: fi.name }))}
+                                    placeholder="-- Select Film Item --"
+                                    className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none"
+                                  />
                                 </div>
                                 <div className="grid grid-cols-3 gap-2">
                                   <div>
@@ -794,7 +873,7 @@ export default function EnquiryPage() {
                                         <span className="text-[10px] font-bold text-teal-700 uppercase">{`${ciLabel} ${groupBefore + 1}`}</span>
                                         <div className="flex items-center gap-1">
                                           <button onClick={() => clonePlyConsumable(index, ciIdx)}
-                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">
+                                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-blue-200 rounded-lg transition">
                                             <Copy size={11} /> Clone
                                           </button>
                                           <button onClick={() => removePlyConsumable(index, ciIdx)}
@@ -807,31 +886,33 @@ export default function EnquiryPage() {
                                         {/* Item Group */}
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
                                             value={ci.itemGroup}
-                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}>
-                                            <option value="">-- Group --</option>
-                                            {CONSUMABLE_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                          </select>
+                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}
+                                            options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
+                                            placeholder="-- Group --"
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          />
                                         </div>
                                         {/* Sub Group */}
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
                                             value={ci.itemSubGroup}
-                                            onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
-                                            disabled={!ci.itemGroup}>
-                                            <option value="">-- Sub Group --</option>
-                                            {subGroups.map(sg => <option key={sg} value={sg}>{sg}</option>)}
-                                          </select>
+                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
+                                            options={subGroups.map(sg => ({ value: sg, label: sg }))}
+                                            placeholder="-- Sub Group --"
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                            disabled={!ci.itemGroup}
+                                          />
                                         </div>
                                         {/* Item Master */}
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                          <select className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:ring-2 focus:ring-teal-400"
+                                          <SearchableSelect
                                             value={ci.itemId}
-                                            onChange={e => {
-                                              const it = filteredItems.find(x => x.id === e.target.value);
+                                            onChange={val => {
+                                              const it = filteredItems.find(x => x.id === val);
                                               const upd: Partial<PlyConsumableItem> = { itemId: it?.id ?? "", itemName: it?.name ?? "" };
                                               if (ci.itemGroup === "Ink" && it) {
                                                 upd.gsm = parseFloat(String((it as any).DryGsM ?? 0)) || 0;
@@ -839,10 +920,11 @@ export default function EnquiryPage() {
                                               }
                                               updatePlyConsumable(index, ciIdx, upd);
                                             }}
-                                            disabled={!ci.itemGroup}>
-                                            <option value="">-- Select Item --</option>
-                                            {filteredItems.map(it => <option key={it.id} value={it.id}>{it.name}</option>)}
-                                          </select>
+                                            options={filteredItems.map(it => ({ value: it.id, label: it.name }))}
+                                            placeholder="-- Select Item --"
+                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                            disabled={!ci.itemGroup}
+                                          />
                                         </div>
                                         {/* Ink fields: Dry GSM + % Solid + Liquid GSM (auto) */}
                                         {ci.itemGroup === "Ink" && (<>
@@ -856,7 +938,7 @@ export default function EnquiryPage() {
                                           <div>
                                             <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">% Solid</label>
                                             <input type="number" step={1} min={1} max={100}
-                                              className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
+                                              className="w-full text-xs border border-blue-200 rounded-lg px-2 py-1.5 bg-indigo-50 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
                                               value={ci.solidPct ?? 40}
                                               onChange={e => updatePlyConsumable(index, ciIdx, { solidPct: Number(e.target.value) || 40 })}
                                               placeholder="40" />
@@ -987,9 +1069,17 @@ export default function EnquiryPage() {
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "Saving…" : editing ? "Update" : "Save Enquiry"}</Button>
+        <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
+          <button onClick={() => setModal(false)} disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            <X size={14} /> Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
+            style={{ background: saving ? "#6b7280" : "rgb(var(--color-primary))" }}>
+            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+            {saving ? "Saving…" : editing ? "Update" : "Save"}
+          </button>
         </div>
       </Modal>
 

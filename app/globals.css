@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════
-   AJ Shrink ERP — Professional Single-Theme System
-   Primary: #2C5D8A  (steel blue — enterprise grade)
+   AJ Shrink ERP — indas-ui Design System
+   Primary: #003366  (navy blue — enterprise grade)
    ═══════════════════════════════════════════════════════ */
 
 :root {
@@ -10,14 +10,62 @@
   --foreground: #1a2332;
 
   /* ── Core brand palette ── */
-  --erp-primary:       #2C5D8A;   /* main brand blue             */
-  --erp-primary-dark:  #1f4468;   /* hover / pressed             */
-  --erp-primary-light: #deeaf5;   /* row hover, card bg          */
+  --erp-primary:       #003366;   /* main brand navy             */
+  --erp-primary-dark:  #002852;   /* hover / pressed             */
+  --erp-primary-light: #e6f0fa;   /* row hover, card bg          */
   --erp-sidebar-bg:    #0f2540;   /* sidebar — deepest navy      */
   --erp-sidebar-alt:   #172d4e;   /* sidebar section divider     */
 
-  /* ── Gradients ── */
-  --erp-btn-gradient:  linear-gradient(180deg, #3a6a98 0%, #2C5D8A 100%);
+  /* ── indas-ui semantic color tokens (RGB for opacity support) ── */
+  --color-primary:            0 51 102;
+  --color-primary-hover:      0 40 82;
+  --color-primary-foreground: 255 255 255;
+  --color-primary-subtle:     230 240 250;
+
+  --color-success:         34 197 94;
+  --color-success-hover:   22 163 74;
+  --color-success-subtle:  220 252 231;
+
+  --color-warning:         245 158 11;
+  --color-warning-hover:   217 119 6;
+  --color-warning-subtle:  254 243 199;
+
+  --color-error:           239 68 68;
+  --color-error-hover:     185 34 33;
+  --color-error-subtle:    254 226 226;
+
+  --color-info:            59 130 246;
+  --color-info-hover:      37 99 235;
+  --color-info-subtle:     219 234 254;
+
+  --color-purple:          147 51 234;
+  --color-purple-hover:    126 34 206;
+  --color-purple-subtle:   243 232 255;
+
+  --color-orange:          249 115 22;
+  --color-orange-hover:    234 88 12;
+  --color-orange-subtle:   255 237 213;
+
+  --color-sky:             14 165 233;
+  --color-sky-hover:       2 132 199;
+  --color-sky-subtle:      224 242 254;
+
+  --color-teal:            20 184 166;
+  --color-teal-hover:      13 148 136;
+  --color-teal-subtle:     204 251 241;
+
+  --color-neutral:         107 114 128;
+  --color-neutral-hover:   75 85 99;
+  --color-neutral-subtle:  243 244 246;
+
+  /* ── Background / foreground / border tokens ── */
+  --bg-surface:  255 255 255;
+  --bg-subtle:   246 247 249;
+  --bg-hover:    243 244 246;
+  --fg-default:  17 24 39;
+  --fg-muted:    107 114 128;
+  --fg-subtle:   156 163 175;
+  --bd-default:  229 231 235;
 
   /* Legacy */
   --color-background: var(--background);
@@ -44,39 +92,61 @@ body {
 
 /* ── Primary action button ─────────────────────────────── */
 .erp-btn-primary {
-  background: var(--erp-btn-gradient);
+  background: rgb(var(--color-primary));
   color: #fff;
-  border-color: #1f4468;
-  box-shadow: 0 1px 3px rgba(15, 37, 64, 0.25);
+  border-color: rgb(var(--color-primary-hover));
+  box-shadow: 0 1px 2px rgba(0, 51, 102, 0.20);
 }
 .erp-btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #2C5D8A 0%, #1f4468 100%);
-  box-shadow: 0 2px 6px rgba(15, 37, 64, 0.30);
+  background: rgb(var(--color-primary-hover));
+  box-shadow: 0 2px 4px rgba(0, 51, 102, 0.28);
 }
 .erp-btn-primary:active:not(:disabled) {
-  background: var(--erp-primary-dark);
+  background: rgb(var(--color-primary-hover));
   box-shadow: none;
 }
 
-/* ── Input focus ───────────────────────────────────────── */
+/* ── Form controls — indas-ui design ─────────────────── */
+/* Base in :where() → specificity 0 → Tailwind utility classes (bg-transparent, border-none, etc.) always win */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])),
+:where(textarea),
+:where(select) {
+  background-color: rgb(var(--bg-surface));
+  color: rgb(var(--fg-default));
+  border-color: rgb(var(--bd-default));
+  border-radius: 0.375rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Disabled */
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):disabled),
+:where(textarea:disabled),
+:where(select:disabled) {
+  background-color: rgb(var(--bg-subtle));
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Focus — excluded: borderless/transparent inputs (border-none) and dark topbar input */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not(.border-none):not(.erp-topbar-input):focus,
+textarea:not(.border-none):focus,
+select:not(.border-none):focus {
+  outline: none !important;
+  border-color: rgb(var(--color-primary)) !important;
+  box-shadow: 0 0 0 2px rgba(0, 51, 102, 0.1) !important;
+}
+
+/* Suppress outline on all inputs (including excluded ones above) */
 input:focus,
 textarea:focus,
 select:focus {
   outline: none !important;
-  border-color: var(--erp-primary) !important;
-  box-shadow: 0 0 0 2px rgba(44, 93, 138, 0.15) !important;
 }
 
-/* ── All inputs always show dark text regardless of theme ── */
-input,
-textarea,
-select {
-  color: #111827 !important;
-}
-
+/* Placeholder */
 input::placeholder,
 textarea::placeholder {
-  color: #9ca3af !important;
+  color: rgb(var(--fg-subtle)) !important;
 }
 
 /* ── Table row hover ───────────────────────────────────── */
@@ -96,11 +166,11 @@ textarea::placeholder {
 .bg-blue-500, .bg-blue-600, .bg-blue-700, .bg-blue-800
   { background-color: var(--erp-primary) !important; }
 .bg-blue-100  { background-color: var(--erp-primary-light) !important; }
-.bg-blue-50   { background-color: rgba(44, 93, 138, 0.07) !important; }
+.bg-blue-50   { background-color: rgba(0, 51, 102, 0.06) !important; }
 .border-blue-500, .border-blue-600, .border-blue-200
-  { border-color: rgba(44, 93, 138, 0.35) !important; }
+  { border-color: rgba(0, 51, 102, 0.30) !important; }
 .hover\:bg-blue-700:hover  { background-color: var(--erp-primary-dark) !important; }
-.hover\:bg-blue-50:hover   { background-color: rgba(44, 93, 138, 0.07) !important; }
+.hover\:bg-blue-50:hover   { background-color: rgba(0, 51, 102, 0.06) !important; }
 .hover\:text-blue-700:hover { color: var(--erp-primary) !important; }
 .focus\:ring-blue-500:focus, .focus\:ring-blue-600:focus
   { --tw-ring-color: var(--erp-primary) !important; }
@@ -113,13 +183,13 @@ textarea::placeholder {
 .bg-purple-600, .bg-purple-700, .bg-purple-800, .bg-violet-600, .bg-violet-700
   { background-color: var(--erp-primary) !important; }
 .bg-purple-50, .bg-violet-50
-  { background-color: rgba(44, 93, 138, 0.07) !important; }
+  { background-color: rgba(0, 51, 102, 0.06) !important; }
 .bg-purple-100, .bg-violet-100
   { background-color: var(--erp-primary-light) !important; }
 .border-purple-200, .border-purple-300, .border-violet-200
-  { border-color: rgba(44, 93, 138, 0.30) !important; }
+  { border-color: rgba(0, 51, 102, 0.25) !important; }
 .hover\:bg-purple-50:hover, .hover\:bg-violet-50:hover
-  { background-color: rgba(44, 93, 138, 0.07) !important; }
+  { background-color: rgba(0, 51, 102, 0.06) !important; }
 .hover\:text-purple-700:hover, .hover\:text-violet-700:hover
   { color: var(--erp-primary) !important; }
 .focus\:ring-purple-400:focus, .focus\:ring-purple-500:focus, .focus\:ring-violet-500:focus
@@ -128,16 +198,112 @@ textarea::placeholder {
 /* ── Teal / Cyan ── */
 .text-teal-600, .text-teal-700, .text-teal-800, .text-cyan-600, .text-cyan-700
   { color: var(--erp-primary) !important; }
-.bg-teal-600, .bg-teal-700, .bg-teal-800, .bg-cyan-600, .bg-cyan-700
-  { background-color: var(--erp-primary) !important; }
+
+/* Top bars / form title bars (div) — light, same as grid header */
+div.bg-teal-800 {
+  background-color: #f5f9fc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: var(--erp-primary) !important;
+}
+div.bg-teal-800 span, div.bg-teal-800 svg,
+div.bg-teal-800 a, div.bg-teal-800 button {
+  color: var(--erp-primary) !important;
+}
+div.bg-teal-800 button:hover {
+  background-color: rgba(0,51,102,0.08) !important;
+  color: var(--erp-primary) !important;
+}
+.bg-cyan-700 { background-color: var(--erp-primary) !important; }
+
+/* Section sub-headers (PRODUCT LINES, DELIVERY SCHEDULE…) — very light */
+div.bg-teal-700 {
+  background-color: #f5f9fc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: var(--erp-primary) !important;
+}
+div.bg-teal-700 span, div.bg-teal-700 > div > span
+  { color: var(--erp-primary) !important; }
+div.bg-teal-700 button
+  { color: #fff !important; }                                    /* keep button labels white */
+
+/* Table column headers — light, same as DataTable */
+thead.bg-teal-800, th.bg-teal-800 {
+  background-color: #f1f5f9 !important;
+  color: var(--erp-primary) !important;
+}
+
+/* Totals / summary rows (tr) — keep medium navy */
+tr.bg-teal-700 { background-color: #1a4d80 !important; }
+
+/* bg-teal-600 standalone (non-override) for tr and th */
+tr.bg-teal-600, th.bg-teal-600
+  { background-color: #1a4d80 !important; }
+
+/* Buttons — medium navy */
+.bg-teal-600, .bg-cyan-600
+  { background-color: #2460a0 !important; }
+
+.hover\:bg-teal-700:hover { background-color: #1a4d80 !important; }
+.hover\:bg-teal-500:hover { background-color: #2f72b3 !important; }
+
+/* ── Inline-gradient section headers (now converted to #f5f9fc) — fix child text ── */
+.bg-\[#f5f9fc\] .text-white,
+.bg-\[#f5f9fc\].text-white {
+  color: var(--erp-primary) !important;
+}
+.bg-\[#f5f9fc\] .bg-white\/20,
+.bg-\[#f5f9fc\] [class*="bg-cyan-4"],
+.bg-\[#f5f9fc\] [class*="bg-orange-4"],
+.bg-\[#f5f9fc\] [class*="bg-rose-4"],
+.bg-\[#f5f9fc\] [class*="bg-violet-4"] {
+  background-color: rgba(0,51,102,0.08) !important;
+  color: var(--erp-primary) !important;
+}
+
+/* ── Gray / Slate / Zinc dark section headers → light everywhere ── */
+/* Section sub-header divs (DELIVERY SCHEDULE, REFERENCE IMAGE, etc.) */
+div.bg-gray-700, div.bg-gray-800,
+div.bg-slate-700, div.bg-slate-800,
+div.bg-zinc-700, div.bg-zinc-800,
+div.bg-neutral-700, div.bg-neutral-800 {
+  background-color: #f5f9fc !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  color: var(--erp-primary) !important;
+}
+div.bg-gray-700 span, div.bg-gray-800 span,
+div.bg-slate-700 span, div.bg-slate-800 span,
+div.bg-zinc-700 span, div.bg-zinc-800 span {
+  color: var(--erp-primary) !important;
+}
+div.bg-gray-700 button, div.bg-gray-800 button,
+div.bg-slate-700 button, div.bg-slate-800 button,
+div.bg-zinc-700 button, div.bg-zinc-800 button {
+  color: #fff !important;
+}
+
+/* Table column headers using gray/slate → light like DataTable */
+thead.bg-gray-700, thead.bg-gray-800,
+thead.bg-slate-700, thead.bg-slate-800,
+thead.bg-zinc-700, thead.bg-zinc-800,
+th.bg-gray-700, th.bg-gray-800,
+th.bg-slate-700, th.bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  color: var(--erp-primary) !important;
+}
+thead.bg-gray-700 th, thead.bg-gray-800 th,
+thead.bg-slate-700 th, thead.bg-slate-800 th,
+thead.bg-zinc-700 th, thead.bg-zinc-800 th {
+  color: var(--erp-primary) !important;
+  background-color: #f1f5f9 !important;
+}
 .bg-teal-50, .bg-cyan-50
-  { background-color: rgba(44, 93, 138, 0.07) !important; }
+  { background-color: rgba(0, 51, 102, 0.06) !important; }
 .bg-teal-100, .bg-cyan-100
   { background-color: var(--erp-primary-light) !important; }
 .border-teal-200, .border-teal-300, .border-cyan-200
-  { border-color: rgba(44, 93, 138, 0.30) !important; }
+  { border-color: rgba(0, 51, 102, 0.25) !important; }
 .hover\:bg-teal-50:hover, .hover\:bg-teal-100:hover, .hover\:bg-cyan-50:hover
-  { background-color: rgba(44, 93, 138, 0.07) !important; }
+  { background-color: rgba(0, 51, 102, 0.06) !important; }
 .hover\:text-teal-700:hover, .hover\:text-cyan-700:hover
   { color: var(--erp-primary) !important; }
 .focus\:ring-teal-400:focus, .focus\:ring-teal-500:focus, .focus\:ring-cyan-500:focus
@@ -148,10 +314,10 @@ textarea::placeholder {
   { color: var(--erp-primary) !important; }
 .bg-indigo-600, .bg-indigo-700
   { background-color: var(--erp-primary) !important; }
-.bg-indigo-50  { background-color: rgba(44, 93, 138, 0.07) !important; }
+.bg-indigo-50  { background-color: rgba(0, 51, 102, 0.06) !important; }
 .bg-indigo-100 { background-color: var(--erp-primary-light) !important; }
 .border-indigo-100, .border-indigo-200
-  { border-color: rgba(44, 93, 138, 0.25) !important; }
+  { border-color: rgba(0, 51, 102, 0.20) !important; }
 .focus\:ring-indigo-400:focus, .focus\:ring-indigo-500:focus
   { --tw-ring-color: var(--erp-primary) !important; }
 
@@ -226,3 +392,28 @@ main::-webkit-scrollbar-thumb {
 main::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
+
+/* ── indas-ui action button classes ─────────────────────── */
+.indas-btn-create   { background: rgba(0,51,102,0.08);    color: #003366;    border: 1px solid rgba(0,51,102,0.18);    border-radius: 8px; }
+.indas-btn-create:hover { background: rgba(0,51,102,0.15); }
+
+.indas-btn-save     { background: rgba(34,197,94,0.09);   color: #15803d;    border: 1px solid rgba(34,197,94,0.22);   border-radius: 8px; }
+.indas-btn-save:hover { background: rgba(34,197,94,0.16); }
+
+.indas-btn-edit     { background: rgba(245,158,11,0.09);  color: #b45309;    border: 1px solid rgba(245,158,11,0.22);  border-radius: 8px; }
+.indas-btn-edit:hover { background: rgba(245,158,11,0.16); }
+
+.indas-btn-delete   { background: rgba(239,68,68,0.09);   color: #b91c1c;    border: 1px solid rgba(239,68,68,0.22);   border-radius: 8px; }
+.indas-btn-delete:hover { background: rgba(239,68,68,0.16); }
+
+.indas-btn-print    { background: rgba(147,51,234,0.09);  color: #7c3aed;    border: 1px solid rgba(147,51,234,0.22);  border-radius: 8px; }
+.indas-btn-print:hover { background: rgba(147,51,234,0.16); }
+
+.indas-btn-download { background: rgba(34,197,94,0.09);   color: #15803d;    border: 1px solid rgba(34,197,94,0.22);   border-radius: 8px; }
+.indas-btn-download:hover { background: rgba(34,197,94,0.16); }
+
+.indas-btn-info     { background: rgba(59,130,246,0.09);  color: #1d4ed8;    border: 1px solid rgba(59,130,246,0.22);  border-radius: 8px; }
+.indas-btn-info:hover { background: rgba(59,130,246,0.16); }
+
+.indas-btn-secondary { background: #ffffff; color: #374151; border: 1px solid #e5e7eb; border-radius: 8px; }
+.indas-btn-secondary:hover { background: #f9fafb; }

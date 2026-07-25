@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -174,6 +175,35 @@ export default function LedgerMasterPage() {
   // â"€â"€ Form state â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const [editing, setEditing] = useState<any | null>(null);
   const { can } = usePermissions();
+
+  // Per-LedgerGroupID rights (e.g. a user may be allowed to Save Employees but not Suppliers) --
+  // "/master/ledger" from usePermissions() is only the page-level gate; the backend additionally
+  // enforces a per-group UserSubModuleAuthentication check on save/update/delete, so the UI must
+  // mirror that here rather than letting a user fill out a whole form only to be rejected at submit.
+  const [groupRights, setGroupRights] = useState<Record<string, Record<string, boolean>>>({});
+  useEffect(() => {
+    const userID = typeof window !== "undefined" ? localStorage.getItem("userID") : null;
+    if (!userID) return;
+    fetch(`${BASE_URL}/api/othermasterShrink/getusersubmoduleauthority/${userID}`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const rows = unwrap(text);
+        if (!Array.isArray(rows)) return;
+        const map: Record<string, Record<string, boolean>> = {};
+        rows.forEach((r: any) => {
+          if (r.GroupType !== "Ledger") return;
+          map[String(r.GroupID)] = {
+            CanView: !!Number(r.CanView), CanSave: !!Number(r.CanSave), CanEdit: !!Number(r.CanEdit),
+            CanDelete: !!Number(r.CanDelete), CanPrint: !!Number(r.CanPrint), CanExport: !!Number(r.CanExport),
+          };
+        });
+        setGroupRights(map);
+      })
+      .catch(() => { /* fail-open: page-level /master/ledger check still applies */ });
+  }, []);
+  const canGroupAction = (groupID: string | number | undefined, action: "CanSave" | "CanEdit" | "CanDelete") =>
+    can("/master/ledger", action) && (Object.keys(groupRights).length === 0 || !!groupRights[String(groupID)]?.[action]);
+
   const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
   const [formGroupID, setFormGroupID] = useState("");
   const [formGroupName, setFormGroupName] = useState("");
@@ -492,8 +522,8 @@ export default function LedgerMasterPage() {
 
   // â"€â"€ Save ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const saveLedger = async () => {
-    if (!can("/master/ledger", editing ? "CanEdit" : "CanSave")) {
-      alert(editing ? "You are not authorized to edit Ledger Master." : "You are not authorized to save Ledger Master.");
+    if (!canGroupAction(formGroupID, editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit records in this group." : "You are not authorized to save records in this group.");
       return;
     }
     setSubmitAttempted(true);
@@ -568,7 +598,7 @@ export default function LedgerMasterPage() {
 
   // â"€â"€ Delete ledger â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const deleteLedger = async (row: any) => {
-    if (!can("/master/ledger", "CanDelete")) { alert("You are not authorized to delete Ledger Master."); return; }
+    if (!canGroupAction(row.LedgerGroupID ?? activeGroupID, "CanDelete")) { alert("You are not authorized to delete records in this group."); return; }
     const ledgerID = row.LedgerID ?? row.id;
     if (!confirm("Delete this ledger?")) return;
     await fetch(`${BASE_URL}/api/ledgermasterShrink/deleteledger?ledgerID=${ledgerID}&ledgergroupID=${activeGroupID}`, {
@@ -634,7 +664,7 @@ export default function LedgerMasterPage() {
   // â"€â"€ FORM VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
@@ -877,17 +907,14 @@ export default function LedgerMasterPage() {
 
   // â"€â"€ LIST VIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Ledger Master</h2>
           <p className="text-sm text-gray-500">{filteredGridData.length} records</p>
         </div>
-        <button onClick={() => { setEditing(null); setFormStep("select-group"); setFormValues({}); setFormFields([]); setSelectOpts({}); setView("form"); }}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Ledger
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={() => { setEditing(null); setFormStep("select-group"); setFormValues({}); setFormFields([]); setSelectOpts({}); setView("form"); }}>Add Ledger</Button>
       </div>
 
       {/* Group pills */}
@@ -930,12 +957,15 @@ export default function LedgerMasterPage() {
             data={filteredGridData.map((r, i) => ({ ...r, id: r.LedgerID ?? String(i) }))}
             columns={liveColumns}
             searchKeys={liveColumns.map(c => c.key as string)}
-            actions={(row) => (
-              <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteLedger(row)}>Delete</Button>
-              </div>
-            )}
+            actions={(row) => {
+              const gid = row.LedgerGroupID ?? activeGroupID;
+              return (
+                <div className="flex items-center gap-2 justify-end">
+                  <RowAction.Edit disabled={!canGroupAction(gid, "CanEdit")} title={!canGroupAction(gid, "CanEdit") ? "You are not authorized to edit records in this group." : undefined} onClick={() => openEdit(row)} />
+                  <RowAction.Delete disabled={!canGroupAction(gid, "CanDelete")} title={!canGroupAction(gid, "CanDelete") ? "You are not authorized to delete records in this group." : undefined} onClick={() => deleteLedger(row)} />
+                </div>
+              );
+            }}
           />
         )}
       </div>

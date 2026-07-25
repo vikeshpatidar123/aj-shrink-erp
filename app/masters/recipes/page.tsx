@@ -553,10 +553,7 @@ export default function RecipePage() {
           <h2 className="text-xl font-bold text-gray-800">Recipe Master</h2>
           <p className="text-sm text-gray-500">{data.length} extrusion recipes</p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> New Recipe
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Recipe</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">

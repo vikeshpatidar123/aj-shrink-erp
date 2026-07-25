@@ -136,7 +136,7 @@ export default function ToolIssuePage() {
             <p className="text-xs text-gray-500">{data.length} issue records</p>
           </div>
         </div>
-        <Button onClick={openNew} icon={<Plus size={16} />}>New Issue</Button>
+        <Button variant="secondary" pill onClick={openNew} icon={<Plus size={16} />}>New Issue</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

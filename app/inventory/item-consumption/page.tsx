@@ -5,6 +5,7 @@ import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
   Camera, Keyboard, Search, Flame, List, RefreshCw, AlertCircle,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
@@ -941,10 +942,7 @@ export default function ItemConsumptionPage() {
             <h2 className="text-xl font-bold text-gray-800">Item Consumption</h2>
             <p className="text-sm text-gray-500">{filteredList.length} consumption vouchers</p>
           </div>
-          <button onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Plus size={16} /> New Consumption
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Consumption</Button>
         </div>
 
         {/* Filter bar */}

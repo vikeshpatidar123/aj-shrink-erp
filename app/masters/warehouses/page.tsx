@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -15,7 +16,7 @@ function unwrap(v: any): any {
   return r;
 }
 
-// â”€â”€â”€ Shared UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Shared UI
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
@@ -30,7 +31,7 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all";
 const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Types
 type WarehouseRow = {
   id: string;
   WarehouseID: string;
@@ -72,7 +73,7 @@ const blank = (): FormState => ({
   Bins: [{ BinName: "Default" }],
 });
 
-// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Page
 export default function WarehouseMasterPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [data, setData] = useState<WarehouseRow[]>([]);
@@ -94,7 +95,7 @@ export default function WarehouseMasterPage() {
 
   const f = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm(p => ({ ...p, [k]: v }));
 
-  // â”€â”€â”€ Load Lookups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Load Lookups
   useEffect(() => {
     // Attempt to load lookups if they exist (graceful fallback)
     fetch(`${BASE_URL}/api/othermasterShrink/getbranch`, { headers: authHeaders() })
@@ -103,7 +104,7 @@ export default function WarehouseMasterPage() {
       .then(r => r.text()).then(unwrap).then(r => Array.isArray(r) && setProductionUnits(r)).catch(() => { });
   }, []);
 
-  // â”€â”€â”€ Load list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Load list
   const loadList = useCallback(() => {
     setLoading(true);
     // Assuming backend might implement a standard GET endpoint soon:
@@ -119,7 +120,7 @@ export default function WarehouseMasterPage() {
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  // â”€â”€â”€ Open Add â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Open Add
   const openAdd = () => {
     setEditing(null);
     setError("");
@@ -129,7 +130,7 @@ export default function WarehouseMasterPage() {
     setView("form");
   };
 
-  // â”€â”€â”€ Open Edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Open Edit
   const openEdit = (row: WarehouseRow) => {
     // Group all bins for this WarehouseName/RefWarehouseCode from the data array
     const siblingBins = data.filter(r => r.RefWarehouseCode === row.RefWarehouseCode);
@@ -153,7 +154,7 @@ export default function WarehouseMasterPage() {
     setView("form");
   };
 
-  // â”€â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Save
   const saveWarehouse = async () => {
     if (!can("/masters/warehouses", editing ? "CanEdit" : "CanSave")) {
       alert(editing ? "You are not authorized to edit Warehouse Master." : "You are not authorized to save Warehouse Master.");
@@ -200,7 +201,7 @@ export default function WarehouseMasterPage() {
     setSaving(false);
   };
 
-  // â”€â”€â”€ Delete â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Delete
   const deleteWarehouse = async (row: WarehouseRow) => {
     if (!can("/masters/warehouses", "CanDelete")) { alert("You are not authorized to delete Warehouse Master."); return; }
     if (!confirm(`Are you sure you want to delete warehouse "${row.WarehouseName}" and all its bins?`)) return;
@@ -222,7 +223,7 @@ export default function WarehouseMasterPage() {
     }
   };
 
-  // â”€â”€â”€ Bin Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Bin Handlers
   const addBin = () => {
     const val = binInput.trim();
     if (!val) return;
@@ -243,10 +244,10 @@ export default function WarehouseMasterPage() {
     });
   };
 
-  // â”€â”€â”€ FORM VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // FORM VIEW
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
           <div>
             <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">{companyName}</p>
@@ -350,7 +351,7 @@ export default function WarehouseMasterPage() {
     );
   }
 
-  // â”€â”€â”€ LIST VIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // LIST VIEW
   const columns: Column<WarehouseRow>[] = [
     {
       key: "RefWarehouseCode", header: "Ref Code", sortable: true,
@@ -374,7 +375,7 @@ export default function WarehouseMasterPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Warehouse Master</h2>
@@ -382,10 +383,7 @@ export default function WarehouseMasterPage() {
             {loading ? "Loading..." : `${data.length} records`}
           </p>
         </div>
-        <button onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Warehouse
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Warehouse</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -396,8 +394,8 @@ export default function WarehouseMasterPage() {
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
               {/* Group records with same RefWarehouseCode for edit so we edit once */}
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteWarehouse(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteWarehouse(row)} />
             </div>
           )}
         />

@@ -4,6 +4,7 @@ import {
   Plus, Pencil, Trash2, X, Search, Check, List,
   ClipboardList, ChevronRight,
 } from "lucide-react";
+import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
 import { inputCls } from "@/lib/styles";
 
@@ -1172,12 +1173,7 @@ export default function PurchaseOrderPage() {
             <h2 className="text-xl font-bold text-gray-800">Purchase Orders</h2>
             <p className="text-sm text-gray-500">Manage requisition-based and direct purchase orders</p>
           </div>
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <Plus size={16} /> New Purchase Order
-          </button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Purchase Order</Button>
         </div>
 
         {/* List tabs */}

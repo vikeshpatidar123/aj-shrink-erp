@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, Save, List, Check, Loader2 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -279,6 +280,35 @@ export default function ItemMasterPage() {
   // ── Dynamic form state ──────────────────────────────────────────────────────
   const [editing, setEditing] = useState<any | null>(null);
   const { can } = usePermissions();
+
+  // Per-ItemGroupID rights (e.g. a user may be allowed to Save Ink items but not Solvent) —
+  // "/master/item" from usePermissions() is only the page-level gate; the backend additionally
+  // enforces a per-group UserSubModuleAuthentication check on save/update/delete, so the UI must
+  // mirror that here rather than letting a user fill out a whole form only to be rejected at submit.
+  const [groupRights, setGroupRights] = useState<Record<string, Record<string, boolean>>>({});
+  useEffect(() => {
+    const userID = typeof window !== "undefined" ? localStorage.getItem("userID") : null;
+    if (!userID) return;
+    fetch(`${BASE_URL}/api/othermasterShrink/getusersubmoduleauthority/${userID}`, { headers: authHeaders() })
+      .then(r => r.text())
+      .then(text => {
+        const rows = unwrap(text);
+        if (!Array.isArray(rows)) return;
+        const map: Record<string, Record<string, boolean>> = {};
+        rows.forEach((r: any) => {
+          if (r.GroupType !== "Item") return;
+          map[String(r.GroupID)] = {
+            CanView: !!Number(r.CanView), CanSave: !!Number(r.CanSave), CanEdit: !!Number(r.CanEdit),
+            CanDelete: !!Number(r.CanDelete), CanPrint: !!Number(r.CanPrint), CanExport: !!Number(r.CanExport),
+          };
+        });
+        setGroupRights(map);
+      })
+      .catch(() => { /* fail-open: page-level /master/item check still applies */ });
+  }, []);
+  const canGroupAction = (groupID: string | number | undefined, action: "CanSave" | "CanEdit" | "CanDelete") =>
+    can("/master/item", action) && (Object.keys(groupRights).length === 0 || !!groupRights[String(groupID)]?.[action]);
+
   const [formStep, setFormStep] = useState<"select-group" | "fill-form">("select-group");
   const [formGroupID, setFormGroupID] = useState("");
   const [formGroupName, setFormGroupName] = useState("");
@@ -304,8 +334,11 @@ export default function ItemMasterPage() {
     () => formFields.find(f => f.FieldType === "hierarchy-cascade-3") ?? formFields.find(f => /typesp[ae]cification/i.test(f.FieldName ?? "")),
     [formFields]
   );
-  // Supplier = Manufecturer / Manufacturer
-  const supplierField = useMemo(() => formFields.find(f => /manufect?urer/i.test(f.FieldName ?? "")), [formFields]);
+  // Supplier = Manufecturer / Manufacturer -- exact match only. A loose substring regex here
+  // also matched "ManufecturerItemCode" (now renamed "Brand"/"Manufacturer Item Code" per group),
+  // and since that field can sort earlier than "Manufecturer" itself, .find() would silently pick
+  // the wrong field and the real Supplier dropdown would never render at all.
+  const supplierField = useMemo(() => formFields.find(f => (f.FieldName ?? "").toLowerCase() === "manufecturer"), [formFields]);
 
   // Resolved field names — used when reading/writing formValues
   const sg2FieldName = subGroup2Field?.FieldName ?? "Quality";
@@ -324,12 +357,14 @@ export default function ItemMasterPage() {
   }, [formGroupID, allGroups]);
 
   // Dynamic set of field names rendered by the hardwired cascade section (excluded from DynamicField)
+  // Only the Sub Group 1/2/3 slots get a fixed position (top of the form, per hierarchy UX) --
+  // Supplier and the 3 Unit fields render inline in the main FieldDrawSequence-sorted loop below,
+  // at whatever position the DB actually configures for that group, instead of being pinned to
+  // the end of the form regardless of sequence.
   const cascadeHandledNames = useMemo(() => new Set([
     "itemsubgroupid",
     sg2FieldName.toLowerCase(),
     sg3FieldName.toLowerCase(),
-    "manufecturer", "manufacturer",
-    "purchaseunit", "estimationunit", "stockunit",
   ]), [sg2FieldName, sg3FieldName]);
 
   const [formValues, setFormValues] = useState<Record<string, any>>({});
@@ -838,10 +873,23 @@ export default function ItemMasterPage() {
     if (formFields.length > 0) loadFilteredHSN();
   }, [formGroupID, formValues[subGroup1Field?.FieldName ?? "ItemSubGroupID"], formValues[sg2FieldName], formValues[sg3FieldName], hasCascadeFields, formFields.length]);
 
+  // Auto-calculate GSM = Thickness x Density for any group whose dynamic fields include all three
+  // (Film today; forward-safe for any future group configured the same way — no ItemGroupID special-case).
+  useEffect(() => {
+    if (!formFields.some(f => f.FieldName === "GSM")) return;
+    const thickness = parseFloat(formValues["Thickness"]);
+    const density = parseFloat(formValues["Density"]);
+    if (!isFinite(thickness) || !isFinite(density)) return;
+    const gsm = Math.round(thickness * density * 100) / 100;
+    if (formValues["GSM"] !== gsm) {
+      setFormValues(p => ({ ...p, GSM: gsm }));
+    }
+  }, [formValues["Thickness"], formValues["Density"], formFields]);
+
   // Save item to backend
   const saveItem = async () => {
-    if (!can("/master/item", editing ? "CanEdit" : "CanSave")) {
-      alert(editing ? "You are not authorized to edit Item Master." : "You are not authorized to save Item Master.");
+    if (!canGroupAction(formGroupID, editing ? "CanEdit" : "CanSave")) {
+      alert(editing ? "You are not authorized to edit items in this group." : "You are not authorized to save items in this group.");
       return;
     }
     setSubmitAttempted(true);
@@ -1073,7 +1121,7 @@ export default function ItemMasterPage() {
   };
 
   const deleteRow = (itemID: string, itemGroupID: string) => {
-    if (!can("/master/item", "CanDelete")) { alert("You are not authorized to delete Item Master."); return; }
+    if (!canGroupAction(itemGroupID, "CanDelete")) { alert("You are not authorized to delete items in this group."); return; }
     if (!confirm("Are you sure you want to delete this item?")) return;
     fetch(`${BASE_URL}/api/itemmasterShrink/deleteitem?itemID=${itemID}&itemgroupID=${itemGroupID}`, {
       method: "POST",
@@ -1127,7 +1175,7 @@ export default function ItemMasterPage() {
   // ── Form View ───────────────────────────────────────────────────────────────
   if (view === "form") {
     return (
-      <div className="max-w-5xl mx-auto pb-10">
+      <div className="w-full pb-10">
 
         {/* Header Ribbon */}
         <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -1317,68 +1365,78 @@ export default function ItemMasterPage() {
                             </Field>
                           )}
 
-                          {/* All other non-cascade fields — sorted by FieldDrawSequence, label from FieldDisplayName */}
+                          {/* All other non-cascade fields — one single pass sorted by FieldDrawSequence.
+                              Supplier / Purchase Unit / Estimation Unit / Stock Unit render inline here,
+                              at whatever position the DB actually configures for this group, instead of
+                              being pinned to the end of the form regardless of sequence. Each still uses
+                              its own specialised option list (sgSupplierOpts/sgUnitOpts), not the generic
+                              per-field selectbox loader -- that's how their options are actually sourced. */}
                           {formFields
                             .filter(f => isFieldVisible(f) && !cascadeHandledNames.has((f.FieldName ?? "").toLowerCase()))
-                            .map(field => (
-                              <DynamicField
-                                key={field.FieldName}
-                                field={field}
-                                value={formValues[field.FieldName] ?? ""}
-                                options={selectOpts[field.FieldName] ?? []}
-                                onChange={(v: any) => {
-                                  const updates: Record<string, any> = { [field.FieldName]: v };
-                                  const pair = resolveHsnPair(field.FieldName, String(v), selectOpts[field.FieldName] ?? []);
-                                  if (pair && formFields.find((ff: any) => ff.FieldName === pair.nameKey)) {
-                                    updates[pair.nameKey] = pair.description;
-                                  }
-                                  setFormValues(prev => ({ ...prev, ...updates }));
-                                }}
-                                submitAttempted={submitAttempted}
-                              />
-                            ))}
+                            .map(field => {
+                              const key = (field.FieldName ?? "").toLowerCase();
 
-                          {/* Supplier — label from DB FieldDisplayName */}
-                          {hasSupplier && (
-                            <Field label={supplierField?.FieldDisplayName ?? "Supplier"} required={!!supplierField?.IsRequiredFieldValidator}>
-                              <select value={String(formValues[supplierField?.FieldName ?? "Manufecturer"] ?? "")} onChange={e => {
-                                setFormValues(v => ({ ...v, [supplierField?.FieldName ?? "Manufecturer"]: e.target.value }));
-                              }} className={INPUT_CLS}>
-                                <option value="">-- Select --</option>
-                                {sgSupplierOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                              </select>
-                            </Field>
-                          )}
+                              if (hasSupplier && key === "manufecturer") {
+                                return (
+                                  <Field key={field.FieldName} label={supplierField?.FieldDisplayName ?? "Supplier"} required={!!supplierField?.IsRequiredFieldValidator}>
+                                    <select value={String(formValues["Manufecturer"] ?? "")} onChange={e => {
+                                      setFormValues(v => ({ ...v, Manufecturer: e.target.value }));
+                                    }} className={INPUT_CLS}>
+                                      <option value="">-- Select --</option>
+                                      {sgSupplierOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                                    </select>
+                                  </Field>
+                                );
+                              }
+                              if (hasUnits && key === "purchaseunit" && puField) {
+                                return (
+                                  <Field key={field.FieldName} label={puField.FieldDisplayName ?? "Purchase Unit"} required={!!puField.IsRequiredFieldValidator}>
+                                    <select value={String(formValues["PurchaseUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, PurchaseUnit: e.target.value }))} className={INPUT_CLS}>
+                                      <option value="">-- Select --</option>
+                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                                    </select>
+                                  </Field>
+                                );
+                              }
+                              if (hasUnits && key === "estimationunit" && euField) {
+                                return (
+                                  <Field key={field.FieldName} label={euField.FieldDisplayName ?? "Estimation Unit"} required={!!euField.IsRequiredFieldValidator}>
+                                    <select value={String(formValues["EstimationUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, EstimationUnit: e.target.value }))} className={INPUT_CLS}>
+                                      <option value="">-- Select --</option>
+                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                                    </select>
+                                  </Field>
+                                );
+                              }
+                              if (hasUnits && key === "stockunit" && suField) {
+                                return (
+                                  <Field key={field.FieldName} label={suField.FieldDisplayName ?? "Stock Unit"} required={!!suField.IsRequiredFieldValidator}>
+                                    <select value={String(formValues["StockUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, StockUnit: e.target.value }))} className={INPUT_CLS}>
+                                      <option value="">-- Select --</option>
+                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
+                                    </select>
+                                  </Field>
+                                );
+                              }
 
-                          {/* Units — labels from DB FieldDisplayName */}
-                          {hasUnits && (
-                            <>
-                              {puField && (
-                                <Field label={puField.FieldDisplayName ?? "Purchase Unit"} required={!!puField.IsRequiredFieldValidator}>
-                                  <select value={String(formValues["PurchaseUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, PurchaseUnit: e.target.value }))} className={INPUT_CLS}>
-                                    <option value="">-- Select --</option>
-                                    {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                  </select>
-                                </Field>
-                              )}
-                              {euField && (
-                                <Field label={euField.FieldDisplayName ?? "Estimation Unit"} required={!!euField.IsRequiredFieldValidator}>
-                                  <select value={String(formValues["EstimationUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, EstimationUnit: e.target.value }))} className={INPUT_CLS}>
-                                    <option value="">-- Select --</option>
-                                    {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                  </select>
-                                </Field>
-                              )}
-                              {suField && (
-                                <Field label={suField.FieldDisplayName ?? "Stock Unit"} required={!!suField.IsRequiredFieldValidator}>
-                                  <select value={String(formValues["StockUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, StockUnit: e.target.value }))} className={INPUT_CLS}>
-                                    <option value="">-- Select --</option>
-                                    {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                  </select>
-                                </Field>
-                              )}
-                            </>
-                          )}
+                              return (
+                                <DynamicField
+                                  key={field.FieldName}
+                                  field={field}
+                                  value={formValues[field.FieldName] ?? ""}
+                                  options={selectOpts[field.FieldName] ?? []}
+                                  onChange={(v: any) => {
+                                    const updates: Record<string, any> = { [field.FieldName]: v };
+                                    const pair = resolveHsnPair(field.FieldName, String(v), selectOpts[field.FieldName] ?? []);
+                                    if (pair && formFields.find((ff: any) => ff.FieldName === pair.nameKey)) {
+                                      updates[pair.nameKey] = pair.description;
+                                    }
+                                    setFormValues(prev => ({ ...prev, ...updates }));
+                                  }}
+                                  submitAttempted={submitAttempted}
+                                />
+                              );
+                            })}
                         </div>
                       </div>
                     );
@@ -1474,7 +1532,7 @@ export default function ItemMasterPage() {
 
   // ── List View ───────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Item Master</h2>
@@ -1484,9 +1542,7 @@ export default function ItemMasterPage() {
               : allGroups.length === 0 ? "Loading groups..." : "Select a group to load items"}
           </p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-          <Plus size={16} /> Add Item
-        </button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>Add Item</Button>
       </div>
 
       {/* Filter Bar — group pills direct from backend */}
@@ -1570,12 +1626,15 @@ export default function ItemMasterPage() {
             data={filteredGridData}
             columns={liveColumns}
             searchKeys={["ItemCode", "ItemName"]}
-            actions={(row: any) => (
-              <div className="flex items-center gap-2 justify-end">
-                <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-                <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row.ItemID ?? row.id, row.ItemGroupID ?? activeGroupID)}>Delete</Button>
-              </div>
-            )}
+            actions={(row: any) => {
+              const gid = row.ItemGroupID ?? activeGroupID;
+              return (
+                <div className="flex items-center gap-2 justify-end">
+                  <RowAction.Edit disabled={!canGroupAction(gid, "CanEdit")} title={!canGroupAction(gid, "CanEdit") ? "You are not authorized to edit items in this group." : undefined} onClick={() => openEdit(row)} />
+                  <RowAction.Delete disabled={!canGroupAction(gid, "CanDelete")} title={!canGroupAction(gid, "CanDelete") ? "You are not authorized to delete items in this group." : undefined} onClick={() => deleteRow(row.ItemID ?? row.id, gid)} />
+                </div>
+              );
+            }}
           />
         )}
       </div>

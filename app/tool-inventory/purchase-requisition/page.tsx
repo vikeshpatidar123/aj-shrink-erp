@@ -116,7 +116,7 @@ export default function ToolPRPage() {
             <p className="text-xs text-gray-500">{data.length} requisitions</p>
           </div>
         </div>
-        <Button onClick={openNew} icon={<Plus size={16} />}>New PR</Button>
+        <Button variant="secondary" pill onClick={openNew} icon={<Plus size={16} />}>New PR</Button>
       </div>
 
       {/* Table */}

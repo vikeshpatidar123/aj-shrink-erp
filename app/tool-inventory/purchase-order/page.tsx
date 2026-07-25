@@ -134,7 +134,7 @@ export default function ToolPOPage() {
             <p className="text-xs text-gray-500">{data.length} purchase orders</p>
           </div>
         </div>
-        <Button onClick={openNew} icon={<Plus size={16} />}>New PO</Button>
+        <Button variant="secondary" pill onClick={openNew} icon={<Plus size={16} />}>New PO</Button>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

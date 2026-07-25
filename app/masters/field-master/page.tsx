@@ -12,7 +12,7 @@ import {
   FieldValueRow,
 } from "@/services/fieldMasterService";
 
-// ─── Local helper UI (same pattern as other master pages) ───────────────────
+// Local helper UI (same pattern as other master pages)
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">
     {title}
@@ -42,9 +42,9 @@ const ic = (err?: boolean) =>
     ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50")
     : inputCls;
 
-// ─── Page ───────────────────────────────────────────────────────────────────
+// Page
 export default function FieldMasterPage() {
-  // ── State ──────────────────────────────────────────────────────────────────
+  // State
   const [fields, setFields] = useState<string[]>([]);
   const [loadingFields, setLoadingFields] = useState(true);
 
@@ -58,7 +58,7 @@ export default function FieldMasterPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // ── Load field list once ───────────────────────────────────────────────────
+  // Load field list once
   useEffect(() => {
     setLoadingFields(true);
     getFields()
@@ -66,7 +66,7 @@ export default function FieldMasterPage() {
       .finally(() => setLoadingFields(false));
   }, []);
 
-  // ── Load values whenever selected field changes ────────────────────────────
+  // Load values whenever selected field changes
   const loadValues = useCallback(async (fieldName: string) => {
     if (!fieldName) { setGridData([]); return; }
     setLoadingGrid(true);
@@ -86,7 +86,7 @@ export default function FieldMasterPage() {
     loadValues(selectedField);
   }, [selectedField, loadValues]);
 
-  // ── Add value ──────────────────────────────────────────────────────────────
+  // Add value
   const handleAdd = async () => {
     setSubmitAttempted(true);
     setError("");
@@ -119,7 +119,7 @@ export default function FieldMasterPage() {
     }
   };
 
-  // ── Delete value ───────────────────────────────────────────────────────────
+  // Delete value
   const handleDelete = async (row: FieldValueRow) => {
     if (!confirm(`Delete "${row.FieldValue}" from ${row.FieldName}?`)) return;
     setError("");
@@ -133,7 +133,7 @@ export default function FieldMasterPage() {
     }
   };
 
-  // ── Columns ────────────────────────────────────────────────────────────────
+  // Columns
   const columns: Column<FieldValueRow>[] = [
     {
       key: "SortOrder",
@@ -164,10 +164,10 @@ export default function FieldMasterPage() {
     },
   ];
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Render
   return (
-    <div className="max-w-6xl mx-auto space-y-5">
-      {/* ── Page Header ── */}
+    <div className="w-full space-y-5">
+      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-800">Field Master</h2>
@@ -184,7 +184,7 @@ export default function FieldMasterPage() {
         </div>
       </div>
 
-      {/* ── Error / Success Banners ── */}
+      {/* Error / Success Banners */}
       {error && (
         <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 font-medium">
           {error}
@@ -196,7 +196,7 @@ export default function FieldMasterPage() {
         </div>
       )}
 
-      {/* ── Top Form Card ── */}
+      {/* Top Form Card */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="p-8 space-y-8">
           <div>
@@ -284,7 +284,7 @@ export default function FieldMasterPage() {
         </div>
       </div>
 
-      {/* ── Grid Card ── */}
+      {/* Grid Card */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         {!selectedField ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">

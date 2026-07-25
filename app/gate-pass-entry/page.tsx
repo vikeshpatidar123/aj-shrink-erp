@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, X, Check, Loader2, Printer } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
@@ -385,7 +386,7 @@ export default function GatePassEntryPage() {
         </div>
         <div className="flex items-center gap-2">
           <TutorialButton title="Gate Pass Entry — Tutorial" />
-          <Button icon={<Plus size={16} />} onClick={openAdd}>New Gate Pass</Button>
+          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Gate Pass</Button>
         </div>
       </div>
 
@@ -409,8 +410,8 @@ export default function GatePassEntryPage() {
           searchKeys={["VoucherNo", "LedgerName", "GatePassType"]}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => deleteRow(row)}>Delete</Button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteRow(row)} />
             </div>
           )}
         />

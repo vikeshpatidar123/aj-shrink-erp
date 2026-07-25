@@ -1,5 +1,6 @@
 "use client";
 
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, RefreshCw, Plus, Pencil, Trash2, Printer, FileText } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -267,9 +268,9 @@ export default function InvoiceTab() {
                   <td className="px-3 py-2 text-sm text-center">{inv.IsCoaCreated ? "✓" : "—"}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <div className="flex items-center gap-1 justify-end">
-                      <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(inv)}>Edit</Button>
-                      <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => printInv(inv)}>Print</Button>
-                      <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => del(inv)}>Delete</Button>
+                      <RowAction.Edit onClick={() => openEdit(inv)} />
+                      <RowAction.Print onClick={() => printInv(inv)} />
+                      <RowAction.Delete onClick={() => del(inv)} />
                     </div>
                   </td>
                 </tr>

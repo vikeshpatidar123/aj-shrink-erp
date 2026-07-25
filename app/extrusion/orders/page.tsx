@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useMemo } from "react";
 import {
   Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator,
@@ -940,7 +941,7 @@ export default function ExtrusionOrdersPage() {
             {data.length} orders · ₹{totalRevenue.toLocaleString()} revenue
           </p>
         </div>
-        <Button icon={<Plus size={16} />} onClick={openAdd}>New Order</Button>
+        <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Order</Button>
       </div>
 
       {/* Stat cards */}
@@ -962,9 +963,9 @@ export default function ExtrusionOrdersPage() {
           searchKeys={["orderNo", "customerName", "poNo", "salesPerson"]}
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDelId(row.id)}>Delete</Button>
+              <RowAction.View onClick={() => setViewRow(row)} />
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => setDelId(row.id)} />
             </div>
           )}
         />

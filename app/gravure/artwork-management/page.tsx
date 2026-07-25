@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -12,6 +12,7 @@ import { useCategories } from "@/context/CategoriesContext";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { DataTable } from "@/components/tables/DataTable";
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -312,9 +313,6 @@ export default function ArtworkManagementPage() {
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [masterAttOpen, setMasterAttOpen] = useState<string | null>(null);
   const [masterAttLoading, setMasterAttLoading] = useState<string | null>(null);
-  const [masterSort, setMasterSort] = useState<{ col: string; dir: "asc" | "desc" } | null>(null);
-  const [masterColFilter, setMasterColFilter] = useState<string | null>(null);
-  const [masterFilters, setMasterFilters] = useState({ artworkNo: "", fileName: "", artworkName: "", content: "", catalog: "" });
 
   // ─── FieldMaster dropdown options ────────────────────────────────────────
   const [fmOptions, setFmOptions] = useState<{
@@ -577,11 +575,11 @@ export default function ArtworkManagementPage() {
 
   // Close dropdowns on outside click
   useEffect(() => {
-    if (!openStageRow && !colFilterOpen && !masterColFilter && !masterAttOpen) return;
-    const handler = () => { setOpenStageRow(null); setColFilterOpen(null); setMasterColFilter(null); setMasterAttOpen(null); };
+    if (!openStageRow && !colFilterOpen && !masterAttOpen) return;
+    const handler = () => { setOpenStageRow(null); setColFilterOpen(null); setMasterAttOpen(null); };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [openStageRow, colFilterOpen, masterColFilter, masterAttOpen]);
+  }, [openStageRow, colFilterOpen, masterAttOpen]);
 
   // ─── Load list + dropdowns ────────────────────────────────────────────────
   const loadList = useCallback(async () => {
@@ -876,7 +874,7 @@ export default function ArtworkManagementPage() {
             } />
           </button>
           {activeTab === "master" && (
-            <Button icon={<Plus size={16} />} onClick={openAdd}>New Artwork</Button>
+            <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Artwork</Button>
           )}
         </div>
       </div>
@@ -900,255 +898,76 @@ export default function ArtworkManagementPage() {
         ))}
       </div>
 
-      {/* Search — hidden on library tab (it has its own filters) */}
-      {activeTab !== "library" && (
-        <div className="flex items-center gap-3">
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search artwork no., product name, client, category…"
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-        </div>
-      )}
 
       {/* ═══ TAB: Artwork Master ═══════════════════════════════════════════ */}
-      {activeTab === "master" && (() => {
-        // Master table column filter config
-        type MCF = { key: keyof typeof masterFilters; getVal: (r: ArtworkRow) => string };
-        const MASTER_CF: Record<string, MCF> = {
-          "ARTWORK NO.": { key: "artworkNo", getVal: r => r.ArtworkNo || "" },
-          "FILE NAME": { key: "fileName", getVal: r => (r as any).AttachmentFilesName || "" },
-          "ARTWORK NAME": { key: "artworkName", getVal: r => r.ArtworkName || r.ProductName || "" },
-          "SUB TYPE (CONTENT)": { key: "content", getVal: r => r.Content || "" },
-          "CATALOG": { key: "catalog", getVal: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked" },
-        };
-        const MASTER_SORT_KEY: Record<string, (r: ArtworkRow) => string> = {
-          "ARTWORK NO.": r => r.ArtworkNo || "",
-          "FILE NAME": r => (r as any).AttachmentFilesName || "",
-          "ARTWORK NAME": r => r.ArtworkName || r.ProductName || "",
-          "SUB TYPE (CONTENT)": r => r.Content || "",
-          "CATALOG": r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked",
-        };
-
-        const masterFiltered = filtered.filter(r => {
-          const mf = masterFilters;
-          const catalogVal = (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? "Linked" : "Not linked";
-          return (!mf.artworkNo || (r.ArtworkNo || "").toLowerCase().includes(mf.artworkNo.toLowerCase()))
-            && (!mf.fileName || ((r as any).AttachmentFilesName || "").toLowerCase().includes(mf.fileName.toLowerCase()))
-            && (!mf.artworkName || (r.ArtworkName || r.ProductName || "").toLowerCase().includes(mf.artworkName.toLowerCase()))
-            && (!mf.content || (r.Content || "").toLowerCase().includes(mf.content.toLowerCase()))
-            && (!mf.catalog || catalogVal.toLowerCase().includes(mf.catalog.toLowerCase()));
-        });
-
-        const masterSorted = (masterSort && MASTER_SORT_KEY[masterSort.col])
-          ? [...masterFiltered].sort((a, b) => {
-            const cmp = MASTER_SORT_KEY[masterSort.col](a).localeCompare(MASTER_SORT_KEY[masterSort.col](b), undefined, { numeric: true, sensitivity: "base" });
-            return masterSort.dir === "asc" ? cmp : -cmp;
-          })
-          : masterFiltered;
-
-        const hasColFilter = Object.values(masterFilters).some(Boolean);
-
-        return (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {loading ? (
-              <div className="flex items-center justify-center py-16"><Loader2 size={28} className="animate-spin text-gray-400" /></div>
-            ) : filtered.length === 0 ? (
-              <div className="text-center py-16 text-gray-400">No artworks found. Click "New Artwork" to create one.</div>
-            ) : (
-              <>
-                {/* toolbar */}
-                {(hasColFilter || masterSort) && (
-                  <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-100 bg-gray-50 text-[11px] text-gray-500">
-                    {masterSort && <span>Sorted by <strong>{masterSort.col}</strong> {masterSort.dir === "asc" ? "↑" : "↓"}</span>}
-                    {hasColFilter && <span>{Object.values(masterFilters).filter(Boolean).length} column filter(s) active</span>}
-                    <button onClick={() => { setMasterSort(null); setMasterFilters({ artworkNo: "", fileName: "", artworkName: "", content: "", catalog: "" }); }}
-                      className="ml-auto text-red-500 hover:text-red-700 font-semibold">✕ Clear all</button>
-                  </div>
-
-                )}
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 z-10">
-                    <tr style={{ background: "var(--erp-primary)" }}>
-                      {([
-                        { h: "ARTWORK NO.", s: true },
-                        { h: "FILE NAME", s: true },
-                        { h: "ARTWORK NAME", s: true },
-                        { h: "SUB TYPE (CONTENT)", s: true },
-                        { h: "CATALOG", s: true },
-                        { h: "ATTACHMENTS", s: false },
-                        { h: "", s: false },
-                      ] as { h: string; s: boolean }[]).map(({ h, s }) => {
-                        const isSortActive = masterSort?.col === h;
-                        const cf = MASTER_CF[h];
-                        const isFiltered = cf ? !!masterFilters[cf.key] : false;
-                        const isOpen = masterColFilter === h;
-                        const colVals = cf
-                          ? [...new Set(filtered.map(r => cf.getVal(r)).filter(Boolean))].sort()
-                          : [];
-                        return (
-                          <th key={h || "actions"} className="relative px-4 py-3 text-left whitespace-nowrap border-r border-white/10 last:border-r-0">
-                            <div className="flex items-center gap-1">
-                              <span
-                                className={`flex items-center gap-1 text-[11px] font-bold text-white/80 uppercase tracking-wider flex-1 ${s ? "cursor-pointer hover:text-white select-none" : ""}`}
-                                onClick={() => {
-                                  if (!s || !h) return;
-                                  if (!isSortActive) { setMasterSort({ col: h, dir: "asc" }); return; }
-                                  if (masterSort?.dir === "asc") { setMasterSort({ col: h, dir: "desc" }); return; }
-                                  setMasterSort(null);
-                                }}
-                              >
-                                {h}
-                                {s && h && (
-                                  <span className="flex flex-col leading-none ml-0.5">
-                                    <span className={`text-[7px] ${isSortActive && masterSort?.dir === "asc" ? "text-yellow-300" : "text-white/25"}`}>▲</span>
-                                    <span className={`text-[7px] ${isSortActive && masterSort?.dir === "desc" ? "text-yellow-300" : "text-white/25"}`}>▼</span>
-                                  </span>
-                                )}
-                              </span>
-                              {cf && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); setMasterColFilter(isOpen ? null : h); }}
-                                  className={`p-0.5 rounded flex-shrink-0 transition-colors ${isFiltered ? "text-yellow-300" : isOpen ? "text-white" : "text-white/70 hover:text-white"}`}
-                                  title={isFiltered ? `Filtered: ${masterFilters[cf.key]}` : "Filter"}
-                                >
-                                  <Filter size={9} />
-                                </button>
-                              )}
-                            </div>
-                            {/* Excel dropdown */}
-                            {isOpen && cf && (
-                              <div
-                                className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 min-w-[200px] max-h-[260px] overflow-y-auto"
-                                onClick={e => e.stopPropagation()}
-                              >
-                                <button
-                                  className="w-full px-3 py-2 text-left text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 border-b border-gray-100"
-                                  onClick={() => { setMasterFilters(f => ({ ...f, [cf.key]: "" })); setMasterColFilter(null); }}
-                                >
-                                  — All (Clear Filter) —
-                                </button>
-                                {colVals.map(v => {
-                                  const active = masterFilters[cf.key] === v;
-                                  const inCurrent = masterFiltered.some(r => cf.getVal(r) === v);
-                                  return (
-                                    <button key={v}
-                                      className={`w-full px-3 py-2 text-left text-[11px] flex items-center gap-2 transition-colors
-                                        ${active ? "bg-indigo-50 text-indigo-700 font-semibold" : inCurrent ? "text-gray-700 hover:bg-gray-50" : "text-gray-300 hover:bg-gray-50"}`}
-                                      onClick={() => { setMasterFilters(f => ({ ...f, [cf.key]: active ? "" : v })); setMasterColFilter(null); }}
-                                    >
-                                      <span className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${active ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}>
-                                        {active && <Check size={8} className="text-white" />}
-                                      </span>
-                                      {v}
-                                      {!inCurrent && <span className="ml-auto text-[9px] text-gray-300">(hidden)</span>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                    {/* ── Filter input row ── */}
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      {[
-                        { key: "artworkNo" as const, ph: "Filter…" },
-                        { key: "fileName" as const, ph: "Filter…" },
-                        { key: "artworkName" as const, ph: "Filter…" },
-                        { key: "content" as const, ph: "Filter…" },
-                        { key: "catalog" as const, ph: "Filter…" },
-                        { key: null, ph: "" },
-                        { key: null, ph: "" },
-                      ].map((f, i) => (
-                        <td key={i} className="px-2 py-1.5">
-                          {f.key ? (
-                            <div className="relative">
-                              <input
-                                value={masterFilters[f.key]}
-                                onChange={e => setMasterFilters(p => ({ ...p, [f.key!]: e.target.value }))}
-                                placeholder={f.ph}
-                                className="w-full text-xs border rounded px-2 py-1 pr-5 outline-none bg-white border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 placeholder-gray-300"
-                              />
-                              {masterFilters[f.key] && (
-                                <button onClick={() => setMasterFilters(p => ({ ...p, [f.key!]: "" }))}
-                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                                  <X size={10} />
-                                </button>
-                              )}
-                            </div>
-                          ) : null}
-                        </td>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {masterSorted.map((row, i) => (
-                      <tr key={row.ArtworkID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                        <td className="px-4 py-3 font-semibold text-indigo-700">{row.ArtworkNo}</td>
-                        <td className="px-4 py-3 text-xs text-gray-600 max-w-[180px] break-words">{(row as any).AttachmentFilesName || <span className="text-gray-300">—</span>}</td>
-                        <td className="px-4 py-3 text-gray-800 font-medium">{row.ArtworkName || row.ProductName}</td>
-                        <td className="px-4 py-3">
-                          {row.Content ? (
-                            <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.Content}</span>
-                          ) : <span className="text-xs text-gray-400">—</span>}
-                        </td>
-                        <td className="px-4 py-3">
-                          {row.ProductMasterID && String(row.ProductMasterID) !== "0" ? (
-                            <span className="flex items-center gap-1 text-xs text-green-700 font-medium">
-                              <Link2 size={11} /> Linked
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-400">Not linked</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 relative">
-                          <button
-                            onClick={e => openAttView(e, row)}
-                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-500 hover:text-indigo-700 transition-colors"
-                            title="View attachments"
-                          >
-                            {masterAttLoading === row.ArtworkID
-                              ? <Loader2 size={15} className="animate-spin" />
-                              : <Eye size={15} />}
-                          </button>
-                          {masterAttOpen === row.ArtworkID && (
-                            <div className="absolute z-50 left-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-xl p-2 space-y-1"
-                              onClick={e => e.stopPropagation()}>
-                              {(attMap[row.ArtworkID] ?? []).length === 0 ? (
-                                <p className="text-xs text-gray-400 px-2 py-1">No attachments</p>
-                              ) : (attMap[row.ArtworkID] ?? []).map(att => (
-                                <a key={att._id} href={att.url} target="_blank" rel="noreferrer"
-                                  className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-indigo-50 text-xs text-gray-700 hover:text-indigo-700 truncate">
-                                  {att.mimeType === "application/pdf"
-                                    ? <FileText size={13} className="text-red-500 flex-shrink-0" />
-                                    : att.mimeType?.startsWith("image/")
-                                      ? <ImgIcon size={13} className="text-blue-500 flex-shrink-0" />
-                                      : <Paperclip size={13} className="text-gray-400 flex-shrink-0" />}
-                                  <span className="truncate">{att.name}</span>
-                                </a>
-                              ))}
-                              <button onClick={() => setMasterAttOpen(null)}
-                                className="w-full text-center text-[10px] text-gray-400 hover:text-gray-600 py-0.5 mt-1">
-                                Close
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2 justify-end">
-                            <RowAction.Edit onClick={() => openEdit(row)} />
-                            <RowAction.Delete onClick={() => deleteArtwork(row)} />
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-          </div>
-        );
-      })()}
+      {activeTab === "master" && (
+        <DataTable<ArtworkRow>
+          data={filtered}
+          loading={loading}
+          rowHeight={44}
+          columns={[
+            {
+              key: "ArtworkNo",
+              header: "Artwork No.",
+              wrap: true,
+              render: r => <span className="font-semibold text-indigo-700">{r.ArtworkNo}</span>,
+            },
+            {
+              key: "ClientArtWorkNo",
+              header: "File Name",
+              wrap: true,
+              size: 280,
+              render: r => (
+                <span className="text-gray-500 text-[11px] leading-snug break-all">
+                  {(r as any).AttachmentFilesName || r.ClientArtWorkNo || "—"}
+                </span>
+              ),
+            },
+            {
+              key: "ArtworkName",
+              header: "Artwork Name",
+              wrap: true,
+              size: 280,
+              render: r => (
+                <span className="font-medium text-gray-800 leading-snug break-words">
+                  {r.ArtworkName || r.ProductName || "—"}
+                </span>
+              ),
+            },
+            {
+              key: "Content",
+              header: "Sub Type (Content)",
+              render: r => r.Content ? (
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">{r.Content}</span>
+              ) : <span className="text-gray-400">—</span>,
+            },
+            {
+              key: "ProductMasterID",
+              header: "Catalog",
+              render: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Linked</span>
+              ) : (
+                <span className="text-xs text-gray-400">Not linked</span>
+              ),
+            },
+          ]}
+          actions={row => (
+            <div className="flex items-center gap-2 justify-end">
+              <button
+                onClick={e => { e.stopPropagation(); openAttView(e as any, row); }}
+                className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-500 hover:text-indigo-700 transition-colors"
+                title="View attachments"
+              >
+                {masterAttLoading === row.ArtworkID
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <Eye size={15} />}
+              </button>
+              <RowAction.Edit onClick={() => openEdit(row)} />
+              <RowAction.Delete onClick={() => deleteArtwork(row)} />
+            </div>
+          )}
+        />
+      )}
 
       {/* ═══ TAB: Artwork Management ════════════════════════════════════════ */}
       {activeTab === "management" && (
@@ -1932,330 +1751,148 @@ export default function ArtworkManagementPage() {
             </div>
 
             {/* ── Data Table ── */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
-              {libLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 size={28} className="animate-spin text-gray-400" />
-                </div>
-              ) : sortedRows.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400">
-                  <Library size={36} className="mb-3 text-gray-300" />
-                  <p className="text-sm">No artwork records found.</p>
-                </div>
-              ) : (
-                <table className="w-full text-xs min-w-[2800px]">
-                  <thead className="sticky top-0 z-10">
-                    <tr style={{ background: "var(--erp-primary)" }}>
-                      {([
-                        { h: "#", s: false },
-                        { h: "JOB NAME", s: true },
-                        { h: "SKU SIZE", s: true },
-                        { h: "MATERIAL", s: true },
-                        { h: "DESIGN TYPE", s: true },
-                        { h: "CURRENT STATUS", s: true },
-                        { h: "CUSTOMER / PARTY", s: true },
-                        { h: "CYL. MAKER", s: true },
-                        { h: "COLORS", s: true },
-                        { h: "BRAND / PRODUCT", s: true },
-                        { h: "SUBSTRATE", s: true },
-                        { h: "CYLINDER STATUS", s: true },
-                        { h: "ARTWORK RECD.", s: true },
-                        { h: "APPRVD. TO MAKER", s: false },
-                        { h: "BRAND APPROVAL", s: false },
-                        { h: "LSD APPROVAL", s: false },
-                        { h: "DEV. STATUS", s: false },
-                        { h: "REMARKS", s: false },
-                        { h: "ACTIONS", s: false },
-                      ] as { h: string; s: boolean }[]).map(({ h, s }) => {
-                        const isSortActive = libSort?.col === h;
-                        const cf = COL_FILTER[h];
-                        const isFiltered = cf ? !!lf[cf.key] : false;
-                        const isColFOpen = colFilterOpen === h;
-                        const colVals = cf
-                          ? [...new Set(libRows.map(r => cf.getVal(r)).filter(Boolean))].sort((a, b) =>
-                            a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
-                          : [];
-                        return (
-                          <th key={h} className="relative px-2 py-3 text-left text-[10px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
-                            <div className="flex items-center gap-1">
-                              {/* Sort click zone */}
-                              <span
-                                className={`flex items-center gap-0.5 flex-1 ${s ? "cursor-pointer hover:text-white" : ""}`}
-                                onClick={() => {
-                                  if (!s) return;
-                                  if (!isSortActive) { setLibSort({ col: h, dir: "asc" }); return; }
-                                  if (libSort?.dir === "asc") { setLibSort({ col: h, dir: "desc" }); return; }
-                                  setLibSort(null);
-                                }}
+            <DataTable<LibRow>
+              data={sortedRows}
+              loading={libLoading}
+              getRowId={r => String(r.ArtworkID)}
+              rowHeight={52}
+              columns={[
+                {
+                  key: "JobName", header: "Job Name", wrap: true, size: 220,
+                  render: r => (
+                    <div className="leading-snug">
+                      <p className="font-semibold text-gray-800">{r.JobName || "—"}</p>
+                      {r.ArtworkNo && <p className="text-[10px] text-gray-400 mt-0.5">{r.ArtworkNo}</p>}
+                      {r.AttachmentFilesName && <p className="text-[10px] text-blue-400 mt-0.5 break-words">{r.AttachmentFilesName}</p>}
+                    </div>
+                  ),
+                },
+                {
+                  key: "PackSize", header: "SKU Size",
+                  render: r => <span className="font-medium text-gray-700">{r.PackSize || "—"}</span>,
+                },
+                {
+                  key: "StructureType", header: "Material",
+                  render: r => r.StructureType
+                    ? <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.StructureType}</span>
+                    : <span className="text-gray-400">—</span>,
+                },
+                {
+                  key: "TypeOfProduct", header: "Design Type", wrap: true, size: 160,
+                  render: r => <span className="text-gray-700 leading-snug">{r.TypeOfProduct || "—"}</span>,
+                },
+                {
+                  key: "ArtworkStage", header: "Current Status", size: 170,
+                  render: r => {
+                    const stage = r.ArtworkStage || "Artwork Pending";
+                    const cls = (() => {
+                      if (stage === "Cylinder Received") return "bg-green-100 text-green-800 border border-green-200";
+                      if (stage === "Brand Approved") return "bg-blue-100 text-blue-800 border border-blue-200";
+                      if (stage === "Engraving") return "bg-indigo-100 text-indigo-800 border border-indigo-200";
+                      if (stage === "Under Process") return "bg-teal-100 text-teal-800 border border-teal-200";
+                      if (stage === "Pending Mail to MB") return "bg-amber-50 text-amber-800 border border-amber-200";
+                      if (stage === "On Hold") return "bg-red-100 text-red-800 border border-red-200";
+                      if (stage === "Released to Production") return "bg-green-200 text-green-900 border border-green-300";
+                      if (stage === "LSD Shade Approved") return "bg-purple-100 text-purple-800 border border-purple-200";
+                      return "bg-gray-100 text-gray-600 border border-gray-200";
+                    })();
+                    return <span className={`inline-block px-2 py-1 rounded text-[10px] font-semibold leading-tight ${cls}`}>{stage}</span>;
+                  },
+                },
+                {
+                  key: "Customer", header: "Customer / Party", wrap: true, size: 140,
+                  render: r => <span className="text-gray-700 text-[11px] leading-snug">{r.Customer || "—"}</span>,
+                },
+                {
+                  key: "CylVendor", header: "Cyl. Maker",
+                  render: r => <span className="text-gray-700 font-medium">{r.CylVendor || "—"}</span>,
+                },
+                {
+                  key: "NoOfColors", header: "Colors",
+                  render: r => <span className="font-bold text-gray-700">{r.NoOfColors || "—"}</span>,
+                },
+                {
+                  key: "Brand", header: "Brand / Product", wrap: true, size: 140,
+                  render: r => (
+                    <div className="leading-snug">
+                      <p className="font-bold text-red-600 text-[11px]">{r.Brand || "—"}</p>
+                      <p className="text-gray-500 text-[10px] mt-0.5">{r.CategoryName || "—"}</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: "Substrate", header: "Substrate",
+                  render: r => <span className="text-gray-600">{r.Substrate || "—"}</span>,
+                },
+                {
+                  key: "CylStatus", header: "Cylinder Status",
+                  render: r => r.CylStatus
+                    ? <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">{r.CylStatus}</span>
+                    : <span className="text-gray-400">—</span>,
+                },
+                {
+                  key: "CreatedDate", header: "Artwork Recd.",
+                  render: r => <span className="text-gray-600 text-[11px]">{r.CreatedDate || "—"}</span>,
+                },
+              ]}
+              actions={r => {
+                const stage = r.ArtworkStage || "Artwork Pending";
+                const stageIdx = ARTWORK_STAGES.indexOf(stage);
+                const isUpdating = libUpdating === r.ArtworkID;
+                return isUpdating ? (
+                  <div className="flex items-center gap-1.5 text-indigo-500">
+                    <Loader2 size={13} className="animate-spin" />
+                    <span className="text-[10px]">Saving…</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <button disabled={stageIdx <= 0}
+                      onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.max(0, stageIdx - 1)])}
+                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-not-allowed">
+                      <ChevronLeft size={13} />
+                    </button>
+                    <div className="relative">
+                      <button
+                        onClick={e => { e.stopPropagation(); setOpenStageRow(openStageRow === r.ArtworkID ? null : r.ArtworkID); }}
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap
+                          ${STAGE_COLORS[stage]?.bg || "bg-gray-100"}
+                          ${STAGE_COLORS[stage]?.text || "text-gray-700"}
+                          ${STAGE_COLORS[stage]?.border || "border-gray-300"}
+                        `}
+                      >
+                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: STAGE_COLORS[stage]?.dot || "#9ca3af" }} />
+                        {stage}
+                        <ChevronDown size={10} className="opacity-60" />
+                      </button>
+                      {openStageRow === r.ArtworkID && (
+                        <div className="absolute z-50 left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
+                          {ARTWORK_STAGES.map(s => {
+                            const c = STAGE_COLORS[s] || { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
+                            const isCur = s === stage;
+                            return (
+                              <button key={s}
+                                onClick={() => { updateStage(r.ArtworkID, s); setOpenStageRow(null); }}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-medium transition-colors
+                                  ${isCur ? `${c.bg} ${c.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
                               >
-                                {h}
-                                {s && (
-                                  <span className="flex flex-col leading-none ml-0.5">
-                                    <span className={`text-[7px] ${isSortActive && libSort?.dir === "asc" ? "text-yellow-300" : "text-white/25"}`}>▲</span>
-                                    <span className={`text-[7px] ${isSortActive && libSort?.dir === "desc" ? "text-yellow-300" : "text-white/25"}`}>▼</span>
-                                  </span>
-                                )}
-                              </span>
-                              {/* Filter funnel */}
-                              {cf && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); setColFilterOpen(isColFOpen ? null : h); }}
-                                  className={`p-0.5 rounded transition-colors flex-shrink-0 ${isFiltered ? "text-yellow-300" : isColFOpen ? "text-white" : "text-white/70 hover:text-white"}`}
-                                  title={isFiltered ? `Filtered: ${lf[cf.key]}` : "Filter"}
-                                >
-                                  <Filter size={9} />
-                                </button>
-                              )}
-                            </div>
-
-                            {/* Excel-style dropdown */}
-                            {isColFOpen && cf && (
-                              <div
-                                className="absolute z-50 top-full left-0 mt-0.5 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 min-w-[180px] max-h-[260px] overflow-y-auto"
-                                onClick={e => e.stopPropagation()}
-                              >
-                                <button
-                                  className="w-full px-3 py-2 text-left text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 border-b border-gray-100"
-                                  onClick={() => { setLF(cf.key, ""); setColFilterOpen(null); }}
-                                >
-                                  — All (Clear Filter) —
-                                </button>
-                                {colVals.map(v => {
-                                  const active = lf[cf.key] === v;
-                                  const inCurrent = filtered.some(r => cf.getVal(r) === v);
-                                  return (
-                                    <button key={v}
-                                      className={`w-full px-3 py-2 text-left text-[11px] flex items-center gap-2 transition-colors
-                                        ${active ? "bg-indigo-50 text-indigo-700 font-semibold" : inCurrent ? "text-gray-700 hover:bg-gray-50" : "text-gray-300 hover:bg-gray-50"}`}
-                                      onClick={() => { setLF(cf.key, active ? "" : v); setColFilterOpen(null); }}
-                                    >
-                                      <span className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${active ? "bg-indigo-600 border-indigo-600" : "border-gray-300"}`}>
-                                        {active && <Check size={8} className="text-white" />}
-                                      </span>
-                                      <span className="truncate">{v || "—"}</span>
-                                      {!inCurrent && <span className="ml-auto text-[9px] text-gray-300">(hidden)</span>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                    {/* ── Filter input row ── */}
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      {[
-                        { key: null as null },
-                        { key: "jobName" as const },
-                        { key: "packSize" as const },
-                        { key: "category" as const },
-                        { key: "designType" as const },
-                        { key: "artworkStage" as const },
-                        { key: "customer" as const },
-                        { key: "cylVendor" as const },
-                        { key: "noOfColors" as const },
-                        { key: "brand" as const },
-                        { key: "substrate" as const },
-                        { key: "cylStatus" as const },
-                        { key: null as null },
-                        { key: null as null },
-                        { key: null as null },
-                        { key: null as null },
-                        { key: null as null },
-                        { key: null as null },
-                        { key: null as null },
-                      ].map((f, idx) => (
-                        <td key={idx} className="px-2 py-1.5">
-                          {f.key ? (
-                            <div className="relative">
-                              <input
-                                value={lf[f.key]}
-                                onChange={e => setLF(f.key!, e.target.value)}
-                                placeholder="Filter…"
-                                className="w-full text-xs border rounded px-2 py-1 pr-5 outline-none bg-white border-gray-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-200 placeholder-gray-300"
-                              />
-                              {lf[f.key] && (
-                                <button onClick={() => setLF(f.key!, "")}
-                                  className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                                  <X size={10} />
-                                </button>
-                              )}
-                            </div>
-                          ) : null}
-                        </td>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedRows.map((r, i) => {
-                      const stage = r.ArtworkStage || "Artwork Pending";
-                      const stageIdx = ARTWORK_STAGES.indexOf(stage);
-                      const isUpdating = libUpdating === r.ArtworkID;
-
-                      // Status badge style for CURRENT STATUS column
-                      const statusBadgeCls = (() => {
-                        if (stage === "Cylinder Received") return "bg-green-100 text-green-800 border border-green-200";
-                        if (stage === "Brand Approved") return "bg-blue-100 text-blue-800 border border-blue-200";
-                        if (stage === "Engraving") return "bg-indigo-100 text-indigo-800 border border-indigo-200";
-                        if (stage === "Under Process") return "bg-teal-100 text-teal-800 border border-teal-200";
-                        if (stage === "Pending Mail to MB") return "bg-amber-50 text-amber-800 border border-amber-200";
-                        if (stage === "On Hold") return "bg-red-100 text-red-800 border border-red-200";
-                        if (stage === "Released to Production") return "bg-green-200 text-green-900 border border-green-300";
-                        if (stage === "LSD Shade Approved") return "bg-purple-100 text-purple-800 border border-purple-200";
-                        return "bg-gray-100 text-gray-600 border border-gray-200";
-                      })();
-
-                      return (
-                        <tr key={`${r.ArtworkID}-${i}`}
-                          className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
-                          <td className="px-3 py-3 text-gray-400 text-[10px] font-medium">{i + 1}</td>
-
-                          {/* JOB NAME + artwork code + file name */}
-                          <td className="px-3 py-3 min-w-[160px]">
-                            <p className="font-semibold text-gray-800 leading-tight">{r.JobName || "—"}</p>
-                            {r.ArtworkNo && <p className="text-[10px] text-gray-400 mt-0.5">{r.ArtworkNo}</p>}
-                            {r.AttachmentFilesName && <p className="text-[10px] text-blue-400 mt-0.5 break-words">{r.AttachmentFilesName}</p>}
-                          </td>
-
-                          {/* SKU SIZE */}
-                          <td className="px-3 py-3 text-gray-700 whitespace-nowrap font-medium">{r.PackSize || "—"}</td>
-
-                          {/* MATERIAL */}
-                          <td className="px-3 py-3 whitespace-nowrap">
-                            {r.StructureType ? (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.StructureType}</span>
-                            ) : <span className="text-gray-400">—</span>}
-                          </td>
-
-                          {/* DESIGN TYPE */}
-                          <td className="px-3 py-3 max-w-[200px]">
-                            <p className="text-gray-700 leading-snug line-clamp-2" title={r.TypeOfProduct}>{r.TypeOfProduct || "—"}</p>
-                          </td>
-
-                          {/* CURRENT STATUS */}
-                          <td className="px-3 py-3 min-w-[180px]">
-                            <span className={`inline-block px-2 py-1 rounded text-[10px] font-semibold leading-tight ${statusBadgeCls}`}>
-                              {stage}
-                            </span>
-                          </td>
-
-                          {/* CUSTOMER / PARTY */}
-                          <td className="px-3 py-3 max-w-[150px]">
-                            <p className="text-gray-700 text-[11px] leading-snug line-clamp-2" title={r.Customer}>{r.Customer || "—"}</p>
-                          </td>
-
-                          {/* CYL. MAKER */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-700 font-medium">{r.CylVendor || "—"}</td>
-
-                          {/* COLORS */}
-                          <td className="px-3 py-3 whitespace-nowrap text-center font-bold text-gray-700">{r.NoOfColors || "—"}</td>
-
-                          {/* BRAND / PRODUCT */}
-                          <td className="px-3 py-3 whitespace-nowrap min-w-[110px]">
-                            <p className="font-bold text-red-600 text-[11px]">{r.Brand || "—"}</p>
-                            <p className="text-gray-500 text-[10px] mt-0.5">{r.CategoryName || "—"}</p>
-                          </td>
-
-                          {/* SUBSTRATE */}
-                          <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{r.Substrate || "—"}</td>
-
-                          {/* CYLINDER STATUS */}
-                          <td className="px-3 py-3 whitespace-nowrap">
-                            {r.CylStatus ? (
-                              <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">{r.CylStatus}</span>
-                            ) : <span className="text-gray-400">—</span>}
-                          </td>
-
-                          {/* ARTWORK RECD. */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-600 text-[11px]">{r.CreatedDate || "—"}</td>
-
-                          {/* APPRVD. TO MAKER */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
-
-                          {/* BRAND APPROVAL */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
-
-                          {/* LSD APPROVAL */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
-
-                          {/* DEV. STATUS */}
-                          <td className="px-3 py-3 whitespace-nowrap">
-                            <span className="text-indigo-700 font-medium text-[11px]">{stage}</span>
-                          </td>
-
-                          {/* REMARKS */}
-                          <td className="px-3 py-3 whitespace-nowrap text-gray-400">—</td>
-
-                          {/* ACTIONS — custom colored stage picker */}
-                          <td className="px-3 py-3 relative">
-                            {isUpdating ? (
-                              <div className="flex items-center gap-1.5 text-indigo-500">
-                                <Loader2 size={13} className="animate-spin" />
-                                <span className="text-[10px]">Saving…</span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                {/* Prev */}
-                                <button disabled={stageIdx <= 0}
-                                  onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.max(0, stageIdx - 1)])}
-                                  className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-not-allowed flex-shrink-0">
-                                  <ChevronLeft size={13} />
-                                </button>
-
-                                {/* Custom stage button */}
-                                <div className="relative">
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setOpenStageRow(openStageRow === r.ArtworkID ? null : r.ArtworkID); }}
-                                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap
-                                      ${STAGE_COLORS[stage]?.bg || "bg-gray-100"}
-                                      ${STAGE_COLORS[stage]?.text || "text-gray-700"}
-                                      ${STAGE_COLORS[stage]?.border || "border-gray-300"}
-                                    `}
-                                  >
-                                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: STAGE_COLORS[stage]?.dot || "#9ca3af" }} />
-                                    {stage}
-                                    <ChevronDown size={10} className="opacity-60" />
-                                  </button>
-
-                                  {/* Dropdown list */}
-                                  {openStageRow === r.ArtworkID && (
-                                    <div className="absolute z-50 left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
-                                      {ARTWORK_STAGES.map(s => {
-                                        const c = STAGE_COLORS[s] || { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
-                                        const isCur = s === stage;
-                                        return (
-                                          <button key={s}
-                                            onClick={() => { updateStage(r.ArtworkID, s); setOpenStageRow(null); }}
-                                            className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-medium transition-colors
-                                              ${isCur ? `${c.bg} ${c.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
-                                          >
-                                            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
-                                            {s}
-                                            {isCur && <Check size={11} className="ml-auto" />}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Next */}
-                                <button disabled={stageIdx >= ARTWORK_STAGES.length - 1}
-                                  onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.min(ARTWORK_STAGES.length - 1, stageIdx + 1)])}
-                                  className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-green-600 disabled:opacity-20 disabled:cursor-not-allowed flex-shrink-0">
-                                  <ChevronRight size={13} />
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>{/* data table */}
+                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
+                                {s}
+                                {isCur && <Check size={11} className="ml-auto" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <button disabled={stageIdx >= ARTWORK_STAGES.length - 1}
+                      onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.min(ARTWORK_STAGES.length - 1, stageIdx + 1)])}
+                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-green-600 disabled:opacity-20 disabled:cursor-not-allowed">
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                );
+              }}
+            />
 
           </div>
         );
@@ -2513,83 +2150,62 @@ export default function ArtworkManagementPage() {
 
       {/* ═══ TAB: BB Artwork ════════════════════════════════════════════════ */}
       {activeTab === "bbartwork" && (
-        <div className="space-y-4">
-          {/* Toolbar */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <input
-              value={sgSearch} onChange={e => setSgSearch(e.target.value)}
-              placeholder="Search Child Artwork no., name, artwork…"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <button onClick={loadSubGroups}
-              className="p-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500">
-              <RefreshCw size={15} className={sgLoading ? "animate-spin" : ""} />
-            </button>
-            <Button icon={<Plus size={16} />} onClick={openAddSG}>New Child Artwork</Button>
-          </div>
-
-          {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {sgLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 size={28} className="animate-spin text-gray-400" />
-              </div>
-            ) : (() => {
-              const q = sgSearch.toLowerCase();
-              const rows = sgList.filter(r =>
-                !q
-                || r.BBArtworkNo?.toLowerCase().includes(q)
-                || r.BBArtworkName?.toLowerCase().includes(q)
-                || r.ArtworkNo?.toLowerCase().includes(q)
-                || r.ArtworkName?.toLowerCase().includes(q)
-                || r.ClientName?.toLowerCase().includes(q)
-              );
-              return rows.length === 0 ? (
-                <div className="text-center py-16 text-gray-400 text-sm">
-                  {sgLoaded ? "No Child Artwork records found." : "Click refresh or switch to this tab to load."}
+        <DataTable<BBArtworkRow>
+          data={sgList}
+          loading={sgLoading}
+          getRowId={r => String(r.BBArtworkID)}
+          toolbar={
+            <div className="flex items-center gap-2">
+              <button onClick={loadSubGroups}
+                className="p-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500"
+                title="Refresh">
+                <RefreshCw size={14} className={sgLoading ? "animate-spin" : ""} />
+              </button>
+              <Button variant="secondary" pill icon={<Plus size={15} />} onClick={openAddSG}>
+                New Child Artwork
+              </Button>
+            </div>
+          }
+          columns={[
+            {
+              key: "BBArtworkNo", header: "Child Artwork No.",
+              render: r => <span className="font-semibold text-indigo-700">{r.BBArtworkNo}</span>,
+            },
+            {
+              key: "AttachmentFilesName", header: "File Name", wrap: true, size: 240,
+              render: r => (
+                <span className="text-gray-500 text-[11px] leading-snug break-all">
+                  {r.AttachmentFilesName || "—"}
+                </span>
+              ),
+            },
+            {
+              key: "ArtworkNo", header: "Master Artwork", wrap: true, size: 200,
+              render: r => (
+                <div className="leading-snug">
+                  <span className="font-medium text-gray-800">{r.ArtworkNo}</span>
+                  {r.ArtworkName && <span className="text-xs text-gray-500 block">{r.ArtworkName}</span>}
                 </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr style={{ background: "var(--erp-primary)" }}>
-                        {["CHILD ARTWORK NO.", "FILE NAME", "MASTER ARTWORK", "CHILD ARTWORK NAME", "CONTENT", ""].map(h => (
-                          <th key={h} className="px-4 py-3 text-left text-[11px] font-bold text-white/80 uppercase tracking-wider whitespace-nowrap border-r border-white/10 last:border-r-0">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r, i) => (
-                        <tr key={r.BBArtworkID} className={`border-t border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-4 py-3 font-semibold text-indigo-700 whitespace-nowrap">{r.BBArtworkNo}</td>
-                          <td className="px-4 py-3 text-xs text-gray-600 max-w-[200px] break-words">{r.AttachmentFilesName || "—"}</td>
-                          <td className="px-4 py-3">
-                            <span className="font-medium text-gray-800">{r.ArtworkNo}</span>
-                            {r.ArtworkName && <span className="text-xs text-gray-500 ml-1">— {r.ArtworkName}</span>}
-                          </td>
-                          <td className="px-4 py-3 font-medium text-gray-800">{r.BBArtworkName}</td>
-                          <td className="px-4 py-3">
-                            {r.Content
-                              ? <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{r.Content}</span>
-                              : <span className="text-xs text-gray-400">—</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2 justify-end">
-                              <RowAction.Edit onClick={() => openEditSG(r)} />
-                              <RowAction.Delete onClick={() => deleteSG(r)} />
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
+              ),
+            },
+            {
+              key: "BBArtworkName", header: "Child Artwork Name", wrap: true, size: 220,
+              render: r => <span className="font-medium text-gray-800 leading-snug">{r.BBArtworkName || "—"}</span>,
+            },
+            {
+              key: "Content", header: "Content",
+              render: r => r.Content
+                ? <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-[10px] font-semibold rounded-full">{r.Content}</span>
+                : <span className="text-gray-400">—</span>,
+            },
+          ]}
+          actions={r => (
+            <>
+              <RowAction.Edit onClick={() => openEditSG(r)} />
+              <RowAction.Delete onClick={() => deleteSG(r)} />
+            </>
+          )}
+        />
       )}
 
       {/* ═══ BB Artwork Modal ═══════════════════════════════════════════════ */}

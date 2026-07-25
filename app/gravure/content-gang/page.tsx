@@ -7,6 +7,9 @@ import {
 import { apiGet, apiPost } from "@/lib/api";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
+import { DataTable } from "@/components/tables/DataTable";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
+import Button from "@/components/ui/Button";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type PrimaryJob = {
@@ -90,20 +93,6 @@ const GANG_COLS: { h: string; key?: keyof GangRow }[] = [
   { h: "Run. Mtr",    key: "TotalRequiredRunningMeter" },
 ];
 
-const PLAN_COLS: { h: string; key?: keyof GangPlan }[] = [
-  { h: "Gang No",    key: "GangWorkOrderNo" },
-  { h: "Date",       key: "GangDate" },
-  { h: "Primary Job", key: "PrimaryJobName" },
-  { h: "Client",     key: "PrimaryClientName" },
-  { h: "Film",       key: "Quality" },
-  { h: "Total GSM",  key: "TotalGSM" },
-  { h: "Ups L×W" },
-  { h: "Cyl (in)",   key: "CylinderCircumferenceInch" },
-  { h: "Jobs",       key: "SecondaryJobCount" },
-  { h: "Created By", key: "CreatedBy" },
-  { h: "Actions" },
-];
-
 // ─── Tab component ───────────────────────────────────────────────────────────
 const Tab = ({ label, icon: Icon, active, onClick, count }: {
   label: string; icon: React.ElementType; active: boolean;
@@ -146,7 +135,6 @@ export default function ContentGangPage() {
   // Plan list state
   const [planList, setPlanList]   = useState<GangPlan[]>([]);
   const [listLoading, setListLoading] = useState(false);
-  const [listSearch, setListSearch]   = useState("");
 
   // Planning state
   const [gangNo, setGangNo]           = useState("");
@@ -179,8 +167,6 @@ export default function ContentGangPage() {
   const [simColFilters,  setSimColFilters]  = useState<Partial<Record<keyof SimilarJob, string>>>({});
   const [gangSort,       setGangSort]       = useState<{ col: keyof GangRow;    dir: "asc" | "desc" } | null>(null);
   const [gangColFilters, setGangColFilters] = useState<Partial<Record<keyof GangRow, string>>>({});
-  const [planSort,       setPlanSort]       = useState<{ col: keyof GangPlan;   dir: "asc" | "desc" } | null>(null);
-  const [planColFilters, setPlanColFilters] = useState<Partial<Record<keyof GangPlan, string>>>({});
 
   // ── Sort + filter helpers ─────────────────────────────────────────────────
   function applySort<T>(arr: T[], sort: { col: keyof T; dir: "asc" | "desc" } | null): T[] {
@@ -224,20 +210,6 @@ export default function ContentGangPage() {
     if (!totalUps) return 0;
     return Math.round(qty / totalUps);
   }, [primaryJob, selectedSimilar, gangUpsInput, primaryJobUps, totalUps]);
-
-  const filteredPlans = useMemo(() => {
-    const q = listSearch.toLowerCase();
-    let rows = q
-      ? planList.filter(p =>
-          p.GangWorkOrderNo.toLowerCase().includes(q) ||
-          p.PrimaryJobName.toLowerCase().includes(q) ||
-          p.PrimaryClientName.toLowerCase().includes(q) ||
-          p.Quality.toLowerCase().includes(q)
-        )
-      : planList;
-    rows = applyColFilter(rows, planColFilters);
-    return applySort(rows, planSort);
-  }, [planList, listSearch, planColFilters, planSort]);
 
   // ── Load plan list ────────────────────────────────────────────────────────
   const loadPlanList = useCallback(async () => {
@@ -554,33 +526,25 @@ export default function ContentGangPage() {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Layers size={22} className="text-blue-700" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">Content Gang Planning</h1>
-              <p className="text-xs text-gray-500">Roto Gravure · Film Gang</p>
-            </div>
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Content Gang Planning</h2>
+          <p className="text-sm text-gray-500">Roto Gravure · Film Gang</p>
+        </div>
+        <div className="flex items-center gap-2">
           <TutorialButton title="Content Gang — Tutorial" />
-          <button onClick={() => { loadPlanList(); generateNo(); }}
-            className="flex items-center gap-2 text-sm text-gray-500 hover:text-blue-600 border border-gray-200 rounded-lg px-3 py-1.5 hover:border-blue-300 transition-colors">
-            <RefreshCw size={14} /> Refresh
-          </button>
+          <Button variant="secondary" size="sm" icon={<RefreshCw size={13} />} onClick={() => { loadPlanList(); generateNo(); }}>Refresh</Button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 px-6 flex">
-        <Tab label="Gang Planning" icon={Layers}      active={tab === "planning"}
-          onClick={() => setTab("planning")} />
-        <Tab label="Planned Gang List" icon={ClipboardList} active={tab === "list"}
-          onClick={() => { setTab("list"); loadPlanList(); }} count={planList.length} />
+      <div className="flex gap-1 border-b border-gray-200">
+        <button onClick={() => setTab("planning")} className={`px-5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === "planning" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>Gang Planning</button>
+        <button onClick={() => { setTab("list"); loadPlanList(); }} className={`px-5 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${tab === "list" ? "border-blue-600 text-blue-700" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
+          Planned Gang List {planList.length > 0 && <span className="ml-1 text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-full">{planList.length}</span>}
+        </button>
       </div>
 
       {/* Message */}
@@ -710,58 +674,39 @@ export default function ContentGangPage() {
               ) : similarJobs.length === 0 ? (
                 <div className="text-center text-sm text-gray-400 py-8">No similar jobs found.</div>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-gray-100">
-                  <table className="w-full text-xs">
-                    <thead style={{ background: "var(--erp-primary)" }}>
-                      <tr>
-                        {SIM_COLS.map(({ h, key }, ci) => {
-                          const isSortActive = key && simSort?.col === key;
-                          const uniqVals = key ? [...new Set(similarJobs.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
-                          return (
-                            <th key={ci} className="px-3 py-2 text-left font-semibold whitespace-nowrap text-white/90">
-                              {key ? (
-                                <div className="flex items-center gap-1">
-                                  <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
-                                    onClick={() => setSimSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
-                                    {h}
-                                    <span className="flex flex-col leading-none ml-0.5">
-                                      <span className={`text-[7px] ${isSortActive && simSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
-                                      <span className={`text-[7px] ${isSortActive && simSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
-                                    </span>
-                                  </span>
-                                  <ColFilterIcon values={uniqVals} active={simColFilters[key] ?? ""}
-                                    onChange={v => setSimColFilters(p => ({ ...p, [key]: v }))} />
-                                </div>
-                              ) : h}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {simSorted.map((j, i) => (
-                        <tr key={j.JobBookingJobCardContentsID}
-                          onClick={() => setSelectedSimilar(j)}
-                          className={`cursor-pointer border-b border-gray-100 transition-colors
-                            ${selectedSimilar?.JobBookingJobCardContentsID === j.JobBookingJobCardContentsID
-                              ? "bg-blue-50 border-blue-200"
-                              : i % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50 hover:bg-gray-100"}`}>
-                          <td className="px-3 py-2">
-                            <input type="radio" readOnly
-                              checked={selectedSimilar?.JobBookingJobCardContentsID === j.JobBookingJobCardContentsID}/>
-                          </td>
-                          <td className="px-3 py-2 font-mono text-blue-700">{j.JobCardContentNo}</td>
-                          <td className="px-3 py-2">{j.LedgerName}</td>
-                          <td className="px-3 py-2">{j.JobName}</td>
-                          <td className="px-3 py-2">{j.PlanContName}</td>
-                          <td className="px-3 py-2">{j.SalesOrderNo}</td>
-                          <td className="px-3 py-2 text-right">{j.OrderQuantity?.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right">{j.TotalRequiredRunningMeter?.toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable<SimilarJob>
+                  data={similarJobs}
+                  getRowId={j => String(j.JobBookingJobCardContentsID)}
+                  columns={[
+                    {
+                      key: "JobCardContentNo", header: "JC No.",
+                      render: j => <span className="font-mono text-blue-700">{j.JobCardContentNo}</span>,
+                    },
+                    { key: "LedgerName", header: "Client" },
+                    { key: "JobName", header: "Job Name" },
+                    { key: "PlanContName", header: "Content" },
+                    { key: "SalesOrderNo", header: "SO No." },
+                    {
+                      key: "OrderQuantity", header: "Qty",
+                      render: j => <span>{j.OrderQuantity?.toLocaleString()}</span>,
+                    },
+                    {
+                      key: "TotalRequiredRunningMeter", header: "Run. Mtr",
+                      render: j => <span>{j.TotalRequiredRunningMeter?.toFixed(2)}</span>,
+                    },
+                  ]}
+                  actions={j => (
+                    <button
+                      onClick={() => setSelectedSimilar(j)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-colors
+                        ${selectedSimilar?.JobBookingJobCardContentsID === j.JobBookingJobCardContentsID
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-blue-600 border-blue-300 hover:bg-blue-50"}`}
+                    >
+                      {selectedSimilar?.JobBookingJobCardContentsID === j.JobBookingJobCardContentsID ? "✓ Selected" : "Select"}
+                    </button>
+                  )}
+                />
               )}
 
               {/* Add secondary job controls */}
@@ -807,71 +752,48 @@ export default function ContentGangPage() {
                   </div>
                 )}
               </div>
-              <div className="overflow-x-auto rounded-lg border border-gray-100">
-                <table className="w-full text-xs">
-                  <thead style={{ background: "var(--erp-primary)" }}>
-                    <tr>
-                      {GANG_COLS.map(({ h, key }, ci) => {
-                        const isSortActive = key && gangSort?.col === key;
-                        const uniqVals = key ? [...new Set(gangRows.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
-                        return (
-                          <th key={ci} className="px-3 py-2 text-left font-semibold whitespace-nowrap text-white/90">
-                            {key ? (
-                              <div className="flex items-center gap-1">
-                                <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
-                                  onClick={() => setGangSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
-                                  {h}
-                                  <span className="flex flex-col leading-none ml-0.5">
-                                    <span className={`text-[7px] ${isSortActive && gangSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
-                                    <span className={`text-[7px] ${isSortActive && gangSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
-                                  </span>
-                                </span>
-                                <ColFilterIcon values={uniqVals} active={gangColFilters[key] ?? ""}
-                                  onChange={v => setGangColFilters(p => ({ ...p, [key]: v }))} />
-                              </div>
-                            ) : h}
-                          </th>
-                        );
-                      })}
-                      {!isViewMode && <th className="px-3 py-2 text-white/90"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gangSorted.map((r, i) => (
-                      <tr key={r.JobBookingJobCardContentsID}
-                        className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                        <td className="px-3 py-2 text-gray-400">{i + 1}</td>
-                        <td className="px-3 py-2 font-mono text-blue-700">{r.JobCardContentNo || r.JobBookingNo}</td>
-                        <td className="px-3 py-2">{r.ClientName}</td>
-                        <td className="px-3 py-2">{r.JobName}</td>
-                        <td className="px-3 py-2">{r.ContentName}</td>
-                        <td className="px-3 py-2">{r.SalesOrderNo}</td>
-                        <td className="px-3 py-2 text-right">{r.OrderQuantity?.toLocaleString()}</td>
-                        <td className="px-3 py-2 text-right font-bold text-blue-700">{r.GangUps}</td>
-                        <td className="px-3 py-2 text-right">{r.RequiredSheets}</td>
-                        <td className="px-3 py-2 text-right">{r.TotalRequiredRunningMeter?.toFixed(2)}</td>
-                        {!isViewMode && (
-                          <td className="px-3 py-2">
-                            <button onClick={() => setGangRows(prev => prev.filter(x => x.JobBookingJobCardContentsID !== r.JobBookingJobCardContentsID))}
-                              className="text-red-500 hover:text-red-700 transition-colors">
-                              <Trash2 size={13}/>
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-gray-100 font-semibold text-xs">
-                    <tr>
-                      <td colSpan={6} className="px-3 py-2 text-gray-600">Total</td>
-                      <td className="px-3 py-2 text-right">{gangRows.reduce((s,r) => s+r.OrderQuantity,0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right text-blue-700">{usedUps}</td>
-                      <td className="px-3 py-2 text-right">{gangRows.reduce((s,r) => s+r.RequiredSheets,0)}</td>
-                      <td className="px-3 py-2 text-right">{gangRows.reduce((s,r) => s+(r.TotalRequiredRunningMeter||0),0).toFixed(2)}</td>
-                      {!isViewMode && <td/>}
-                    </tr>
-                  </tfoot>
-                </table>
+              <DataTable<GangRow>
+                data={gangRows}
+                getRowId={r => String(r.JobBookingJobCardContentsID)}
+                columns={[
+                  {
+                    key: "JobCardContentNo", header: "JC No.",
+                    render: r => <span className="font-mono text-blue-700">{r.JobCardContentNo || r.JobBookingNo}</span>,
+                  },
+                  { key: "ClientName", header: "Client" },
+                  { key: "JobName", header: "Job Name" },
+                  { key: "ContentName", header: "Content" },
+                  { key: "SalesOrderNo", header: "SO No." },
+                  {
+                    key: "OrderQuantity", header: "Order Qty",
+                    render: r => <span>{r.OrderQuantity?.toLocaleString()}</span>,
+                  },
+                  {
+                    key: "GangUps", header: "Gang Ups",
+                    render: r => <span className="font-bold text-blue-700">{r.GangUps}</span>,
+                  },
+                  {
+                    key: "RequiredSheets", header: "Req. Sheets",
+                    render: r => <span>{r.RequiredSheets}</span>,
+                  },
+                  {
+                    key: "TotalRequiredRunningMeter", header: "Run. Mtr",
+                    render: r => <span>{r.TotalRequiredRunningMeter?.toFixed(2)}</span>,
+                  },
+                ]}
+                actions={!isViewMode ? r => (
+                  <button onClick={() => setGangRows(prev => prev.filter(x => x.JobBookingJobCardContentsID !== r.JobBookingJobCardContentsID))}
+                    className="p-1.5 rounded-lg hover:bg-red-50 text-red-400 hover:text-red-600 transition-colors">
+                    <Trash2 size={13} />
+                  </button>
+                ) : undefined}
+              />
+              {/* Totals strip */}
+              <div className="flex items-center gap-6 px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs font-semibold text-gray-700 rounded-b-lg">
+                <span>Total Qty: <span className="text-gray-900">{gangRows.reduce((s,r) => s+r.OrderQuantity,0).toLocaleString()}</span></span>
+                <span>Gang Ups Used: <span className="text-blue-700">{usedUps}</span></span>
+                <span>Req. Sheets: <span className="text-gray-900">{gangRows.reduce((s,r) => s+r.RequiredSheets,0)}</span></span>
+                <span>Run. Mtr: <span className="text-gray-900">{gangRows.reduce((s,r) => s+(r.TotalRequiredRunningMeter||0),0).toFixed(2)}</span></span>
               </div>
             </div>
           )}
@@ -904,99 +826,36 @@ export default function ContentGangPage() {
 
       {/* ── PLANNED GANG LIST TAB ────────────────────────────────────────── */}
       {tab === "list" && (
-        <div className="p-6">
-          <div className="bg-white rounded-xl border border-gray-200">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="text-sm font-bold text-gray-700">Planned Gang List — {planList.length} plans</h2>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
-                <input value={listSearch} onChange={e => setListSearch(e.target.value)}
-                  placeholder="Search…"
-                  className="pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"/>
-              </div>
+        <DataTable
+          data={planList}
+          loading={listLoading}
+          title="Planned Gang List"
+          columns={[
+            { key: "GangWorkOrderNo", header: "Gang No.", render: r => <span className="font-mono font-bold text-blue-700">{r.GangWorkOrderNo}</span> },
+            { key: "GangDate", header: "Date" },
+            { key: "PrimaryJobName", header: "Primary Job" },
+            { key: "PrimaryClientName", header: "Client" },
+            { key: "Quality", header: "Quality" },
+            { key: "TotalGSM", header: "GSM" },
+            { key: "UpsL", header: "UPS", render: r => `${r.UpsL}×${r.UpsW}` },
+            { key: "CylinderCircumferenceInch", header: "Circ (in)" },
+            { key: "SecondaryJobCount", header: "Jobs", render: r => <span className="bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full text-xs">{r.SecondaryJobCount}</span> },
+            { key: "CreatedBy", header: "Created By" },
+          ]}
+          actions={row => (
+            <div className="flex items-center gap-1.5 justify-end">
+              <RowAction.View onClick={() => loadPlan(row)} />
+              <RowAction.Print onClick={() => openCuttingSlip(row.GangWorkOrderNo)} />
+              <RowAction.Delete onClick={() => deleteGang(row.GangWorkOrderNo)} />
             </div>
-
-            {listLoading ? (
-              <div className="text-center text-sm text-gray-400 py-12">Loading…</div>
-            ) : filteredPlans.length === 0 ? (
-              <div className="text-center text-sm text-gray-400 py-12">No gang plans found.</div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead style={{ background: "var(--erp-primary)" }}>
-                    <tr>
-                      {PLAN_COLS.map(({ h, key }, ci) => {
-                        const isSortActive = key && planSort?.col === key;
-                        const uniqVals = key ? [...new Set(planList.map(r => String(r[key] ?? "")).filter(Boolean))].sort() : [];
-                        return (
-                          <th key={ci} className="px-3 py-2.5 text-left font-semibold whitespace-nowrap text-white/90">
-                            {key ? (
-                              <div className="flex items-center gap-1">
-                                <span className="flex items-center gap-0.5 flex-1 cursor-pointer select-none"
-                                  onClick={() => setPlanSort(p => p?.col === key ? p.dir === "asc" ? { col: key, dir: "desc" } : null : { col: key, dir: "asc" })}>
-                                  {h}
-                                  <span className="flex flex-col leading-none ml-0.5">
-                                    <span className={`text-[7px] ${isSortActive && planSort!.dir === "asc" ? "text-yellow-300" : "text-white/30"}`}>▲</span>
-                                    <span className={`text-[7px] ${isSortActive && planSort!.dir === "desc" ? "text-yellow-300" : "text-white/30"}`}>▼</span>
-                                  </span>
-                                </span>
-                                <ColFilterIcon values={uniqVals} active={planColFilters[key] ?? ""}
-                                  onChange={v => setPlanColFilters(p => ({ ...p, [key]: v }))} />
-                              </div>
-                            ) : h}
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredPlans.map((p, i) => (
-                      <tr key={p.GangWorkOrderNo}
-                        className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-                        <td className="px-3 py-2 font-mono font-bold text-blue-700">{p.GangWorkOrderNo}</td>
-                        <td className="px-3 py-2 whitespace-nowrap">{p.GangDate}</td>
-                        <td className="px-3 py-2 max-w-[160px] truncate">{p.PrimaryJobName}</td>
-                        <td className="px-3 py-2 max-w-[120px] truncate">{p.PrimaryClientName}</td>
-                        <td className="px-3 py-2">{p.Quality}</td>
-                        <td className="px-3 py-2 text-right">{p.TotalGSM}</td>
-                        <td className="px-3 py-2 text-center">{p.UpsL}×{p.UpsW}</td>
-                        <td className="px-3 py-2 text-center">{p.CylinderCircumferenceInch}</td>
-                        <td className="px-3 py-2 text-center">
-                          <span className="bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full">
-                            {p.SecondaryJobCount}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">{p.CreatedBy}</td>
-                        <td className="px-3 py-2">
-                          <div className="flex gap-2">
-                            <button onClick={() => loadPlan(p)}
-                              className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-semibold">
-                              <Eye size={12}/> View
-                            </button>
-                            <button onClick={() => openCuttingSlip(p.GangWorkOrderNo)}
-                              className="flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-semibold">
-                              <Printer size={12}/> Print
-                            </button>
-                            <button onClick={() => deleteGang(p.GangWorkOrderNo)}
-                              className="flex items-center gap-1 text-red-500 hover:text-red-700 font-semibold">
-                              <Trash2 size={12}/> Del
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+          )}
+        />
       )}
 
       {/* ── PRIMARY JOB PICKER MODAL ─────────────────────────────────────── */}
       {showPicker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/50 flex items-stretch z-50">
+          <div className="bg-white w-full h-full flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-[#0f2746] rounded-t-2xl">
               <h3 className="text-white font-bold text-base">Select Primary Job Card</h3>
               <button onClick={() => setShowPicker(false)} className="text-white/70 hover:text-white">

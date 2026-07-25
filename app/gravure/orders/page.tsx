@@ -1,4 +1,5 @@
 "use client";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useMemo, useEffect } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
@@ -33,6 +34,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // ─── Extended line type ───────────────────────────────────────
 type OBLine = GravureOrderLine & {
@@ -204,10 +206,13 @@ function CS({ value, onChange, options, cls = "" }: {
   options: { value: string; label: string }[]; cls?: string;
 }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)}
-      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white ${cls}`}>
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={options}
+      allowEmpty={false}
+      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded bg-white ${cls}`}
+    />
   );
 }
 
@@ -1000,12 +1005,13 @@ export default function GravureOrdersPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Order Prefix</label>
-                <select value={form.orderPrefix} onChange={e => f("orderPrefix", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  <option value="">Select...</option>
-                  <option value="GRV">GRV</option>
-                  <option value="EXP">EXP</option>
-                </select>
+                <SearchableSelect
+                  value={form.orderPrefix}
+                  onChange={val => f("orderPrefix", val)}
+                  options={[{ value: "GRV", label: "GRV" }, { value: "EXP", label: "EXP" }]}
+                  placeholder="Select..."
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Order No.</label>
@@ -1030,10 +1036,13 @@ export default function GravureOrdersPage() {
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
-                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  {SALES_TYPES.map(s => <option key={s}>{s}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.salesType}
+                  onChange={val => f("salesType", val)}
+                  options={SALES_TYPES.map(s => ({ value: s, label: s }))}
+                  allowEmpty={false}
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                />
               </div>
             </div>
 
@@ -1041,41 +1050,44 @@ export default function GravureOrdersPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div className="sm:col-span-2">
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Client Name *</label>
-                <select value={form.customerId}
-                  onChange={e => {
-                    const c = apiCustomers.find(x => x.id === e.target.value);
-                    setForm(p => ({ ...blankForm(), customerId: e.target.value, customerName: c?.name || "", date: p.date, orderPrefix: p.orderPrefix }));
+                <SearchableSelect
+                  value={form.customerId}
+                  onChange={val => {
+                    const c = apiCustomers.find(x => x.id === val);
+                    setForm(p => ({ ...blankForm(), customerId: val, customerName: c?.name || "", date: p.date, orderPrefix: p.orderPrefix }));
                     setAddedIds(new Set());
                     setEnquirySearch("");
                   }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  <option value="">-- Select Customer --</option>
-                  {apiCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                  options={apiCustomers.map(c => ({ value: c.id, label: c.name }))}
+                  placeholder="-- Select Customer --"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Person</label>
-                <select value={(form as any).salesPersonId || ""}
-                  onChange={e => {
-                    const p = apiSalesPersons.find((x: any) => x.id === e.target.value) as any;
-                    setForm(prev => ({ ...prev, salesPersonId: e.target.value, salesPerson: p?.name || "" } as any));
+                <SearchableSelect
+                  value={(form as any).salesPersonId || ""}
+                  onChange={val => {
+                    const p = apiSalesPersons.find((x: any) => x.id === val) as any;
+                    setForm(prev => ({ ...prev, salesPersonId: val, salesPerson: p?.name || "" } as any));
                   }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  <option value="">-- Select --</option>
-                  {(apiSalesPersons as any[]).map((p: any) => <option key={p.id ?? p} value={p.id ?? p}>{p.name ?? p}</option>)}
-                </select>
+                  options={(apiSalesPersons as any[]).map((p: any) => ({ value: String(p.id ?? p), label: String(p.name ?? p) }))}
+                  placeholder="-- Select --"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                />
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Ledger</label>
-                <select value={(form as any).salesLedgerId || ""}
-                  onChange={e => {
-                    const l = (apiSalesLedgers as any[]).find((x: any) => (x.id ?? x) === e.target.value) as any;
-                    setForm(prev => ({ ...prev, salesLedgerId: e.target.value, salesLedger: l?.name ?? l ?? "" } as any));
+                <SearchableSelect
+                  value={(form as any).salesLedgerId || ""}
+                  onChange={val => {
+                    const l = (apiSalesLedgers as any[]).find((x: any) => (x.id ?? x) === val) as any;
+                    setForm(prev => ({ ...prev, salesLedgerId: val, salesLedger: l?.name ?? l ?? "" } as any));
                   }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                  <option value="">-- Select --</option>
-                  {(apiSalesLedgers as any[]).map((l: any) => <option key={l.id ?? l} value={l.id ?? l}>{l.name ?? l}</option>)}
-                </select>
+                  options={(apiSalesLedgers as any[]).map((l: any) => ({ value: String(l.id ?? l), label: String(l.name ?? l) }))}
+                  placeholder="-- Select --"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                />
               </div>
             </div>
 
@@ -1088,10 +1100,13 @@ export default function GravureOrdersPage() {
                   <Truck size={14} className="text-teal-600" />Direct Dispatch
                 </span>
               </label>
-              <select value={form.status} onChange={e => f("status", e.target.value as FormState["status"])}
-                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400">
-                {["Confirmed", "In Production", "Ready", "Dispatched", "Hold"].map(s => <option key={s}>{s}</option>)}
-              </select>
+              <SearchableSelect
+                value={form.status}
+                onChange={val => f("status", val as FormState["status"])}
+                options={["Confirmed", "In Production", "Ready", "Dispatched", "Hold"].map(s => ({ value: s, label: s }))}
+                allowEmpty={false}
+                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg"
+              />
             </div>
           </div>
 
@@ -1253,21 +1268,23 @@ export default function GravureOrdersPage() {
                         <td className="px-1 py-0.5"><CI value={l.categoryName} onChange={v => updateLine(idx, { ...l, categoryName: v })} placeholder="Category" /></td>
                         {/* HSN */}
                         <td className="px-1 py-0.5">
-                          <select value={l.hsnGroup} onChange={e => {
-                            const hsn = apiHsnList.find(h => h.hsnCode === e.target.value);
-                            const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
-                            const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
-                            // Preserve existing gstPct if HSN has no GST rate configured (gstRate=0/undefined)
-                            const gstRate = (hsn && (hsn.gstRate ?? 0) > 0) ? hsn.gstRate : l.gstPct;
-                            const cgst = isSameState ? (hsn && (hsn.cgstPct ?? 0) > 0 ? hsn.cgstPct : gstRate / 2) : 0;
-                            const sgst = isSameState ? (hsn && (hsn.sgstPct ?? 0) > 0 ? hsn.sgstPct : gstRate / 2) : 0;
-                            const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
-                            updateLine(idx, { ...l, hsnGroup: e.target.value, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
-                          }}
-                            className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px] focus:border-purple-400 outline-none">
-                            <option value="">-- HSN --</option>
-                            {apiHsnList.map(h => <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>)}
-                          </select>
+                          <SearchableSelect
+                            value={l.hsnGroup}
+                            onChange={val => {
+                              const hsn = apiHsnList.find(h => h.hsnCode === val);
+                              const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+                              const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
+                              // Preserve existing gstPct if HSN has no GST rate configured (gstRate=0/undefined)
+                              const gstRate = (hsn && (hsn.gstRate ?? 0) > 0) ? hsn.gstRate : l.gstPct;
+                              const cgst = isSameState ? (hsn && (hsn.cgstPct ?? 0) > 0 ? hsn.cgstPct : gstRate / 2) : 0;
+                              const sgst = isSameState ? (hsn && (hsn.sgstPct ?? 0) > 0 ? hsn.sgstPct : gstRate / 2) : 0;
+                              const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
+                              updateLine(idx, { ...l, hsnGroup: val, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
+                            }}
+                            options={apiHsnList.map(h => ({ value: h.hsnCode, label: `${h.hsnCode} — ${h.description}` }))}
+                            placeholder="-- HSN --"
+                            className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px]"
+                          />
                         </td>
                         {/* Order Qty */}
                         <td className="px-1 py-0.5">
@@ -1395,23 +1412,21 @@ export default function GravureOrdersPage() {
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
                 {form.obLines.length > 1 ? (
-                  <select
+                  <SearchableSelect
                     value={dlvInput.pmCode}
-                    onChange={e => {
-                      const line = form.obLines.find(l => l.productCode === e.target.value);
+                    onChange={val => {
+                      const line = form.obLines.find(l => l.productCode === val);
                       setDlvInput(p => ({
                         ...p,
-                        pmCode: e.target.value,
+                        pmCode: val,
                         quoteNo: line ? (line.estimationNo || line.catalogNo || "") : p.quoteNo,
                         jobName: line ? (line.productName || p.jobName) : p.jobName,
                       }));
                     }}
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                    <option value="">-- Select --</option>
-                    {form.obLines.filter(l => l.productCode).map(l => (
-                      <option key={l.id} value={l.productCode}>{l.productCode} – {l.productName}</option>
-                    ))}
-                  </select>
+                    options={form.obLines.filter(l => l.productCode).map(l => ({ value: l.productCode, label: `${l.productCode} – ${l.productName}` }))}
+                    placeholder="-- Select --"
+                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                  />
                 ) : (
                   <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
                     {form.obLines[0]?.productCode || <span className="text-gray-300 text-xs">Auto-filled</span>}
@@ -1441,25 +1456,29 @@ export default function GravureOrdersPage() {
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">Consignee</label>
-                <select value={dlvInput.consigneeId} onChange={e => {
-                  const c = apiConsignees.find(x => x.id === e.target.value);
-                  setDlvInput(p => ({ ...p, consigneeId: e.target.value, consignee: c?.name || "" }));
-                }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                  <option value="">-- Select Consignee --</option>
-                  {apiConsignees.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={dlvInput.consigneeId}
+                  onChange={val => {
+                    const c = apiConsignees.find(x => x.id === val);
+                    setDlvInput(p => ({ ...p, consigneeId: val, consignee: c?.name || "" }));
+                  }}
+                  options={apiConsignees.map(c => ({ value: c.id, label: c.name }))}
+                  placeholder="-- Select Consignee --"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                />
               </div>
               <div>
                 <label className="text-[10px] font-semibold text-gray-500">Transporter</label>
-                <select value={dlvInput.transporterId} onChange={e => {
-                  const t = apiTransporters.find(x => x.id === e.target.value);
-                  setDlvInput(p => ({ ...p, transporterId: e.target.value, transporter: t?.name || "" }));
-                }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                  <option value="">-- Select Transporter --</option>
-                  {apiTransporters.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
+                <SearchableSelect
+                  value={dlvInput.transporterId}
+                  onChange={val => {
+                    const t = apiTransporters.find(x => x.id === val);
+                    setDlvInput(p => ({ ...p, transporterId: val, transporter: t?.name || "" }));
+                  }}
+                  options={apiTransporters.map(t => ({ value: t.id, label: t.name }))}
+                  placeholder="-- Select Transporter --"
+                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                />
               </div>
               <div className="flex items-end">
                 <button onClick={addDeliveryRow}
@@ -1638,8 +1657,8 @@ export default function GravureOrdersPage() {
 
           {/* ── Catalog Details Popup ── */}
           {viewRefRow && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setViewRefRow(null)}>
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-0 z-50 flex items-stretch bg-black/40 backdrop-blur-sm" onClick={() => setViewRefRow(null)}>
+              <div className="bg-white w-full h-full overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3.5 bg-indigo-700 text-white">
                   <div className="flex items-center gap-2">
                     <BookMarked size={15} />
@@ -1742,17 +1761,14 @@ export default function GravureOrdersPage() {
           toolbar={
             <div className="flex items-center gap-2">
               <TutorialButton title="Order Booking — Tutorial" />
-              <Button icon={<Plus size={13} />} onClick={openAdd}
-                className="bg-teal-600 text-white hover:bg-teal-700 border-0 text-xs py-1.5 px-3">
-                New Order
-              </Button>
+              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openAdd} className="text-xs py-1.5 px-3">New Order</Button>
             </div>
           }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
-              <Button variant="ghost" size="sm" icon={<Eye size={13} />} onClick={() => setViewRow(row)}>View</Button>
-              <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintOrder(row)}>Print</Button>
-              <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(row)}>Edit</Button>
+              <RowAction.View onClick={() => setViewRow(row)} />
+              <RowAction.Print onClick={() => setPrintOrder(row)} />
+              <RowAction.Edit onClick={() => openEdit(row)} />
               {row.status !== "Hold" ? (
                 <button
                   onClick={() => { setHoldTarget(row); setHoldReasonInput(""); }}
@@ -1809,7 +1825,7 @@ export default function GravureOrdersPage() {
                   </button>
                 );
               })()}
-              <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => setDelId(row.id)}>Delete</Button>
+              <RowAction.Delete onClick={() => setDelId(row.id)} />
             </div>
           )}
         />

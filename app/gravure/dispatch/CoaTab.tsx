@@ -1,5 +1,6 @@
 "use client";
 
+import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, RefreshCw, Plus, Pencil, Trash2, Printer, Search, X } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -287,9 +288,9 @@ export default function CoaTab() {
                 <td className="px-3 py-2 text-sm text-right">{r.Quantity}</td>
                 <td className="px-3 py-2 text-right whitespace-nowrap">
                   <div className="flex items-center gap-1 justify-end">
-                    <Button variant="ghost" size="sm" icon={<Pencil size={13} />} onClick={() => openEdit(r)}>Edit</Button>
-                    <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => printCoa(r)}>Print</Button>
-                    <Button variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={() => del(r)}>Delete</Button>
+                    <RowAction.Edit onClick={() => openEdit(r)} />
+                    <RowAction.Print onClick={() => printCoa(r)} />
+                    <RowAction.Delete onClick={() => del(r)} />
                   </div>
                 </td>
               </tr>
