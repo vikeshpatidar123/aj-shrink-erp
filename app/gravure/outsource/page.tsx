@@ -10,7 +10,7 @@ import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
 import { DataTable } from "@/components/tables/DataTable";
-import RowAction from "@/components/ui/RowAction";
+import { RowAction } from "@/components/ui/RowAction";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const API = "api/gravureOutsourceShrink";
