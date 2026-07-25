@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, Users, Mail, Eye, EyeOff } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -33,9 +34,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
     {children}
   </div>
 );
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white";
-const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50") : inputCls;
-const selectCls = `${inputCls} cursor-pointer`;
 
 // types
 type UserRow = {
@@ -579,15 +577,10 @@ export default function UserMasterPage() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveUser} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+            <Button variant="secondary" onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} onClick={saveUser}>
               {editing ? "Update User" : "Save User"}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -631,118 +624,88 @@ export default function UserMasterPage() {
               <div>
                 <SectionTitle title="Basic Information" />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  <Field label="User Name" required>
-                    <input type="text" value={form.UserName}
-                      onChange={e => f("UserName", e.target.value)}
-                      placeholder="Full name"
-                      className={ic(submitAttempted && !form.UserName.trim())} />
-                  </Field>
+                  <Input label="User Name" value={form.UserName}
+                    onChange={e => f("UserName", e.target.value)}
+                    placeholder="Full name"
+                    error={submitAttempted && !form.UserName.trim() ? "Required" : undefined} />
 
-                  <Field label="Login User Name" required>
-                    <input type="text" value={form.LoginUserName}
-                      onChange={e => f("LoginUserName", e.target.value)}
-                      placeholder="ajshrink"
-                      className={ic(submitAttempted && !form.LoginUserName.trim())} />
-                  </Field>
+                  <Input label="Login User Name" value={form.LoginUserName}
+                    onChange={e => f("LoginUserName", e.target.value)}
+                    placeholder="ajshrink"
+                    error={submitAttempted && !form.LoginUserName.trim() ? "Required" : undefined} />
 
                   {!editing && (
                     <>
-                      <Field label="Password" required>
-                        <div className="relative">
-                          <input type={showPwd ? "text" : "password"} value={form.Password}
-                            onChange={e => f("Password", e.target.value)}
-                            className={ic(submitAttempted && !form.Password.trim()) + " pr-10"} />
-                          <button type="button" onClick={() => setShowPwd(p => !p)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                            {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </Field>
-                      <Field label="Re-Type Password" required>
-                        <div className="relative">
-                          <input type={showRePwd ? "text" : "password"} value={form.REPassword}
-                            onChange={e => f("REPassword", e.target.value)}
-                            className={ic(submitAttempted && form.Password !== form.REPassword) + " pr-10"} />
-                          <button type="button" onClick={() => setShowRePwd(p => !p)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                            {showRePwd ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </Field>
+                      <div className="relative">
+                        <Input label="Password" type={showPwd ? "text" : "password"} value={form.Password}
+                          onChange={e => f("Password", e.target.value)}
+                          error={submitAttempted && !form.Password.trim() ? "Required" : undefined} />
+                        <button type="button" onClick={() => setShowPwd(p => !p)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <Input label="Re-Type Password" type={showRePwd ? "text" : "password"} value={form.REPassword}
+                          onChange={e => f("REPassword", e.target.value)}
+                          error={submitAttempted && form.Password !== form.REPassword ? "Required" : undefined} />
+                        <button type="button" onClick={() => setShowRePwd(p => !p)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                          {showRePwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </>
                   )}
 
-                  <Field label="Contact No." required>
-                    <input type="text" value={form.ContactNo}
-                      onChange={e => f("ContactNo", e.target.value.replace(/[^0-9]/g, ""))}
-                      maxLength={13} placeholder="Mobile number"
-                      className={ic(submitAttempted && !form.ContactNo.trim())} />
-                  </Field>
+                  <Input label="Contact No." value={form.ContactNo}
+                    onChange={e => f("ContactNo", e.target.value.replace(/[^0-9]/g, ""))}
+                    maxLength={13} placeholder="Mobile number"
+                    error={submitAttempted && !form.ContactNo.trim() ? "Required" : undefined} />
 
-                  <Field label="Under User" required>
-                    <select value={form.UnderUserID} onChange={e => f("UnderUserID", e.target.value)}
-                      className={ic(submitAttempted && !form.UnderUserID).replace(inputCls, selectCls)}>
-                      <option value="">-- Select --</option>
-                      {underUsers.map(u => <option key={u.UserID} value={u.UserID}>{u.UserName}</option>)}
-                    </select>
-                  </Field>
+                  <Select label="Under User" value={form.UnderUserID}
+                    onChange={e => f("UnderUserID", e.target.value)}
+                    options={[{ value: "", label: "-- Select --" }, ...underUsers.map(u => ({ value: String(u.UserID), label: u.UserName }))]}
+                    error={submitAttempted && !form.UnderUserID ? "Required" : undefined} />
 
                   <Field label="Designation" required>
                     <input list="designations-list" type="text" value={form.Designation}
                       onChange={e => f("Designation", e.target.value)}
                       placeholder="e.g. Manager"
-                      className={ic(submitAttempted && !form.Designation.trim())} />
+                      className={`w-full px-3 py-2 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none${submitAttempted && !form.Designation.trim() ? " border-red-400 bg-red-50" : " border-gray-300 bg-white"}`} />
                     <datalist id="designations-list">
                       {designations.map(d => <option key={d} value={d} />)}
                     </datalist>
                   </Field>
 
-                  <Field label="Email ID">
-                    <input type="email" value={form.EmailID}
-                      onChange={e => f("EmailID", e.target.value)}
-                      placeholder="email@company.com" className={inputCls} />
-                  </Field>
+                  <Input label="Email ID" type="email" value={form.EmailID}
+                    onChange={e => f("EmailID", e.target.value)}
+                    placeholder="email@company.com" />
 
-                  <Field label="Country">
-                    <select value={form.Country} onChange={e => f("Country", e.target.value)} className={selectCls}>
-                      <option value="">-- Select --</option>
-                      {countries.map(c => <option key={c.Country} value={c.Country}>{c.Country}</option>)}
-                    </select>
-                  </Field>
+                  <Select label="Country" value={form.Country}
+                    onChange={e => f("Country", e.target.value)}
+                    options={[{ value: "", label: "-- Select --" }, ...countries.map(c => ({ value: c.Country, label: c.Country }))]} />
 
-                  <Field label="State">
-                    <select value={form.State} onChange={e => f("State", e.target.value)} className={selectCls}>
-                      <option value="">-- Select --</option>
-                      {states.map(s => <option key={s.State} value={s.State}>{s.State}</option>)}
-                    </select>
-                  </Field>
+                  <Select label="State" value={form.State}
+                    onChange={e => f("State", e.target.value)}
+                    options={[{ value: "", label: "-- Select --" }, ...states.map(s => ({ value: s.State, label: s.State }))]} />
 
-                  <Field label="City">
-                    <input type="text" value={form.City}
-                      onChange={e => f("City", e.target.value)}
-                      placeholder="City" className={inputCls} />
-                  </Field>
+                  <Input label="City" value={form.City}
+                    onChange={e => f("City", e.target.value)}
+                    placeholder="City" />
 
-                  <Field label="Branch">
-                    <select value={form.BranchID} onChange={e => f("BranchID", e.target.value)} className={selectCls}>
-                      <option value="">-- Select --</option>
-                      {branches.map(b => <option key={b.BranchID} value={b.BranchID}>{b.BranchName}</option>)}
-                    </select>
-                  </Field>
+                  <Select label="Branch" value={form.BranchID}
+                    onChange={e => f("BranchID", e.target.value)}
+                    options={[{ value: "", label: "-- Select --" }, ...branches.map(b => ({ value: String(b.BranchID), label: b.BranchName }))]} />
 
-                  <Field label="Production Unit" required>
-                    <select value={form.ProductionUnitID} onChange={e => f("ProductionUnitID", e.target.value)}
-                      className={ic(submitAttempted && !form.ProductionUnitID).replace(inputCls, selectCls)}>
-                      <option value="">-- Select --</option>
-                      {productionUnits.map(p => <option key={p.ProductionUnitID} value={p.ProductionUnitID}>{p.ProductionUnitName}</option>)}
-                    </select>
-                  </Field>
+                  <Select label="Production Unit" value={form.ProductionUnitID}
+                    onChange={e => f("ProductionUnitID", e.target.value)}
+                    options={[{ value: "", label: "-- Select --" }, ...productionUnits.map(p => ({ value: String(p.ProductionUnitID), label: p.ProductionUnitName }))]}
+                    error={submitAttempted && !form.ProductionUnitID ? "Required" : undefined} />
 
                   <div className="lg:col-span-3">
-                    <Field label="Details">
-                      <textarea value={form.Details} onChange={e => f("Details", e.target.value)}
-                        rows={2} placeholder="Additional notes..." className={inputCls} />
-                    </Field>
+                    <Textarea label="Details" value={form.Details}
+                      onChange={e => f("Details", e.target.value)}
+                      rows={2} placeholder="Additional notes..." />
                   </div>
                 </div>
               </div>
@@ -754,112 +717,68 @@ export default function UserMasterPage() {
                 <div>
                   <SectionTitle title="SMTP Settings" />
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    <Field label="SMTP User Name">
-                      <input type="text" value={form.smtpUserName}
-                        onChange={e => f("smtpUserName", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="SMTP Password">
-                      <input type="password" value={form.smtpUserPassword}
-                        onChange={e => f("smtpUserPassword", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Re-Type SMTP Password">
-                      <input type="password" value={form.RESMTPPassword}
-                        onChange={e => f("RESMTPPassword", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="SMTP Server">
-                      <input type="text" value={form.smtpServer}
-                        onChange={e => f("smtpServer", e.target.value)}
-                        placeholder="smtp.gmail.com" className={inputCls} />
-                    </Field>
-                    <Field label="SMTP Server Port">
-                      <input type="text" value={form.smtpServerPort}
-                        onChange={e => f("smtpServerPort", e.target.value)}
-                        placeholder="587" className={inputCls} />
-                    </Field>
-                    <Field label="Authenticate">
-                      <select value={form.smtpAuthenticate}
-                        onChange={e => f("smtpAuthenticate", e.target.value)} className={selectCls}>
-                        <option value="True">True</option>
-                        <option value="False">False</option>
-                      </select>
-                    </Field>
-                    <Field label="Use SSL">
-                      <select value={form.smtpUseSSL}
-                        onChange={e => f("smtpUseSSL", e.target.value)} className={selectCls}>
-                        <option value="True">True</option>
-                        <option value="False">False</option>
-                      </select>
-                    </Field>
+                    <Input label="SMTP User Name" value={form.smtpUserName}
+                      onChange={e => f("smtpUserName", e.target.value)} />
+                    <Input label="SMTP Password" type="password" value={form.smtpUserPassword}
+                      onChange={e => f("smtpUserPassword", e.target.value)} />
+                    <Input label="Re-Type SMTP Password" type="password" value={form.RESMTPPassword}
+                      onChange={e => f("RESMTPPassword", e.target.value)} />
+                    <Input label="SMTP Server" value={form.smtpServer}
+                      onChange={e => f("smtpServer", e.target.value)}
+                      placeholder="smtp.gmail.com" />
+                    <Input label="SMTP Server Port" value={form.smtpServerPort}
+                      onChange={e => f("smtpServerPort", e.target.value)}
+                      placeholder="587" />
+                    <Select label="SMTP Authenticate" value={form.smtpAuthenticate}
+                      onChange={e => f("smtpAuthenticate", e.target.value)}
+                      options={[{ value: "True", label: "True" }, { value: "False", label: "False" }]} />
+                    <Select label="SMTP Use SSL" value={form.smtpUseSSL}
+                      onChange={e => f("smtpUseSSL", e.target.value)}
+                      options={[{ value: "True", label: "True" }, { value: "False", label: "False" }]} />
                   </div>
                 </div>
 
                 <div>
                   <SectionTitle title="Quote Mail Settings" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <Field label="Email Message">
-                      <textarea rows={3} value={form.EmailMessage}
-                        onChange={e => f("EmailMessage", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Header Text">
-                      <textarea rows={3} value={form.HeaderText}
-                        onChange={e => f("HeaderText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Footer Text">
-                      <textarea rows={3} value={form.FooterText}
-                        onChange={e => f("FooterText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Export Header Text">
-                      <textarea rows={3} value={form.ExportHeaderText}
-                        onChange={e => f("ExportHeaderText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Export Footer Text">
-                      <textarea rows={3} value={form.ExportFooterText}
-                        onChange={e => f("ExportFooterText", e.target.value)} className={inputCls} />
-                    </Field>
+                    <Textarea label="Email Message" rows={3} value={form.EmailMessage}
+                      onChange={e => f("EmailMessage", e.target.value)} />
+                    <Textarea label="Header Text" rows={3} value={form.HeaderText}
+                      onChange={e => f("HeaderText", e.target.value)} />
+                    <Textarea label="Footer Text" rows={3} value={form.FooterText}
+                      onChange={e => f("FooterText", e.target.value)} />
+                    <Textarea label="Export Header Text" rows={3} value={form.ExportHeaderText}
+                      onChange={e => f("ExportHeaderText", e.target.value)} />
+                    <Textarea label="Export Footer Text" rows={3} value={form.ExportFooterText}
+                      onChange={e => f("ExportFooterText", e.target.value)} />
                   </div>
                 </div>
 
                 <div>
                   <SectionTitle title="PO Mail Settings" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <Field label="PO Email Message">
-                      <textarea rows={3} value={form.POEmailMessage}
-                        onChange={e => f("POEmailMessage", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="PO Header Text">
-                      <textarea rows={3} value={form.POHeaderText}
-                        onChange={e => f("POHeaderText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="PO Footer Text">
-                      <textarea rows={3} value={form.POFooterText}
-                        onChange={e => f("POFooterText", e.target.value)} className={inputCls} />
-                    </Field>
+                    <Textarea label="PO Email Message" rows={3} value={form.POEmailMessage}
+                      onChange={e => f("POEmailMessage", e.target.value)} />
+                    <Textarea label="PO Header Text" rows={3} value={form.POHeaderText}
+                      onChange={e => f("POHeaderText", e.target.value)} />
+                    <Textarea label="PO Footer Text" rows={3} value={form.POFooterText}
+                      onChange={e => f("POFooterText", e.target.value)} />
                   </div>
                 </div>
 
                 <div>
                   <SectionTitle title="Invoice Mail Settings" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <Field label="Invoice Email Message">
-                      <textarea rows={3} value={form.InvoiceEmailMessage}
-                        onChange={e => f("InvoiceEmailMessage", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Invoice Header Text">
-                      <textarea rows={3} value={form.InvoiceHeaderText}
-                        onChange={e => f("InvoiceHeaderText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Invoice Footer Text">
-                      <textarea rows={3} value={form.InvoiceFooterText}
-                        onChange={e => f("InvoiceFooterText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Invoice Export Header Text">
-                      <textarea rows={3} value={form.InvoiceExportHeaderText}
-                        onChange={e => f("InvoiceExportHeaderText", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Invoice Export Footer Text">
-                      <textarea rows={3} value={form.InvoiceExportFooterText}
-                        onChange={e => f("InvoiceExportFooterText", e.target.value)} className={inputCls} />
-                    </Field>
+                    <Textarea label="Invoice Email Message" rows={3} value={form.InvoiceEmailMessage}
+                      onChange={e => f("InvoiceEmailMessage", e.target.value)} />
+                    <Textarea label="Invoice Header Text" rows={3} value={form.InvoiceHeaderText}
+                      onChange={e => f("InvoiceHeaderText", e.target.value)} />
+                    <Textarea label="Invoice Footer Text" rows={3} value={form.InvoiceFooterText}
+                      onChange={e => f("InvoiceFooterText", e.target.value)} />
+                    <Textarea label="Invoice Export Header Text" rows={3} value={form.InvoiceExportHeaderText}
+                      onChange={e => f("InvoiceExportHeaderText", e.target.value)} />
+                    <Textarea label="Invoice Export Footer Text" rows={3} value={form.InvoiceExportFooterText}
+                      onChange={e => f("InvoiceExportFooterText", e.target.value)} />
                   </div>
                 </div>
               </div>

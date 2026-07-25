@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Save, List, Check } from "lucide-react";
 import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 
@@ -37,17 +38,6 @@ const SectionTitle = ({ title }: { title: string }) => (
     {title}
   </h3>
 );
-
-const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-      {label} {required && <span className="text-red-500">*</span>}
-    </label>
-    {children}
-  </div>
-);
-
-const inputCls = "w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
 const blank = {
   TabName: "Raw Material (RM)",
@@ -215,37 +205,33 @@ export default function ItemGroupPage() {
               <SectionTitle title="Group Details" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="md:col-span-2">
-                  <Field label="Group Name" required>
-                    <input
-                      type="text"
-                      value={form.ItemGroupName}
-                      onChange={(e) => f("ItemGroupName", e.target.value)}
-                      placeholder="e.g. Ink, Varnish, Film, Adhesive..."
-                      className={inputCls}
-                    />
-                  </Field>
-                </div>
-                <Field label="Prefix">
-                  <input
+                  <Input
+                    label="Group Name"
                     type="text"
-                    value={form.ItemGroupPrefix}
-                    onChange={(e) => f("ItemGroupPrefix", e.target.value.toUpperCase().slice(0, 5))}
-                    placeholder="e.g. I"
-                    maxLength={5}
-                    className={`${inputCls} font-mono uppercase tracking-widest`}
+                    value={form.ItemGroupName}
+                    onChange={(e) => f("ItemGroupName", e.target.value)}
+                    placeholder="e.g. Ink, Varnish, Film, Adhesive..."
                   />
-                </Field>
+                </div>
+                <Input
+                  label="Prefix"
+                  type="text"
+                  value={form.ItemGroupPrefix}
+                  onChange={(e) => f("ItemGroupPrefix", e.target.value.toUpperCase().slice(0, 5))}
+                  placeholder="e.g. I"
+                  maxLength={5}
+                  className="font-mono uppercase tracking-widest"
+                />
               </div>
               <div className="mt-6">
-                <Field label="Description">
-                  <textarea
-                    value={form.Description}
-                    onChange={(e) => f("Description", e.target.value)}
-                    placeholder="What type of items belong to this group..."
-                    rows={3}
-                    className={`${inputCls} resize-none`}
-                  />
-                </Field>
+                <Textarea
+                  label="Description"
+                  value={form.Description}
+                  onChange={(e) => f("Description", e.target.value)}
+                  placeholder="What type of items belong to this group..."
+                  rows={3}
+                  className="resize-none"
+                />
               </div>
             </div>
 
@@ -262,12 +248,8 @@ export default function ItemGroupPage() {
 
             {/* Footer */}
             <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-              <button onClick={() => setForm(blank)} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                Clear
-              </button>
-              <button onClick={save} disabled={saving || !form.ItemGroupName.trim()} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-                <Check size={16} /> {saving ? "Saving..." : "Save Group"}
-              </button>
+              <Button variant="secondary" onClick={() => setForm(blank)}>Clear</Button>
+              <Button variant="primary" loading={saving} icon={<Check size={16}/>} onClick={save}>Save Group</Button>
             </div>
           </div>
         </div>

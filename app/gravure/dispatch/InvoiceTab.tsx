@@ -4,6 +4,7 @@ import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, RefreshCw, Plus, Pencil, Trash2, Printer, FileText } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -218,8 +219,8 @@ export default function InvoiceTab() {
           ))}
         </div>
         <div className="flex items-end gap-2">
-          <div><div className={lbl}>From</div><input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={inputCls} /></div>
-          <div><div className={lbl}>To</div><input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={inputCls} /></div>
+          <Input label="From" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          <Input label="To" type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
           <Button variant="secondary" size="md" icon={<RefreshCw size={14} />} onClick={load}>Refresh</Button>
         </div>
       </div>
@@ -284,10 +285,10 @@ export default function InvoiceTab() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editMode ? `Edit Invoice — ${voucherNo}` : "New Invoice"} size="lg">
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><div className={lbl}>Invoice No</div><input value={voucherNo} readOnly className={inputCls + " bg-gray-50"} /></div>
-            <div><div className={lbl}>Date</div><input type="date" value={voucherDate} onChange={e => setVoucherDate(e.target.value)} className={inputCls} /></div>
-            <div><div className={lbl}>Customer</div><input value={clientName} readOnly className={inputCls + " bg-gray-50"} /></div>
-            <div><div className={lbl}>Consignee</div><input value={consigneeName} readOnly className={inputCls + " bg-gray-50"} /></div>
+            <Input label="Invoice No" value={voucherNo} readOnly />
+            <Input label="Date" type="date" value={voucherDate} onChange={e => setVoucherDate(e.target.value)} />
+            <Input label="Customer" value={clientName} readOnly />
+            <Input label="Consignee" value={consigneeName} readOnly />
           </div>
           <div className="flex items-center gap-3">
             <span className={lbl}>Tax type</span>
@@ -309,8 +310,8 @@ export default function InvoiceTab() {
                     <tr key={i}>
                       <td className="px-2 py-1.5">{l.ProductCode || l.JobName}</td>
                       <td className="px-2 py-1.5">{l.HSNCode}</td>
-                      <td className="px-2 py-1.5 w-24"><input type="number" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} className={inputCls} /></td>
-                      <td className="px-2 py-1.5 w-24"><input type="number" value={l.rate} onChange={e => setLine(i, { rate: e.target.value })} className={inputCls} /></td>
+                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.quantity} onChange={e => setLine(i, { quantity: e.target.value })} /></td>
+                      <td className="px-2 py-1.5 w-24"><Input type="number" value={l.rate} onChange={e => setLine(i, { rate: e.target.value })} /></td>
                       <td className="px-2 py-1.5 text-right">{money(c.taxable)}</td>
                       {tax === "intra" ? <>
                         <td className="px-2 py-1.5 text-right">{money(c.cgst)}<span className="text-[10px] text-gray-400"> ({l.cgstPct}%)</span></td>
@@ -325,7 +326,7 @@ export default function InvoiceTab() {
           </div>
 
           <div className="flex justify-between items-end gap-4">
-            <div className="flex-1"><div className={lbl}>Narration</div><textarea rows={2} value={narration} onChange={e => setNarration(e.target.value)} className={inputCls} /></div>
+            <div className="flex-1"><Textarea label="Narration" rows={2} value={narration} onChange={e => setNarration(e.target.value)} /></div>
             <div className="text-right text-sm space-y-0.5 min-w-48">
               <div className="flex justify-between gap-6"><span className="text-gray-500">Basic</span><span>{money(totals.basic)}</span></div>
               <div className="flex justify-between gap-6"><span className="text-gray-500">Tax</span><span>{money(totals.cgst + totals.sgst + totals.igst)}</span></div>

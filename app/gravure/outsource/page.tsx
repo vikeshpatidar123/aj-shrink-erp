@@ -6,6 +6,7 @@ import {
   ArrowDownToLine, Send, PackageCheck, Eye,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -491,11 +492,9 @@ export default function GravureOutsourcePage() {
           {/* Slim filter strip */}
           <div className="flex-shrink-0 bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-3 flex-wrap">
             <label className="text-xs text-gray-500 font-medium">From</label>
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-              className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
             <label className="text-xs text-gray-500 font-medium">To</label>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-              className="border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
             <button
               onClick={loadList}
               className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white text-xs px-3 py-1.5 rounded transition-colors"
@@ -575,42 +574,12 @@ export default function GravureOutsourcePage() {
             <div className="p-4">
               {/* Header fields */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Date <span className="text-red-500">*</span></label>
-                  <input type="date" value={sendDate} onChange={e => setSendDate(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Vendor <span className="text-red-500">*</span></label>
-                  <select value={sendVendorId} onChange={e => setSendVendorId(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                    <option value="">— Select Vendor —</option>
-                    {vendors.map(v => <option key={v.LedgerID} value={v.LedgerID}>{v.LedgerName}{v.City ? ` (${v.City})` : ""}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Work Order</label>
-                  <select value={sendWOId} onChange={e => setSendWOId(e.target.value)}
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                    <option value="">— Select Work Order —</option>
-                    {workOrders.map(w => <option key={w.JobBookingID} value={w.JobBookingID}>{w.JobBookingNo} — {w.JobName}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Transporter</label>
-                  <input value={sendTransporter} onChange={e => setSendTransporter(e.target.value)} placeholder="Transporter name"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Vehicle No</label>
-                  <input value={sendVehicle} onChange={e => setSendVehicle(e.target.value)} placeholder="GJ-01 AB 1234"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 mb-1 block">Remark</label>
-                  <input value={sendRemark} onChange={e => setSendRemark(e.target.value)} placeholder="Optional remark"
-                    className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
-                </div>
+                <Input label="Date *" type="date" value={sendDate} onChange={e => setSendDate(e.target.value)} />
+                <Select label="Vendor *" value={sendVendorId} onChange={e => setSendVendorId(e.target.value)} options={[{value:"",label:"— Select Vendor —"}, ...vendors.map(v => ({value: v.LedgerID, label: v.LedgerName + (v.City ? ` (${v.City})` : "")}))]} />
+                <Select label="Work Order" value={sendWOId} onChange={e => setSendWOId(e.target.value)} options={[{value:"",label:"— Select Work Order —"}, ...workOrders.map(w => ({value: String(w.JobBookingID), label: `${w.JobBookingNo} — ${w.JobName}`}))]} />
+                <Input label="Transporter" value={sendTransporter} onChange={e => setSendTransporter(e.target.value)} placeholder="Transporter name" />
+                <Input label="Vehicle No" value={sendVehicle} onChange={e => setSendVehicle(e.target.value)} placeholder="GJ-01 AB 1234" />
+                <Input label="Remark" value={sendRemark} onChange={e => setSendRemark(e.target.value)} placeholder="Optional remark" />
               </div>
 
               {/* Process lines */}
@@ -645,38 +614,26 @@ export default function GravureOutsourcePage() {
                         <tr key={i} className="border-b border-gray-100">
                           <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
                           <td className="px-2 py-1.5">
-                            <select value={line.processId} onChange={e => pickProcess(i, e.target.value)}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
-                              <option value="">— Process —</option>
-                              {processes.map(p => <option key={p.ProcessID} value={p.ProcessID}>{p.ProcessName}</option>)}
-                            </select>
+                            <Select value={line.processId} onChange={e => pickProcess(i, e.target.value)} options={[{value:"",label:"— Process —"}, ...processes.map(p=>({value:String(p.ProcessID),label:p.ProcessName}))]} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input type="number" min="0" value={line.qtySent} onChange={e => updateLine(i, "qtySent", e.target.value)}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            <Input type="number" min={0} value={line.qtySent} onChange={e => updateLine(i, "qtySent", e.target.value)} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input value={line.unit} onChange={e => updateLine(i, "unit", e.target.value)}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            <Input value={line.unit} onChange={e => updateLine(i, "unit", e.target.value)} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input type="number" min="0" value={line.rate} onChange={e => updateLine(i, "rate", e.target.value)}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            <Input type="number" min={0} value={line.rate} onChange={e => updateLine(i, "rate", e.target.value)} />
                           </td>
                           <td className="px-2 py-1.5">
-                            <select value={line.productHsnId} onChange={e => updateLine(i, "productHsnId", e.target.value)}
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
-                              <option value="">None</option>
-                              {hsnList.map(h => <option key={h.ProductHSNID} value={h.ProductHSNID}>{h.HSNCode} ({h.GSTTaxPercentage}%)</option>)}
-                            </select>
+                            <Select value={line.productHsnId} onChange={e => updateLine(i, "productHsnId", e.target.value)} options={[{value:"",label:"None"}, ...hsnList.map(h=>({value:String(h.ProductHSNID),label:`${h.HSNCode} (${h.GSTTaxPercentage}%)`}))]} />
                           </td>
                           <td className="px-2 py-1.5 text-right text-gray-700">{line.amount}</td>
                           <td className="px-2 py-1.5 text-right text-gray-600">{line.cgstAmount}</td>
                           <td className="px-2 py-1.5 text-right text-gray-600">{line.sgstAmount}</td>
                           <td className="px-2 py-1.5 text-right font-medium text-gray-800">{line.netAmount}</td>
                           <td className="px-2 py-1.5">
-                            <input value={line.remark} onChange={e => updateLine(i, "remark", e.target.value)} placeholder="…"
-                              className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                            <Input value={line.remark} onChange={e => updateLine(i, "remark", e.target.value)} placeholder="…" />
                           </td>
                           <td className="px-2 py-1.5">
                             {sendLines.length > 1 && (
@@ -703,15 +660,8 @@ export default function GravureOutsourcePage() {
 
               {/* Actions */}
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
-                <button onClick={resetSendForm}
-                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded hover:bg-gray-50 transition-colors">
-                  Reset
-                </button>
-                <button onClick={saveSend} disabled={sendSaving}
-                  className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded transition-colors">
-                  {sendSaving ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  {editSendId ? "Update Send" : "Save Send"}
-                </button>
+                <Button variant="secondary" onClick={resetSendForm}>Reset</Button>
+                <Button variant="primary" onClick={saveSend} disabled={sendSaving} loading={sendSaving} icon={editSendId ? undefined : <Send size={14} />}>{editSendId ? "Update Send" : "Save Send"}</Button>
               </div>
             </div>
           </div>
@@ -792,48 +742,17 @@ export default function GravureOutsourcePage() {
 
                   <label className="text-xs font-semibold text-gray-700 mb-2 block">Step 2 — GRN Details</label>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">GRN Date *</label>
-                      <input type="date" value={grnDate} onChange={e => setGrnDate(e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Qty Received * (max {num(grnSelected.PendingQty)})</label>
-                      <input type="number" min="0" max={num(grnSelected.PendingQty)} value={grnQtyReceived} onChange={e => setGrnQtyReceived(e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Wastage / Rejection</label>
-                      <input type="number" min="0" value={grnQtyWaste} onChange={e => setGrnQtyWaste(e.target.value)}
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Delivery Note No</label>
-                      <input value={grnDelivNote} onChange={e => setGrnDelivNote(e.target.value)} placeholder="DN-001"
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Received By</label>
-                      <input value={grnRecvBy} onChange={e => setGrnRecvBy(e.target.value)} placeholder="Name"
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600 mb-1 block">Remark</label>
-                      <input value={grnRemark} onChange={e => setGrnRemark(e.target.value)} placeholder="Optional"
-                        className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-500" />
-                    </div>
+                    <Input label="GRN Date *" type="date" value={grnDate} onChange={e => setGrnDate(e.target.value)} />
+                    <Input label={`Qty Received * (max ${num(grnSelected.PendingQty)})`} type="number" min={0} max={num(grnSelected.PendingQty)} value={grnQtyReceived} onChange={e => setGrnQtyReceived(e.target.value)} />
+                    <Input label="Wastage / Rejection" type="number" min={0} value={grnQtyWaste} onChange={e => setGrnQtyWaste(e.target.value)} />
+                    <Input label="Delivery Note No" value={grnDelivNote} onChange={e => setGrnDelivNote(e.target.value)} placeholder="DN-001" />
+                    <Input label="Received By" value={grnRecvBy} onChange={e => setGrnRecvBy(e.target.value)} placeholder="Name" />
+                    <Input label="Remark" value={grnRemark} onChange={e => setGrnRemark(e.target.value)} placeholder="Optional" />
                   </div>
 
                   <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100 mt-4">
-                    <button onClick={resetGRNForm}
-                      className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50 transition-colors">
-                      Reset
-                    </button>
-                    <button onClick={saveGRN} disabled={grnSaving}
-                      className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded transition-colors">
-                      {grnSaving ? <Loader2 size={14} className="animate-spin" /> : <ArrowDownToLine size={14} />}
-                      Save GRN
-                    </button>
+                    <Button variant="secondary" onClick={resetGRNForm}>Reset</Button>
+                    <Button variant="primary" onClick={saveGRN} disabled={grnSaving} loading={grnSaving} icon={<ArrowDownToLine size={14} />}>Save GRN</Button>
                   </div>
                 </div>
               )}

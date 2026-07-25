@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -208,10 +209,6 @@ interface ReleasedDetail {
 
 // ── Input helpers ─────────────────────────────────────────────────────────────
 
-const inputCls =
-  "w-full px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white";
-const readonlyCls =
-  "w-full px-2 py-1 text-xs border border-gray-200 rounded bg-gray-50 text-gray-600 cursor-not-allowed";
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
@@ -627,11 +624,9 @@ export default function JobScheduleReleasePage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500">From</label>
-            <input type="date" value={jcDateFrom} onChange={e => setJcDateFrom(e.target.value)} disabled={!checkB}
-              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400" />
+            <Input type="date" value={jcDateFrom} onChange={e => setJcDateFrom(e.target.value)} disabled={!checkB} />
             <label className="text-xs text-gray-500">To</label>
-            <input type="date" value={jcDateTo} onChange={e => setJcDateTo(e.target.value)} disabled={!checkB}
-              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400" />
+            <Input type="date" value={jcDateTo} onChange={e => setJcDateTo(e.target.value)} disabled={!checkB} />
           </div>
 
           <div className="w-px h-6 bg-gray-200" />
@@ -644,11 +639,9 @@ export default function JobScheduleReleasePage() {
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs text-gray-500">From</label>
-            <input type="date" value={delDateFrom} onChange={e => setDelDateFrom(e.target.value)} disabled={!checkD}
-              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400" />
+            <Input type="date" value={delDateFrom} onChange={e => setDelDateFrom(e.target.value)} disabled={!checkD} />
             <label className="text-xs text-gray-500">To</label>
-            <input type="date" value={delDateTo} onChange={e => setDelDateTo(e.target.value)} disabled={!checkD}
-              className="px-2 py-1 border border-gray-300 rounded text-xs text-gray-700 focus:ring-1 focus:ring-blue-500 outline-none disabled:bg-gray-50 disabled:text-gray-400" />
+            <Input type="date" value={delDateTo} onChange={e => setDelDateTo(e.target.value)} disabled={!checkD} />
           </div>
 
           <Button variant="primary" size="sm" icon={<RefreshCw size={14} />} onClick={loadJobs} loading={jobsLoading}>
@@ -802,44 +795,36 @@ export default function JobScheduleReleasePage() {
                             <td className="px-2 py-1.5 font-semibold text-blue-700 text-right">{row.ToBeProduceQty}</td>
 
                             <td className="px-1 py-1 min-w-[80px]" onClick={e => e.stopPropagation()}>
-                              <input
+                              <Input
                                 type="number"
                                 value={row.ScheduleQty}
                                 onChange={e => updateProcessRow(i, "ScheduleQty", parseFloat(e.target.value) || 0)}
-                                className={inputCls}
                                 min={0}
                               />
                             </td>
 
                             <td className="px-1 py-1 min-w-[80px]" onClick={e => e.stopPropagation()}>
-                              <input
+                              <Input
                                 type="number"
                                 value={row.ScheduleQtyRMT}
                                 onChange={e => updateProcessRow(i, "ScheduleQtyRMT", parseFloat(e.target.value) || 0)}
-                                className={inputCls}
                                 min={0}
                               />
                             </td>
 
                             <td className="px-1 py-1 min-w-[150px]" onClick={e => e.stopPropagation()}>
-                              <select
-                                value={row.MachineID || ""}
+                              <Select
+                                value={String(row.MachineID || "")}
                                 onChange={e => updateProcessRow(i, "MachineID", Number(e.target.value))}
-                                className={inputCls}
-                              >
-                                <option value="">-- Select --</option>
-                                {processMachines.map(m => (
-                                  <option key={m.MachineID} value={m.MachineID}>{m.MachineName}</option>
-                                ))}
-                              </select>
+                                options={[{value: "", label: "-- Select --"}, ...processMachines.map(m => ({value: String(m.MachineID), label: m.MachineName}))]}
+                              />
                             </td>
 
                             <td className="px-1 py-1 min-w-[70px]" onClick={e => e.stopPropagation()}>
-                              <input
+                              <Input
                                 type="number"
                                 value={row.MachineSpeed}
                                 onChange={e => updateProcessRow(i, "MachineSpeed", parseFloat(e.target.value) || 0)}
-                                className={inputCls}
                                 min={0}
                               />
                             </td>
@@ -860,11 +845,10 @@ export default function JobScheduleReleasePage() {
                             </td>
 
                             <td className="px-1 py-1 min-w-[70px]" onClick={e => e.stopPropagation()}>
-                              <input
+                              <Input
                                 type="number"
                                 value={row.DryingTime || 0}
                                 onChange={e => updateProcessRow(i, "DryingTime", parseFloat(e.target.value) || 0)}
-                                className={inputCls}
                                 min={0}
                               />
                             </td>
@@ -943,11 +927,9 @@ export default function JobScheduleReleasePage() {
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-gray-500">From</label>
-              <input type="date" value={releaseDateFrom} onChange={e => setReleaseDateFrom(e.target.value)} disabled={!checkRelease}
-                className="px-2 py-1 border border-gray-300 rounded text-xs disabled:bg-gray-50 disabled:text-gray-400 outline-none" />
+              <Input type="date" value={releaseDateFrom} onChange={e => setReleaseDateFrom(e.target.value)} disabled={!checkRelease} />
               <label className="text-xs text-gray-500">To</label>
-              <input type="date" value={releaseDateTo} onChange={e => setReleaseDateTo(e.target.value)} disabled={!checkRelease}
-                className="px-2 py-1 border border-gray-300 rounded text-xs disabled:bg-gray-50 disabled:text-gray-400 outline-none" />
+              <Input type="date" value={releaseDateTo} onChange={e => setReleaseDateTo(e.target.value)} disabled={!checkRelease} />
             </div>
             <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} onClick={loadReleasedList} loading={showListLoading}>
               Refresh
@@ -1057,39 +1039,31 @@ export default function JobScheduleReleasePage() {
         size="sm"
       >
         <div className="space-y-3 px-1">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Qty To Be Produce</label>
-            <input
-              type="text"
-              value={processRows[breakRowIndex]?.ToBeProduceQty ?? ""}
-              readOnly
-              className={readonlyCls + " mt-1"}
-            />
-          </div>
+          <Input
+            label="Qty To Be Produce"
+            type="text"
+            value={processRows[breakRowIndex]?.ToBeProduceQty ?? ""}
+            readOnly
+          />
 
-          {["Qty BreakUp 1", "Qty BreakUp 2", "Qty BreakUp 3", "Qty BreakUp 4", "Qty BreakUp 5"].map((label, idx) => (
-            <div key={idx}>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{label}</label>
-              <input
-                type="number"
-                value={breakQtys[idx]}
-                onChange={e => setBreakQtys(prev => { const c = [...prev]; c[idx] = e.target.value; return c; })}
-                className={inputCls + " mt-1"}
-                min={0}
-                placeholder="0"
-              />
-            </div>
+          {["Qty BreakUp 1", "Qty BreakUp 2", "Qty BreakUp 3", "Qty BreakUp 4", "Qty BreakUp 5"].map((breakLabel, idx) => (
+            <Input
+              key={idx}
+              label={breakLabel}
+              type="number"
+              value={breakQtys[idx]}
+              onChange={e => setBreakQtys(prev => { const c = [...prev]; c[idx] = e.target.value; return c; })}
+              min={0}
+              placeholder="0"
+            />
           ))}
 
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Total Qty</label>
-            <input
-              type="text"
-              value={breakTotalQty || ""}
-              readOnly
-              className={`${readonlyCls} mt-1 font-bold text-blue-700`}
-            />
-          </div>
+          <Input
+            label="Total Qty"
+            type="text"
+            value={breakTotalQty || ""}
+            readOnly
+          />
 
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="secondary" size="sm" onClick={() => setBreakModalOpen(false)}>Cancel</Button>

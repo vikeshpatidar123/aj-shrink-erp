@@ -10,6 +10,7 @@ import { ColFilterIcon } from "@/components/tables/ColFilterIcon";
 import { DataTable } from "@/components/tables/DataTable";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type PrimaryJob = {
@@ -125,8 +126,6 @@ const Field = ({ label, children, span }: {
   </div>
 );
 
-const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white";
-const roCls    = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700";
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ContentGangPage() {
@@ -584,16 +583,13 @@ export default function ContentGangPage() {
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <Field label="Gang No.">
-                <input readOnly value={gangNo} className={roCls} />
+                <Input readOnly value={gangNo} />
               </Field>
               <Field label="Gang Date">
-                <input type="date" value={gangDate}
-                  onChange={e => setGangDate(e.target.value)}
-                  disabled={isViewMode}
-                  className={isViewMode ? roCls : inputCls} />
+                <Input type="date" value={gangDate} onChange={e => setGangDate(e.target.value)} disabled={isViewMode} />
               </Field>
               <Field label="Type">
-                <input readOnly value="Roto Gravure Gang (GPWOF)" className={roCls} />
+                <Input readOnly value="Roto Gravure Gang (GPWOF)" />
               </Field>
               {!isViewMode && (
                 <div className="flex items-end">
@@ -614,42 +610,41 @@ export default function ContentGangPage() {
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
                 <Field label="Job Card No." span="col-span-2">
-                  <input readOnly value={primaryJob.JobCardContentNo} className={roCls}/>
+                  <Input readOnly value={primaryJob.JobCardContentNo} />
                 </Field>
                 <Field label="Client" span="col-span-2">
-                  <input readOnly value={primaryJob.LedgerName} className={roCls}/>
+                  <Input readOnly value={primaryJob.LedgerName} />
                 </Field>
                 <Field label="Job Name" span="col-span-2">
-                  <input readOnly value={primaryJob.JobName} className={roCls}/>
+                  <Input readOnly value={primaryJob.JobName} />
                 </Field>
                 <Field label="Film Quality" span="col-span-2">
-                  <input readOnly value={primaryJob.Quality} className={roCls}/>
+                  <Input readOnly value={primaryJob.Quality} />
                 </Field>
                 <Field label="Total GSM">
-                  <input readOnly value={primaryJob.TotalGSM} className={roCls}/>
+                  <Input readOnly value={primaryJob.TotalGSM} />
                 </Field>
                 <Field label="Total Ups">
-                  <input readOnly value={primaryJob.TotalUps} className={roCls}/>
+                  <Input readOnly value={primaryJob.TotalUps} />
                 </Field>
                 <Field label="Cyl. Circum. (inch)">
-                  <input readOnly value={primaryJob.CylinderCircumferenceInch} className={roCls}/>
+                  <Input readOnly value={primaryJob.CylinderCircumferenceInch} />
                 </Field>
                 <Field label="Cyl. Circum. (mm)">
-                  <input readOnly value={primaryJob.CylinderCircumferenceMM} className={roCls}/>
+                  <Input readOnly value={primaryJob.CylinderCircumferenceMM} />
                 </Field>
                 <Field label="Across Ups (UpsL)">
-                  <input readOnly value={primaryJob.UpsL} className={roCls}/>
+                  <Input readOnly value={primaryJob.UpsL} />
                 </Field>
                 <Field label="Around Ups (UpsW)">
-                  <input readOnly value={primaryJob.UpsW} className={roCls}/>
+                  <Input readOnly value={primaryJob.UpsW} />
                 </Field>
                 <Field label="Primary Job Ups *">
-                  <input type="number" min={1} max={primaryJob.TotalUps - 1}
+                  <Input type="number" min={1} max={primaryJob.TotalUps - 1}
                     value={primaryJobUps}
                     onChange={e => setPrimaryJobUps(e.target.value === "" ? "" : Number(e.target.value))}
                     disabled={isViewMode}
-                    className={isViewMode ? roCls : inputCls}
-                    placeholder="Enter"/>
+                    placeholder="Enter" />
                 </Field>
                 <div className="flex items-end">
                   <div className={`w-full text-center text-xs font-bold py-2 rounded-lg
@@ -720,19 +715,16 @@ export default function ContentGangPage() {
                     <p className="text-xs text-gray-500">{selectedSimilar.LedgerName} · Qty: {selectedSimilar.OrderQuantity?.toLocaleString()}</p>
                   </div>
                   <Field label="Gang Ups *">
-                    <input type="number" min={1}
+                    <Input type="number" min={1}
                       value={gangUpsInput}
                       onChange={e => setGangUpsInput(e.target.value === "" ? "" : Number(e.target.value))}
-                      className={`${inputCls} w-28`}
-                      placeholder="Enter"/>
+                      className="w-28"
+                      placeholder="Enter" />
                   </Field>
                   <Field label="Req. Sheets (auto)">
-                    <input readOnly value={reqSheetsCalc || ""} className={`${roCls} w-28`}/>
+                    <Input readOnly value={reqSheetsCalc || ""} className="w-28" />
                   </Field>
-                  <button onClick={addToGang}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg px-4 py-2 self-end transition-colors">
-                    <Plus size={14}/> Add to Gang
-                  </button>
+                  <Button variant="primary" onClick={addToGang} icon={<Plus size={14}/>}>Add to Gang</Button>
                 </div>
               )}
             </div>
@@ -808,16 +800,10 @@ export default function ContentGangPage() {
                 </button>
               )}
               {loadedGangNo && (
-                <button onClick={() => deleteGang(loadedGangNo)} disabled={deleting}
-                  className="flex items-center gap-2 text-sm font-semibold text-red-600 border border-red-300 rounded-lg px-4 py-2 hover:bg-red-50 disabled:opacity-50 transition-colors">
-                  <Trash2 size={14}/> {deleting ? "Deleting…" : "Delete"}
-                </button>
+                <Button variant="danger" onClick={() => deleteGang(loadedGangNo)} disabled={deleting} loading={deleting} icon={<Trash2 size={14}/>}>{deleting ? "Deleting…" : "Delete"}</Button>
               )}
               {!isViewMode && (
-                <button onClick={saveGang} disabled={saving}
-                  className="flex items-center gap-2 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 py-2 disabled:opacity-50 transition-colors">
-                  <CheckCircle2 size={14}/> {saving ? "Saving…" : loadedGangNo ? "Update Gang" : "Save Gang"}
-                </button>
+                <Button variant="primary" onClick={saveGang} disabled={saving} loading={saving} icon={<CheckCircle2 size={14}/>}>{saving ? "Saving…" : loadedGangNo ? "Update Gang" : "Save Gang"}</Button>
               )}
             </div>
           )}

@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { useMasters } from "@/context/MastersContext";
 import { apiPost, apiGet } from "@/lib/api";
+import { Input, Select } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type ColorTab = {
@@ -54,15 +56,7 @@ type PrefillData = {
 
 
 // ── Styles ───────────────────────────────────────────────────────────────────
-const inp  = "w-full px-3 py-2 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:bg-white focus:border-purple-400 outline-none focus:ring-2 focus:ring-purple-200 transition-all text-gray-800";
-const inpE = "w-full px-3 py-2 border border-red-300 rounded-xl text-sm bg-red-50 focus:bg-white focus:border-red-400 outline-none focus:ring-2 focus:ring-red-200 transition-all text-gray-800";
 const readBox = "px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700";
-
-const Label = ({ children, required }: { children: React.ReactNode; required?: boolean }) => (
-  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">
-    {children}{required && <span className="text-red-500 ml-0.5">*</span>}
-  </label>
-);
 
 const SH = ({ label, sub }: { label: string; sub?: string }) => (
   <p className="text-[10px] font-bold uppercase tracking-widest mb-3 pb-1.5 border-b border-gray-100 text-purple-700 flex items-center gap-2">
@@ -422,55 +416,62 @@ export default function CreateCylindersPage() {
         </span>
         {/* Vendor */}
         <div className="flex-1 min-w-[180px]">
-          <Label>Vendor / Engraver</Label>
-          <select className={inp} defaultValue=""
+          <Select
+            label="Vendor / Engraver"
+            value=""
             onChange={e => {
               const v = VENDOR_LEDGERS.find(l => l.LedgerID === e.target.value);
               if (v) applyToAll({ vendor: v.LedgerName, vendorLedgerID: v.LedgerID });
-            }}>
-            <option value="">-- Select to apply all --</option>
-            {VENDOR_LEDGERS.map(l => (
-              <option key={l.LedgerID} value={l.LedgerID}>{l.LedgerName}</option>
-            ))}
-          </select>
+            }}
+            options={[
+              { value: "", label: "-- Select to apply all --" },
+              ...VENDOR_LEDGERS.map(l => ({ value: l.LedgerID, label: l.LedgerName }))
+            ]}
+          />
         </div>
         {/* HSN */}
         <div className="flex-1 min-w-[220px]">
-          <Label>HSN Code</Label>
-          <select className={inp} defaultValue=""
+          <Select
+            label="HSN Code"
+            value=""
             onChange={e => {
               if (!e.target.value) return;
               const h = hsnList.find(x => x.hsnCode === e.target.value);
               applyToAll({ hsnCode: e.target.value, hsnId: String(h?.id ?? "0"), hsnDesc: h?.description || "" });
-            }}>
-            <option value="">-- Select to apply all --</option>
-            {hsnList.map(h => (
-              <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>
-            ))}
-          </select>
+            }}
+            options={[
+              { value: "", label: "-- Select to apply all --" },
+              ...hsnList.map(h => ({ value: h.hsnCode, label: `${h.hsnCode} — ${h.description}` }))
+            ]}
+          />
         </div>
         {/* Rate */}
         <div className="w-36">
-          <Label>Purchase Rate (₹)</Label>
-          <input type="number" min={0} step={0.01} className={inp}
+          <Input
+            label="Purchase Rate (₹)"
+            type="number"
+            min={0}
+            step={0.01}
             placeholder="e.g. 3500"
             onBlur={e => {
               if (e.target.value) applyToAll({ purchaseRate: e.target.value });
-            }} />
+            }}
+          />
         </div>
         {/* Unit */}
         <div className="w-36">
-          <Label>Purchase Unit</Label>
-          <select className={inp} defaultValue=""
+          <Select
+            label="Purchase Unit"
+            value=""
             onChange={e => {
               const u = unitList.find(x => x.id === e.target.value);
               if (u) applyToAll({ purchaseUnitId: u.id, purchaseUnit: u.symbol });
-            }}>
-            <option value="">-- Unit --</option>
-            {unitList.map(u => (
-              <option key={u.id} value={u.id}>{u.symbol} — {u.name}</option>
-            ))}
-          </select>
+            }}
+            options={[
+              { value: "", label: "-- Unit --" },
+              ...unitList.map(u => ({ value: u.id, label: `${u.symbol} — ${u.name}` }))
+            ]}
+          />
         </div>
         <div className="text-[10px] text-teal-600 font-medium self-center">
           ↑ Fill once, applies to every color tab
@@ -527,33 +528,36 @@ export default function CreateCylindersPage() {
               <SH label="Identity & Base Details" />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <Label>Cylinder Code</Label>
-                  <input className={inp} value={tab.cylinderCode}
-                    onChange={e => updateTab(activeTab, { cylinderCode: e.target.value })} />
+                  <Input
+                    label="Cylinder Code"
+                    value={tab.cylinderCode}
+                    onChange={e => updateTab(activeTab, { cylinderCode: e.target.value })}
+                  />
                 </div>
                 <div className="sm:col-span-2">
-                  <Label required>Cylinder Name</Label>
-                  <input
-                    className={submitAttempted && !tab.cylinderName.trim() ? inpE : inp}
+                  <Input
+                    label="Cylinder Name"
                     value={tab.cylinderName}
-                    onChange={e => updateTab(activeTab, { cylinderName: e.target.value })} />
+                    onChange={e => updateTab(activeTab, { cylinderName: e.target.value })}
+                    error={submitAttempted && !tab.cylinderName.trim() ? "Required" : undefined}
+                  />
                 </div>
                 <div>
-                  <Label>Color</Label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Color</label>
                   <div className={readBox}>{tab.colorName}</div>
                 </div>
                 <div>
-                  <Label>Cylinder Type</Label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Cylinder Type</label>
                   <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm font-bold text-indigo-700">
                     Printing Cylinder
                   </div>
                 </div>
                 <div>
-                  <Label>Product Code</Label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Product Code</label>
                   <div className={`${readBox} font-mono`}>{prefill.productCode}</div>
                 </div>
                 <div>
-                  <Label>Total No. of Colours</Label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Total No. of Colours</label>
                   <div className={readBox}>{prefill.noOfColors}</div>
                 </div>
               </div>
@@ -570,21 +574,27 @@ export default function CreateCylindersPage() {
                   { l: "Repeat UPS",                  v: String(prefill.repeatUPS) },
                 ].map(f => (
                   <div key={f.l}>
-                    <Label>{f.l}</Label>
+                    <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">{f.l}</label>
                     <div className="px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-sm font-bold text-indigo-700 font-mono">{f.v}</div>
                   </div>
                 ))}
                 <div>
-                  <Label>Number of Repeat</Label>
-                  <input type="number" min={1} className={inp}
+                  <Input
+                    label="Number of Repeat"
+                    type="number"
+                    min={1}
                     value={tab.numOfRepeat}
-                    onChange={e => updateTab(activeTab, { numOfRepeat: e.target.value })} />
+                    onChange={e => updateTab(activeTab, { numOfRepeat: e.target.value })}
+                  />
                 </div>
                 <div>
-                  <Label>Est. Life (Mtr)</Label>
-                  <input type="number" min={0} className={inp}
+                  <Input
+                    label="Est. Life (Mtr)"
+                    type="number"
+                    min={0}
                     value={tab.estLife}
-                    onChange={e => updateTab(activeTab, { estLife: e.target.value })} />
+                    onChange={e => updateTab(activeTab, { estLife: e.target.value })}
+                  />
                 </div>
               </div>
             </div>
@@ -594,74 +604,72 @@ export default function CreateCylindersPage() {
               <SH label="Vendor / Engraver & Commercial" />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
-                  <Label required>Vendor / Engraver Name</Label>
-                  <select
-                    className={submitAttempted && !tab.vendor ? inpE : inp}
+                  <Select
+                    label="Vendor / Engraver Name"
                     value={tab.vendorLedgerID}
                     onChange={e => {
                       const v = VENDOR_LEDGERS.find(l => l.LedgerID === e.target.value);
                       if (v) updateTab(activeTab, { vendor: v.LedgerName, vendorLedgerID: v.LedgerID });
-                    }}>
-                    <option value="">-- Select Vendor --</option>
-                    {VENDOR_LEDGERS.map(l => (
-                      <option key={l.LedgerID} value={l.LedgerID}>{l.LedgerName}</option>
-                    ))}
-                  </select>
+                    }}
+                    options={[{ value: "", label: "-- Select Vendor --" }, ...VENDOR_LEDGERS.map(l => ({ value: l.LedgerID, label: l.LedgerName }))]}
+                    error={submitAttempted && !tab.vendor ? "Required" : undefined}
+                  />
                 </div>
                 <div>
-                  <Label required>HSN Description</Label>
-                  <select
-                    className={submitAttempted && !tab.hsnCode ? inpE : inp}
+                  <Select
+                    label="HSN Description"
                     value={tab.hsnCode}
                     onChange={e => {
                       const h = hsnList.find(x => x.hsnCode === e.target.value);
                       updateTab(activeTab, { hsnCode: e.target.value, hsnId: String(h?.id ?? "0"), hsnDesc: h?.description || "" });
-                    }}>
-                    <option value="">-- Select HSN --</option>
-                    {hsnList.map(h => (
-                      <option key={h.id} value={h.hsnCode}>{h.hsnCode} — {h.description}</option>
-                    ))}
-                  </select>
+                    }}
+                    options={[{ value: "", label: "-- Select HSN --" }, ...hsnList.map(h => ({ value: h.hsnCode, label: `${h.hsnCode} — ${h.description}` }))]}
+                    error={submitAttempted && !tab.hsnCode ? "Required" : undefined}
+                  />
                 </div>
                 <div>
-                  <Label>HSN Code</Label>
+                  <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">HSN Code</label>
                   <div className={`${readBox} font-mono`}>{tab.hsnCode || "—"}</div>
                 </div>
                 <div>
-                  <Label required>Purchase Rate (₹)</Label>
-                  <input type="number" min={0} step={0.01} placeholder="e.g. 3500"
-                    className={submitAttempted && (!tab.purchaseRate || isNaN(Number(tab.purchaseRate))) ? inpE : inp}
+                  <Input
+                    label="Purchase Rate (₹)"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    placeholder="e.g. 3500"
                     value={tab.purchaseRate}
-                    onChange={e => updateTab(activeTab, { purchaseRate: e.target.value })} />
+                    onChange={e => updateTab(activeTab, { purchaseRate: e.target.value })}
+                    error={submitAttempted && (!tab.purchaseRate || isNaN(Number(tab.purchaseRate))) ? "Required" : undefined}
+                  />
                 </div>
                 <div>
-                  <Label required>Purchase Unit</Label>
-                  <select
-                    className={submitAttempted && !tab.purchaseUnitId ? inpE : inp}
+                  <Select
+                    label="Purchase Unit"
                     value={tab.purchaseUnitId}
                     onChange={e => {
                       const u = unitList.find(x => x.id === e.target.value);
                       if (u) updateTab(activeTab, { purchaseUnitId: u.id, purchaseUnit: u.symbol });
-                    }}>
-                    <option value="">-- Select Unit --</option>
-                    {unitList.map(u => (
-                      <option key={u.id} value={u.id}>{u.symbol} — {u.name}</option>
-                    ))}
-                  </select>
+                    }}
+                    options={[{ value: "", label: "-- Select Unit --" }, ...unitList.map(u => ({ value: u.id, label: `${u.symbol} — ${u.name}` }))]}
+                    error={submitAttempted && !tab.purchaseUnitId ? "Required" : undefined}
+                  />
                 </div>
                 <div>
-                  <Label>Status</Label>
-                  <select className={inp} value={tab.status}
-                    onChange={e => updateTab(activeTab, { status: e.target.value as ColorTab["status"] })}>
-                    <option value="Pending">Pending</option>
-                    <option value="Ordered">Ordered</option>
-                    <option value="Available">Available</option>
-                  </select>
+                  <Select
+                    label="Status"
+                    value={tab.status}
+                    onChange={e => updateTab(activeTab, { status: e.target.value as ColorTab["status"] })}
+                    options={[{ value: "Pending", label: "Pending" }, { value: "Ordered", label: "Ordered" }, { value: "Available", label: "Available" }]}
+                  />
                 </div>
                 <div>
-                  <Label>Remarks</Label>
-                  <input className={inp} value={tab.remarks} placeholder="Optional notes…"
-                    onChange={e => updateTab(activeTab, { remarks: e.target.value })} />
+                  <Input
+                    label="Remarks"
+                    value={tab.remarks}
+                    placeholder="Optional notes…"
+                    onChange={e => updateTab(activeTab, { remarks: e.target.value })}
+                  />
                 </div>
               </div>
             </div>
@@ -679,10 +687,9 @@ export default function CreateCylindersPage() {
                   Next Color →
                 </button>
               ) : (
-                <button onClick={handleSaveAll} disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition disabled:opacity-60">
-                  <Save size={14} /> {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
-                </button>
+                <Button variant="primary" loading={saving} icon={<Save size={15} />} onClick={handleSaveAll}>
+                  {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
+                </Button>
               )}
             </div>
           </div>
@@ -699,10 +706,9 @@ export default function CreateCylindersPage() {
             </span>
           )}
         </div>
-        <button onClick={handleSaveAll} disabled={saving}
-          className="flex items-center gap-2 px-7 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition disabled:opacity-60">
-          <Save size={15} /> {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
-        </button>
+        <Button variant="primary" loading={saving} icon={<Save size={15} />} onClick={handleSaveAll}>
+          {saving ? "Saving…" : `Save All ${tabs.length} Cylinders`}
+        </Button>
       </div>
     </div>
   );

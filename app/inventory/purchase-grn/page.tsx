@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { authHeaders, getSession } from "@/lib/auth";
-import { inputCls, labelCls } from "@/lib/styles";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -300,15 +300,11 @@ function QRScannerModal({ onScan, onClose }: { onScan: (v: string) => void; onCl
         )}
         {mode === "manual" && (
           <div className="p-5 space-y-4">
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste Batch No. or Barcode</label>
-            <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)}
-              rows={3} placeholder="Scan or type supplier batch / barcode value here…"
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
-            <button onClick={() => { if (manual.trim()) onScan(manual.trim()); }}
-              disabled={!manual.trim()}
-              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+            <Textarea label="Enter / Paste Batch No. or Barcode" autoFocus value={manual} onChange={(e) => setManual(e.target.value)}
+              rows={3} placeholder="Scan or type supplier batch / barcode value here…" />
+            <Button className="w-full" onClick={() => { if (manual.trim()) onScan(manual.trim()); }} disabled={!manual.trim()}>
               Use This Value
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -426,51 +422,26 @@ function BulkRollEntryModal({
             <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-3">Common — same for all items</p>
             {/* Row 1: warehouse / bin / rate / grade */}
             <div className="grid grid-cols-4 gap-4 items-end mb-3">
-              <div>
-                <label className={labelCls}>Warehouse *</label>
-                <select value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)} className={inputCls}>
-                  <option value="">Select…</option>
-                  {warehouses.map((w) => <option key={w.Warehouse}>{w.Warehouse}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Bin *</label>
-                <select value={bin} onChange={(e) => setBin(e.target.value)} className={inputCls} disabled={!bins.length}>
-                  <option value="">Select…</option>
-                  {bins.map((b) => <option key={b.Bin}>{b.Bin}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Rate (₹/{poItem.PurchaseUnit})</label>
-                <input type="number" value={rate} onChange={(e) => setRate(Number(e.target.value))} className={inputCls} min={0} step={0.01} />
-              </div>
-              <div>
-                <label className={labelCls}>Grade of Supplier</label>
-                <select value={commonGrade}
-                  onChange={(e) => { setCommonGrade(e.target.value); setRolls((p) => p.map((r) => ({ ...r, grade: e.target.value }))); }}
-                  className={inputCls}>
-                  <option value="">— Select —</option>
-                  {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
+              <Select label="Warehouse *" value={warehouseName} onChange={(e) => setWarehouseName(e.target.value)}
+                options={[{ value: "", label: "Select…" }, ...warehouses.map((w) => ({ value: w.Warehouse, label: w.Warehouse }))]} />
+              <Select label="Bin *" value={bin} onChange={(e) => setBin(e.target.value)} disabled={!bins.length}
+                options={[{ value: "", label: "Select…" }, ...bins.map((b) => ({ value: b.Bin, label: b.Bin }))]} />
+              <Input label={`Rate (₹/${poItem.PurchaseUnit})`} type="number" value={rate} onChange={(e) => setRate(Number(e.target.value))} min={0} step={0.01} />
+              <Select label="Grade of Supplier" value={commonGrade}
+                onChange={(e) => { setCommonGrade(e.target.value); setRolls((p) => p.map((r) => ({ ...r, grade: e.target.value }))); }}
+                options={[{ value: "", label: "— Select —" }, ...supplierGrades.map((g) => ({ value: g, label: g }))]} />
             </div>
             {/* Row 2: tag prefix / start no / count / generate */}
             <div className="flex items-end gap-4">
               <div className="flex-none">
-                <label className={labelCls}>Tag Prefix</label>
-                <input value={tagPrefix} onChange={(e) => setTagPrefix(e.target.value)} placeholder="TAG-"
-                  className={inputCls} style={{ width: "8rem" }} />
+                <Input label="Tag Prefix" value={tagPrefix} onChange={(e) => setTagPrefix(e.target.value)} placeholder="TAG-" />
               </div>
               <div className="flex-none">
-                <label className={labelCls}>Start No.</label>
-                <input value={tagStartNo} onChange={(e) => setTagStartNo(e.target.value)} placeholder="101"
-                  className={inputCls} style={{ width: "7rem" }} />
+                <Input label="Start No." value={tagStartNo} onChange={(e) => setTagStartNo(e.target.value)} placeholder="101" />
               </div>
               <div className="flex-none">
-                <label className={labelCls}>No. of Items</label>
-                <input type="number" min={1} max={500} value={count} onChange={(e) => setCount(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && generateRows()}
-                  className={inputCls} style={{ width: "7rem" }} />
+                <Input label="No. of Items" type="number" min={1} max={500} value={count} onChange={(e) => setCount(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && generateRows()} />
               </div>
               <div className="flex-none pb-0">
                 <button onClick={generateRows}
@@ -506,26 +477,22 @@ function BulkRollEntryModal({
                     <tr key={r.id} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                       <td className="px-4 py-2 text-gray-400 font-mono text-[10px]">{i + 1}</td>
                       <td className="px-4 py-2">
-                        <input value={r.itemTagNo} onChange={(e) => upd(r.id, "itemTagNo", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                        <Input value={r.itemTagNo} onChange={(e) => upd(r.id, "itemTagNo", e.target.value)}
+                          className="w-full font-mono" />
                       </td>
                       <td className="px-4 py-2">
-                        <select value={r.grade} onChange={(e) => upd(r.id, "grade", e.target.value)}
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                          <option value="">— Select —</option>
-                          {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
-                        </select>
+                        <Select value={r.grade} onChange={(e) => upd(r.id, "grade", e.target.value)}
+                          options={[{ value: "", label: "— Select —" }, ...supplierGrades.map((g) => ({ value: g, label: g }))]}
+                          className="w-full" />
                       </td>
                       <td className="px-4 py-2">
-                        <input value={r.supplierBatchNo} onChange={(e) => upd(r.id, "supplierBatchNo", e.target.value)}
-                          placeholder="Scan QR or type…"
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                        <Input value={r.supplierBatchNo} onChange={(e) => upd(r.id, "supplierBatchNo", e.target.value)}
+                          placeholder="Scan QR or type…" className="w-full font-mono" />
                       </td>
                       <td className="px-4 py-2">
-                        <input type="number" min={0} step={0.001} value={r.qty || ""}
+                        <Input type="number" min={0} step={0.001} value={r.qty || ""}
                           onChange={(e) => upd(r.id, "qty", Number(e.target.value))}
-                          placeholder="0.000"
-                          className="w-full border border-gray-200 rounded px-2 py-1.5 text-xs text-right font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                          placeholder="0.000" className="w-full text-right font-semibold" />
                       </td>
                       <td className="px-4 py-2 text-center">
                         <button onClick={() => setScanningId(r.id)}
@@ -553,13 +520,12 @@ function BulkRollEntryModal({
                 </span>
               </div>
               <div className="flex gap-2">
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
-                <button onClick={handleAdd}
-                  disabled={rolls.filter((r) => r.qty > 0).length === 0 || !warehouseName || !bin}
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button onClick={handleAdd}
+                  disabled={rolls.filter((r) => r.qty > 0).length === 0 || !warehouseName || !bin}>
                   <CheckCircle2 size={15} />
                   Add {rolls.filter((r) => r.qty > 0).length} Item{rolls.filter((r) => r.qty > 0).length !== 1 ? "s" : ""} to GRN
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -589,21 +555,13 @@ function PwModal({
           <button onClick={onClose}><X size={18} className="text-red-200 hover:text-white" /></button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
-            <label className={labelCls}>Your Password</label>
-            <input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)}
-              className={inputCls} placeholder="Enter password…" />
-          </div>
-          <div>
-            <label className={labelCls}>Remark (optional)</label>
-            <input value={rm} onChange={(e) => setRm(e.target.value)} className={inputCls} placeholder="Reason…" />
-          </div>
+          <Input label="Your Password" type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} placeholder="Enter password…" />
+          <Input label="Remark (optional)" value={rm} onChange={(e) => setRm(e.target.value)} placeholder="Reason…" />
           <div className="flex gap-3 justify-end pt-1">
-            <button onClick={onClose} className="px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Cancel</button>
-            <button onClick={() => onConfirm(pw, rm)} disabled={!pw || busy}
-              className="px-5 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-50">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button variant="danger" onClick={() => onConfirm(pw, rm)} disabled={!pw || busy}>
               {busy ? "Processing…" : "Confirm"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1115,9 +1073,9 @@ export default function PurchaseGRNPage() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3 flex items-center gap-4">
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
           <div className="flex items-center gap-2">
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={inputCls} />
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             <span className="text-gray-400 text-xs">to</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={inputCls} />
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
           <button onClick={fetchGrnList} disabled={listLoading}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
@@ -1260,30 +1218,22 @@ export default function PurchaseGRNPage() {
           <div className="p-6 space-y-5">
             <div className="grid grid-cols-3 gap-5">
               <div>
-                <label className={labelCls}>GRN No.</label>
-                <input readOnly value={grnNo || "…"}
-                  className="border border-gray-200 rounded-lg px-4 py-2 text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none w-full" />
+                <Input label="GRN No." readOnly value={grnNo || "…"} />
               </div>
               <div>
-                <label className={labelCls}>GRN Date *</label>
-                <input type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} className={inputCls} />
+                <Input label="GRN Date *" type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} />
               </div>
               <div>
-                <label className={labelCls}>Supplier *</label>
-                <select value={supplierId} onChange={(e) => { setSupplierId(Number(e.target.value)); setLines([]); }}
-                  className={inputCls} disabled={!!editTxnId}>
-                  <option value={0}>Select supplier…</option>
-                  {suppliers.map((s) => <option key={s.LedgerID} value={s.LedgerID}>{s.LedgerName}</option>)}
-                </select>
+                <Select label="Supplier *" value={String(supplierId)}
+                  onChange={(e) => { setSupplierId(Number(e.target.value)); setLines([]); }}
+                  disabled={!!editTxnId}
+                  options={[{ value: "0", label: "Select supplier…" }, ...suppliers.map((s) => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
               </div>
             </div>
             <div className="grid grid-cols-3 gap-5">
               <div>
-                <label className={labelCls}>Received By</label>
-                <select value={receivedById} onChange={(e) => setReceivedById(Number(e.target.value))} className={inputCls}>
-                  <option value={0}>Select…</option>
-                  {receivers.map((r) => <option key={r.LedgerID} value={r.LedgerID}>{r.LedgerName}</option>)}
-                </select>
+                <Select label="Received By" value={String(receivedById)} onChange={(e) => setReceivedById(Number(e.target.value))}
+                  options={[{ value: "0", label: "Select…" }, ...receivers.map((r) => ({ value: String(r.LedgerID), label: r.LedgerName }))]} />
               </div>
             </div>
             {supplierId > 0 && (
@@ -1460,22 +1410,18 @@ export default function PurchaseGRNPage() {
                             <div className="text-gray-400 text-[9px] font-mono">{line.batchNo}</div>
                           </td>
                           <td className="px-2 py-1.5">
-                            <input value={line.itemTagNo} onChange={(e) => updateLine(line.lineId, "itemTagNo", e.target.value)}
-                              placeholder="Tag…"
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                            <Input value={line.itemTagNo} onChange={(e) => updateLine(line.lineId, "itemTagNo", e.target.value)}
+                              placeholder="Tag…" className="w-full font-mono" />
                           </td>
                           <td className="px-2 py-1.5">
-                            <select value={line.supplierGrade} onChange={(e) => updateLine(line.lineId, "supplierGrade", e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                              <option value="">—</option>
-                              {supplierGrades.map((g) => <option key={g} value={g}>{g}</option>)}
-                            </select>
+                            <Select value={line.supplierGrade} onChange={(e) => updateLine(line.lineId, "supplierGrade", e.target.value)}
+                              options={[{ value: "", label: "—" }, ...supplierGrades.map((g) => ({ value: g, label: g }))]}
+                              className="w-full" />
                           </td>
                           <td className="px-2 py-1.5">
                             <div className="flex gap-1">
-                              <input value={line.supplierBatchNo} onChange={(e) => updateLine(line.lineId, "supplierBatchNo", e.target.value)}
-                                placeholder="Scan or type…"
-                                className="flex-1 border border-gray-200 rounded px-2 py-1 text-[10px] font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-0 bg-white" />
+                              <Input value={line.supplierBatchNo} onChange={(e) => updateLine(line.lineId, "supplierBatchNo", e.target.value)}
+                                placeholder="Scan or type…" className="flex-1 font-mono min-w-0" />
                               <button onClick={() => setScanningLineId(line.lineId)}
                                 className="p-1.5 text-blue-600 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 shrink-0">
                                 <Scan size={10} />
@@ -1487,10 +1433,9 @@ export default function PurchaseGRNPage() {
                               const isOver = line.pendingQty > 0 && line.challanQty > line.pendingQty;
                               return (
                                 <div className="flex flex-col gap-0.5">
-                                  <input type="number" min={0} step={0.001} value={line.challanQty || ""}
+                                  <Input type="number" min={0} step={0.001} value={line.challanQty || ""}
                                     onChange={(e) => updateLine(line.lineId, "challanQty", Number(e.target.value))}
-                                    placeholder="0.000"
-                                    className={`w-full border rounded px-2 py-1 text-xs text-right font-semibold focus:outline-none focus:ring-1 bg-white ${isOver ? "border-red-400 focus:ring-red-400 text-red-600" : "border-gray-200 focus:ring-blue-500"}`} />
+                                    placeholder="0.000" className="w-full text-right font-semibold" />
                                   <span className="text-[9px] text-right" style={{ color: isOver ? "#ef4444" : "#9ca3af" }}>
                                     {line.stockUnit}{line.pendingQty > 0 ? ` · max ${line.pendingQty}` : ""}
                                   </span>
@@ -1499,27 +1444,22 @@ export default function PurchaseGRNPage() {
                             })()}
                           </td>
                           <td className="px-2 py-1.5">
-                            <select value={line.warehouseName}
+                            <Select value={line.warehouseName}
                               onChange={(e) => updateLineWarehouse(line.lineId, e.target.value)}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                              <option value="">Select…</option>
-                              {warehouses.map((w) => <option key={w.Warehouse}>{w.Warehouse}</option>)}
-                            </select>
+                              options={[{ value: "", label: "Select…" }, ...warehouses.map((w) => ({ value: w.Warehouse, label: w.Warehouse }))]}
+                              className="w-full" />
                           </td>
                           <td className="px-2 py-1.5">
-                            <select value={line.bin}
+                            <Select value={line.bin}
                               onChange={(e) => updateLineBin(line.lineId, e.target.value, line.warehouseName)}
                               disabled={!whBins.length}
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                              <option value="">Select…</option>
-                              {whBins.map((b) => <option key={b.Bin}>{b.Bin}</option>)}
-                            </select>
+                              options={[{ value: "", label: "Select…" }, ...whBins.map((b) => ({ value: b.Bin, label: b.Bin }))]}
+                              className="w-full" />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input type="number" min={0} step={0.01} value={line.purchaseRate || ""}
+                            <Input type="number" min={0} step={0.01} value={line.purchaseRate || ""}
                               onChange={(e) => updateLine(line.lineId, "purchaseRate", Number(e.target.value))}
-                              placeholder="0.00"
-                              className="w-full border border-gray-200 rounded px-2 py-1 text-[10px] text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                              placeholder="0.00" className="w-full text-right" />
                           </td>
                           <td className="px-2 py-1.5 text-center">
                             <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500 transition-colors"><X size={13} /></button>
@@ -1570,11 +1510,8 @@ export default function PurchaseGRNPage() {
                 { label: "Transporter", value: transporter, set: setTransporter, type: "text", ph: "Logistics name" },
                 { label: "Narration / Remark", value: remark, set: setRemark, type: "text", ph: "Optional notes" },
               ].map((f) => (
-                <div key={f.label}>
-                  <label className={labelCls}>{f.label}</label>
-                  <input type={f.type} value={f.value} onChange={(e) => f.set(e.target.value)}
-                    placeholder={f.ph} className={inputCls} />
-                </div>
+                <Input key={f.label} label={f.label} type={f.type} value={f.value}
+                  onChange={(e) => f.set(e.target.value)} placeholder={f.ph} />
               ))}
             </div>
             <div className="mt-6 flex justify-end">

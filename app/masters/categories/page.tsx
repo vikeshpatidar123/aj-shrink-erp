@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -28,8 +29,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
     {children}
   </div>
 );
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // Types
 type CategoryRow = {
@@ -609,14 +608,8 @@ export default function CategoryMasterPage() {
               <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit FG Category" : "New FG Category"}</h2>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                <List size={16} /> Back to List
-              </button>
-              <button onClick={saveCategory} disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                Save FG Category
-              </button>
+              <Button variant="secondary" icon={<List size={16} />} onClick={() => setView("list")}>Back to List</Button>
+              <Button variant="primary" loading={saving} icon={<Check size={16} />} onClick={saveCategory}>Save FG Category</Button>
             </div>
           </div>
 
@@ -657,16 +650,12 @@ export default function CategoryMasterPage() {
                         <SectionTitle title="FG Category Identity" />
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="md:col-span-2">
-                            <Field label="FG Category Name" required>
-                              <input type="text" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
-                                placeholder="e.g. Gravure - Solvent Base 2 Ply" className={ic(submitAttempted && !form.CategoryName.trim())} />
-                            </Field>
+                            <Input label="FG Category Name" value={form.CategoryName} onChange={e => f("CategoryName", e.target.value)}
+                              placeholder="e.g. Gravure - Solvent Base 2 Ply" error={submitAttempted && !form.CategoryName.trim() ? "Required" : undefined} />
                           </div>
                           <div className="md:col-span-3">
-                            <Field label="Remark">
-                              <textarea value={form.Remark} onChange={e => f("Remark", e.target.value)} rows={2}
-                                placeholder="Remarks..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
-                            </Field>
+                            <Textarea label="Remark" value={form.Remark} onChange={e => f("Remark", e.target.value)} rows={2}
+                              placeholder="Remarks..." />
                           </div>
                         </div>
                       </div>
@@ -769,80 +758,63 @@ export default function CategoryMasterPage() {
                       {/* Add row */}
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Test Parameter *</label>
-                          <input className={(coaDraftErr.TestParameterName ? ic(true) : inputCls) + " text-xs"} value={coaDraft.TestParameterName}
+                          <Input label="Test Parameter" value={coaDraft.TestParameterName}
                             onChange={e => { setCoaDraft(p => ({ ...p, TestParameterName: e.target.value })); setCoaDraftErr(p => ({ ...p, TestParameterName: false })); }}
-                            placeholder="e.g. GSM" />
+                            placeholder="e.g. GSM" error={coaDraftErr.TestParameterName ? "Required" : undefined} />
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Specification *</label>
-                          <select className={(coaDraftErr.Specification ? ic(true) : inputCls) + " text-xs"} value={coaDraft.Specification}
+                          <Select label="Specification" value={coaDraft.Specification}
                             onChange={e => {
                               const val = e.target.value;
                               setCoaDraft(p => ({ ...p, Specification: val, SpecificationFieldDataFromTable: "", SpecificationFieldValue: "", SpecificationFieldUnit: "" }));
                               setCoaDraftErr(p => ({ ...p, Specification: false }));
-                            }}>
-                            <option value="">— Select —</option>
-                            {COA_SPECIFICATION_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
+                            }}
+                            options={[{ value: "", label: "— Select —" }, ...COA_SPECIFICATION_TYPES.map(o => ({ value: o, label: o }))]}
+                            error={coaDraftErr.Specification ? "Required" : undefined} />
                         </div>
 
                         {coaDraft.Specification === "Data Field" ? (
                           <>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Data Load From *</label>
-                              <select className={(coaDraftErr.SpecificationFieldDataFromTable ? ic(true) : inputCls) + " text-xs"}
-                                value={coaDraft.SpecificationFieldDataFromTable}
+                              <Select label="Data Load From" value={coaDraft.SpecificationFieldDataFromTable}
                                 onChange={e => {
                                   const val = e.target.value;
                                   setCoaDraft(p => ({ ...p, SpecificationFieldDataFromTable: val, SpecificationFieldValue: "" }));
                                   setCoaDraftErr(p => ({ ...p, SpecificationFieldDataFromTable: false }));
-                                }}>
-                                <option value="">— Select —</option>
-                                {COA_DATA_FROM_TABLES.map(o => <option key={o} value={o}>{o}</option>)}
-                              </select>
+                                }}
+                                options={[{ value: "", label: "— Select —" }, ...COA_DATA_FROM_TABLES.map(o => ({ value: o, label: o }))]}
+                                error={coaDraftErr.SpecificationFieldDataFromTable ? "Required" : undefined} />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Required Field Value *</label>
-                              <select className={(coaDraftErr.SpecificationFieldValue ? ic(true) : inputCls) + " text-xs"}
-                                value={coaDraft.SpecificationFieldValue}
+                              <Select label="Required Field Value" value={coaDraft.SpecificationFieldValue}
                                 disabled={!coaDraft.SpecificationFieldDataFromTable}
-                                onChange={e => { setCoaDraft(p => ({ ...p, SpecificationFieldValue: e.target.value })); setCoaDraftErr(p => ({ ...p, SpecificationFieldValue: false })); }}>
-                                <option value="">— Select —</option>
-                                {(COA_DATA_FIELD_VALUES[coaDraft.SpecificationFieldDataFromTable] ?? []).map(o => <option key={o} value={o}>{o}</option>)}
-                              </select>
+                                onChange={e => { setCoaDraft(p => ({ ...p, SpecificationFieldValue: e.target.value })); setCoaDraftErr(p => ({ ...p, SpecificationFieldValue: false })); }}
+                                options={[{ value: "", label: "— Select —" }, ...(COA_DATA_FIELD_VALUES[coaDraft.SpecificationFieldDataFromTable] ?? []).map(o => ({ value: o, label: o }))]}
+                                error={coaDraftErr.SpecificationFieldValue ? "Required" : undefined} />
                             </div>
                           </>
                         ) : (
                           <div className="lg:col-span-2">
-                            <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">
-                              Standard Specification {coaDraft.Specification && "*"}
-                              {coaDraft.Specification === "Combo Field" && <span className="normal-case font-normal text-gray-400"> (separate options with |)</span>}
-                            </label>
-                            <input className={(coaDraftErr.SpecificationFieldUnit ? ic(true) : inputCls) + " text-xs"} value={coaDraft.SpecificationFieldUnit}
+                            <Input label="Standard Specification" value={coaDraft.SpecificationFieldUnit}
                               onChange={e => { setCoaDraft(p => ({ ...p, SpecificationFieldUnit: e.target.value })); setCoaDraftErr(p => ({ ...p, SpecificationFieldUnit: false })); }}
-                              placeholder={coaDraft.Specification === "Combo Field" ? "e.g. 50gsm|55gsm|60gsm" : "e.g. 50 GSM"} />
+                              placeholder={coaDraft.Specification === "Combo Field" ? "e.g. 50gsm|55gsm|60gsm" : "e.g. 50 GSM"}
+                              error={coaDraftErr.SpecificationFieldUnit ? "Required" : undefined} />
                           </div>
                         )}
 
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Result Type *</label>
-                          <select className={(coaDraftErr.ResultDataFieldType ? ic(true) : inputCls) + " text-xs"} value={coaDraft.ResultDataFieldType}
-                            onChange={e => { setCoaDraft(p => ({ ...p, ResultDataFieldType: e.target.value, Defaults: "" })); setCoaDraftErr(p => ({ ...p, ResultDataFieldType: false })); }}>
-                            <option value="">— Select —</option>
-                            {COA_RESULT_TYPES.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
+                          <Select label="Result Type" value={coaDraft.ResultDataFieldType}
+                            onChange={e => { setCoaDraft(p => ({ ...p, ResultDataFieldType: e.target.value, Defaults: "" })); setCoaDraftErr(p => ({ ...p, ResultDataFieldType: false })); }}
+                            options={[{ value: "", label: "— Select —" }, ...COA_RESULT_TYPES.map(o => ({ value: o, label: o }))]}
+                            error={coaDraftErr.ResultDataFieldType ? "Required" : undefined} />
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">
-                            Default Value *
-                            {coaDraft.ResultDataFieldType === "Combo Field" && <span className="normal-case font-normal text-gray-400"> (separate options with |)</span>}
-                          </label>
-                          <input className={(coaDraftErr.Defaults ? ic(true) : inputCls) + " text-xs"} value={coaDraft.Defaults}
+                          <Input label="Default Value" value={coaDraft.Defaults}
                             onChange={e => { setCoaDraft(p => ({ ...p, Defaults: e.target.value })); setCoaDraftErr(p => ({ ...p, Defaults: false })); }}
-                            placeholder={coaDraft.ResultDataFieldType === "Combo Field" ? "e.g. Pass|Fail" : "Default value"} />
+                            placeholder={coaDraft.ResultDataFieldType === "Combo Field" ? "e.g. Pass|Fail" : "Default value"}
+                            error={coaDraftErr.Defaults ? "Required" : undefined} />
                         </div>
 
                         <div>
@@ -855,7 +827,7 @@ export default function CategoryMasterPage() {
                           </label>
                         </div>
                         <div className="flex items-end">
-                          <button onClick={() => {
+                          <Button variant="primary" icon={<Plus size={13} />} onClick={() => {
                             const errs: Record<string, boolean> = {};
                             if (!coaDraft.TestParameterName.trim()) errs.TestParameterName = true;
                             if (!coaDraft.Specification) errs.Specification = true;
@@ -871,9 +843,7 @@ export default function CategoryMasterPage() {
                             setCoaDraftErr({});
                             f("coaRows", [...form.coaRows, { id: uid(), ...coaDraft }]);
                             setCoaDraft(blankcoa());
-                          }} className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5">
-                            <Plus size={13} /> Add Row
-                          </button>
+                          }}>Add Row</Button>
                         </div>
                       </div>
 
@@ -932,13 +902,8 @@ export default function CategoryMasterPage() {
                         {/* Ply (Layer) Selection — laminate structure, informational on the category record */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-2">
                           <div>
-                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-                              Ply <span className="text-red-500">*</span>
-                            </label>
-                            <select value={form.Layer} onChange={e => f("Layer", e.target.value)} className={inputCls}>
-                              <option value="">Select Ply...</option>
-                              {LAYERS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
+                            <Select label="Ply" value={form.Layer} onChange={e => f("Layer", e.target.value)}
+                              options={[{ value: "", label: "Select Ply..." }, ...LAYERS]} />
                           </div>
                         </div>
 
@@ -948,19 +913,14 @@ export default function CategoryMasterPage() {
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             {/* Ply Type */}
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Ply Type *</label>
-                              <select className={(plyDraftErr.PlyType ? ic(true) : inputCls) + " text-xs"} value={plyDraft.PlyType}
-                                onChange={e => { setPlyDraft(p => ({ ...p, PlyType: e.target.value })); setPlyDraftErr(p => ({ ...p, PlyType: false })); }}>
-                                <option value="">— Select —</option>
-                                {PLY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                              </select>
+                              <Select label="Ply Type" value={plyDraft.PlyType}
+                                onChange={e => { setPlyDraft(p => ({ ...p, PlyType: e.target.value })); setPlyDraftErr(p => ({ ...p, PlyType: false })); }}
+                                options={[{ value: "", label: "— Select —" }, ...PLY_TYPES.map(t => ({ value: t, label: t }))]}
+                                error={plyDraftErr.PlyType ? "Required" : undefined} />
                             </div>
                             {/* Item Group */}
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Group *</label>
-                              <select
-                                className={(plyDraftErr.ItemGroupID ? ic(true) : inputCls) + " text-xs"}
-                                value={plyDraft.ItemGroupID}
+                              <Select label="Item Group" value={plyDraft.ItemGroupID}
                                 onChange={e => {
                                   const id = e.target.value;
                                   const grp = itemGroupsFull.find(g => String(g.ItemGroupID) === id);
@@ -990,62 +950,49 @@ export default function CategoryMasterPage() {
                                       });
                                   }
                                 }}
-                              >
-                                <option value="">— Select Group —</option>
-                                {itemGroupsFull.map(g => (
-                                  <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
-                                ))}
-                              </select>
+                                options={[{ value: "", label: "— Select Group —" }, ...itemGroupsFull.map(g => ({ value: String(g.ItemGroupID), label: g.ItemGroupName }))]}
+                                error={plyDraftErr.ItemGroupID ? "Required" : undefined} />
                             </div>
                             {/* Item Sub Group */}
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Item Sub Group *</label>
-                              <select
-                                className={(plyDraftErr.ItemSubGroupName ? ic(true) : inputCls) + " text-xs"}
-                                value={plyDraft.ItemSubGroupName}
+                              <Select label="Item Sub Group" value={plyDraft.ItemSubGroupName}
                                 onChange={e => { setPlyDraft(p => ({ ...p, ItemSubGroupName: e.target.value })); setPlyDraftErr(p => ({ ...p, ItemSubGroupName: false })); }}
                                 disabled={!plyDraft.ItemGroupID}
-                              >
-                                <option value="">— Select Sub Group —</option>
-                                {itemSubGroups.map(s => <option key={s} value={s}>{s}</option>)}
-                              </select>
+                                options={[{ value: "", label: "— Select Sub Group —" }, ...itemSubGroups.map(s => ({ value: s, label: s }))]}
+                                error={plyDraftErr.ItemSubGroupName ? "Required" : undefined} />
                             </div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Field Display Name *</label>
-                              <input className={(plyDraftErr.FieldDisplayName ? ic(true) : inputCls) + " text-xs"} placeholder="e.g. Ink Wet Weight"
+                              <Input label="Field Display Name" placeholder="e.g. Ink Wet Weight"
                                 value={plyDraft.FieldDisplayName}
-                                onChange={e => { setPlyDraft(p => ({ ...p, FieldDisplayName: e.target.value })); setPlyDraftErr(p => ({ ...p, FieldDisplayName: false })); }} />
+                                onChange={e => { setPlyDraft(p => ({ ...p, FieldDisplayName: e.target.value })); setPlyDraftErr(p => ({ ...p, FieldDisplayName: false })); }}
+                                error={plyDraftErr.FieldDisplayName ? "Required" : undefined} />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Default Dry GSM *</label>
-                              <input className={(plyDraftErr.DefaultGSM ? ic(true) : inputCls) + " text-xs"} type="number" placeholder="0.00"
+                              <Input label="Default Dry GSM" type="number" placeholder="0.00"
                                 value={plyDraft.DefaultGSM}
-                                onChange={e => { setPlyDraft(p => ({ ...p, DefaultGSM: Number(e.target.value) })); setPlyDraftErr(p => ({ ...p, DefaultGSM: false })); }} />
+                                onChange={e => { setPlyDraft(p => ({ ...p, DefaultGSM: Number(e.target.value) })); setPlyDraftErr(p => ({ ...p, DefaultGSM: false })); }}
+                                error={plyDraftErr.DefaultGSM ? "Required" : undefined} />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Min Value</label>
-                              <input className={inputCls + " text-xs"} type="number" placeholder="0"
+                              <Input label="Min Value" type="number" placeholder="0"
                                 value={plyDraft.MinimumValue}
                                 onChange={e => setPlyDraft(p => ({ ...p, MinimumValue: Number(e.target.value) }))} />
                             </div>
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Max Value</label>
-                              <input className={inputCls + " text-xs"} type="number" placeholder="10"
+                              <Input label="Max Value" type="number" placeholder="10"
                                 value={plyDraft.MaximumValue}
                                 onChange={e => setPlyDraft(p => ({ ...p, MaximumValue: Number(e.target.value) }))} />
                             </div>
                           </div>
                           <div className="flex items-end gap-3">
                             <div className="flex-1">
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider block mb-1">Share % Formula</label>
-                              <input className={inputCls + " text-xs"} placeholder="e.g. ink_gsm / total_gsm * 100"
+                              <Input label="Share % Formula" placeholder="e.g. ink_gsm / total_gsm * 100"
                                 value={plyDraft.SharePercentageFormula}
                                 onChange={e => setPlyDraft(p => ({ ...p, SharePercentageFormula: e.target.value }))} />
                             </div>
-                            <button
-                              onClick={() => {
+                            <Button variant="primary" icon={<Plus size={13} />} onClick={() => {
                                 const errs: Record<string, boolean> = {};
                                 if (!plyDraft.PlyType) errs.PlyType = true;
                                 if (!plyDraft.ItemGroupID) errs.ItemGroupID = true;
@@ -1057,10 +1004,7 @@ export default function CategoryMasterPage() {
                                 f("plyRows", [...form.plyRows, { id: uid(), ...plyDraft }]);
                                 setPlyDraft(blankply());
                                 setItemSubGroups([]);
-                              }}
-                              className="px-5 py-2 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 flex items-center gap-1.5 whitespace-nowrap h-[38px]">
-                              <Plus size={13} /> + Add Consumable
-                            </button>
+                              }}>Add Consumable</Button>
                           </div>
                         </div>
 
@@ -1117,11 +1061,7 @@ export default function CategoryMasterPage() {
 
                         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                           <button onClick={() => setActiveTab("coa")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← COA Parameters</button>
-                          <button onClick={saveCategory} disabled={saving}
-                            className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                            {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                            Save FG Category
-                          </button>
+                          <Button variant="primary" loading={saving} icon={<Check size={16} />} onClick={saveCategory}>Save FG Category</Button>
                         </div>
                       </div>
                     );

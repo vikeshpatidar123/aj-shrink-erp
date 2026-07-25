@@ -1,9 +1,10 @@
 "use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -28,8 +29,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
     {children}
   </div>
 );
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // Unit type options for the Type field
 const UNIT_TYPES = ["Weight", "Length", "Area"];
@@ -220,15 +219,8 @@ export default function UnitMasterPage() {
             <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Unit" : "New Unit"}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveUnit} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save Unit
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} icon={<Check size={16}/>} onClick={saveUnit}>Save Unit</Button>
           </div>
         </div>
 
@@ -274,17 +266,14 @@ export default function UnitMasterPage() {
               <SectionTitle title="Unit Identity" />
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="md:col-span-2">
-                  <Field label="Unit Name" required>
-                    <input type="text" value={form.UnitName}
-                      onChange={e => f("UnitName", e.target.value)}
-                      placeholder="e.g. Kilogram, Meter, Piece" className={ic(submitAttempted && !form.UnitName.trim())} />
-                  </Field>
+                  <Input label="Unit Name" value={form.UnitName}
+                    onChange={e => f("UnitName", e.target.value)}
+                    placeholder="e.g. Kilogram, Meter, Piece"
+                    error={submitAttempted && !form.UnitName.trim() ? "Required" : undefined} />
                 </div>
-                <Field label="Unit Symbol">
-                  <input type="text" value={form.UnitSymbol}
-                    onChange={e => f("UnitSymbol", e.target.value)}
-                    placeholder="e.g. kg, m, pcs" className={inputCls} />
-                </Field>
+                <Input label="Unit Symbol" value={form.UnitSymbol}
+                  onChange={e => f("UnitSymbol", e.target.value)}
+                  placeholder="e.g. kg, m, pcs" />
               </div>
             </div>
 
@@ -292,20 +281,18 @@ export default function UnitMasterPage() {
             <div>
               <SectionTitle title="Conversion & Precision" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Field label="Conversion Value">
-                  <input type="number" value={form.ConversionValue}
-                    onChange={e => f("ConversionValue", e.target.value)}
-                    placeholder="e.g. 1000 (for g → kg)" min="0" step="any" className={inputCls} />
-                </Field>
-                <Field label="Decimal Places">
-                  <select value={form.DecimalPlace}
-                    onChange={e => f("DecimalPlace", e.target.value)}
-                    className={inputCls}>
-                    {[0, 1, 2, 3, 4].map(n => (
-                      <option key={n} value={String(n)}>{n} decimal{n !== 1 ? "s" : ""}</option>
-                    ))}
-                  </select>
-                </Field>
+                <Input label="Conversion Value" type="number" value={form.ConversionValue}
+                  onChange={e => f("ConversionValue", e.target.value)}
+                  placeholder="e.g. 1000 (for g → kg)" min={0} step="any" />
+                <Select label="Decimal Places" value={form.DecimalPlace}
+                  onChange={e => f("DecimalPlace", e.target.value)}
+                  options={[
+                    { value: "0", label: "0 decimals" },
+                    { value: "1", label: "1 decimal" },
+                    { value: "2", label: "2 decimals" },
+                    { value: "3", label: "3 decimals" },
+                    { value: "4", label: "4 decimals" },
+                  ]} />
               </div>
             </div>
           </div>

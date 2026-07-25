@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, ArrowLeft, CheckCircle2, Loader2 } from "lucide-react";
 import { loginUser, clearAuth } from "@/lib/auth";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 export default function UserLoginPage() {
   const router = useRouter();
@@ -100,18 +102,14 @@ export default function UserLoginPage() {
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
                 Username <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                <input
-                  type="text"
-                  value={userName}
-                  onChange={(e) => { setUserName(e.target.value); setError(""); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  placeholder="Enter your username"
-                  autoFocus
-                />
-              </div>
+              <Input
+                type="text"
+                value={userName}
+                onChange={(e) => { setUserName(e.target.value); setError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="Enter your username"
+                autoFocus
+              />
             </div>
 
             {/* Password — UserMaster.Password (encrypted server-side) */}
@@ -120,13 +118,11 @@ export default function UserLoginPage() {
                 Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                <input
+                <Input
                   type={showPw ? "text" : "password"}
                   value={password}
                   onChange={(e) => { setPassword(e.target.value); setError(""); }}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  className="w-full pl-9 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter your password"
                   autoComplete="current-password"
                 />
@@ -139,22 +135,24 @@ export default function UserLoginPage() {
 
           </div>
 
-          <button
+          <Button
+            variant="primary"
             onClick={handleLogin}
             disabled={loading}
-            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm flex items-center justify-center gap-2"
+            loading={loading}
+            className="mt-6 w-full"
           >
-            {loading ? (
-              <><Loader2 size={16} className="animate-spin" /> Signing in...</>
-            ) : (
-              "Login to Dashboard →"
-            )}
-          </button>
+            {loading ? "Signing in..." : "Login to Dashboard →"}
+          </Button>
 
-          <button onClick={handleBack}
-            className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition-colors py-1">
-            <ArrowLeft size={12} /> Back to Company Login
-          </button>
+          <Button
+            variant="ghost"
+            onClick={handleBack}
+            icon={<ArrowLeft size={12} />}
+            className="mt-3 w-full justify-center text-xs text-gray-400 hover:text-gray-600"
+          >
+            Back to Company Login
+          </Button>
         </div>
 
         <p className="text-center text-xs text-slate-500 mt-5">

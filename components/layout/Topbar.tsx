@@ -33,7 +33,7 @@ const ALL_MODULES = [
   { label: "Dispatch",                    href: "/gravure/dispatch",                           badge: "GRV" },
   { label: "Gate Pass Entry",             href: "/gate-pass-entry",                            badge: null },
   { label: "Gate Entry",                  href: "/gate-entry",                                 badge: null },
-  { label: "Product Category Master",     href: "/masters/categories",                         badge: null },
+  { label: "Finish Goods Category Master", href: "/masters/categories",                         badge: null },
   { label: "Item Master",                 href: "/masters/items",                              badge: null },
   { label: "Ledger Master",               href: "/masters/employees",                          badge: null },
   { label: "Sales Person Master",         href: "/masters/sales-persons",                      badge: null },

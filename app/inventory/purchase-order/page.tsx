@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
-import { inputCls } from "@/lib/styles";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
@@ -272,8 +272,6 @@ const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
 
-const selectCls = "w-full border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white";
-const tableInputCls = "text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -1284,11 +1282,11 @@ export default function PurchaseOrderPage() {
             <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3">
               <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50 flex-1 max-w-xs">
                 <Search size={13} className="text-gray-400" />
-                <input
+                <Input
                   value={posSearch}
                   onChange={e => setPosSearch(e.target.value)}
                   placeholder="Search PO no., supplier…"
-                  className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+                  className="flex-1"
                 />
               </div>
               <button onClick={fetchPos} className="text-xs text-blue-600 hover:underline font-medium">Refresh</button>
@@ -1434,17 +1432,10 @@ export default function PurchaseOrderPage() {
               <div>
                 <SectionTitle title="Order Details" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Field label="PO No.">
-                    <input readOnly value={poNo} className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm bg-blue-50 text-blue-700 font-mono font-semibold focus:outline-none" />
-                  </Field>
-                  <Field label="PO Date" required>
-                    <input type="date" value={poDate} onChange={e => setPoDate(e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="Currency">
-                    <select value={currency} onChange={e => setCurrency(e.target.value)} className={selectCls}>
-                      {CURRENCIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </Field>
+                  <Input label="PO No." readOnly value={poNo} />
+                  <Input label="PO Date" required type="date" value={poDate} onChange={e => setPoDate(e.target.value)} />
+                  <Select label="Currency" value={currency} onChange={e => setCurrency(e.target.value)}
+                    options={CURRENCIES.map(c => ({ value: c, label: c }))} />
                 </div>
               </div>
 
@@ -1452,52 +1443,31 @@ export default function PurchaseOrderPage() {
                 <SectionTitle title="Supplier & Contact" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-2">
-                    <Field label="Supplier" required>
-                      <select
-                        value={supplierID || ""}
-                        onChange={e => handleSupplierChange(Number(e.target.value))}
-                        className={selectCls}
-                      >
-                        <option value="">Select Supplier…</option>
-                        {suppliers.map(s => (
-                          <option key={s.LedgerID} value={s.LedgerID}>{s.LedgerName}</option>
-                        ))}
-                      </select>
-                      {selectedSupplier && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          State: {selectedSupplier.SupState} —{" "}
-                          {sameState
-                            ? <span className="text-green-600 font-semibold">CGST + SGST applicable</span>
-                            : <span className="text-orange-600 font-semibold">IGST applicable</span>}
-                        </p>
-                      )}
-                    </Field>
+                    <Select label="Supplier" value={String(supplierID || "")}
+                      onChange={e => handleSupplierChange(Number(e.target.value))}
+                      options={[{ value: "", label: "Select Supplier…" }, ...suppliers.map(s => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
+                    {selectedSupplier && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        State: {selectedSupplier.SupState} —{" "}
+                        {sameState
+                          ? <span className="text-green-600 font-semibold">CGST + SGST applicable</span>
+                          : <span className="text-orange-600 font-semibold">IGST applicable</span>}
+                      </p>
+                    )}
                   </div>
 
-                  <Field label="Contact Person">
-                    <select
-                      value={contactPersonID || ""}
-                      onChange={e => setContactPersonID(Number(e.target.value))}
-                      className={selectCls}
-                      disabled={!contacts.length}
-                    >
-                      <option value="">Select Contact…</option>
-                      {contacts.map(c => (
-                        <option key={c.ConcernPersonID} value={c.ConcernPersonID}>{c.Name}</option>
-                      ))}
-                    </select>
-                  </Field>
+                  <Select label="Contact Person" value={String(contactPersonID || "")}
+                    onChange={e => setContactPersonID(Number(e.target.value))}
+                    disabled={!contacts.length}
+                    options={[{ value: "", label: "Select Contact…" }, ...contacts.map(c => ({ value: String(c.ConcernPersonID), label: c.Name }))]} />
 
                   <div className="md:col-span-3">
-                    <Field label="Narration">
-                      <textarea
-                        value={narration}
-                        onChange={e => setNarration(e.target.value)}
-                        rows={2}
-                        placeholder="Optional notes…"
-                        className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </Field>
+                    <Textarea label="Narration"
+                      value={narration}
+                      onChange={e => setNarration(e.target.value)}
+                      rows={2}
+                      placeholder="Optional notes…"
+                    />
                   </div>
                 </div>
               </div>
@@ -1555,30 +1525,30 @@ export default function PurchaseOrderPage() {
 
                         {/* No. of packs */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} value={l.NoOfPacks || ""} placeholder="0"
+                          <Input type="number" min={0} value={l.NoOfPacks || ""} placeholder="0"
                             onChange={e => updateLineNum(l.lineKey, "NoOfPacks", Number(e.target.value))}
-                            className={`w-16 ${tableInputCls}`} />
+                            className="w-16 text-right" />
                         </td>
                         {/* Qty/pack */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} value={l.QtyPerPack || ""} placeholder="0"
+                          <Input type="number" min={0} value={l.QtyPerPack || ""} placeholder="0"
                             onChange={e => updateLineNum(l.lineKey, "QtyPerPack", Number(e.target.value))}
-                            className={`w-20 ${tableInputCls}`} />
+                            className="w-20 text-right" />
                         </td>
 
                         {/* PO Qty (P.U.) — directly editable */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} step={0.001} value={l.POQtyInPU || ""} placeholder="0"
+                          <Input type="number" min={0} step={0.001} value={l.POQtyInPU || ""} placeholder="0"
                             onChange={e => updateLineNum(l.lineKey, "POQtyInPU", Number(e.target.value))}
-                            className={`w-20 ${tableInputCls} font-semibold text-blue-700`} />
+                            className="w-20 text-right font-semibold text-blue-700" />
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-700">{l.POQtyInSU.toFixed(3)}</td>
 
                         {/* Rate */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} step={0.01} value={l.Rate || ""} placeholder="0.00"
+                          <Input type="number" min={0} step={0.01} value={l.Rate || ""} placeholder="0.00"
                             onChange={e => updateLineNum(l.lineKey, "Rate", Number(e.target.value))}
-                            className={`w-20 ${tableInputCls}`} />
+                            className="w-20 text-right" />
                         </td>
                         <td className="px-2 py-1.5 text-gray-700">{l.PurchaseUnit}</td>
 
@@ -1587,42 +1557,40 @@ export default function PurchaseOrderPage() {
 
                         {/* Expected delivery */}
                         <td className="px-1 py-1">
-                          <input type="date" value={l.ExpectedDelivery}
+                          <Input type="date" value={l.ExpectedDelivery}
                             onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
-                            className="w-32 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                            className="w-32" />
                         </td>
 
                         {/* Tolerance */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} max={100} value={l.Tolerance || ""} placeholder="0"
+                          <Input type="number" min={0} max={100} value={l.Tolerance || ""} placeholder="0"
                             onChange={e => updateLineNum(l.lineKey, "Tolerance", Number(e.target.value))}
-                            className={`w-12 ${tableInputCls}`} />
+                            className="w-12 text-right" />
                         </td>
 
                         {/* Item Narration */}
                         <td className="px-1 py-1">
-                          <input type="text" value={l.ItemNarration} placeholder="Remark…"
+                          <Input type="text" value={l.ItemNarration} placeholder="Remark…"
                             onChange={e => updateLineStr(l.lineKey, "ItemNarration", e.target.value)}
-                            className="w-28 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                            className="w-28" />
                         </td>
 
                         {/* Supplier Grade */}
                         <td className="px-1 py-1">
-                          <select value={l.SupplierGrade}
+                          <Select value={l.SupplierGrade}
                             onChange={e => updateLineStr(l.lineKey, "SupplierGrade", e.target.value)}
-                            className="w-24 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white">
-                            <option value="">— Select —</option>
-                            {supplierGrades.map(g => <option key={g} value={g}>{g}</option>)}
-                          </select>
+                            options={[{ value: "", label: "— Select —" }, ...supplierGrades.map(g => ({ value: g, label: g }))]}
+                            className="w-24" />
                         </td>
 
                         <td className="px-2 py-1.5 text-right font-semibold text-gray-700">{fmtAmt(l.GrossAmount)}</td>
 
                         {/* Disc % */}
                         <td className="px-1 py-1">
-                          <input type="number" min={0} max={100} step={0.01} value={l.DiscPct || ""} placeholder="0"
+                          <Input type="number" min={0} max={100} step={0.01} value={l.DiscPct || ""} placeholder="0"
                             onChange={e => updateLineNum(l.lineKey, "DiscPct", Number(e.target.value))}
-                            className={`w-12 ${tableInputCls}`} />
+                            className="w-12 text-right" />
                         </td>
 
                         <td className="px-2 py-1.5 text-right text-gray-700">{fmtAmt(l.BasicAmount)}</td>
@@ -1669,18 +1637,10 @@ export default function PurchaseOrderPage() {
               <div>
                 <SectionTitle title="Delivery & Payment" />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Field label="Mode of Transport">
-                    <select value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)} className={selectCls}>
-                      <option value="">Select…</option>
-                      {TRANSPORT_MODES.map(m => <option key={m}>{m}</option>)}
-                    </select>
-                  </Field>
-                  <Field label="Delivery Address">
-                    <input value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Delivery location" className={inputCls} />
-                  </Field>
-                  <Field label="Payment Terms">
-                    <input value={termsOfPayment} onChange={e => setTermsOfPayment(e.target.value)} placeholder="e.g. Net 30 days" className={inputCls} />
-                  </Field>
+                  <Select label="Mode of Transport" value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)}
+                    options={[{ value: "", label: "Select…" }, ...TRANSPORT_MODES.map(m => ({ value: m, label: m }))]} />
+                  <Input label="Delivery Address" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Delivery location" />
+                  <Input label="Payment Terms" value={termsOfPayment} onChange={e => setTermsOfPayment(e.target.value)} placeholder="e.g. Net 30 days" />
                 </div>
               </div>
 
@@ -1727,15 +1687,14 @@ export default function PurchaseOrderPage() {
                         <tr key={c.chargeKey} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                           <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap">{c.LedgerName}</td>
                           <td className="px-2 py-1">
-                            <input type="number" min={0} value={c.TaxPercentage || ""} placeholder="0"
+                            <Input type="number" min={0} value={c.TaxPercentage || ""} placeholder="0"
                               onChange={e => updateCharge(c.chargeKey, { TaxPercentage: Number(e.target.value) })}
-                              className="w-16 text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                              className="w-16 text-right" />
                           </td>
                           <td className="px-2 py-1">
-                            <select value={c.CalcOn} onChange={e => updateCharge(c.chargeKey, { CalcOn: e.target.value })}
-                              className="w-24 px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none bg-white">
-                              {CALCU_ON.map(t => <option key={t}>{t}</option>)}
-                            </select>
+                            <Select value={c.CalcOn} onChange={e => updateCharge(c.chargeKey, { CalcOn: e.target.value })}
+                              options={CALCU_ON.map(t => ({ value: t, label: t }))}
+                              className="w-24" />
                           </td>
                           <td className="px-3 py-1.5 text-center">
                             <input type="checkbox" checked={c.GSTApplicable}
@@ -1748,9 +1707,9 @@ export default function PurchaseOrderPage() {
                               className="w-4 h-4 text-blue-600 rounded border-gray-300" />
                           </td>
                           <td className="px-2 py-1">
-                            <input type="number" min={0} step={0.01} value={c.Amount || ""} placeholder="0.00"
+                            <Input type="number" min={0} step={0.01} value={c.Amount || ""} placeholder="0.00"
                               onChange={e => updateCharge(c.chargeKey, { Amount: Number(e.target.value), TotalAmount: Number(e.target.value) })}
-                              className="w-28 text-right px-1.5 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white" />
+                              className="w-28 text-right" />
                           </td>
                           <td className="px-2 py-1.5 text-center">
                             <button onClick={() => removeCharge(c.chargeKey)} className="text-red-400 hover:text-red-600">
@@ -1849,9 +1808,9 @@ export default function PurchaseOrderPage() {
             <div className="px-5 py-3 border-b border-gray-100 space-y-2.5 shrink-0">
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
+                <Input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
                   placeholder="Search by item code or name…"
-                  className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  className="w-full pl-9" />
               </div>
               <div className="flex gap-2 flex-wrap">
                 {pickerGroups.map(g => (
@@ -1912,28 +1871,18 @@ export default function PurchaseOrderPage() {
                 : "Enter your password to save changes to this Purchase Order."}
             </p>
             <div className="space-y-4">
-              <Field label="Password" required>
-                <input type="password" value={pwInput} onChange={e => setPwInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && handlePwSubmit()}
-                  autoFocus placeholder="Your login password"
-                  className={inputCls} />
-              </Field>
-              <Field label="Remark">
-                <input value={pwRemark} onChange={e => setPwRemark(e.target.value)}
-                  placeholder="Reason for this action (optional)"
-                  className={inputCls} />
-              </Field>
+              <Input label="Password" required type="password" value={pwInput} onChange={e => setPwInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handlePwSubmit()}
+                autoFocus placeholder="Your login password" />
+              <Input label="Remark" value={pwRemark} onChange={e => setPwRemark(e.target.value)}
+                placeholder="Reason for this action (optional)" />
             </div>
             <div className="flex gap-3 mt-6 justify-end">
-              <button onClick={() => setPwModal(null)}
-                className="px-4 py-2 text-sm text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={handlePwSubmit}
-                disabled={saving || deleting}
-                className={`px-5 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-60 ${pwModal === "delete" ? "bg-red-600 hover:bg-red-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+              <Button variant="secondary" onClick={() => setPwModal(null)}>Cancel</Button>
+              <Button variant={pwModal === "delete" ? "danger" : "primary"} onClick={handlePwSubmit}
+                disabled={saving || deleting}>
                 {(saving || deleting) ? "Processing…" : pwModal === "delete" ? "Delete" : "Update"}
-              </button>
+              </Button>
             </div>
           </div>
         </div>

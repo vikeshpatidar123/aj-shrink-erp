@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -29,7 +30,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
   </div>
 );
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // Types
 type SubGroupRow = {
@@ -442,15 +442,8 @@ export default function SubGroupPage() {
             <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Sub Group" : "New Sub Group"}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveGroup} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save Sub Group
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} onClick={saveGroup}>Save Sub Group</Button>
           </div>
         </div>
 
@@ -483,51 +476,38 @@ export default function SubGroupPage() {
               <div>
                 <SectionTitle title="Sub Group Identity" />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <Field label="Sub Group Name" required>
-                    <input type="text" value={form.ItemSubGroupName}
-                      onChange={e => {
-                        f("ItemSubGroupName", e.target.value);
-                        if (!editing) f("ItemSubGroupDisplayName", e.target.value);
-                      }}
-                      placeholder="e.g. PET Film Plain" className={ic(submitAttempted && !form.ItemSubGroupName.trim())} />
-                  </Field>
-                  <Field label="Display Name" required>
-                    <input type="text" value={form.ItemSubGroupDisplayName}
-                      onChange={e => f("ItemSubGroupDisplayName", e.target.value)}
-                      placeholder="e.g. PET Film (Plain / Treated)" className={ic(submitAttempted && !form.ItemSubGroupDisplayName.trim())} />
-                  </Field>
-                  <Field label="Under Group (Parent)">
-                    <select value={form.UnderSubGroupID}
-                      onChange={e => { f("UnderSubGroupID", e.target.value); f("SubGroupPrefix", ""); }}
-                      className={inputCls}>
-                      <option value="">— Select Group —</option>
-                      {underGroupOptions.map(g => (
-                        <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>
-                          {g.ItemGroupName}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  <Input label="Sub Group Name" value={form.ItemSubGroupName}
+                    onChange={e => {
+                      f("ItemSubGroupName", e.target.value);
+                      if (!editing) f("ItemSubGroupDisplayName", e.target.value);
+                    }}
+                    placeholder="e.g. PET Film Plain"
+                    error={submitAttempted && !form.ItemSubGroupName.trim() ? "Required" : undefined} />
+                  <Input label="Display Name" value={form.ItemSubGroupDisplayName}
+                    onChange={e => f("ItemSubGroupDisplayName", e.target.value)}
+                    placeholder="e.g. PET Film (Plain / Treated)"
+                    error={submitAttempted && !form.ItemSubGroupDisplayName.trim() ? "Required" : undefined} />
+                  <Select label="Under Group (Parent)"
+                    value={form.UnderSubGroupID}
+                    onChange={e => { f("UnderSubGroupID", e.target.value); f("SubGroupPrefix", ""); }}
+                    options={[{ value: "", label: "— Select Group —" }, ...underGroupOptions.map(g => ({ value: String(g.ItemGroupID), label: g.ItemGroupName }))]} />
 
                   {selectedGroupIsConsumable && (
-                    <Field label="Sub Group Prefix" required>
-                      <div className="flex flex-col gap-1">
-                        <input
-                          type="text"
-                          value={form.SubGroupPrefix}
-                          onChange={e => f("SubGroupPrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
-                          placeholder="e.g. SL (Sleeve), CY (Cylinder)"
-                          maxLength={6}
-                          className={`${ic(submitAttempted && selectedGroupIsConsumable && !form.SubGroupPrefix.trim())} font-mono uppercase tracking-widest`}
-                        />
-                        {form.SubGroupPrefix && (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-700 w-fit">
-                            <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                            Item codes: CON-{form.SubGroupPrefix}-0001, CON-{form.SubGroupPrefix}-0002 ...
-                          </div>
-                        )}
-                      </div>
-                    </Field>
+                    <div className="flex flex-col gap-1">
+                      <Input label="Sub Group Prefix"
+                        value={form.SubGroupPrefix}
+                        onChange={e => f("SubGroupPrefix", e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                        placeholder="e.g. SL (Sleeve), CY (Cylinder)"
+                        maxLength={6}
+                        className="font-mono uppercase tracking-widest"
+                        error={submitAttempted && selectedGroupIsConsumable && !form.SubGroupPrefix.trim() ? "Required" : undefined} />
+                      {form.SubGroupPrefix && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-700 w-fit">
+                          <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                          Item codes: CON-{form.SubGroupPrefix}-0001, CON-{form.SubGroupPrefix}-0002 ...
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -556,20 +536,12 @@ export default function SubGroupPage() {
                   </datalist>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Field label="Group Name">
-                      <input
-                        type="text"
-                        value={underGroups.find(g => String(g.ItemGroupID) === String(editing.UnderSubGroupID))?.ItemGroupName || editing.GroupName || ""}
-                        readOnly
-                        className={inputCls + " bg-gray-50 text-gray-500 cursor-not-allowed"} />
-                    </Field>
-                    <Field label="Sub Group 1">
-                      <input
-                        type="text"
-                        value={editing.ItemSubGroupName}
-                        readOnly
-                        className={inputCls + " bg-gray-50 text-gray-500 cursor-not-allowed"} />
-                    </Field>
+                    <Input label="Group Name"
+                      value={underGroups.find(g => String(g.ItemGroupID) === String(editing.UnderSubGroupID))?.ItemGroupName || editing.GroupName || ""}
+                      readOnly />
+                    <Input label="Sub Group 1"
+                      value={editing.ItemSubGroupName}
+                      readOnly />
                   </div>
 
                   {(() => {
@@ -649,11 +621,7 @@ export default function SubGroupPage() {
                   })()}
 
                   <div className="flex justify-end pt-4 border-t border-gray-100">
-                    <button onClick={saveSpec} disabled={specSaving}
-                      className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                      {specSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                      Save Specification (New Row)
-                    </button>
+                    <Button variant="primary" loading={specSaving} onClick={saveSpec}>Save Specification (New Row)</Button>
                   </div>
 
                   {existingSpecs.length > 0 && (

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, X, Check, Loader2, Search } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { authHeaders } from "@/lib/auth";
 
@@ -155,8 +156,6 @@ const blankForm = (): FormState => ({
   gatePassTransactionId: "",
   items: [],
 });
-
-const isCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
 // Convert "DD-MMM-YYYY" (SQL format 106 with spaces→dashes) to "YYYY-MM-DD" for <input type="date">
 function parseDisplayDate(v: string): string {
@@ -577,73 +576,71 @@ export default function GateEntryPage() {
 
               {/* Gate Entry No + Date */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Gate Entry No.</label>
-                  <input value={form.voucherNo} readOnly className={isCls + " bg-gray-50"} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Date</label>
-                  <input type="date" value={form.voucherDate}
-                    onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))} className={isCls} />
-                </div>
+                <Input label="Gate Entry No." value={form.voucherNo} readOnly />
+                <Input
+                  label="Date"
+                  type="date"
+                  value={form.voucherDate}
+                  onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))}
+                />
               </div>
 
               {/* Type + GP No */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Type</label>
-                  <select value={form.gateEntryType} onChange={e => handleEntryTypeChange(e.target.value)}
-                    disabled={editMode} className={isCls}>
-                    <option value="">-- Select Type --</option>
-                    {entryTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    {form.gateEntryType === "Finish Goods Delivery" ? "DC No." : "Gate Pass No."}
-                  </label>
-                  <div className="flex gap-2">
-                    <input value={form.dcNo} readOnly className={isCls + " bg-gray-50 flex-1"} />
-                    {showGPPicker && (
-                      <button onClick={openGPPicker}
-                        className="px-3 py-2 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 text-sm flex items-center gap-1">
-                        <Search size={14} /> Select
-                      </button>
-                    )}
-                  </div>
+                <Select
+                  label="Type"
+                  disabled={editMode}
+                  value={form.gateEntryType}
+                  onChange={e => handleEntryTypeChange(e.target.value)}
+                  options={[{ value: "", label: "-- Select Type --" }, ...entryTypes.map(t => ({ value: t, label: t }))]}
+                />
+                <div className="flex gap-2 items-end">
+                  <Input
+                    className="flex-1"
+                    label={form.gateEntryType === "Finish Goods Delivery" ? "DC No." : "Gate Pass No."}
+                    value={form.dcNo}
+                    readOnly
+                  />
+                  {showGPPicker && (
+                    <button onClick={openGPPicker}
+                      className="px-3 py-2 border border-blue-400 text-blue-600 rounded-lg hover:bg-blue-50 text-sm flex items-center gap-1 mb-0.5">
+                      <Search size={14} /> Select
+                    </button>
+                  )}
                 </div>
               </div>
 
               {/* Goods Send To / Supplier */}
               <div className="grid grid-cols-2 gap-4">
                 {form.entryDirection === "Outward" ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Goods Send To</label>
-                    <input value={form.goodsSendTo} onChange={e => setForm(f => ({ ...f, goodsSendTo: e.target.value }))}
-                      placeholder="Party / destination name" className={isCls} />
-                  </div>
+                  <Input
+                    label="Goods Send To"
+                    value={form.goodsSendTo}
+                    onChange={e => setForm(f => ({ ...f, goodsSendTo: e.target.value }))}
+                    placeholder="Party / destination name"
+                  />
                 ) : (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Supplier Name</label>
-                    <select value={form.ledgerId} onChange={e => handleSupplierChange(e.target.value)} className={isCls}>
-                      <option value="">-- Select Supplier --</option>
-                      {sendThroughData.Supplier.map((s, i) => (
-                        <option key={s.LedgerID ?? i} value={s.LedgerID}>{s.LedgerName}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <Select
+                    label="Supplier Name"
+                    value={form.ledgerId}
+                    onChange={e => handleSupplierChange(e.target.value)}
+                    options={[
+                      { value: "", label: "-- Select Supplier --" },
+                      ...sendThroughData.Supplier.map(s => ({ value: String(s.LedgerID), label: s.LedgerName })),
+                    ]}
+                  />
                 )}
 
                 {/* Send Through */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    {form.entryDirection === "Inward" ? "Received Via" : "Send Via"}
-                  </label>
-                  <select value={form.sendThrough} onChange={e => setForm(f => ({ ...f, sendThrough: e.target.value }))} className={isCls}>
-                    <option value="">-- Select --</option>
-                    {sendThroughData.Send.map((s, i) => <option key={i} value={s.MaterialSentThrough}>{s.MaterialSentThrough}</option>)}
-                  </select>
-                </div>
+                <Select
+                  label={form.entryDirection === "Inward" ? "Received Via" : "Send Via"}
+                  value={form.sendThrough}
+                  onChange={e => setForm(f => ({ ...f, sendThrough: e.target.value }))}
+                  options={[
+                    { value: "", label: "-- Select --" },
+                    ...sendThroughData.Send.map(s => ({ value: s.MaterialSentThrough, label: s.MaterialSentThrough })),
+                  ]}
+                />
               </div>
 
               {/* PO Selection (Inward + PO types) */}
@@ -666,32 +663,34 @@ export default function GateEntryPage() {
 
               {/* Send Through Name + Document No */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                    {form.entryDirection === "Inward" ? "Received by" : "Send by"}
-                  </label>
-                  <input value={form.sendThroughName} onChange={e => setForm(f => ({ ...f, sendThroughName: e.target.value }))}
-                    placeholder={form.entryDirection === "Inward" ? "Received by name" : "Driver / courier name"} className={isCls} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Document No.</label>
-                  <input value={form.documentNo} onChange={e => setForm(f => ({ ...f, documentNo: e.target.value }))}
-                    placeholder="Document No." className={isCls} />
-                </div>
+                <Input
+                  label={form.entryDirection === "Inward" ? "Received by" : "Send by"}
+                  value={form.sendThroughName}
+                  onChange={e => setForm(f => ({ ...f, sendThroughName: e.target.value }))}
+                  placeholder={form.entryDirection === "Inward" ? "Received by name" : "Driver / courier name"}
+                />
+                <Input
+                  label="Document No."
+                  value={form.documentNo}
+                  onChange={e => setForm(f => ({ ...f, documentNo: e.target.value }))}
+                  placeholder="Document No."
+                />
               </div>
 
               {/* Vehicle No + Remark */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">LR / Vehicle No.</label>
-                  <input value={form.vehicleNo} onChange={e => setForm(f => ({ ...f, vehicleNo: e.target.value }))}
-                    placeholder="LR / Vehicle No." className={isCls} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Remark</label>
-                  <input value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-                    placeholder="Remark" className={isCls} />
-                </div>
+                <Input
+                  label="LR / Vehicle No."
+                  value={form.vehicleNo}
+                  onChange={e => setForm(f => ({ ...f, vehicleNo: e.target.value }))}
+                  placeholder="LR / Vehicle No."
+                />
+                <Input
+                  label="Remark"
+                  value={form.remark}
+                  onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+                  placeholder="Remark"
+                />
               </div>
 
               {/* Item Grid (for Inward with PO or manual) */}
@@ -740,28 +739,38 @@ export default function GateEntryPage() {
                               {showPO ? (
                                 <span>{item.ItemName || item.Description}</span>
                               ) : (
-                                <input value={item.ItemName} onChange={e => updateItem(item._id, "ItemName", e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                                <Input
+                                  value={item.ItemName}
+                                  onChange={e => updateItem(item._id, "ItemName", e.target.value)}
+                                  className="w-full"
+                                />
                               )}
                             </td>
                             <td className="px-3 py-2">
                               {showPO ? (
                                 <span>{item.Quantity}</span>
                               ) : (
-                                <input value={item.Quantity} type="number"
+                                <Input
+                                  type="number"
+                                  value={item.Quantity}
                                   onChange={e => updateItem(item._id, "Quantity", e.target.value)}
-                                  className="w-20 px-2 py-1 border border-gray-300 rounded text-sm" />
+                                  className="w-20"
+                                />
                               )}
                             </td>
                             <td className="px-3 py-2">
                               {showPO ? (
                                 <span>{item.UnitSymbol}</span>
                               ) : (
-                                <select value={item.UnitSymbol} onChange={e => updateItem(item._id, "UnitSymbol", e.target.value)}
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-sm">
-                                  <option value="">—</option>
-                                  {sendThroughData.UOM.map(u => <option key={u.UnitID} value={u.UnitSymbol}>{u.UnitSymbol}</option>)}
-                                </select>
+                                <Select
+                                  value={item.UnitSymbol}
+                                  onChange={e => updateItem(item._id, "UnitSymbol", e.target.value)}
+                                  className="w-24"
+                                  options={[
+                                    { value: "", label: "—" },
+                                    ...sendThroughData.UOM.map(u => ({ value: u.UnitSymbol, label: u.UnitSymbol })),
+                                  ]}
+                                />
                               )}
                             </td>
                             {!showPO && (

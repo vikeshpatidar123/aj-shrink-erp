@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
-import { inputCls } from "@/lib/styles";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -285,17 +285,11 @@ function ScannerModal({
 
         {mode === "manual" && (
           <div className="p-5 space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste value</label>
-              <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
-                placeholder="Paste QR data or type value…"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
-            </div>
-            <button onClick={() => { if (manual.trim()) onScan(manual.trim()); }}
-              disabled={!manual.trim()}
-              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40">
+            <Textarea label="Enter / Paste value" autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
+              placeholder="Paste QR data or type value…" />
+            <Button className="w-full" onClick={() => { if (manual.trim()) onScan(manual.trim()); }} disabled={!manual.trim()}>
               Use This Value
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -335,9 +329,9 @@ function JobCardPickerModal({ onSelect, onClose }: {
         <div className="px-5 py-3 border-b border-gray-100 shrink-0">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
+            <Input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by job card no, job name, content…"
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full pl-9" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -489,32 +483,20 @@ function BatchConfirmModal({
           {/* Issue details */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-                Issue Qty ({batch.StockUnit}) *{" "}
-                <span className="text-gray-400 font-normal">available: {batch.BatchStock}</span>
-                {requiredQty > 0 && <span className="ml-2 text-orange-500 font-normal">remaining: {requiredQty}</span>}
-              </label>
-              <input type="number" min={0.01} max={batch.BatchStock} step={0.01}
+              <Input label={`Issue Qty (${batch.StockUnit}) *`} type="number" min={0.01} max={batch.BatchStock} step={0.01}
                 value={issueQty}
-                onChange={(e) => { setIssueQty(Number(e.target.value)); setIssueReason(""); }}
-                className={inputCls} />
+                onChange={(e) => { setIssueQty(Number(e.target.value)); setIssueReason(""); }} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">To Floor / Warehouse *</label>
-              <select value={floorWarehouseName}
+              <Select label="To Floor / Warehouse *" value={floorWarehouseName}
                 onChange={(e) => { setFloorWarehouseName(e.target.value); setFloorBin(""); }}
-                className={inputCls} disabled={loadingWH}>
-                <option value="">{loadingWH ? "Loading…" : "Select floor warehouse…"}</option>
-                {floorWarehouses.map((w) => <option key={w.Warehouse} value={w.Warehouse}>{w.Warehouse}</option>)}
-              </select>
+                disabled={loadingWH}
+                options={[{ value: "", label: loadingWH ? "Loading…" : "Select floor warehouse…" }, ...floorWarehouses.map((w) => ({ value: w.Warehouse, label: w.Warehouse }))]} />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">To Bin *</label>
-              <select value={floorBin} onChange={(e) => setFloorBin(e.target.value)}
-                disabled={!floorWarehouseName || loadingBins} className={inputCls}>
-                <option value="">{loadingBins ? "Loading…" : "Select bin…"}</option>
-                {floorBins.map((b) => <option key={b.Bin} value={b.Bin}>{b.Bin}</option>)}
-              </select>
+              <Select label="To Bin *" value={floorBin} onChange={(e) => setFloorBin(e.target.value)}
+                disabled={!floorWarehouseName || loadingBins}
+                options={[{ value: "", label: loadingBins ? "Loading…" : "Select bin…" }, ...floorBins.map((b) => ({ value: b.Bin, label: b.Bin }))]} />
             </div>
             {issueMode === "Item-wise" && (
               <div className="col-span-2">
@@ -524,14 +506,13 @@ function BatchConfirmModal({
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1 min-w-0">
-                    <input
+                    <Input
                       type="text"
                       value={jobBookingSearch}
                       onChange={(e) => { setJobBookingSearch(e.target.value); setJobBookingID(0); setJobBookingNo(""); setShowJBDropdown(true); }}
                       onFocus={() => setShowJBDropdown(true)}
                       onBlur={() => setTimeout(() => setShowJBDropdown(false), 150)}
                       placeholder="Type to search Job Booking No…"
-                      className={inputCls}
                     />
                     {showJBDropdown && filteredJB.length > 0 && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -567,12 +548,9 @@ function BatchConfirmModal({
                 {needsReason ? "— required, qty exceeds 110% of remaining" : "(optional)"}
               </span>
             </label>
-            <select value={issueReason}
+            <Select value={issueReason}
               onChange={(e) => { setIssueReason(e.target.value as IssueReason | ""); setJobBookingID(0); setJobBookingNo(""); setJobBookingSearch(""); setAllocations([]); }}
-              className={inputCls}>
-              <option value="">— Select reason —</option>
-              {ISSUE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+              options={[{ value: "", label: "— Select reason —" }, ...ISSUE_REASONS.map((r) => ({ value: r, label: r }))]} />
           </div>
 
           {/* Multi Job — Multi-Row Allocation Table */}
@@ -601,7 +579,7 @@ function BatchConfirmModal({
                 <div key={alloc.id} className="grid items-start gap-2" style={{ gridTemplateColumns: "1fr 36px 100px 28px" }}>
                   {/* Searchable job booking combobox */}
                   <div className="relative min-w-0">
-                    <input
+                    <Input
                       type="text"
                       value={alloc.search}
                       onChange={(e) => {
@@ -611,7 +589,6 @@ function BatchConfirmModal({
                       onFocus={() => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, showDropdown: true } : a))}
                       onBlur={() => setTimeout(() => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, showDropdown: false } : a)), 150)}
                       placeholder="Search…"
-                      className={inputCls}
                     />
                     {alloc.showDropdown && (
                       <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -640,11 +617,10 @@ function BatchConfirmModal({
                     <Scan size={14} />
                   </button>
                   {/* Qty */}
-                  <input type="number" min={0.01} step={0.01}
+                  <Input type="number" min={0.01} step={0.01}
                     value={alloc.allocatedQty || ""}
                     onChange={(e) => setAllocations((prev) => prev.map((a, i) => i === idx ? { ...a, allocatedQty: Number(e.target.value) } : a))}
                     placeholder="0"
-                    className={inputCls}
                   />
                   {/* Remove row — invisible when only 1 row so grid stays stable */}
                   <button type="button" onClick={() => setAllocations((prev) => prev.filter((_, i) => i !== idx))}
@@ -695,8 +671,8 @@ function BatchConfirmModal({
         </div>
 
         <div className="px-6 pb-5 flex items-center justify-between border-t border-gray-100 pt-4 shrink-0">
-          <button onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-          <button
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
             onClick={() => {
               onConfirm({
                 ItemID: batch.ItemID,
@@ -728,10 +704,9 @@ function BatchConfirmModal({
                   : [],
               });
             }}
-            disabled={!canConfirm}
-            className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+            disabled={!canConfirm}>
             <PackageMinus size={15} /> Confirm Issue
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -1266,11 +1241,9 @@ export default function ItemIssuePage() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
             <button onClick={loadList} disabled={loadingList}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
               <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} /> {loadingList ? "Loading…" : "Refresh"}
@@ -1278,9 +1251,9 @@ export default function ItemIssuePage() {
           </div>
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
             <Search size={14} className="text-gray-400 shrink-0" />
-            <input type="text" placeholder="Search by voucher no, job card, department, item…" value={listSearch}
+            <Input type="text" placeholder="Search by voucher no, job card, department, item…" value={listSearch}
               onChange={(e) => setListSearch(e.target.value)}
-              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400" />
+              className="flex-1" />
           </div>
         </div>
 
@@ -1429,20 +1402,14 @@ export default function ItemIssuePage() {
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Issue Details</p>
                 <div className="grid grid-cols-4 gap-3">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Voucher No.</label>
-                    <input readOnly value={currentVoucherNo}
-                      className={`${inputCls} bg-blue-50 text-blue-700 font-mono font-semibold`} />
+                    <Input label="Voucher No." readOnly value={currentVoucherNo} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Issue Date</label>
-                    <input type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} className={inputCls} />
+                    <Input label="Issue Date" type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Department *</label>
-                    <select value={departmentID} onChange={(e) => setDepartmentID(Number(e.target.value))} className={inputCls}>
-                      <option value={0}>Select Dept…</option>
-                      {departments.map((d) => <option key={d.DepartmentID} value={d.DepartmentID}>{d.DepartmentName}</option>)}
-                    </select>
+                    <Select label="Department *" value={String(departmentID)} onChange={(e) => setDepartmentID(Number(e.target.value))}
+                      options={[{ value: "0", label: "Select Dept…" }, ...departments.map((d) => ({ value: String(d.DepartmentID), label: d.DepartmentName }))]} />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Issue Mode</label>
@@ -1465,11 +1432,8 @@ export default function ItemIssuePage() {
                 </div>
                 <div className="grid grid-cols-4 gap-3 mt-3">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Received By</label>
-                    <select value={receivedById} onChange={(e) => setReceivedById(Number(e.target.value))} className={inputCls}>
-                      <option value={0}>Select…</option>
-                      {receivers.map((r) => <option key={r.LedgerID} value={r.LedgerID}>{r.LedgerName}</option>)}
-                    </select>
+                    <Select label="Received By" value={String(receivedById)} onChange={(e) => setReceivedById(Number(e.target.value))}
+                      options={[{ value: "0", label: "Select…" }, ...receivers.map((r) => ({ value: String(r.LedgerID), label: r.LedgerName }))]} />
                   </div>
                 </div>
               </div>
@@ -1480,9 +1444,7 @@ export default function ItemIssuePage() {
                   <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Job Card</p>
                   <div className="flex items-end gap-3">
                     <div className="w-56">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Job Card Content No.</label>
-                      <input readOnly value={selectedJobCard?.JobCardContentNo ?? ""} placeholder="Scan or pick a job card…"
-                        className={`${inputCls} bg-gray-50 font-mono text-blue-700`} />
+                      <Input label="Job Card Content No." readOnly value={selectedJobCard?.JobCardContentNo ?? ""} placeholder="Scan or pick a job card…" />
                     </div>
                     <button onClick={() => setShowJobScanner(true)}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap">
@@ -1759,8 +1721,8 @@ export default function ItemIssuePage() {
               {/* Remark */}
               <div>
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark</p>
-                <input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" className={inputCls} />
+                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+                  placeholder="Optional notes…" />
               </div>
 
               {/* Summary */}

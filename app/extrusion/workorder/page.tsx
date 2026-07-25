@@ -17,6 +17,7 @@ import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import Modal  from "@/components/ui/Modal";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -459,10 +460,15 @@ export default function ExtrusionWorkOrderPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <select value={form.status} onChange={e => f("status", e.target.value as WOForm["status"])}
-              className="text-xs px-2 py-1 bg-blue-700 border border-blue-600 rounded-lg text-white focus:outline-none">
-              {["Pending", "In Production", "Completed"].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select
+                value={form.status}
+                onChange={e => f("status", e.target.value as WOForm["status"])}
+                options={[
+                  { value: "Pending", label: "Pending" },
+                  { value: "In Production", label: "In Production" },
+                  { value: "Completed", label: "Completed" },
+                ]}
+              />
             <button onClick={save} disabled={hasError}
               className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-bold transition-colors ${hasError ? "bg-gray-500 cursor-not-allowed" : "bg-green-500 hover:bg-green-400"}`}>
               <Save size={13} />{editing ? "Update" : "Save WO"}
@@ -489,27 +495,25 @@ export default function ExtrusionWorkOrderPage() {
                 {/* Order select + date */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Source Order *</label>
-                    <select value={form.orderId}
+                    <Select
+                      label="Source Order *"
+                      value={form.orderId}
                       onChange={e => {
                         const o = extOrders.find(x => x.id === e.target.value);
                         if (o) fillFromOrder(o);
                         else f("orderId", "");
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="">-- Select Booked Order --</option>
-                      {editing && !pendingOrders.find(o => o.id === editing.orderId) && (
-                        <option value={editing.orderId}>{editing.orderNo} — {editing.customerName}</option>
-                      )}
-                      {pendingOrders.map(o => (
-                        <option key={o.id} value={o.id}>{o.orderNo} — {o.customerName} · {o.recipeName}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Select Booked Order --" },
+                        ...(editing && !pendingOrders.find(o => o.id === editing.orderId)
+                          ? [{ value: editing.orderId, label: `${editing.orderNo} — ${editing.customerName}` }]
+                          : []),
+                        ...pendingOrders.map(o => ({ value: o.id, label: `${o.orderNo} — ${o.customerName} · ${o.recipeName}` })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">WO Date</label>
-                    <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <Input label="WO Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
                   </div>
                 </div>
 
@@ -567,8 +571,9 @@ export default function ExtrusionWorkOrderPage() {
                 {form.orderId && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Recipe *</label>
-                      <select value={form.recipeId}
+                      <Select
+                        label="Recipe *"
+                        value={form.recipeId}
                         onChange={e => {
                           const r = recipes.find(x => x.id === e.target.value);
                           if (!r) return;
@@ -577,26 +582,29 @@ export default function ExtrusionWorkOrderPage() {
                           const currentOrder = extOrders.find(o => o.id === form.orderId);
                           if (currentOrder) fillFromOrder(currentOrder, r.id, rollId);
                         }}
-                        className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-400">
-                        <option value="">-- Select Recipe --</option>
-                        {recipes.filter(r => r.status === "Active").map(r => (
-                          <option key={r.id} value={r.id}>{r.name} ({r.layers.length} layers)</option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: "-- Select Recipe --" },
+                          ...recipes.filter(r => r.status === "Active").map(r => ({
+                            value: r.id, label: `${r.name} (${r.layers.length} layers)`,
+                          })),
+                        ]}
+                      />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Roll Master</label>
-                      <select value={form.rollMasterId}
+                      <Select
+                        label="Roll Master"
+                        value={form.rollMasterId}
                         onChange={e => {
                           const currentOrder = extOrders.find(o => o.id === form.orderId);
                           if (currentOrder) fillFromOrder(currentOrder, form.recipeId, e.target.value);
                         }}
-                        className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-indigo-400">
-                        <option value="">-- Select Roll --</option>
-                        {rollMasters.filter(r => r.status === "Active").map(r => (
-                          <option key={r.id} value={r.id}>{r.name} — {r.width}mm · {r.micron}μ</option>
-                        ))}
-                      </select>
+                        options={[
+                          { value: "", label: "-- Select Roll --" },
+                          ...rollMasters.filter(r => r.status === "Active").map(r => ({
+                            value: r.id, label: `${r.name} — ${r.width}mm · ${r.micron}μ`,
+                          })),
+                        ]}
+                      />
                     </div>
                   </div>
                 )}
@@ -639,13 +647,14 @@ export default function ExtrusionWorkOrderPage() {
                           <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
                             <span className="text-xs font-black text-indigo-700 bg-indigo-100 rounded px-2 py-0.5">L{layer.layerNo}</span>
                             <span className="text-sm font-bold text-gray-800 flex-1">{layer.layerName}</span>
-                            <div className="flex items-center gap-2">
-                              <label className="text-[10px] font-semibold text-gray-500">Micron (μ)</label>
-                              <input type="number" min={1} max={200}
-                                value={layer.micron}
-                                onChange={e => updateLayer(li, { micron: Number(e.target.value) })}
-                                className="w-20 text-center text-sm font-bold border border-indigo-300 rounded-lg px-2 py-1 bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                            </div>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={200}
+                              value={layer.micron}
+                              onChange={e => updateLayer(li, { micron: Number(e.target.value) })}
+                              className="w-20 text-center font-bold"
+                            />
                             <div className="text-right text-xs">
                               <p className="text-gray-500">GSM: <span className="font-bold text-blue-700">{layer.gsm.toFixed(3)}</span></p>
                               <p className="text-gray-500">Density: <span className="font-bold text-gray-700">{layer.blendDensity.toFixed(4)}</span></p>
@@ -678,19 +687,28 @@ export default function ExtrusionWorkOrderPage() {
                                       <td className="px-3 py-1.5 font-medium text-gray-800">{mat.name}</td>
                                       <td className="px-2 py-1">
                                         <div className="flex items-center gap-1">
-                                          <input type="number" min={0} max={100} step={0.5}
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            step={0.5}
                                             value={mat.pct}
                                             onChange={e => updateMaterial(li, mi, { pct: Number(e.target.value) })}
-                                            className="w-full text-center text-xs font-bold border border-indigo-300 rounded px-1.5 py-1 bg-indigo-50 focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                                            className="text-center font-bold"
+                                          />
                                           <span className="text-gray-400 text-[10px]">%</span>
                                         </div>
                                       </td>
                                       <td className="px-3 py-1.5 text-center font-mono text-gray-600">{mat.density.toFixed(4)}</td>
                                       <td className="px-2 py-1">
-                                        <input type="number" min={0} step={0.01}
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          step={0.01}
                                           value={mat.rate}
                                           onChange={e => updateMaterial(li, mi, { rate: Number(e.target.value) })}
-                                          className="w-full text-center text-xs font-bold border border-amber-200 rounded px-1.5 py-1 bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                                          className="text-center font-bold"
+                                        />
                                       </td>
                                       <td className="px-3 py-1.5 text-right font-bold text-teal-700">
                                         {reqKg.toLocaleString()} kg
@@ -848,64 +866,63 @@ export default function ExtrusionWorkOrderPage() {
               <div className="p-4">
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Machine *</label>
-                    <select value={form.machineId}
+                    <Select
+                      label="Machine *"
+                      value={form.machineId}
                       onChange={e => {
                         const m = machines.find(x => x.id === e.target.value);
                         f("machineId", e.target.value);
                         if (m) f("machineName", m.name);
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="">-- Select Machine --</option>
-                      {EXT_MACHINES.map(m => <option key={m.id} value={m.id}>{m.name} ({m.status})</option>)}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Select Machine --" },
+                        ...EXT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status})` })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Operator</label>
-                    <select value={form.operatorId}
+                    <Select
+                      label="Operator"
+                      value={form.operatorId}
                       onChange={e => {
                         const emp = EXT_OPERATORS.find(x => x.id === e.target.value);
                         f("operatorId", e.target.value);
                         if (emp) f("operatorName", emp.name);
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      <option value="">-- Select --</option>
-                      {EXT_OPERATORS.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Select --" },
+                        ...EXT_OPERATORS.map(e => ({ value: e.id, label: e.name })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Planned Date</label>
-                    <input type="date" value={form.plannedDate} onChange={e => f("plannedDate", e.target.value)}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <Input label="Planned Date" type="date" value={form.plannedDate} onChange={e => f("plannedDate", e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Delivery Date</label>
-                    <input type="date" value={form.deliveryDate} onChange={e => f("deliveryDate", e.target.value)}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <Input label="Delivery Date" type="date" value={form.deliveryDate} onChange={e => f("deliveryDate", e.target.value)} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Production Days</label>
-                    <input type="number" min={1} value={form.productionDays} onChange={e => f("productionDays", Number(e.target.value))}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <Input label="Production Days" type="number" min={1} value={form.productionDays} onChange={e => f("productionDays", Number(e.target.value))} />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Shift</label>
-                    <select value={form.shiftPlan} onChange={e => f("shiftPlan", e.target.value)}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400">
-                      {SHIFTS.map(s => <option key={s}>{s}</option>)}
-                    </select>
+                    <Select
+                      label="Shift"
+                      value={form.shiftPlan}
+                      onChange={e => f("shiftPlan", e.target.value)}
+                      options={SHIFTS.map(s => ({ value: s, label: s }))}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Target/Shift (Kg)</label>
-                    <input type="number" min={0} value={form.targetPerShift || ""} onChange={e => f("targetPerShift", Number(e.target.value))}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                      placeholder="Optional" />
+                    <Input label="Target/Shift (Kg)" type="number" min={0} value={form.targetPerShift || ""} onChange={e => f("targetPerShift", Number(e.target.value))} placeholder="Optional" />
                   </div>
                   <div className="sm:col-span-2 lg:col-span-4">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Special Instructions</label>
-                    <textarea value={form.specialInstructions} onChange={e => f("specialInstructions", e.target.value)}
-                      rows={3} placeholder="Production notes, quality checks, special requirements…"
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                    <Textarea
+                      label="Special Instructions"
+                      value={form.specialInstructions}
+                      onChange={e => f("specialInstructions", e.target.value)}
+                      rows={3}
+                      placeholder="Production notes, quality checks, special requirements…"
+                    />
                   </div>
                 </div>
               </div>
@@ -932,13 +949,13 @@ export default function ExtrusionWorkOrderPage() {
 
                 {/* Action buttons */}
                 <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={save} disabled={hasError}
-                    className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-colors ${hasError ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 text-white"}`}>
-                    <Save size={15} />{editing ? "Update Work Order" : "Save Work Order"}
-                  </button>
-                  <button
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold bg-purple-600 hover:bg-purple-700 text-white rounded-xl transition-colors"
+                  <Button variant="action-save" onClick={save} disabled={hasError} icon={<Save size={15} />}>
+                    {editing ? "Update Work Order" : "Save Work Order"}
+                  </Button>
+                  <Button
+                    variant="action-create"
                     disabled={form.woLayers.length === 0 || hasError}
+                    icon={<BookMarked size={15} />}
                     onClick={() => {
                       if (form.woLayers.length === 0) { alert("Add at least one layer before creating a catalog."); return; }
                       const woNo = editing?.workOrderNo || "";
@@ -973,16 +990,14 @@ export default function ExtrusionWorkOrderPage() {
                       saveCatalogItem(item);
                       alert(`✅ Product Catalog created: ${catalogNo}\nYou can view it in the Extrusion Product Catalog page.`);
                     }}>
-                    <BookMarked size={15} />Create Product Catalog
-                  </button>
-                  <button
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors">
-                    <Printer size={15} />Print WO
-                  </button>
-                  <button onClick={closeForm}
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-colors">
+                    Create Product Catalog
+                  </Button>
+                  <Button variant="action-print" icon={<Printer size={15} />}>
+                    Print WO
+                  </Button>
+                  <Button variant="action-cancel" onClick={closeForm}>
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

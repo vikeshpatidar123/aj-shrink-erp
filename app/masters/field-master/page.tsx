@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Loader2, List, Check } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
-import { inputCls } from "@/lib/styles";
+import { Input, Select } from "@/components/ui/Input";
 import {
   getFields,
   getFieldValues,
@@ -18,29 +18,6 @@ const SectionTitle = ({ title }: { title: string }) => (
     {title}
   </h3>
 );
-
-const Field = ({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-      {label}
-      {required && <span className="text-red-500 ml-1">*</span>}
-    </label>
-    {children}
-  </div>
-);
-
-const ic = (err?: boolean) =>
-  err
-    ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50")
-    : inputCls;
 
 // Page
 export default function FieldMasterPage() {
@@ -204,65 +181,44 @@ export default function FieldMasterPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
               {/* Field Selector */}
-              <Field label="Select Field" required>
-                {loadingFields ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400">
-                    <Loader2 size={14} className="animate-spin" />
-                    Loading fields...
-                  </div>
-                ) : (
-                  <select
-                    value={selectedField}
-                    onChange={(e) => {
-                      setSelectedField(e.target.value);
-                      setNewValue("");
-                      setSubmitAttempted(false);
-                      setError("");
-                      setSuccessMsg("");
-                    }}
-                    className={ic(submitAttempted && !selectedField)}
-                  >
-                    <option value="">-- Select a Field --</option>
-                    {fields.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </Field>
+              {loadingFields ? (
+                <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-400">
+                  <Loader2 size={14} className="animate-spin" />
+                  Loading fields...
+                </div>
+              ) : (
+                <Select label="Select Field"
+                  value={selectedField}
+                  onChange={(e) => {
+                    setSelectedField(e.target.value);
+                    setNewValue("");
+                    setSubmitAttempted(false);
+                    setError("");
+                    setSuccessMsg("");
+                  }}
+                  options={[{ value: "", label: "-- Select a Field --" }, ...fields.map(f => ({ value: f, label: f }))]}
+                  error={submitAttempted && !selectedField ? "Required" : undefined} />
+              )}
 
               {/* New Value Input */}
-              <Field label="New Value" required>
-                <input
-                  type="text"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-                  placeholder={
-                    selectedField
-                      ? `Enter new value for "${selectedField}"...`
-                      : "Select a field first"
-                  }
-                  disabled={!selectedField}
-                  className={ic(submitAttempted && !newValue.trim())}
-                />
-              </Field>
+              <Input label="New Value"
+                value={newValue}
+                onChange={(e) => setNewValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                placeholder={
+                  selectedField
+                    ? `Enter new value for "${selectedField}"...`
+                    : "Select a field first"
+                }
+                disabled={!selectedField}
+                error={submitAttempted && !newValue.trim() ? "Required" : undefined} />
 
               {/* Add Button */}
               <div className="flex items-end">
-                <button
-                  onClick={handleAdd}
-                  disabled={adding || !selectedField}
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm w-full justify-center"
-                >
-                  {adding ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <Plus size={16} />
-                  )}
+                <Button variant="primary" loading={adding} icon={<Plus size={16}/>}
+                  onClick={handleAdd} disabled={!selectedField}>
                   Add Value
-                </button>
+                </Button>
               </div>
             </div>
           </div>

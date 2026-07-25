@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import TutorialButton from "@/components/ui/TutorialButton";
+import { Input } from "@/components/ui/Input";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 type Row = Record<string, unknown>;
@@ -673,11 +674,9 @@ export default function GravureDashboardPage() {
           <div className="flex items-center gap-3 flex-wrap">
             {hasDateFilter(tab) && (
               <div className="flex items-center gap-2">
-                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
                 <span className="text-xs text-gray-400">to</span>
-                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
               </div>
             )}
             <TutorialButton title="Gravure Dashboard — Tutorial" />

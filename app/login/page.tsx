@@ -3,6 +3,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, Building2, Eye, EyeOff, Loader2 } from "lucide-react";
 import { loginCompany } from "@/lib/auth";
+import { Input } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 export default function CompanyLoginPage() {
   const router = useRouter();
@@ -69,19 +71,15 @@ export default function CompanyLoginPage() {
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
                 Company Username <span className="text-red-500">*</span>
               </label>
-              <div className="relative">
-                <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                <input
-                  type="text"
-                  value={companyUsername}
-                  onChange={(e) => { setCompanyUsername(e.target.value); setError(""); }}
-                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  placeholder="Enter company username"
-                  autoComplete="off"
-                  autoFocus
-                />
-              </div>
+              <Input
+                type="text"
+                value={companyUsername}
+                onChange={(e) => { setCompanyUsername(e.target.value); setError(""); }}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                placeholder="Enter company username"
+                autoComplete="off"
+                autoFocus
+              />
               <p className="text-xs text-gray-400 mt-1">Provided by your system administrator</p>
             </div>
 
@@ -91,13 +89,11 @@ export default function CompanyLoginPage() {
                 Company Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                <input
+                <Input
                   type={showPw ? "text" : "password"}
                   value={companyPassword}
                   onChange={(e) => { setCompanyPassword(e.target.value); setError(""); }}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  className="w-full pl-9 pr-10 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   placeholder="Enter company password"
                   autoComplete="current-password"
                 />
@@ -114,20 +110,15 @@ export default function CompanyLoginPage() {
           </div>
 
           {/* Submit */}
-          <button
+          <Button
+            variant="primary"
             onClick={handleLogin}
             disabled={loading}
-            className="mt-6 w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-400 text-white font-semibold py-2.5 rounded-lg transition-colors text-sm shadow-sm flex items-center justify-center gap-2"
+            loading={loading}
+            className="mt-6 w-full"
           >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Verifying with server...
-              </>
-            ) : (
-              "Continue →"
-            )}
-          </button>
+            {loading ? "Verifying with server..." : "Continue →"}
+          </Button>
 
           <div className="mt-5 p-3 bg-blue-50 border border-blue-100 rounded-lg">
             <p className="text-xs text-blue-700 font-medium mb-0.5">Where do I find these credentials?</p>

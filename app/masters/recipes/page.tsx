@@ -7,6 +7,7 @@ import {
 import { recipes as initData, Recipe, RecipeLayer, rawMaterials, weightedAvg, subGroups, customers } from "@/data/dummyData";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 
 // ─── Local form types ─────────────────────────────────────────
@@ -240,10 +241,7 @@ export default function RecipePage() {
         {/* ── Top bar ── */}
         <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 font-medium transition-colors">
-              <ArrowLeft size={16} /> List ({data.length})
-            </button>
+            <Button variant="secondary" icon={<ArrowLeft size={16}/>} onClick={() => setView("list")}>List ({data.length})</Button>
             <span className="text-gray-300">|</span>
             <div>
               <h2 className="text-lg font-bold text-gray-800">{editId ? "Edit Recipe" : "New Recipe"}</h2>
@@ -251,14 +249,8 @@ export default function RecipePage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={openAdd}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors font-medium">
-              <Plus size={15} /> New
-            </button>
-            <button onClick={save}
-              className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium">
-              <Save size={15} /> Save Recipe
-            </button>
+            <Button variant="secondary" icon={<Plus size={15}/>} onClick={openAdd}>New</Button>
+            <Button variant="primary" icon={<Save size={15}/>} onClick={save}>Save Recipe</Button>
           </div>
         </div>
 
@@ -268,110 +260,94 @@ export default function RecipePage() {
             Recipe Details
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {[
-              { label: "Recipe Name *", key: "name" as const, placeholder: "e.g. 3-Layer PE Shrink" },
-              { label: "Recipe Code", key: "code" as const, placeholder: "Auto-generated if blank" },
-            ].map(({ label, key, placeholder }) => (
-              <div key={key}>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
-                <input
-                  type="text"
-                  value={String(form[key])}
-                  onChange={e => f(key, e.target.value)}
-                  placeholder={placeholder}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-              </div>
-            ))}
-            
+            <Input
+              label="Recipe Name *"
+              type="text"
+              value={form.name}
+              onChange={e => f("name", e.target.value)}
+              placeholder="e.g. 3-Layer PE Shrink"
+            />
+            <Input
+              label="Recipe Code"
+              type="text"
+              value={form.code}
+              onChange={e => f("code", e.target.value)}
+              placeholder="Auto-generated if blank"
+            />
+
             {/* New Added Fields */}
             <div className="hidden">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Item Group</label>
-              <input
+              <Input
+                label="Item Group"
                 type="text"
-                value="Film" // Hardcoded to Film since requirement says "film sirf 1 he itemgroup hoga"
+                value="Film"
                 disabled
-                className="w-full px-3 py-2.5 border border-gray-200 bg-gray-50 rounded-lg text-sm text-gray-600 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Sub Film Group</label>
-              <select
-                value={form.subGroup}
-                onChange={e => f("subGroup", e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="">— Select Subgroup —</option>
-                {subGroups.filter(sg => sg.group === "Film").map(sg => (
-                  <option key={sg.id} value={sg.id}>{sg.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Client</label>
-              <select
-                value={form.clientId}
-                onChange={e => f("clientId", e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="">— Select Client —</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
+            <Select
+              label="Sub Film Group"
+              value={form.subGroup}
+              onChange={e => f("subGroup", e.target.value)}
+              options={[
+                { value: "", label: "— Select Subgroup —" },
+                ...subGroups.filter(sg => sg.group === "Film").map(sg => ({ value: sg.id, label: sg.name }))
+              ]}
+            />
+            <Select
+              label="Client"
+              value={form.clientId}
+              onChange={e => f("clientId", e.target.value)}
+              options={[
+                { value: "", label: "— Select Client —" },
+                ...customers.map(c => ({ value: c.id, label: c.name }))
+              ]}
+            />
 
             <div className="flex gap-2">
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Micron From</label>
-                <input
-                  type="number" min="0"
+                <Input
+                  label="Micron From"
+                  type="number"
+                  min={0}
                   value={form.micronFrom || ""}
                   onChange={e => f("micronFrom", Number(e.target.value))}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
               <div className="flex-1">
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Micron To</label>
-                <input
-                  type="number" min="0"
+                <Input
+                  label="Micron To"
+                  type="number"
+                  min={0}
                   value={form.micronTo || ""}
                   onChange={e => f("micronTo", Number(e.target.value))}
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Layer Ratio</label>
-              <input
-                type="text"
-                placeholder="e.g. 1:2:1"
-                value={form.layerRatio}
-                onChange={e => f("layerRatio", e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+            <Input
+              label="Layer Ratio"
+              type="text"
+              placeholder="e.g. 1:2:1"
+              value={form.layerRatio}
+              onChange={e => f("layerRatio", e.target.value)}
+            />
 
-            <div>
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Status</label>
-              <select
-                value={form.status}
-                onChange={e => f("status", e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-              </select>
-            </div>
+            <Select
+              label="Status"
+              value={form.status}
+              onChange={e => f("status", e.target.value)}
+              options={[
+                { value: "Active", label: "Active" },
+                { value: "Inactive", label: "Inactive" }
+              ]}
+            />
             <div className="sm:col-span-2 lg:col-span-2">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
-              <input
+              <Input
+                label="Description"
                 type="text"
                 value={form.description}
                 onChange={e => f("description", e.target.value)}
                 placeholder="Brief description of this recipe"
-                className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
           </div>
@@ -443,54 +419,52 @@ export default function RecipePage() {
                           <tr key={mat.uid} className="hover:bg-gray-50/60 transition-colors">
                             <td className="px-5 py-3 text-xs text-gray-600 font-medium">{midx + 1}</td>
                             <td className="px-5 py-3">
-                              <select
+                              <Select
+                                label=""
                                 value={mat.rawMaterialId}
                                 onChange={e => updateMaterial(layer.uid, mat.uid, "rawMaterialId", e.target.value)}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                              >
-                                <option value="">— Select Material —</option>
-                                {rawMaterials.map(rm => (
-                                  <option key={rm.id} value={rm.id}>
-                                    {rm.name} [{rm.code}]
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-5 py-3">
-                              <div className="relative">
-                                <input
-                                  type="number" min="0" max="100" step="0.1"
-                                  value={mat.percentage}
-                                  onChange={e => updateMaterial(layer.uid, mat.uid, "percentage", Number(e.target.value))}
-                                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 pr-7"
-                                />
-                                <span className="absolute right-2.5 top-2.5 text-xs text-gray-400">%</span>
-                              </div>
-                            </td>
-                            <td className="px-5 py-3">
-                              <input
-                                type="number" step="0.001"
-                                value={mat.density}
-                                onChange={e => updateMaterial(layer.uid, mat.uid, "density", Number(e.target.value))}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                options={[
+                                  { value: "", label: "— Select Material —" },
+                                  ...rawMaterials.map(rm => ({ value: rm.id, label: `${rm.name} [${rm.code}]` }))
+                                ]}
                               />
                             </td>
                             <td className="px-5 py-3">
-                              <input
-                                type="number" step="0.01"
+                              <Input
+                                label=""
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.1}
+                                value={mat.percentage}
+                                onChange={e => updateMaterial(layer.uid, mat.uid, "percentage", Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="px-5 py-3">
+                              <Input
+                                label=""
+                                type="number"
+                                step={0.001}
+                                value={mat.density}
+                                onChange={e => updateMaterial(layer.uid, mat.uid, "density", Number(e.target.value))}
+                              />
+                            </td>
+                            <td className="px-5 py-3">
+                              <Input
+                                label=""
+                                type="number"
+                                step={0.01}
                                 value={mat.rate}
                                 onChange={e => updateMaterial(layer.uid, mat.uid, "rate", Number(e.target.value))}
-                                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                               />
                             </td>
                             <td className="px-5 py-3 text-center">
                               {layer.materials.length > 1 && (
-                                <button
+                                <Button
+                                  variant="secondary"
+                                  icon={<Trash2 size={14}/>}
                                   onClick={() => removeMaterial(layer.uid, mat.uid)}
-                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
+                                />
                               )}
                             </td>
                           </tr>
@@ -500,12 +474,7 @@ export default function RecipePage() {
 
                     {/* Layer footer */}
                     <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-100">
-                      <button
-                        onClick={() => addMaterial(layer.uid)}
-                        className="flex items-center gap-1.5 text-xs text-blue-700 font-semibold hover:text-blue-800 transition-colors"
-                      >
-                        <Plus size={13} /> Add Material to this Layer
-                      </button>
+                      <Button variant="secondary" icon={<Plus size={13}/>} onClick={() => addMaterial(layer.uid)}>Add Material to this Layer</Button>
                       <div className="flex items-center gap-6 text-xs text-gray-500">
                         {blendDensity > 0 && (
                           <>
@@ -530,14 +499,8 @@ export default function RecipePage() {
 
         {/* ── Save footer ── */}
         <div className="flex items-center justify-between pt-2">
-          <button onClick={() => setView("list")}
-            className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            Cancel
-          </button>
-          <button onClick={save}
-            className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-            <Save size={16} /> Save Recipe
-          </button>
+          <Button variant="secondary" onClick={() => setView("list")}>Cancel</Button>
+          <Button variant="primary" icon={<Save size={16}/>} onClick={save}>Save Recipe</Button>
         </div>
       </div>
     );
@@ -563,18 +526,8 @@ export default function RecipePage() {
           searchKeys={["name", "code", "subGroup"]}
           actions={(row) => (
             <div className="flex items-center gap-2 justify-end">
-              <button
-                onClick={() => openEdit(row)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <List size={12} /> View / Edit
-              </button>
-              <button
-                onClick={() => setDeleteId(row.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-              >
-                <Trash2 size={12} /> Delete
-              </button>
+              <Button variant="secondary" icon={<List size={12}/>} onClick={() => openEdit(row)}>View / Edit</Button>
+              <Button variant="secondary" icon={<Trash2 size={12}/>} onClick={() => setDeleteId(row.id)}>Delete</Button>
             </div>
           )}
         />
@@ -629,14 +582,8 @@ export default function RecipePage() {
             <h3 className="text-base font-semibold text-gray-800 mb-2">Delete Recipe?</h3>
             <p className="text-sm text-gray-500 mb-5">This will permanently remove the recipe. This action cannot be undone.</p>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setDeleteId(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
-                Cancel
-              </button>
-              <button onClick={() => { setData(d => d.filter(r => r.id !== deleteId)); setDeleteId(null); }}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700">
-                Delete
-              </button>
+              <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
+              <Button variant="primary" onClick={() => { setData(d => d.filter(r => r.id !== deleteId)); setDeleteId(null); }}>Delete</Button>
             </div>
           </div>
         </div>

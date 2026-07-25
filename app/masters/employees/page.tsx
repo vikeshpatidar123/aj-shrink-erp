@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -66,8 +67,6 @@ type SelectOpt = { value: string; label: string };
 function DynamicField({ field, value, options, onChange, submitAttempted }: {
   field: any; value: any; options: SelectOpt[]; onChange: (v: any) => void; submitAttempted?: boolean;
 }) {
-  const inputCls = "w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-
   const inner = () => {
     if (field.FieldType === "tagbox") {
       const selected: string[] = (value && typeof value === "string" && value !== "null" && value !== "false")
@@ -91,11 +90,12 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
             </div>
           )}
           {available.length > 0 ? (
-            <select defaultValue="" onChange={e => { addTag(e.target.value); e.currentTarget.value = ""; }}
-              disabled={!!field.IsLocked} className={inputCls}>
-              <option value="">+ Add grade...</option>
-              {available.map((o, i) => <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>)}
-            </select>
+            <Select
+              value=""
+              onChange={e => { if (e.target.value) addTag(e.target.value); }}
+              disabled={!!field.IsLocked}
+              options={[{ value: "", label: "+ Add grade..." }, ...available.map(o => ({ value: o.value, label: o.label }))]}
+            />
           ) : (
             <p className="text-xs text-gray-400 italic px-1">All grades selected.</p>
           )}
@@ -104,10 +104,12 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
     }
     if (field.FieldType === "selectbox") {
       return (
-        <select value={value ?? ""} onChange={e => onChange(e.target.value)} disabled={!!field.IsLocked} className={inputCls}>
-          <option value="">-- Select --</option>
-          {options.map((o, i) => <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>)}
-        </select>
+        <Select
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          disabled={!!field.IsLocked}
+          options={[{ value: "", label: "-- Select --" }, ...options.map(o => ({ value: o.value, label: o.label }))]}
+        />
       );
     }
     if (field.FieldType === "checkbox") {
@@ -124,34 +126,43 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
     }
     if (field.FieldType === "textarea") {
       return (
-        <textarea value={value ?? ""} onChange={e => onChange(e.target.value)} rows={3}
-          disabled={!!field.IsLocked} placeholder={field.FieldDefaultValue ?? ""}
-          className={inputCls + " resize-none"} />
+        <Textarea
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          rows={3}
+          disabled={!!field.IsLocked}
+          placeholder={field.FieldDefaultValue ?? ""}
+        />
       );
     }
     if (field.FieldType === "datebox") {
       return (
-        <input type="date" value={value ?? ""} onChange={e => onChange(e.target.value)}
-          disabled={!!field.IsLocked} className={inputCls} />
+        <Input
+          type="date"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          disabled={!!field.IsLocked}
+        />
       );
     }
     // text / number
     return (
-      <div className={"flex items-center border rounded-lg overflow-hidden bg-white focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-all " + (submitAttempted && field.IsRequiredFieldValidator && !String(value ?? "").trim() ? "border-red-400 bg-red-50/50" : "border-gray-300")}>
-        <input type={field.FieldType === "number" ? "number" : "text"} value={value ?? ""}
+      <div>
+        <Input
+          type={field.FieldType === "number" ? "number" : "text"}
+          value={value ?? ""}
           onChange={e => {
             if (field.FieldType === "number") {
               const v = e.target.value;
-              if (v === "" || v === "-" || /^-?d*.?d*$/.test(v)) onChange(v);
+              if (v === "" || v === "-" || /^-?\d*\.?\d*$/.test(v)) onChange(v);
             } else { onChange(e.target.value); }
-          }} disabled={!!field.IsLocked}
-          min={field.MinimumValue ?? 0} max={field.MaximumValue > 0 ? field.MaximumValue : undefined}
+          }}
+          disabled={!!field.IsLocked}
           placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""}
-          className="flex-1 w-full px-4 py-2 text-sm text-gray-800 outline-none disabled:bg-gray-50" />
+          error={submitAttempted && field.IsRequiredFieldValidator && !String(value ?? "").trim() ? "Required" : undefined}
+        />
         {field.UnitMeasurement && (
-          <div className="bg-gray-50 px-4 py-2 text-sm text-gray-500 border-l border-gray-300 font-medium whitespace-nowrap">
-            {field.UnitMeasurement}
-          </div>
+          <span className="text-xs text-gray-500 font-medium mt-1 inline-block px-1">{field.UnitMeasurement}</span>
         )}
       </div>
     );
@@ -674,16 +685,9 @@ export default function LedgerMasterPage() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => { setView("list"); setEditing(null); setFormStep("select-group"); }}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <List size={16} /> Back to List
-            </button>
+            <Button variant="secondary" icon={<List size={16} />} onClick={() => { setView("list"); setEditing(null); setFormStep("select-group"); }}>Back to List</Button>
             {formStep === "fill-form" && (
-              <button onClick={saveLedger} disabled={formSaving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-                {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                Save Ledger
-              </button>
+              <Button variant="primary" loading={formSaving} onClick={saveLedger}>Save Ledger</Button>
             )}
           </div>
         </div>
@@ -745,13 +749,13 @@ export default function LedgerMasterPage() {
 
                 {!gstPreview ? (
                   <div className="flex flex-wrap items-end gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">GSTIN</label>
-                      <input type="text" value={gstin} maxLength={15}
-                        onChange={e => setGstin(e.target.value.toUpperCase().replace(/\s/g, ""))}
-                        placeholder="e.g. 23AAICI3328J1ZM"
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono tracking-wide w-56 focus:ring-2 focus:ring-blue-500 outline-none" />
-                    </div>
+                    <Input
+                      label="GSTIN"
+                      type="text"
+                      value={gstin}
+                      onChange={e => setGstin(e.target.value.toUpperCase().replace(/\s/g, ""))}
+                      placeholder="e.g. 23AAICI3328J1ZM"
+                    />
 
                     <div className="flex flex-col gap-1.5">
                       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Captcha</label>
@@ -770,21 +774,16 @@ export default function LedgerMasterPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Enter Captcha</label>
-                      <input type="text" value={gstCaptchaValue} maxLength={10} disabled={!gstCaptchaImage}
-                        onChange={e => setGstCaptchaValue(e.target.value)}
-                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm w-32 focus:ring-2 focus:ring-blue-500 outline-none disabled:bg-gray-100" />
-                    </div>
+                    <Input
+                      label="Captcha"
+                      type="text"
+                      value={gstCaptchaValue}
+                      onChange={e => setGstCaptchaValue(e.target.value)}
+                      disabled={!gstCaptchaImage}
+                    />
 
-                    <button onClick={verifyGst} disabled={gstVerifying || !gstCaptchaImage}
-                      className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                      {gstVerifying ? <Loader2 size={14} className="animate-spin" /> : null}
-                      Verify GSTIN
-                    </button>
-                    <button onClick={closeGstPanel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
-                      Cancel
-                    </button>
+                    <Button variant="secondary" loading={gstVerifying} disabled={!gstCaptchaImage} onClick={verifyGst}>Verify GSTIN</Button>
+                    <Button variant="secondary" onClick={closeGstPanel}>Cancel</Button>
                   </div>
                 ) : (
                   <div>
@@ -798,13 +797,8 @@ export default function LedgerMasterPage() {
                       ))}
                     </div>
                     <div className="flex items-center gap-3">
-                      <button onClick={applyGstPreview}
-                        className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-                        <Check size={14} /> Apply to Form
-                      </button>
-                      <button onClick={closeGstPanel} className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700">
-                        Discard
-                      </button>
+                      <Button variant="primary" onClick={applyGstPreview}>Apply to Form</Button>
+                      <Button variant="secondary" onClick={closeGstPanel}>Discard</Button>
                     </div>
                     <p className="text-xs text-gray-400 mt-3">Every field stays editable after applying, review and adjust anything before saving.</p>
                   </div>
@@ -840,7 +834,7 @@ export default function LedgerMasterPage() {
                             No &quot;Tax / Service&quot; HSN codes found. Add them in HSN Master first.
                           </div>
                         ) : (
-                          <select
+                          <Select
                             value={String(formValues.ProductHSNName ?? "")}
                             onChange={e => {
                               const selected = taxHsnList.find(h => h.id === e.target.value);
@@ -855,13 +849,11 @@ export default function LedgerMasterPage() {
                                 ...(selected ? { TaxPercentage: selected.gst } : {}),
                               }));
                             }}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                          >
-                            <option value="">-- Select HSN / SAC --</option>
-                            {taxHsnList.map(h => (
-                              <option key={h.id} value={h.id}>{h.code}{h.name ? ` — ${h.name}` : ""}</option>
-                            ))}
-                          </select>
+                            options={[
+                              { value: "", label: "-- Select HSN / SAC --" },
+                              ...taxHsnList.map(h => ({ value: h.id, label: `${h.code}${h.name ? ` — ${h.name}` : ""}` })),
+                            ]}
+                          />
                         )}
                         {formValues.ProductHSNName && (() => {
                           const sel = taxHsnList.find(h => h.id === String(formValues.ProductHSNName));
@@ -890,11 +882,7 @@ export default function LedgerMasterPage() {
                       className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
                       ← Change Group
                     </button>
-                    <button onClick={saveLedger} disabled={formSaving}
-                      className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-                      {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                      Save Ledger
-                    </button>
+                    <Button variant="primary" loading={formSaving} onClick={saveLedger}>Save Ledger</Button>
                   </div>
                 </>
               )}
@@ -935,13 +923,11 @@ export default function LedgerMasterPage() {
         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Filter</span>
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500">From</label>
-          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" />
+          <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500">To</label>
-          <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-            className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" />
+          <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
         <span className="text-xs text-gray-400">{filteredGridData.length} of {gridData.length}</span>
       </div>

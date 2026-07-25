@@ -1,9 +1,10 @@
 "use client";
-import { RowAction, RowActions } from "@/components/ui/RowAction";
+import { RowAction } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -21,16 +22,6 @@ function unwrap(raw: any): any {
 const SectionTitle = ({ title }: { title: string }) => (
   <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
 );
-const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
-  <div className="flex flex-col gap-1.5">
-    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-      {label}{required && <span className="text-red-500 ml-1">*</span>}
-    </label>
-    {children}
-  </div>
-);
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const ic = (err: boolean | string | undefined) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // Types
 type HSNRow = {
@@ -384,15 +375,8 @@ export default function HSNPage() {
             <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit HSN Code" : "New HSN Code"}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveHSN} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save HSN
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} icon={<Check size={16}/>} onClick={saveHSN}>Save HSN</Button>
           </div>
         </div>
 
@@ -434,87 +418,67 @@ export default function HSNPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {!form.IsServiceHSN && (
                   <>
-                    <Field label="Item Group" required>
-                      <select value={form.ItemGroupID}
-                        onChange={e => {
-                          const v = e.target.value;
-                          setForm(p => ({ ...p, ItemGroupID: v, ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "" }));
-                          setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
-                          const grp = itemGroups.find(g => String(g.ItemGroupID) === v);
-                          if (v && grp?.ClassificationMode === "Hierarchical") loadSgSubGroups(v);
-                        }} className={ic(submitAttempted && !form.IsServiceHSN && !form.ItemGroupID)}>
-                        <option value="">Select Group...</option>
-                        {itemGroups.map(g => (
-                          <option key={g.ItemGroupID} value={String(g.ItemGroupID)}>{g.ItemGroupName}</option>
-                        ))}
-                      </select>
-                    </Field>
+                    <Select label="Item Group"
+                      value={form.ItemGroupID}
+                      onChange={e => {
+                        const v = e.target.value;
+                        setForm(p => ({ ...p, ItemGroupID: v, ItemSubGroupID: "", SubGroupType: "", TypeSpecification: "" }));
+                        setSgSubGroupOpts([]); setSgTypeOpts([]); setSgTypeSpecOpts([]);
+                        const grp = itemGroups.find(g => String(g.ItemGroupID) === v);
+                        if (v && grp?.ClassificationMode === "Hierarchical") loadSgSubGroups(v);
+                      }}
+                      options={[{ value: "", label: "Select Group..." }, ...itemGroups.map(g => ({ value: String(g.ItemGroupID), label: g.ItemGroupName }))]}
+                      error={submitAttempted && !form.IsServiceHSN && !form.ItemGroupID ? "Required" : undefined} />
 
                     {isHierarchical && (
                       <>
-                        <Field label="Sub Group 1">
-                          <select value={form.ItemSubGroupID}
-                            onChange={e => {
-                              const v = e.target.value;
-                              setForm(p => ({ ...p, ItemSubGroupID: v, SubGroupType: "", TypeSpecification: "" }));
-                              setSgTypeOpts([]); setSgTypeSpecOpts([]);
-                              if (form.ItemGroupID && v) loadSgTypes(form.ItemGroupID, v);
-                            }} className={inputCls} disabled={!form.ItemGroupID}>
-                            <option value="">Select Sub Group 1...</option>
-                            {sgSubGroupOpts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                          </select>
-                        </Field>
+                        <Select label="Sub Group 1"
+                          value={form.ItemSubGroupID}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setForm(p => ({ ...p, ItemSubGroupID: v, SubGroupType: "", TypeSpecification: "" }));
+                            setSgTypeOpts([]); setSgTypeSpecOpts([]);
+                            if (form.ItemGroupID && v) loadSgTypes(form.ItemGroupID, v);
+                          }}
+                          options={[{ value: "", label: "Select Sub Group 1..." }, ...sgSubGroupOpts.map(o => ({ value: o.id, label: o.name }))]}
+                          disabled={!form.ItemGroupID} />
 
-                        <Field label="Sub Group 2">
-                          <select value={form.SubGroupType}
-                            onChange={e => {
-                              const v = e.target.value;
-                              setForm(p => ({ ...p, SubGroupType: v, TypeSpecification: "" }));
-                              setSgTypeSpecOpts([]);
-                              if (form.ItemGroupID && form.ItemSubGroupID && v) loadSgTypeSpecs(form.ItemGroupID, form.ItemSubGroupID, v);
-                            }} className={inputCls} disabled={!form.ItemSubGroupID || sgTypeOpts.length === 0}>
-                            <option value="">Select Sub Group 2...</option>
-                            {sgTypeOpts.map(o => <option key={o.type} value={o.type}>{o.type}</option>)}
-                          </select>
-                        </Field>
+                        <Select label="Sub Group 2"
+                          value={form.SubGroupType}
+                          onChange={e => {
+                            const v = e.target.value;
+                            setForm(p => ({ ...p, SubGroupType: v, TypeSpecification: "" }));
+                            setSgTypeSpecOpts([]);
+                            if (form.ItemGroupID && form.ItemSubGroupID && v) loadSgTypeSpecs(form.ItemGroupID, form.ItemSubGroupID, v);
+                          }}
+                          options={[{ value: "", label: "Select Sub Group 2..." }, ...sgTypeOpts.map(o => ({ value: o.type, label: o.type }))]}
+                          disabled={!form.ItemSubGroupID || sgTypeOpts.length === 0} />
 
-                        <Field label="Sub Group 3">
-                          <select value={form.TypeSpecification}
-                            onChange={e => f("TypeSpecification", e.target.value)}
-                            className={inputCls} disabled={!form.SubGroupType || sgTypeSpecOpts.length === 0}>
-                            <option value="">Select Sub Group 3...</option>
-                            {sgTypeSpecOpts.map(o => <option key={o.spec} value={o.spec}>{o.spec}</option>)}
-                          </select>
-                        </Field>
+                        <Select label="Sub Group 3"
+                          value={form.TypeSpecification}
+                          onChange={e => f("TypeSpecification", e.target.value)}
+                          options={[{ value: "", label: "Select Sub Group 3..." }, ...sgTypeSpecOpts.map(o => ({ value: o.spec, label: o.spec }))]}
+                          disabled={!form.SubGroupType || sgTypeSpecOpts.length === 0} />
                       </>
                     )}
                   </>
                 )}
 
-                <Field label="HSN Code" required>
-                  <input type="text" value={form.HSNCode}
-                    onChange={e => f("HSNCode", e.target.value)}
-                    placeholder="e.g. 3920" className={ic(submitAttempted && !form.HSNCode.trim())} />
-                </Field>
-                <Field label="Tariff No">
-                  <input type="text" value={form.TariffNo}
-                    onChange={e => f("TariffNo", e.target.value)}
-                    placeholder="Tariff number" className={inputCls} />
-                </Field>
-                <Field label="Display Name / Description">
-                  <input type="text" value={form.DisplayName}
-                    onChange={e => {
-                      prevAutoRef.current = "";
-                      f("DisplayName", e.target.value);
-                    }}
-                    placeholder={autoDisplayName || "e.g. GST 18% on Services"}
-                    className={inputCls} />
-                </Field>
+                <Input label="HSN Code" value={form.HSNCode}
+                  onChange={e => f("HSNCode", e.target.value)}
+                  placeholder="e.g. 3920"
+                  error={submitAttempted && !form.HSNCode.trim() ? "Required" : undefined} />
+                <Input label="Tariff No" value={form.TariffNo}
+                  onChange={e => f("TariffNo", e.target.value)}
+                  placeholder="Tariff number" />
+                <Input label="Display Name / Description" value={form.DisplayName}
+                  onChange={e => {
+                    prevAutoRef.current = "";
+                    f("DisplayName", e.target.value);
+                  }}
+                  placeholder={autoDisplayName || "e.g. GST 18% on Services"} />
                 {computedProductCategory && (
-                  <Field label="Product Category">
-                    <input type="text" value={computedProductCategory} readOnly
-                      className={inputCls + " bg-gray-50 text-gray-500 cursor-not-allowed"} />
-                  </Field>
+                  <Input label="Product Category" value={computedProductCategory} readOnly onChange={() => {}} />
                 )}
               </div>
             </div>
@@ -524,22 +488,14 @@ export default function HSNPage() {
               <div>
                 <SectionTitle title="GST Tax Rates (%)" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <Field label="GST %">
-                    <input type="number" step="0.01" min="0" value={form.GSTTaxPercentage}
-                      onChange={e => f("GSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="CGST %">
-                    <input type="number" step="0.01" min="0" value={form.CGSTTaxPercentage}
-                      onChange={e => f("CGSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="SGST %">
-                    <input type="number" step="0.01" min="0" value={form.SGSTTaxPercentage}
-                      onChange={e => f("SGSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="IGST %">
-                    <input type="number" step="0.01" min="0" value={form.IGSTTaxPercentage}
-                      onChange={e => f("IGSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
+                  <Input label="GST %" type="number" value={form.GSTTaxPercentage}
+                    onChange={e => f("GSTTaxPercentage", e.target.value)} />
+                  <Input label="CGST %" type="number" value={form.CGSTTaxPercentage}
+                    onChange={e => f("CGSTTaxPercentage", e.target.value)} />
+                  <Input label="SGST %" type="number" value={form.SGSTTaxPercentage}
+                    onChange={e => f("SGSTTaxPercentage", e.target.value)} />
+                  <Input label="IGST %" type="number" value={form.IGSTTaxPercentage}
+                    onChange={e => f("IGSTTaxPercentage", e.target.value)} />
                 </div>
                 <p className="text-xs text-gray-400 mt-2">CGST + SGST must add up to GST. IGST must be 0 or equal to GST.</p>
               </div>
@@ -550,18 +506,12 @@ export default function HSNPage() {
               <div>
                 <SectionTitle title="VAT / Excise Tax Rates (%)" />
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  <Field label="VAT %">
-                    <input type="number" step="0.01" min="0" value={form.VATTaxPercentage}
-                      onChange={e => f("VATTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="CGST %">
-                    <input type="number" step="0.01" min="0" value={form.CGSTTaxPercentage}
-                      onChange={e => f("CGSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="SGST %">
-                    <input type="number" step="0.01" min="0" value={form.SGSTTaxPercentage}
-                      onChange={e => f("SGSTTaxPercentage", e.target.value)} className={inputCls} />
-                  </Field>
+                  <Input label="VAT %" type="number" value={form.VATTaxPercentage}
+                    onChange={e => f("VATTaxPercentage", e.target.value)} />
+                  <Input label="CGST %" type="number" value={form.CGSTTaxPercentage}
+                    onChange={e => f("CGSTTaxPercentage", e.target.value)} />
+                  <Input label="SGST %" type="number" value={form.SGSTTaxPercentage}
+                    onChange={e => f("SGSTTaxPercentage", e.target.value)} />
                   <div className="flex items-end pb-1">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="checkbox" checked={form.IsExciseApplicable}
@@ -574,14 +524,10 @@ export default function HSNPage() {
                 <p className="text-xs text-gray-400 mt-2">CGST + SGST must add up to VAT. IGST must be 0 or equal to VAT.</p>
                 {form.IsExciseApplicable && (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-4">
-                    <Field label="Excise %">
-                      <input type="number" step="0.01" min="0" value={form.ExciseTaxPercentage}
-                        onChange={e => f("ExciseTaxPercentage", e.target.value)} className={inputCls} />
-                    </Field>
-                    <Field label="Min Excise Amount">
-                      <input type="number" step="0.01" min="0" value={form.MinimumExciseAmount}
-                        onChange={e => f("MinimumExciseAmount", e.target.value)} className={inputCls} />
-                    </Field>
+                    <Input label="Excise %" type="number" value={form.ExciseTaxPercentage}
+                      onChange={e => f("ExciseTaxPercentage", e.target.value)} />
+                    <Input label="Min Excise Amount" type="number" value={form.MinimumExciseAmount}
+                      onChange={e => f("MinimumExciseAmount", e.target.value)} />
                   </div>
                 )}
               </div>

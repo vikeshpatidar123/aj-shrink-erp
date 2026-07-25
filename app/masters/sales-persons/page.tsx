@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -60,15 +61,15 @@ type SelectOpt = { value: string; label: string };
 function DynamicField({ field, value, options, onChange, submitAttempted }: {
   field: any; value: any; options: SelectOpt[]; onChange: (v: any) => void; submitAttempted?: boolean;
 }) {
-  const inputCls = "w-full px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-
   const inner = () => {
     if (field.FieldType === "selectbox") {
       return (
-        <select value={value ?? ""} onChange={e => onChange(e.target.value)} disabled={!!field.IsLocked} className={inputCls}>
-          <option value="">-- Select --</option>
-          {options.map((o, i) => <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>)}
-        </select>
+        <Select
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          disabled={!!field.IsLocked}
+          options={[{ value: "", label: "-- Select --" }, ...options.map(o => ({ value: o.value, label: o.label }))]}
+        />
       );
     }
     if (field.FieldType === "checkbox") {
@@ -85,22 +86,20 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
     }
     if (field.FieldType === "textarea") {
       return (
-        <textarea value={value ?? ""} onChange={e => onChange(e.target.value)} rows={3}
-          disabled={!!field.IsLocked} placeholder={field.FieldDefaultValue ?? ""}
-          className={inputCls + " resize-none"} />
+        <Textarea value={value ?? ""} onChange={e => onChange(e.target.value)} rows={3}
+          disabled={!!field.IsLocked} placeholder={field.FieldDefaultValue ?? ""} />
       );
     }
     if (field.FieldType === "datebox") {
       return (
-        <input type="date" value={value ?? ""} onChange={e => onChange(e.target.value)}
-          disabled={!!field.IsLocked} className={inputCls} />
+        <Input type="date" value={value ?? ""} onChange={e => onChange(e.target.value)}
+          disabled={!!field.IsLocked} />
       );
     }
     return (
-      <input type={field.FieldType === "number" ? "number" : "text"} value={value ?? ""}
+      <Input type={field.FieldType === "number" ? "number" : "text"} value={value ?? ""}
         onChange={e => onChange(e.target.value)} disabled={!!field.IsLocked}
-        placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""}
-        className={inputCls} />
+        placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""} />
     );
   };
 
@@ -368,9 +367,7 @@ export default function SalesPersonPage() {
             <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Sales Person Master</p>
             <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Sales Person" : "Add Sales Person"}</h2>
           </div>
-          <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <List size={16} /> Back to List
-          </button>
+          <Button variant="secondary" icon={<List size={16} />} onClick={() => setView("list")}>Back to List</Button>
         </div>
 
         {formError && (
@@ -406,14 +403,8 @@ export default function SalesPersonPage() {
               </div>
 
               <div className="flex items-center justify-between mt-8 pt-6 border-t border-gray-200">
-                <button onClick={() => setView("list")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  Cancel
-                </button>
-                <button onClick={saveSalesPerson} disabled={formSaving}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-                  {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                  Save Sales Person
-                </button>
+                <Button variant="secondary" onClick={() => setView("list")}>Cancel</Button>
+                <Button variant="primary" loading={formSaving} icon={<Check size={16} />} onClick={saveSalesPerson}>Save Sales Person</Button>
               </div>
             </>
           )}

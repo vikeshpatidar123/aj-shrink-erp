@@ -10,6 +10,7 @@ import {
 import { authHeaders } from "@/lib/auth";
 import { useCategories } from "@/context/CategoriesContext";
 import Button from "@/components/ui/Button";
+import { Input, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DataTable } from "@/components/tables/DataTable";
@@ -189,7 +190,6 @@ const blankForm = (): FormState => ({
 });
 
 // ─── Shared input style ───────────────────────────────────────────────────────
-const iCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none";
 const lCls = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1";
 
 const SH = ({ label }: { label: string }) => (
@@ -255,13 +255,7 @@ function AttCard({ att, onRemove, onPreview, onRemarkChange }: {
       <div className="px-2 pt-1.5 pb-1">
         <p className="text-[11px] text-gray-700 truncate font-medium" title={att.name}>{att.name}</p>
         {onRemarkChange !== undefined && (
-          <input
-            value={att.remark}
-            onChange={e => onRemarkChange(e.target.value)}
-            onClick={e => e.stopPropagation()}
-            placeholder="File label…"
-            className="mt-1 w-full text-[10px] px-1.5 py-0.5 border border-gray-200 rounded bg-white text-gray-700 placeholder-gray-300 focus:outline-none focus:border-blue-400"
-          />
+          <Input value={att.remark} onChange={e => onRemarkChange(e.target.value)} onClick={e => e.stopPropagation()} placeholder="File label…" className="mt-1 w-full" />
         )}
       </div>
       <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1577,9 +1571,7 @@ export default function ArtworkManagementPage() {
                   {/* Row 1: Search + Job Name + SKU Size + Brand + Product + Customer */}
                   <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
                     <div className="relative md:col-span-1">
-                      <input value={libSearch} onChange={e => setLibSearch(e.target.value)}
-                        placeholder="Job, SKU, brand, customer, file…"
-                        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400" />
+                      <Input value={libSearch} onChange={e => setLibSearch(e.target.value)} placeholder="Job, SKU, brand, customer, file…" className="w-full pl-7 pr-2" />
                       <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">🔍</span>
                     </div>
                     <SearchableSelect
@@ -1931,7 +1923,7 @@ export default function ArtworkManagementPage() {
                     <div>
                       <label className={lCls}>Job Name</label>
                       <div className="relative">
-                        <input
+                        <Input
                           value={form.JobName}
                           onChange={e => {
                             rf("JobName", e.target.value);
@@ -1940,7 +1932,7 @@ export default function ArtworkManagementPage() {
                           placeholder="Type or select…"
                           list="master-jobname-list"
                           autoComplete="off"
-                          className={`${iCls} pr-8`}
+                          className="pr-8"
                         />
                         <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                         <datalist id="master-jobname-list">
@@ -1953,15 +1945,7 @@ export default function ArtworkManagementPage() {
                         </datalist>
                       </div>
                     </div>
-                    <div>
-                      <label className={lCls}>File Name</label>
-                      <input
-                        value={form.AttachmentFilesName}
-                        onChange={e => rf("AttachmentFilesName", e.target.value)}
-                        placeholder="Enter file name…"
-                        className={iCls}
-                      />
-                    </div>
+                    <Input label="File Name" value={form.AttachmentFilesName} onChange={e => rf("AttachmentFilesName", e.target.value)} placeholder="Enter file name…" />
                     <div>
                       <label className={lCls}>Brand Name</label>
                       <SearchableSelect value={form.BrandName} onChange={val => rf("BrandName", val)}
@@ -1998,15 +1982,8 @@ export default function ArtworkManagementPage() {
                         options={fmOptions.addressTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Address Type --"
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                     </div>
-                    <div className="col-span-2">
-                      <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
-                      <input value={form.ArtworkName} readOnly className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} />
-                    </div>
-                    <div className="col-span-2">
-                      <label className={lCls}>Special Specifications</label>
-                      <textarea value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)}
-                        rows={2} placeholder="Any special requirements or notes…" className={iCls} />
-                    </div>
+                    <div className="col-span-2"><Input label="Artwork Name (auto-generated)" value={form.ArtworkName} readOnly /></div>
+                    <div className="col-span-2"><Textarea label="Special Specifications" value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
                   </div>
                 </div>
 
@@ -2016,14 +1993,8 @@ export default function ArtworkManagementPage() {
                   <div>
                     <SH label="Dates" />
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={lCls}>Received Date</label>
-                        <input type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} className={iCls} />
-                      </div>
-                      <div>
-                        <label className={lCls}>Expected Completion Date</label>
-                        <input type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} className={iCls} />
-                      </div>
+                      <Input label="Received Date" type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} />
+                      <Input label="Expected Completion Date" type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} />
                     </div>
                   </div>
 
@@ -2097,16 +2068,8 @@ export default function ArtworkManagementPage() {
                       </div>
                     );
                   })()}
-                  <div>
-                    <label className={lCls}>Client Artwork No.</label>
-                    <input value={form.ClientArtWorkNo} onChange={e => rf("ClientArtWorkNo", e.target.value)}
-                      placeholder="Client's reference number" className={iCls} />
-                  </div>
-                  <div className="col-span-2">
-                    <label className={lCls}>Artwork Description</label>
-                    <textarea value={form.ArtWorkDescription} onChange={e => rf("ArtWorkDescription", e.target.value)}
-                      rows={3} placeholder="Describe the artwork…" className={iCls} />
-                  </div>
+                  <Input label="Client Artwork No." value={form.ClientArtWorkNo} onChange={e => rf("ClientArtWorkNo", e.target.value)} placeholder="Client's reference number" />
+                  <div className="col-span-2"><Textarea label="Artwork Description" value={form.ArtWorkDescription} onChange={e => rf("ArtWorkDescription", e.target.value)} rows={3} placeholder="Describe the artwork…" /></div>
                 </div>
               </div>
             </div>
@@ -2259,11 +2222,7 @@ export default function ArtworkManagementPage() {
                           </p>
                         )}
                       </div>
-                      <div>
-                        <label className={lCls}>Child Artwork Name / Variant Label *</label>
-                        <input value={sgForm.BBArtworkName} onChange={e => rfSG("BBArtworkName", e.target.value)}
-                          placeholder="e.g. 200ml Red Label Variant, Export Pack…" className={iCls} />
-                      </div>
+                      <Input label="Child Artwork Name / Variant Label *" value={sgForm.BBArtworkName} onChange={e => rfSG("BBArtworkName", e.target.value)} placeholder="e.g. 200ml Red Label Variant, Export Pack…" />
                     </div>
                   </div>
 
@@ -2274,7 +2233,7 @@ export default function ArtworkManagementPage() {
                       <div>
                         <label className={lCls}>Job Name</label>
                         <div className="relative">
-                          <input
+                          <Input
                             value={sgForm.JobName}
                             onChange={e => {
                               rfSG("JobName", e.target.value);
@@ -2283,7 +2242,7 @@ export default function ArtworkManagementPage() {
                             placeholder="Type or select…"
                             list="child-jobname-list"
                             autoComplete="off"
-                            className={`${iCls} pr-8`}
+                            className="pr-8"
                           />
                           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                           <datalist id="child-jobname-list">
@@ -2297,15 +2256,7 @@ export default function ArtworkManagementPage() {
                           </datalist>
                         </div>
                       </div>
-                      <div>
-                        <label className={lCls}>File Name</label>
-                        <input
-                          value={sgForm.AttachmentFilesName}
-                          onChange={e => rfSG("AttachmentFilesName", e.target.value)}
-                          placeholder="Enter file name…"
-                          className={iCls}
-                        />
-                      </div>
+                      <Input label="File Name" value={sgForm.AttachmentFilesName} onChange={e => rfSG("AttachmentFilesName", e.target.value)} placeholder="Enter file name…" />
                       <div>
                         <label className={lCls}>Brand Name</label>
                         <SearchableSelect value={sgForm.BrandName} onChange={val => rfSG("BrandName", val)}
@@ -2342,16 +2293,8 @@ export default function ArtworkManagementPage() {
                           options={fmOptions.addressTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Address Type --"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
-                      <div className="col-span-2">
-                        <label className={lCls}>Artwork Name <span className="text-gray-400 font-normal">(auto-generated)</span></label>
-                        <input value={sgForm.ArtworkName} readOnly
-                          className={`${iCls} bg-gray-50 cursor-not-allowed text-gray-700`} placeholder="Auto-generated from fields above" />
-                      </div>
-                      <div className="col-span-2">
-                        <label className={lCls}>Special Specifications</label>
-                        <textarea value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)}
-                          rows={2} placeholder="Any special requirements or notes…" className={iCls} />
-                      </div>
+                      <div className="col-span-2"><Input label="Artwork Name (auto-generated)" value={sgForm.ArtworkName} readOnly placeholder="Auto-generated from fields above" /></div>
+                      <div className="col-span-2"><Textarea label="Special Specifications" value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
                     </div>
                   </div>
                 </div>
@@ -2362,14 +2305,8 @@ export default function ArtworkManagementPage() {
                   <div>
                     <SH label="Dates" />
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className={lCls}>Received Date</label>
-                        <input type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} className={iCls} />
-                      </div>
-                      <div>
-                        <label className={lCls}>Expected Completion Date</label>
-                        <input type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} className={iCls} />
-                      </div>
+                      <Input label="Received Date" type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} />
+                      <Input label="Expected Completion Date" type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} />
                     </div>
                   </div>
 
@@ -2387,20 +2324,9 @@ export default function ArtworkManagementPage() {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
                         />
                       </div>
-                      <div>
-                        <label className={lCls}>Sub Type (Content)</label>
-                        <input value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} className={iCls} placeholder="e.g. Pouch, Sachet…" />
-                      </div>
-                      <div className="col-span-2">
-                        <label className={lCls}>Artwork Description</label>
-                        <textarea value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)}
-                          rows={3} placeholder="Describe the artwork…" className={iCls} />
-                      </div>
-                      <div className="col-span-2">
-                        <label className={lCls}>Remarks</label>
-                        <textarea value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)}
-                          rows={3} placeholder="Internal notes…" className={iCls} />
-                      </div>
+                      <Input label="Sub Type (Content)" value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} placeholder="e.g. Pouch, Sachet…" />
+                      <div className="col-span-2"><Textarea label="Artwork Description" value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)} rows={3} placeholder="Describe the artwork…" /></div>
+                      <div className="col-span-2"><Textarea label="Remarks" value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)} rows={3} placeholder="Internal notes…" /></div>
                     </div>
                   </div>
                 </div>

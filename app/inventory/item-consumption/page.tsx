@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
-import { inputCls } from "@/lib/styles";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -257,17 +257,11 @@ function ScannerModal({
 
         {mode === "manual" && (
           <div className="p-5 space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste value</label>
-              <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
-                placeholder="Paste QR data or type value…"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
-            </div>
-            <button onClick={() => { if (manual.trim()) onScan(manual.trim()); }}
-              disabled={!manual.trim()}
-              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40">
+            <Textarea label="Enter / Paste value" autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
+              placeholder="Paste QR data or type value…" />
+            <Button className="w-full" onClick={() => { if (manual.trim()) onScan(manual.trim()); }} disabled={!manual.trim()}>
               Use This Value
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -309,9 +303,9 @@ function JobCardPickerModal({ onSelect, onClose }: {
         <div className="px-5 py-3 border-b border-gray-100 shrink-0">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
+            <Input autoFocus value={search} onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by job card no, job name, content…"
-              className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full pl-9" />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -403,19 +397,13 @@ function ConsumeConfirmModal({
 
           {/* Consumed qty */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-              Consumed Qty ({batch.StockUnit}) *{" "}
-              <span className="text-gray-400 font-normal normal-case">
-                max: {batch.FloorStock > 0 ? batch.FloorStock : batch.IssueQuantity} {batch.StockUnit}
-              </span>
-            </label>
-            <input
+            <Input
+              label={`Consumed Qty (${batch.StockUnit}) *`}
               type="number" min={0.001} step={0.001}
               autoFocus
               value={consumeQtyStr}
               onChange={(e) => setConsumeQtyStr(e.target.value)}
               onFocus={(e) => e.target.select()}
-              className={`${inputCls} ${(exceedsIssued || exceedsFloor) ? "border-red-400 bg-red-50" : ""}`}
             />
             {exceedsIssued && (
               <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -437,12 +425,12 @@ function ConsumeConfirmModal({
                 <span className="ml-1 text-gray-400 font-normal normal-case">(optional)</span>
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   type="text"
                   value={jobCardContentNo}
                   onChange={(e) => setJobCardContentNo(e.target.value)}
                   placeholder="e.g. JC-2024-00123…"
-                  className={`${inputCls} flex-1`}
+                  className="flex-1"
                 />
                 <button type="button" onClick={() => setShowJCScanner(true)}
                   className="flex-shrink-0 flex items-center gap-2 px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-100 rounded hover:bg-blue-200 transition-colors h-[38px]">
@@ -454,16 +442,12 @@ function ConsumeConfirmModal({
         </div>
 
         <div className="px-6 pb-5 flex items-center justify-between">
-          <button onClick={onClose}
-            className="px-5 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
-            Cancel
-          </button>
-          <button
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
             onClick={() => { if (canConfirm) onConfirm(consumeQty, jobCardContentNo); }}
-            disabled={!canConfirm}
-            className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+            disabled={!canConfirm}>
             <Flame size={15} /> Confirm Consumption
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -949,11 +933,9 @@ export default function ItemConsumptionPage() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
-            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
-            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
             <button onClick={loadList} disabled={loadingList}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
               <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} />
@@ -962,10 +944,10 @@ export default function ItemConsumptionPage() {
           </div>
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
             <Search size={14} className="text-gray-400 shrink-0" />
-            <input type="text"
+            <Input type="text"
               placeholder="Search by voucher no, job card, department, item, issue no…"
               value={listSearch} onChange={(e) => setListSearch(e.target.value)}
-              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400" />
+              className="flex-1" />
           </div>
         </div>
 
@@ -1127,13 +1109,10 @@ export default function ItemConsumptionPage() {
                 </p>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Voucher No.</label>
-                    <input readOnly value={currentVoucherNo}
-                      className={`${inputCls} bg-blue-50 text-blue-700 font-mono font-semibold`} />
+                    <Input label="Voucher No." readOnly value={currentVoucherNo} />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Consumption Date</label>
-                    <input type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} className={inputCls} />
+                    <Input label="Consumption Date" type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Consume Mode</label>
@@ -1169,13 +1148,13 @@ export default function ItemConsumptionPage() {
                         Job Card Content No.
                       </label>
                       <div className="flex gap-2">
-                        <input
+                        <Input
                           type="text"
                           value={manualJobCardNo}
                           onChange={(e) => setManualJobCardNo(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter") lookupJobCard(manualJobCardNo); }}
                           placeholder="Enter / paste job card no…"
-                          className={`${inputCls} flex-1 font-mono`}
+                          className="flex-1 font-mono"
                         />
                         <button
                           onClick={() => lookupJobCard(manualJobCardNo)}
@@ -1407,8 +1386,8 @@ export default function ItemConsumptionPage() {
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
                   Remark / Narration
                 </p>
-                <input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" className={inputCls} />
+                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+                  placeholder="Optional notes…" />
               </div>
 
               {/* Summary */}

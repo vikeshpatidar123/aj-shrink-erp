@@ -1,9 +1,10 @@
 "use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, Check, Loader2, List, X } from "lucide-react";
+import { Plus, Pencil, Trash2, Check, List, X } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -28,8 +29,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
     {children}
   </div>
 );
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all";
-const ic = (err?: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // Types
 type WarehouseRow = {
@@ -254,15 +253,8 @@ export default function WarehouseMasterPage() {
             <h2 className="text-xl font-bold text-gray-800">{editing ? "Edit Warehouse" : "New Warehouse"}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveWarehouse} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save Warehouse
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} icon={<Check size={16}/>} onClick={saveWarehouse}>Save Warehouse</Button>
           </div>
         </div>
 
@@ -276,16 +268,14 @@ export default function WarehouseMasterPage() {
             <div>
               <SectionTitle title="Warehouse Identity" />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                <Field label="Warehouse Name" required>
-                  <input type="text" value={form.WarehouseName}
-                    onChange={e => f("WarehouseName", e.target.value)}
-                    placeholder="Enter Warehouse Name" className={ic(submitAttempted && !form.WarehouseName.trim())} />
-                </Field>
-                <Field label="Reference / ER Code" required>
-                  <input type="text" value={form.RefWarehouseCode}
-                    onChange={e => f("RefWarehouseCode", e.target.value)}
-                    placeholder="e.g. WH-101" className={ic(submitAttempted && !form.RefWarehouseCode.trim())} />
-                </Field>
+                <Input label="Warehouse Name" value={form.WarehouseName}
+                  onChange={e => f("WarehouseName", e.target.value)}
+                  placeholder="Enter Warehouse Name"
+                  error={submitAttempted && !form.WarehouseName.trim() ? "Required" : undefined} />
+                <Input label="Reference / ER Code" value={form.RefWarehouseCode}
+                  onChange={e => f("RefWarehouseCode", e.target.value)}
+                  placeholder="e.g. WH-101"
+                  error={submitAttempted && !form.RefWarehouseCode.trim() ? "Required" : undefined} />
               </div>
 
               <div className="flex items-center gap-2 mt-2">
@@ -302,17 +292,13 @@ export default function WarehouseMasterPage() {
               <SectionTitle title="Location & Linkage" />
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 <div className="lg:col-span-2">
-                  <Field label="Address">
-                    <textarea rows={2} value={form.Address}
-                      onChange={e => f("Address", e.target.value)}
-                      placeholder="Full address..." className={inputCls} />
-                  </Field>
+                  <Textarea label="Address" rows={2} value={form.Address}
+                    onChange={e => f("Address", e.target.value)}
+                    placeholder="Full address..." />
                 </div>
-                <Field label="City">
-                  <input type="text" value={form.City}
-                    onChange={e => f("City", e.target.value)}
-                    placeholder="e.g. Mumbai" className={inputCls} />
-                </Field>
+                <Input label="City" value={form.City}
+                  onChange={e => f("City", e.target.value)}
+                  placeholder="e.g. Mumbai" />
               </div>
             </div>
 
@@ -322,9 +308,9 @@ export default function WarehouseMasterPage() {
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-5">
 
                 <div className="flex items-center gap-3 mb-4 max-w-sm">
-                  <input type="text" value={binInput} onChange={e => setBinInput(e.target.value)}
+                  <Input value={binInput} onChange={e => setBinInput(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addBin()}
-                    placeholder="Enter bin name..." className={inputCls} />
+                    placeholder="Enter bin name..." />
                   <Button variant="secondary" size="sm" onClick={addBin} icon={<Plus size={15} />}>Add Bin</Button>
                 </div>
 

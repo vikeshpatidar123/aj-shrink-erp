@@ -5,6 +5,7 @@ import {
   Loader2, RefreshCw, Plus, Pencil, Trash2, ShieldCheck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -584,13 +585,11 @@ export default function QcPackingPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500 whitespace-nowrap">From</label>
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
           </div>
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500 whitespace-nowrap">To</label>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-              className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+            <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
           </div>
           <Button size="sm" variant="secondary" onClick={loadList} disabled={listLoading}
             icon={listLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}>
@@ -721,25 +720,10 @@ export default function QcPackingPage() {
 
             {/* ─ Voucher Header ─ */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className={lbl}>Voucher No</label>
-                <input className={ro} value={voucherNo} readOnly />
-              </div>
-              <div>
-                <label className={lbl}>Voucher Date</label>
-                <input type="date" className={inp} value={voucherDate}
-                  onChange={e => setVoucherDate(e.target.value)} />
-              </div>
-              <div>
-                <label className={lbl}>Checked By</label>
-                <input className={inp} value={checkedBy} onChange={e => setCheckedBy(e.target.value)}
-                  placeholder="Inspector name" />
-              </div>
-              <div>
-                <label className={lbl}>Narration</label>
-                <input className={inp} value={narration} onChange={e => setNarration(e.target.value)}
-                  placeholder="Remarks" />
-              </div>
+              <Input label="Voucher No" value={voucherNo} readOnly />
+              <Input label="Voucher Date" type="date" value={voucherDate} onChange={e => setVoucherDate(e.target.value)} />
+              <Input label="Checked By" value={checkedBy} onChange={e => setCheckedBy(e.target.value)} placeholder="Inspector name" />
+              <Input label="Narration" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Remarks" />
             </div>
 
             {/* ─ Semi-Packing Source Table ─ */}
@@ -787,12 +771,12 @@ export default function QcPackingPage() {
                           </td>
                           <td className={td}>
                             {row.sameBox && (
-                              <input type="number" min="1" max={available}
+                              <Input type="number" min={1} max={available}
                                 value={row.bundlesPerBox}
                                 onChange={e => setSemiRows(p => p.map((r, j) =>
                                   j === i ? { ...r, bundlesPerBox: e.target.value } : r
                                 ))}
-                                className="w-16 border border-blue-300 rounded-md px-1.5 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                                className="w-16" />
                             )}
                           </td>
                           <td className={td}>{row.SemiPackingNo}</td>
@@ -857,41 +841,15 @@ export default function QcPackingPage() {
                 Step 3 — Enter CFC dimensions and click Add CFC
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-                <div>
-                  <label className={lbl}>QC Approved Boxes</label>
-                  <input type="number" min="1" className={inp} value={qcAppro}
-                    onChange={e => setQcAppro(e.target.value)} />
-                </div>
-                <div>
-                  <label className={lbl}>Weight / Box (kg)</label>
-                  <input type="number" className={inp} value={weight}
-                    onChange={e => setWeight(e.target.value)} placeholder="0.000" />
-                </div>
-                <div>
-                  <label className={lbl}>Length (CM)</label>
-                  <input type="number" className={inp} value={cfcL}
-                    onChange={e => setCfcL(e.target.value)} placeholder="0" />
-                </div>
-                <div>
-                  <label className={lbl}>Width (CM)</label>
-                  <input type="number" className={inp} value={cfcW}
-                    onChange={e => setCfcW(e.target.value)} placeholder="0" />
-                </div>
+                <Input label="QC Approved Boxes" type="number" min={1} value={qcAppro} onChange={e => setQcAppro(e.target.value)} />
+                <Input label="Weight / Box (kg)" type="number" value={weight} onChange={e => setWeight(e.target.value)} placeholder="0.000" />
+                <Input label="Length (CM)" type="number" value={cfcL} onChange={e => setCfcL(e.target.value)} placeholder="0" />
+                <Input label="Width (CM)" type="number" value={cfcW} onChange={e => setCfcW(e.target.value)} placeholder="0" />
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
-                <div>
-                  <label className={lbl}>Height (CM)</label>
-                  <input type="number" className={inp} value={cfcH}
-                    onChange={e => setCfcH(e.target.value)} placeholder="0" />
-                </div>
-                <div>
-                  <label className={lbl}>CB CM (L × W × H)</label>
-                  <input className={ro} readOnly value={cbcm > 0 ? cbcm.toFixed(4) : "0"} />
-                </div>
-                <div>
-                  <label className={lbl}>CFT (CB CM ÷ 28316.85)</label>
-                  <input className={ro} readOnly value={cft > 0 ? cft.toFixed(6) : "0"} />
-                </div>
+                <Input label="Height (CM)" type="number" value={cfcH} onChange={e => setCfcH(e.target.value)} placeholder="0" />
+                <Input label="CB CM (L × W × H)" readOnly value={cbcm > 0 ? cbcm.toFixed(4) : "0"} />
+                <Input label="CFT (CB CM ÷ 28316.85)" readOnly value={cft > 0 ? cft.toFixed(6) : "0"} />
                 <Button variant="primary" onClick={addCFC} icon={<Plus size={14} />}>
                   Add CFC
                 </Button>
@@ -989,30 +947,23 @@ export default function QcPackingPage() {
 
             {/* ─ Warehouse / Bin ─ */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className={lbl}>Warehouse <span className="text-red-500">*</span></label>
-                <select className={inp} value={warehouseName}
-                  onChange={e => handleWarehouseChange(e.target.value)}>
-                  <option value="">— Select Warehouse —</option>
-                  {warehouses.map(w => <option key={w} value={w}>{w}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={lbl}>Bin <span className="text-red-500">*</span></label>
-                <select className={inp} value={binName}
-                  onChange={e => {
-                    const sel = bins.find(b => b.Bin === e.target.value);
-                    setBinName(e.target.value);
-                    setWarehouseID(sel?.WarehouseID ?? 0);
-                  }}>
-                  <option value="">— Select Bin —</option>
-                  {bins.map(b => <option key={b.WarehouseID} value={b.Bin}>{b.Bin}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className={lbl}>Warehouse ID</label>
-                <input className={ro} readOnly value={warehouseID || ""} />
-              </div>
+              <Select
+                label="Warehouse *"
+                value={warehouseName}
+                onChange={e => handleWarehouseChange(e.target.value)}
+                options={[{value: "", label: "— Select Warehouse —"}, ...warehouses.map(w => ({value: w, label: w}))]}
+              />
+              <Select
+                label="Bin *"
+                value={binName}
+                onChange={e => {
+                  const sel = bins.find(b => b.Bin === e.target.value);
+                  setBinName(e.target.value);
+                  setWarehouseID(sel?.WarehouseID ?? 0);
+                }}
+                options={[{value: "", label: "— Select Bin —"}, ...bins.map(b => ({value: b.Bin, label: b.Bin}))]}
+              />
+              <Input label="Warehouse ID" readOnly value={warehouseID || ""} />
             </div>
 
             {/* ─ Actions ─ */}
@@ -1069,10 +1020,10 @@ export default function QcPackingPage() {
                     <td className={`${td} text-right`}>{row.InnerCarton}</td>
                     <td className={`${td} text-right`}>{row.QuantityPerPack}</td>
                     <td className={td}>
-                      <input type="number" min="1"
+                      <Input type="number" min={1}
                         value={raEdits[i] ?? row.InnerCarton}
                         onChange={e => setRaEdits(p => ({ ...p, [i]: e.target.value }))}
-                        className="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        className="w-20" />
                     </td>
                   </tr>
                 ))}

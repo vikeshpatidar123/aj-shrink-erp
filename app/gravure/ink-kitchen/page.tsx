@@ -10,6 +10,7 @@ import {
 import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
@@ -117,9 +118,6 @@ interface MixedSPR {
 }
 
 // ── Shared UI ──────────────────────────────────────────────────────────────────
-
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const selectCls = inputCls + " bg-white cursor-pointer";
 
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) => (
   <div className="flex flex-col gap-1.5">
@@ -248,8 +246,7 @@ function RecipeForm({
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <SectionTitle title="Recipe Details" />
             <Field label="Shade Recipe Name" required>
-              <input type="text" value={form.shadeRecipeName} onChange={e => f("shadeRecipeName", e.target.value)}
-                placeholder="e.g. Pantone 485C Red" className={inputCls} />
+              <Input type="text" value={form.shadeRecipeName} onChange={e => f("shadeRecipeName", e.target.value)} placeholder="e.g. Pantone 485C Red" />
             </Field>
             <Field label="Target Ink Item" required>
               <SearchableSelect value={form.itemId} onChange={val => f("itemId", val)}
@@ -257,8 +254,7 @@ function RecipeForm({
                 placeholder="— select ink —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
             </Field>
             <Field label="Reference (Pantone / Sample)">
-              <input type="text" value={form.reference} onChange={e => f("reference", e.target.value)}
-                placeholder="Pantone 485C" className={inputCls} />
+              <Input type="text" value={form.reference} onChange={e => f("reference", e.target.value)} placeholder="Pantone 485C" />
             </Field>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Film Item">
@@ -280,7 +276,7 @@ function RecipeForm({
             <div className="grid grid-cols-3 gap-4">
               {(["labL", "labA", "labB"] as const).map((k, i) => (
                 <Field key={k} label={["L*", "A*", "B*"][i]}>
-                  <input type="number" step="0.01" value={form[k]} onChange={e => f(k, e.target.value)} className={inputCls} />
+                  <Input type="number" step={0.01} value={form[k]} onChange={e => f(k, e.target.value)} />
                 </Field>
               ))}
             </div>
@@ -329,9 +325,7 @@ function RecipeForm({
                           placeholder="— select —" className="border-gray-200 rounded-md px-2 py-1.5 text-sm" />
                       </td>
                       <td className="px-3 py-2">
-                        <input type="number" step="0.01" min="0" max="100" value={row.percentage}
-                          onChange={e => updateRow(i, { percentage: e.target.value })}
-                          className="w-full border border-gray-200 rounded-md px-2 py-1.5 text-sm text-right focus:ring-1 focus:ring-blue-400 outline-none" />
+                        <Input type="number" step={0.01} min={0} max={100} value={row.percentage} onChange={e => updateRow(i, { percentage: e.target.value })} />
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button onClick={() => removeRow(i)} className="text-red-400 hover:text-red-600">
@@ -433,15 +427,13 @@ function SprForm({
                 placeholder="— select ink —" className="border-gray-300 rounded-lg text-sm text-gray-900" />
             </Field>
             <Field label="Shade Name" required>
-              <input type="text" value={form.shadeName} onChange={e => f("shadeName", e.target.value)}
-                placeholder="e.g. Red, Pantone 485C" className={inputCls} />
+              <Input type="text" value={form.shadeName} onChange={e => f("shadeName", e.target.value)} placeholder="e.g. Red, Pantone 485C" />
             </Field>
             <Field label="Required Qty (kg)" required>
-              <input type="number" step="0.001" min="0" value={form.requiredQty} onChange={e => f("requiredQty", e.target.value)}
-                placeholder="0.000" className={inputCls} />
+              <Input type="number" step={0.001} min={0} value={form.requiredQty} onChange={e => f("requiredQty", e.target.value)} placeholder="0.000" />
             </Field>
             <Field label="Required Date">
-              <input type="date" value={form.requiredDate} onChange={e => f("requiredDate", e.target.value)} className={inputCls} />
+              <Input type="date" value={form.requiredDate} onChange={e => f("requiredDate", e.target.value)} />
             </Field>
           </div>
         </div>
@@ -451,8 +443,7 @@ function SprForm({
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4">
             <SectionTitle title="Reference & Film" />
             <Field label="Reference">
-              <input type="text" value={form.reference} onChange={e => f("reference", e.target.value)}
-                placeholder="Pantone code / sample ref" className={inputCls} />
+              <Input type="text" value={form.reference} onChange={e => f("reference", e.target.value)} placeholder="Pantone code / sample ref" />
             </Field>
             <Field label="Film Item">
               <SearchableSelect value={form.paperQuality}
@@ -617,9 +608,7 @@ function MixingModal({
           {/* Produced qty + warehouse */}
           <div className="grid grid-cols-2 gap-4">
             <Field label="Produced Qty (kg)" required>
-              <input type="number" step="0.001" min="0"
-                value={producedQty} onChange={e => recalcQty(e.target.value)}
-                className={inputCls} />
+              <Input type="number" step={0.001} min={0} value={producedQty} onChange={e => recalcQty(e.target.value)} />
             </Field>
             <Field label="Output Warehouse" required>
               <SearchableSelect
@@ -633,9 +622,7 @@ function MixingModal({
           </div>
 
           <Field label="Batch / Lot No.">
-            <input type="text" value={batchNo} onChange={e => setBatchNo(e.target.value)}
-              placeholder="Auto-assigned if blank"
-              className={inputCls} />
+            <Input type="text" value={batchNo} onChange={e => setBatchNo(e.target.value)} placeholder="Auto-assigned if blank" />
           </Field>
 
           {/* Ingredient consumption table */}
@@ -660,9 +647,7 @@ function MixingModal({
                         <td className="px-3 py-2 font-medium text-gray-800">{r.subItemName}</td>
                         <td className="px-2 py-2 text-right text-gray-500">{r.pct}%</td>
                         <td className="px-2 py-2">
-                          <input type="number" step="0.001" min="0" value={r.qty}
-                            onChange={e => updateIng(i, { qty: e.target.value })}
-                            className="w-full border border-gray-200 rounded px-1.5 py-1 text-right text-xs focus:ring-1 focus:ring-blue-400 outline-none" />
+                          <Input type="number" step={0.001} min={0} value={r.qty} onChange={e => updateIng(i, { qty: e.target.value })} />
                         </td>
                         <td className={`px-2 py-2 text-right font-medium ${parseFloat(r.qty) > r.stock ? "text-red-600" : "text-green-600"}`}>
                           {r.stock}
@@ -683,14 +668,8 @@ function MixingModal({
 
         {/* Modal footer */}
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
-          <button onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-            Cancel
-          </button>
-          <button onClick={doSave} disabled={!canSave || saving}
-            className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 shadow-sm">
-            <Beaker size={15} /> {saving ? "Saving…" : "Confirm Mix"}
-          </button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={doSave} disabled={!canSave || saving} loading={saving} icon={<Beaker size={15} />}>{saving ? "Saving…" : "Confirm Mix"}</Button>
         </div>
       </div>
     </div>

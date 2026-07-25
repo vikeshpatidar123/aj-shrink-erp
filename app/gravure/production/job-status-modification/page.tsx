@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, RefreshCw, Search, Trash2, RotateCcw, Save, ListChecks, Pencil, X } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -35,7 +36,6 @@ interface ProdRow {
 }
 interface Category { CategoryID: number; CategoryName: string; }
 
-const inputCls = "w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white";
 const lbl = "text-[11px] font-semibold text-gray-500 uppercase tracking-wider";
 const ro = "text-sm font-semibold text-gray-800";
 
@@ -186,15 +186,10 @@ export default function JobStatusModificationPage() {
               <div><div className={lbl}>PO No</div><div className={ro}>{job.PONo || "—"}</div></div>
               <div><div className={lbl}>Sales Order</div><div className={ro}>{job.OrderBookingNo || "—"}</div></div>
               <div>
-                <div className={lbl}>Category</div>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <select value={catEdit} onChange={e => setCatEdit(e.target.value)} className={inputCls + " py-1"}>
-                    {categories.map(c => <option key={c.CategoryID} value={c.CategoryID}>{c.CategoryName}</option>)}
-                  </select>
-                  {String(job.CategoryID) !== catEdit && (
-                    <Button variant="primary" size="sm" icon={<Save size={12} />} onClick={saveCategory}>Save</Button>
-                  )}
-                </div>
+                <Select label="Category" value={catEdit} onChange={e => setCatEdit(e.target.value)} options={categories.map(c => ({ value: String(c.CategoryID), label: c.CategoryName }))} />
+                {String(job.CategoryID) !== catEdit && (
+                  <Button variant="primary" size="sm" icon={<Save size={12} />} onClick={saveCategory}>Save</Button>
+                )}
               </div>
             </div>
           </div>
@@ -233,10 +228,7 @@ export default function JobStatusModificationPage() {
                         <td className="px-3 py-2 text-right text-red-600">{op.WastageQuantity}</td>
                         <td className="px-3 py-2 text-right text-amber-600">{op.SuspenseQuantity}</td>
                         <td className="px-3 py-2">
-                          <select value={op.Status || "In Queue"} onChange={e => changeStatus(op, e.target.value)}
-                            className={`px-2 py-1 rounded text-[11px] font-semibold border-0 cursor-pointer ${statusCls(op.Status)}`}>
-                            {STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
-                          </select>
+                          <Select value={op.Status || "In Queue"} onChange={e => changeStatus(op, e.target.value)} options={STATUSES.map(st => ({ value: st, label: st }))} />
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap">
                           <div className="flex items-center gap-1">
@@ -257,10 +249,7 @@ export default function JobStatusModificationPage() {
       {/* ── Job picker modal ── */}
       <Modal open={picker} onClose={() => setPicker(false)} title="Select Job Card" size="lg">
         <div className="space-y-3">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-2.5 text-gray-400" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job card / name / client…" className={inputCls + " pl-9"} />
-          </div>
+          <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job card / name / client…" />
           <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96 overflow-y-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 sticky top-0"><tr>
@@ -302,8 +291,8 @@ export default function JobStatusModificationPage() {
                   <td className="px-2 py-1.5 whitespace-nowrap">{p.LedgerName || "—"}</td>
                   {editTime?.id === p.ProductionID ? (
                     <>
-                      <td className="px-2 py-1.5"><input type="datetime-local" value={editTime.from} onChange={e => setEditTime(t => t ? { ...t, from: e.target.value } : t)} className={inputCls + " py-1"} /></td>
-                      <td className="px-2 py-1.5"><input type="datetime-local" value={editTime.to} onChange={e => setEditTime(t => t ? { ...t, to: e.target.value } : t)} className={inputCls + " py-1"} /></td>
+                      <td className="px-2 py-1.5"><Input type="datetime-local" value={editTime.from} onChange={e => setEditTime(t => t ? { ...t, from: e.target.value } : t)} /></td>
+                      <td className="px-2 py-1.5"><Input type="datetime-local" value={editTime.to} onChange={e => setEditTime(t => t ? { ...t, to: e.target.value } : t)} /></td>
                     </>
                   ) : (
                     <>
@@ -342,7 +331,7 @@ export default function JobStatusModificationPage() {
         {schedEdit && (
           <div className="space-y-4">
             <div><div className={lbl}>Process</div><div className={ro}>{schedEdit.op.ProcessName}</div></div>
-            <div><div className={lbl}>New Schedule Qty</div><input type="number" value={schedEdit.qty} onChange={e => setSchedEdit(x => x ? { ...x, qty: e.target.value } : x)} className={inputCls} /></div>
+            <Input type="number" value={schedEdit.qty} onChange={e => setSchedEdit(x => x ? { ...x, qty: e.target.value } : x)} label="New Schedule Qty" />
             <div className="flex gap-2 justify-end">
               <Button variant="secondary" size="md" onClick={() => setSchedEdit(null)}>Cancel</Button>
               <Button variant="primary" size="md" onClick={saveSchedQty}>Save</Button>

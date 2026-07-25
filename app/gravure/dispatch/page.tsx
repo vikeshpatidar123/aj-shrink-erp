@@ -5,6 +5,7 @@ import {
   Loader2, RefreshCw, Plus, Pencil, Trash2, Truck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -117,7 +118,6 @@ interface LookupLedger { ConsigneeID?: number; ConsigneeName?: string; Transport
 
 // ── CSS helpers ────────────────────────────────────────────────────────────────
 const lbl = "block text-xs font-medium text-gray-600 mb-0.5";
-const inp = "w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-white";
 const ro  = "w-full border border-gray-200 rounded-md px-2.5 py-1.5 text-sm bg-gray-50 text-gray-700";
 const th  = "px-2 py-2 text-left text-[11px] font-semibold text-gray-600 uppercase tracking-wide whitespace-nowrap bg-gray-50";
 const td  = "px-2 py-1.5 text-sm text-gray-700 whitespace-nowrap";
@@ -549,13 +549,11 @@ export default function DispatchPage() {
             <>
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 whitespace-nowrap">From</label>
-                <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+                <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
               </div>
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-gray-500 whitespace-nowrap">To</label>
-                <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-                  className="border border-gray-300 rounded-md px-2 py-1.5 text-sm" />
+                <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
               </div>
             </>
           )}
@@ -663,53 +661,14 @@ export default function DispatchPage() {
 
             {/* ─ Header ─ */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className={lbl}>Note No</label>
-                <input className={ro} value={noteNo} readOnly />
-              </div>
-              <div>
-                <label className={lbl}>Note Date</label>
-                <input type="date" className={inp} value={noteDate} onChange={e => setNoteDate(e.target.value)} />
-              </div>
-              <div>
-                <label className={lbl}>Consignee</label>
-                <select className={inp} value={consigneeID} onChange={e => setConsigneeID(Number(e.target.value))}>
-                  <option value={0}>— Same as customer —</option>
-                  {consignees.map(c => (
-                    <option key={c.ConsigneeID} value={c.ConsigneeID}>{c.ConsigneeName}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={lbl}>Transporter</label>
-                <select className={inp} value={transporterID}
-                  onChange={e => {
-                    const id = Number(e.target.value);
-                    setTransporterID(id);
-                    setTransporterName(transporters.find(t => t.TransporterID === id)?.TransporterName ?? "");
-                  }}>
-                  <option value={0}>— Select —</option>
-                  {transporters.map(t => (
-                    <option key={t.TransporterID} value={t.TransporterID}>{t.TransporterName}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={lbl}>Vehicle No</label>
-                <input className={inp} value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} placeholder="e.g. MH-01-AB-1234" />
-              </div>
-              <div>
-                <label className={lbl}>Mode of Transport</label>
-                <input className={inp} value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)} placeholder="Road / Rail / Air" />
-              </div>
-              <div>
-                <label className={lbl}>POD / LR No</label>
-                <input className={inp} value={podNo} onChange={e => setPodNo(e.target.value)} />
-              </div>
-              <div>
-                <label className={lbl}>Narration</label>
-                <input className={inp} value={narration} onChange={e => setNarration(e.target.value)} placeholder="Remarks" />
-              </div>
+              <Input label="Note No" value={noteNo} readOnly />
+              <Input label="Note Date" type="date" value={noteDate} onChange={e => setNoteDate(e.target.value)} />
+              <Select label="Consignee" value={String(consigneeID)} onChange={e => setConsigneeID(Number(e.target.value))} options={[{value:"0",label:"— Same as customer —"}, ...consignees.map(c=>({value:String(c.ConsigneeID),label:c.ConsigneeName ?? ""}))]} />
+              <Select label="Transporter" value={String(transporterID)} onChange={e => { const id=Number(e.target.value); setTransporterID(id); setTransporterName(transporters.find(t=>t.TransporterID===id)?.TransporterName ?? ""); }} options={[{value:"0",label:"— Select —"}, ...transporters.map(t=>({value:String(t.TransporterID),label:t.TransporterName ?? ""}))]} />
+              <Input label="Vehicle No" value={vehicleNo} onChange={e => setVehicleNo(e.target.value)} placeholder="e.g. MH-01-AB-1234" />
+              <Input label="Mode of Transport" value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)} placeholder="Road / Rail / Air" />
+              <Input label="POD / LR No" value={podNo} onChange={e => setPodNo(e.target.value)} />
+              <Input label="Narration" value={narration} onChange={e => setNarration(e.target.value)} placeholder="Remarks" />
             </div>
 
             {/* ─ FG Lines ─ */}
@@ -749,12 +708,7 @@ export default function DispatchPage() {
                           <td className={`${td} text-right`}>{l.availableCartons}</td>
                           <td className={`${td} text-right`}>{l.availableQty.toLocaleString()}</td>
                           <td className={td}>
-                            <input type="number" min="0" max={editMode ? undefined : l.availableCartons}
-                              value={l.dispatchCartons}
-                              onChange={e => setCartons(l.sn, e.target.value)}
-                              className={`w-20 border rounded-md px-1.5 py-1 text-sm focus:outline-none focus:ring-1 ${
-                                over ? "border-red-400 focus:ring-red-500" : "border-gray-300 focus:ring-blue-500"
-                              }`} />
+                            <Input type="number" min={0} max={editMode ? undefined : l.availableCartons} value={l.dispatchCartons} onChange={e => setCartons(l.sn, e.target.value)} className="w-20" />
                           </td>
                           <td className={`${td} text-right font-medium`}>{c.qty.toLocaleString()}</td>
                           <td className={`${td} text-right`}>{l.Rate}</td>

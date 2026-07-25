@@ -8,6 +8,7 @@ import {
   ScanLine, Package, ShieldCheck, ClipboardList, Lock, Truck,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -564,18 +565,18 @@ export default function JobProductionPage() {
                   <QrCode size={16} />
                   <span>Point QR scanner at job printout, or manually enter Content No.</span>
                 </div>
-                <input ref={qrInputRef} autoFocus type="text" value={searchText}
+                <Input ref={qrInputRef} autoFocus type="text" value={searchText}
                   onChange={e => handleQrInput(e.target.value)}
                   placeholder="Scan QR or type Content No."
-                  className="w-full px-4 py-3 border-2 border-blue-400 rounded-lg text-base focus:ring-2 focus:ring-blue-500 outline-none font-mono" />
+                  className="w-full" />
               </div>
             ) : (
               <div className="relative">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input autoFocus type="text" value={searchText}
+                <Input autoFocus type="text" value={searchText}
                   onChange={e => setSearchText(e.target.value)}
                   placeholder={searchTab === "jobname" ? "Search by Job Name..." : "Search by Content No..."}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  className="w-full pl-9" />
               </div>
             )}
 
@@ -634,24 +635,26 @@ export default function JobProductionPage() {
                 ["clientName", "Client Name"],
                 ["jobName", "Job Name"],
               ] as const).map(([key, label]) => (
-                <div key={key}>
-                  <label className="text-[10px] font-semibold text-gray-400 uppercase">{label}</label>
-                  <input type="text" value={recFilters[key]}
-                    onChange={e => setRecFilters(f => ({ ...f, [key]: e.target.value }))}
-                    onKeyDown={e => { if (e.key === "Enter") loadRecords(); }}
-                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
+                <Input
+                  key={key}
+                  label={label}
+                  type="text"
+                  value={recFilters[key]}
+                  onChange={e => setRecFilters(f => ({ ...f, [key]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === "Enter") loadRecords(); }}
+                />
               ))}
               {([
                 ["fromDate", "From Date"],
                 ["toDate", "To Date"],
               ] as const).map(([key, label]) => (
-                <div key={key}>
-                  <label className="text-[10px] font-semibold text-gray-400 uppercase">{label}</label>
-                  <input type="date" value={recFilters[key]}
-                    onChange={e => setRecFilters(f => ({ ...f, [key]: e.target.value }))}
-                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
+                <Input
+                  key={key}
+                  label={label}
+                  type="date"
+                  value={recFilters[key]}
+                  onChange={e => setRecFilters(f => ({ ...f, [key]: e.target.value }))}
+                />
               ))}
             </div>
             <div className="flex gap-2 mt-3">
@@ -865,29 +868,30 @@ export default function JobProductionPage() {
               </div>
 
               {/* Machine */}
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Machine</label>
-                <select value={selectedMachine?.MachineID ?? ""} onChange={e => handleMachineChange(Number(e.target.value))}
-                  className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                  <option value="">-- Select Machine --</option>
-                  {machinesForProc.map(m => (
-                    <option key={m.MachineID} value={m.MachineID}>
-                      {m.MachineName}{m.CurrentStatus === "Running" ? ` 🔴 [${m.RunningJobName || "Running"}]` : " 🟢 [Idle]"}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <Select
+                label="Machine"
+                value={String(selectedMachine?.MachineID ?? "")}
+                onChange={e => handleMachineChange(Number(e.target.value))}
+                options={[
+                  {value: "", label: "-- Select Machine --"},
+                  ...machinesForProc.map(m => ({
+                    value: String(m.MachineID),
+                    label: `${m.MachineName}${m.CurrentStatus === "Running" ? ` 🔴 [${m.RunningJobName || "Running"}]` : " 🟢 [Idle]"}`
+                  }))
+                ]}
+              />
 
               {/* Operator */}
               {operators.length > 0 && (
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Operator</label>
-                  <select value={selectedOperator} onChange={e => setSelectedOperator(Number(e.target.value))}
-                    className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value={0}>-- Select Operator --</option>
-                    {operators.map(op => <option key={op.OperatorID} value={op.OperatorID}>{op.OperatorName}</option>)}
-                  </select>
-                </div>
+                <Select
+                  label="Operator"
+                  value={String(selectedOperator)}
+                  onChange={e => setSelectedOperator(Number(e.target.value))}
+                  options={[
+                    {value: "0", label: "-- Select Operator --"},
+                    ...operators.map(op => ({value: String(op.OperatorID), label: op.OperatorName}))
+                  ]}
+                />
               )}
 
               {/* Qty Summary */}
@@ -1055,21 +1059,17 @@ export default function JobProductionPage() {
                         </div>
                       </div>
                       {p.InputFieldType === "Combo Field" ? (
-                        <select
+                        <Select
                           value={val}
                           onChange={e => setObservedValues(prev => ({ ...prev, [p.LineClearanceParameterID]: e.target.value }))}
-                          className={`w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none ${filled ? "border-green-300 bg-green-50" : "border-orange-300"}`}>
-                          <option value="">-- Select --</option>
-                          <option value="Yes">Yes</option>
-                          <option value="No">No</option>
-                        </select>
+                          options={[{value: "", label: "-- Select --"}, {value: "Yes", label: "Yes"}, {value: "No", label: "No"}]}
+                        />
                       ) : (
-                        <input
+                        <Input
                           type="text"
                           value={val}
                           onChange={e => setObservedValues(prev => ({ ...prev, [p.LineClearanceParameterID]: e.target.value }))}
                           placeholder="Enter observed value..."
-                          className={`w-full px-2 py-1.5 border rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none ${filled ? "border-green-300 bg-green-50" : "border-orange-300 bg-orange-50"}`}
                         />
                       )}
                     </div>
@@ -1122,14 +1122,14 @@ export default function JobProductionPage() {
                       </div>
                       {isScanning && (
                         <div className="mt-2 flex items-center gap-2">
-                          <input
+                          <Input
                             ref={qrScanRef}
                             type="text"
                             value={qrScanValue}
                             onChange={e => setQrScanValue(e.target.value)}
                             onKeyDown={e => { if (e.key === "Enter") handleMaterialQrScan(idx, qrScanValue); }}
                             placeholder="Scan or type BatchNo|ItemCode"
-                            className="flex-1 px-2 py-1.5 border-2 border-blue-400 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="flex-1"
                           />
                           <button onClick={() => handleMaterialQrScan(idx, qrScanValue)}
                             className="px-2 py-1.5 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700">
@@ -1149,11 +1149,7 @@ export default function JobProductionPage() {
           )}
 
           {/* Start Time */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Production Start Time</label>
-            <input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
+          <Input label="Production Start Time" type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} />
 
           {/* Summary */}
           <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs space-y-1">
@@ -1219,16 +1215,8 @@ export default function JobProductionPage() {
 
           {/* Production + Wastage */}
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Production Qty *</label>
-              <input type="number" value={prodQty} onChange={e => setProdQty(e.target.value)} min={0}
-                className="mt-1 w-full px-3 py-2.5 border-2 border-blue-400 rounded-lg text-lg font-bold text-center text-blue-700 focus:ring-2 focus:ring-blue-500 outline-none" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Wastage Qty</label>
-              <input type="number" value={wastageQty} onChange={e => setWastageQty(e.target.value)} min={0}
-                className="mt-1 w-full px-3 py-2.5 border-2 border-red-300 rounded-lg text-lg font-bold text-center text-red-600 focus:ring-2 focus:ring-red-400 outline-none" />
-            </div>
+            <Input label="Production Qty *" type="number" value={prodQty} onChange={e => setProdQty(e.target.value)} min={0} />
+            <Input label="Wastage Qty" type="number" value={wastageQty} onChange={e => setWastageQty(e.target.value)} min={0} />
           </div>
 
           {/* Suspense */}
@@ -1270,13 +1258,13 @@ export default function JobProductionPage() {
                           {m.IssueQuantity} <span className="text-gray-400 font-normal">{m.StockUnit}</span>
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <input
+                          <Input
                             type="number"
                             min={0}
                             max={m.IssueQuantity}
                             value={consumedQtys[m.IssueTransactionID] ?? "0"}
                             onChange={e => setConsumedQtys(prev => ({ ...prev, [m.IssueTransactionID]: e.target.value }))}
-                            className="w-24 px-2 py-1 border-2 border-orange-300 rounded text-right text-sm font-bold text-orange-700 focus:ring-2 focus:ring-orange-400 outline-none"
+                            className="w-24"
                           />
                         </td>
                       </tr>
@@ -1296,11 +1284,7 @@ export default function JobProductionPage() {
           )}
 
           {/* End time */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">End Time</label>
-            <input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-          </div>
+          <Input label="End Time" type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} />
 
           {/* Status selection */}
           <div>

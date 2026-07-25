@@ -6,6 +6,8 @@ import {
   Reply, Forward, StarOff, Inbox, X, Bold, Italic,
   Underline, Link, AlignLeft, List, AtSign,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Folder = "inbox" | "starred" | "sent" | "archive" | "trash";
@@ -167,11 +169,13 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Body */}
-        <textarea
-          value={body} onChange={e => setBody(e.target.value)}
-          placeholder="Write your message..."
-          className="flex-1 px-4 py-3 text-sm text-gray-700 outline-none resize-none"
-        />
+        <div className="flex-1 flex flex-col min-h-0 px-1">
+          <Textarea
+            value={body} onChange={e => setBody(e.target.value)}
+            placeholder="Write your message..."
+            rows={8}
+          />
+        </div>
 
         {/* Toolbar */}
         <div className="px-4 py-3 flex items-center justify-between border-t border-gray-100">
@@ -182,14 +186,9 @@ function ComposeModal({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
-          <button
-            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white transition-colors"
-            style={{ background: "var(--erp-primary)" }}
-            onMouseEnter={e => (e.currentTarget.style.background = "var(--erp-primary-dark)")}
-            onMouseLeave={e => (e.currentTarget.style.background = "var(--erp-primary)")}
-          >
+          <Button variant="primary" size="sm">
             Send
-          </button>
+          </Button>
         </div>
       </div>
     </div>

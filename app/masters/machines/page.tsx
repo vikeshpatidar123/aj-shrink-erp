@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { authHeaders, getSession } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -129,9 +130,7 @@ function CommonSpecs({ form, f }: { form: MachineForm; f: (k: keyof MachineForm,
       <div>
         <SectionTitle title="Make Ready" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="Make Ready Wastage">
-            <input type="number" value={form.MakeReadyWastageRunningMeter} onChange={e => f("MakeReadyWastageRunningMeter", e.target.value)} className={inputCls} placeholder="e.g. 50" />
-          </Field>
+          <Input label="Make Ready Wastage" type="number" value={form.MakeReadyWastageRunningMeter} onChange={e => f("MakeReadyWastageRunningMeter", e.target.value)} placeholder="e.g. 50" />
           <Field label="Make Ready Wastage Mode">
             <SearchSel value={form.MakeReadyWastageMode} onChange={v => f("MakeReadyWastageMode", v)} options={["Flat", "Per Color", "Per Job"].map(x => ({ value: x, label: x }))} />
           </Field>
@@ -174,9 +173,7 @@ function PrintingExtras({ form, f }: { form: MachineForm; f: (k: keyof MachineFo
       <div>
         <SectionTitle title="Press Parameters" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <Field label="No. of Colors">
-            <input type="number" value={form.Colors} onChange={e => f("Colors", e.target.value)} className={inputCls} placeholder="e.g. 4" min="1" />
-          </Field>
+          <Input label="No. of Colors" type="number" value={form.Colors} onChange={e => f("Colors", e.target.value)} placeholder="e.g. 4" min={1} />
         </div>
       </div>
 
@@ -498,14 +495,8 @@ export default function MachineMasterPage() {
             <h2 className="text-xl font-bold text-gray-800">{isEdit ? "Edit Machine" : "New Machine"}</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveMachine} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save Machine
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} icon={saving ? <Loader2 size={16} className="animate-spin"/> : <Check size={16}/>} onClick={saveMachine} disabled={saving}>Save Machine</Button>
           </div>
         </div>
 
@@ -533,10 +524,7 @@ export default function MachineMasterPage() {
                 <div>
                   <SectionTitle title="Basic Information" />
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <Field label="Machine Name" required>
-                      <input value={form.MachineName} onChange={e => f("MachineName", e.target.value)}
-                        className={ic(submitAttempted && !form.MachineName)} placeholder="e.g. Rotogravure Press 01" />
-                    </Field>
+                    <Input label="Machine Name" value={form.MachineName} onChange={e => f("MachineName", e.target.value)} placeholder="e.g. Rotogravure Press 01" error={submitAttempted && !form.MachineName ? "Required" : undefined} />
                     <Field label="Department" required>
                       <SearchSel value={form.DepartmentID} onChange={v => f("DepartmentID", v)}
                         options={departments} placeholder="Select Department..."
@@ -680,11 +668,7 @@ export default function MachineMasterPage() {
                   <button onClick={() => setActiveTab("detail")} className="px-5 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                     &larr; Details
                   </button>
-                  <button onClick={saveMachine} disabled={saving}
-                    className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                    Save Machine
-                  </button>
+                  <Button variant="primary" loading={saving} icon={saving ? <Loader2 size={16} className="animate-spin"/> : <Check size={16}/>} onClick={saveMachine} disabled={saving}>Save Machine</Button>
                 </div>
               </div>
             )}

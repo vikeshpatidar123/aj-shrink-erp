@@ -419,12 +419,7 @@ export default function EnquiryPage() {
           <ClipboardList size={18} className="text-purple-600" />
           <h2 className="text-lg font-semibold text-gray-800">Enquiry</h2>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition-all hover:bg-gray-100 active:scale-95 border border-gray-300 bg-white text-gray-700 shadow-sm"
-        >
-          <Plus size={15} /> Create
-        </button>
+        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>Create</Button>
       </div>
 
       {/* Table */}
@@ -462,102 +457,54 @@ export default function EnquiryPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
             {/* Enquiry Info */}
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Enquiry Info</p>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Enquiry No</label>
-                <input readOnly value={nextEnquiryNo}
-                  className="w-full text-sm border border-gray-100 rounded-lg px-3 py-2 bg-gray-50 font-semibold text-teal-700 focus:outline-none" />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Enquiry Date</label>
-                <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Sales Type</label>
-                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                  {SALES_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+            <div className="border border-[rgb(var(--bd-default))] rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-[rgb(var(--fg-subtle))] uppercase tracking-widest">Enquiry Info</p>
+              <Input label="Enquiry No" readOnly value={nextEnquiryNo} className="font-semibold" />
+              <Input label="Enquiry Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
+              <Select label="Sales Type" value={form.salesType} onChange={e => f("salesType", e.target.value)}
+                options={SALES_TYPES.map(t => ({ value: t, label: t }))} />
             </div>
 
             {/* Customer Info */}
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Customer Info</p>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Lead / Customer Name <span className="text-red-500">*</span></label>
-                <select value={form.customerId}
-                  onChange={e => { const c = customers.find(x => x.LedgerID === e.target.value); f("customerId", e.target.value); f("customerName", c?.LedgerName || ""); }}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                  <option value="">Select Lead/Customer</option>
-                  {customers.map(c => <option key={c.LedgerID} value={String(c.LedgerID ?? "")}>{c.LedgerName}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Concern Person</label>
-                <input value={form.concernPerson} onChange={e => f("concernPerson", e.target.value)}
-                  placeholder="Select Concern Person"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-              </div>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Category</label>
-                <select value={form.categoryId}
-                  onChange={e => { const cat = categories.find(x => x.CategoryID === e.target.value); f("categoryId", e.target.value); f("categoryName", cat?.CategoryName || ""); f("selectedContent", ""); setDimValues({}); fetchContents(e.target.value); }}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                  <option value="">Select Category</option>
-                  {categories.map(c => <option key={c.CategoryID} value={String(c.CategoryID ?? "")}>{c.CategoryName}</option>)}
-                </select>
-              </div>
+            <div className="border border-[rgb(var(--bd-default))] rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-[rgb(var(--fg-subtle))] uppercase tracking-widest">Customer Info</p>
+              <Select
+                label="Lead / Customer Name *"
+                value={form.customerId}
+                onChange={e => { const c = customers.find(x => x.LedgerID === e.target.value); f("customerId", e.target.value); f("customerName", c?.LedgerName || ""); }}
+                options={[{ value: "", label: "Select Lead/Customer" }, ...customers.map(c => ({ value: String(c.LedgerID ?? ""), label: c.LedgerName }))]}
+              />
+              <Input label="Concern Person" value={form.concernPerson} onChange={e => f("concernPerson", e.target.value)} placeholder="Enter concern person" />
+              <Select
+                label="Category"
+                value={form.categoryId}
+                onChange={e => { const cat = categories.find(x => x.CategoryID === e.target.value); f("categoryId", e.target.value); f("categoryName", cat?.CategoryName || ""); f("selectedContent", ""); setDimValues({}); fetchContents(e.target.value); }}
+                options={[{ value: "", label: "Select Category" }, ...categories.map(c => ({ value: String(c.CategoryID ?? ""), label: c.CategoryName }))]}
+              />
             </div>
 
             {/* Job Details */}
-            <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Job Details</p>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Job Name <span className="text-red-500">*</span></label>
-                <input value={form.jobName} onChange={e => f("jobName", e.target.value)}
-                  placeholder="Enter job name"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-              </div>
+            <div className="border border-[rgb(var(--bd-default))] rounded-xl p-4 space-y-3">
+              <p className="text-[10px] font-bold text-[rgb(var(--fg-subtle))] uppercase tracking-widest">Job Details</p>
+              <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Enter job name" />
               <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-[11px] font-medium text-gray-500 block mb-1">Quantity <span className="text-red-500">*</span></label>
-                  <input type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))}
-                    placeholder="e.g. 10000"
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400" />
-                </div>
-                <div>
-                  <label className="text-[11px] font-medium text-gray-500 block mb-1">UOM <span className="text-red-500">*</span></label>
-                  <select value={form.uom} onChange={e => f("uom", e.target.value)}
-                    className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                    <option value="Meter">Meter</option>
-                    <option value="Kg">Kg</option>
-                    <option value="Nos">Nos</option>
-                  </select>
-                </div>
+                <Input label="Quantity *" type="number" value={form.quantity} onChange={e => f("quantity", Number(e.target.value))} placeholder="e.g. 10000" />
+                <Select label="UOM *" value={form.uom} onChange={e => f("uom", e.target.value)}
+                  options={[{ value: "Meter", label: "Meter" }, { value: "Kg", label: "Kg" }, { value: "Nos", label: "Nos" }]} />
               </div>
-              <div>
-                <label className="text-[11px] font-medium text-gray-500 block mb-1">Sales Person <span className="text-red-500">*</span></label>
-                <select value={form.salesPersonId}
-                  onChange={e => { const s = salesPersons.find(x => x.LedgerID === e.target.value); f("salesPersonId", e.target.value); f("salesPersonName", s?.LedgerName || ""); }}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-blue-400">
-                  <option value="">Select sales person</option>
-                  {salesPersons.map(s => <option key={s.LedgerID} value={String(s.LedgerID ?? "")}>{s.LedgerName}</option>)}
-                </select>
-              </div>
+              <Select
+                label="Sales Person *"
+                value={form.salesPersonId}
+                onChange={e => { const s = salesPersons.find(x => x.LedgerID === e.target.value); f("salesPersonId", e.target.value); f("salesPersonName", s?.LedgerName || ""); }}
+                options={[{ value: "", label: "Select sales person" }, ...salesPersons.map(s => ({ value: String(s.LedgerID ?? ""), label: s.LedgerName }))]}
+              />
             </div>
           </div>
 
           {/* ── Remark ──────────────────────────────────────── */}
-          <div>
-            <label className="text-[11px] font-medium text-gray-500 block mb-1">Remark</label>
-            <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
-              placeholder="Special requirements, urgency, other notes..."
-              rows={2}
-              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:border-blue-400" />
-          </div>
+          <Textarea label="Remark" value={form.remarks} onChange={e => f("remarks", e.target.value)}
+            placeholder="Special requirements, urgency, other notes..."
+            rows={2} />
 
           {/* Content Cards (shown after category is selected) */}
           {form.categoryId && (
@@ -662,36 +609,16 @@ export default function EnquiryPage() {
                 ) : (
                   /* Fallback: plain H/W inputs for unrecognized content types */
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Height (MM)</label>
-                      <input type="number" value={form.planHeight || ""} onChange={e => f("planHeight", Number(e.target.value))}
-                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
-                    </div>
-                    <div>
-                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Width (MM)</label>
-                      <input type="number" value={form.planWidth || ""} onChange={e => f("planWidth", Number(e.target.value))}
-                        className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
-                    </div>
+                    <Input label="HEIGHT (MM)" type="number" value={form.planHeight || ""} onChange={e => f("planHeight", Number(e.target.value))} className="font-mono" />
+                    <Input label="WIDTH (MM)" type="number" value={form.planWidth || ""} onChange={e => f("planWidth", Number(e.target.value))} className="font-mono" />
                   </div>
                 )}
 
                 {/* Colors, Wastage, Format, Label/Roll */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Front Colors</label>
-                    <input type="number" min={0} max={12} value={form.frontColors || ""} onChange={e => f("frontColors", Number(e.target.value))}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400 font-mono" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Back Colors</label>
-                    <input type="number" min={0} max={12} value={form.backColors || ""} onChange={e => f("backColors", Number(e.target.value))}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400 font-mono" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Label/Roll</label>
-                    <input type="number" min={0} value={form.labelRoll || ""} onChange={e => f("labelRoll", Number(e.target.value))}
-                      className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-blue-400 font-mono" />
-                  </div>
+                  <Input label="FRONT COLORS" type="number" min={0} max={12} value={form.frontColors || ""} onChange={e => f("frontColors", Number(e.target.value))} className="font-mono" />
+                  <Input label="BACK COLORS" type="number" min={0} max={12} value={form.backColors || ""} onChange={e => f("backColors", Number(e.target.value))} className="font-mono" />
+                  <Input label="LABEL/ROLL" type="number" min={0} value={form.labelRoll || ""} onChange={e => f("labelRoll", Number(e.target.value))} className="font-mono" />
                   <div>
                     <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Wastage Type</label>
                     <SearchableSelect
@@ -761,10 +688,7 @@ export default function EnquiryPage() {
             <div className="mt-6">
               <div className="flex items-center justify-between mb-3">
                 <SH label="Ply Structure & Consumables" />
-                <button onClick={addPly}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-purple-200 transition">
-                  <Plus size={12} /> Add Ply
-                </button>
+                <Button variant="action-create" size="sm" icon={<Plus size={12}/>} onClick={addPly}>Add Ply</Button>
               </div>
               {(() => {
                 const GROUP_COLOR: Record<string, string> = {
@@ -1069,17 +993,9 @@ export default function EnquiryPage() {
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-gray-100">
-          <button onClick={() => setModal(false)} disabled={saving}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
-            <X size={14} /> Cancel
-          </button>
-          <button onClick={save} disabled={saving}
-            className="flex items-center gap-1.5 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors disabled:opacity-50"
-            style={{ background: saving ? "#6b7280" : "rgb(var(--color-primary))" }}>
-            {saving ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-            {saving ? "Saving…" : editing ? "Update" : "Save"}
-          </button>
+        <div className="flex justify-end gap-3 mt-5 pt-4 border-t border-[rgb(var(--bd-default))]">
+          <Button variant="secondary" onClick={() => setModal(false)} disabled={saving}>Cancel</Button>
+          <Button variant="action-save" onClick={save} loading={saving}>{editing ? "Update" : "Save"}</Button>
         </div>
       </Modal>
 

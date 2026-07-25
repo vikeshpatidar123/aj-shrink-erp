@@ -13,6 +13,7 @@ import {
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { statusBadge } from "@/components/ui/Badge";
 import Button   from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import Modal    from "@/components/ui/Modal";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 
@@ -437,78 +438,76 @@ export default function ExtrusionOrdersPage() {
           {/* ── SECTION 1: Header fields ── */}
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Order Prefix</label>
-                <select value={form.orderPrefix} onChange={e => f("orderPrefix", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">Select...</option>
-                  <option value="EXT">EXT</option>
-                  <option value="EBO">EBO</option>
-                  <option value="EPO">EPO</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Order No.</label>
-                <input readOnly value={orderNo}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-blue-100 rounded-lg bg-blue-50 text-blue-700 font-semibold" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Order Date</label>
-                <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Rep.</label>
-                <select value={form.salesPerson} onChange={e => f("salesPerson", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">Select...</option>
-                  {SALES_PERSONS.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">PO No.</label>
-                <input value={form.poNo} onChange={e => f("poNo", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  placeholder="Customer PO No." />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">PO Date</label>
-                <input type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
-              </div>
+              <Select
+                label="Order Prefix"
+                value={form.orderPrefix}
+                onChange={e => f("orderPrefix", e.target.value)}
+                options={[
+                  { value: "", label: "Select..." },
+                  { value: "EXT", label: "EXT" },
+                  { value: "EBO", label: "EBO" },
+                  { value: "EPO", label: "EPO" },
+                ]}
+              />
+              <Input
+                label="Sales Order No."
+                readOnly
+                value={orderNo}
+                className="bg-blue-50 text-blue-700 font-semibold"
+              />
+              <Input
+                label="Order Date"
+                type="date"
+                value={form.date}
+                onChange={e => f("date", e.target.value)}
+              />
+              <Select
+                label="Sales Rep."
+                value={form.salesPerson}
+                onChange={e => f("salesPerson", e.target.value)}
+                options={[{ value: "", label: "Select..." }, ...SALES_PERSONS.map(s => ({ value: s, label: s }))]}
+              />
+              <Input
+                label="PO No."
+                value={form.poNo}
+                onChange={e => f("poNo", e.target.value)}
+                placeholder="Customer PO No."
+              />
+              <Input
+                label="PO Date"
+                type="date"
+                value={form.poDate}
+                onChange={e => f("poDate", e.target.value)}
+              />
             </div>
 
             {/* Row 2 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Client Name *</label>
-                <select value={form.customerId}
+                <Select
+                  label="Client Name *"
+                  value={form.customerId}
                   onChange={e => {
                     const c = customers.find(x => x.id === e.target.value);
                     setForm(p => ({ ...blankForm(), customerId: e.target.value, customerName: c?.name || "", date: p.date, orderPrefix: p.orderPrefix }));
                     setAddedIds(new Set());
                     setEnquirySearch("");
                   }}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">-- Select Customer --</option>
-                  {customers.filter(c => c.status === "Active").map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                  options={[{ value: "", label: "-- Select Customer --" }, ...customers.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+                />
               </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
-                <select value={form.salesType} onChange={e => f("salesType", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  {SALES_TYPES.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Ledger</label>
-                <select value={form.salesLedger} onChange={e => f("salesLedger", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                  <option value="">-- Select --</option>
-                  {SALES_LEDGERS.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
+              <Select
+                label="Sales Type"
+                value={form.salesType}
+                onChange={e => f("salesType", e.target.value)}
+                options={SALES_TYPES.map(s => ({ value: s, label: s }))}
+              />
+              <Select
+                label="Sales Ledger"
+                value={form.salesLedger}
+                onChange={e => f("salesLedger", e.target.value)}
+                options={[{ value: "", label: "-- Select --" }, ...SALES_LEDGERS.map(s => ({ value: s, label: s }))]}
+              />
             </div>
 
             {/* Row 3 */}
@@ -520,10 +519,11 @@ export default function ExtrusionOrdersPage() {
                   <Truck size={14} className="text-blue-600" />Direct Dispatch
                 </span>
               </label>
-              <select value={form.status} onChange={e => f("status", e.target.value as FormState["status"])}
-                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
-                {["Confirmed", "In Production", "Ready", "Dispatched"].map(s => <option key={s}>{s}</option>)}
-              </select>
+              <Select
+                value={form.status}
+                onChange={e => f("status", e.target.value as FormState["status"])}
+                options={["Confirmed", "In Production", "Ready", "Dispatched"].map(s => ({ value: s, label: s }))}
+              />
             </div>
           </div>
 
@@ -577,10 +577,7 @@ export default function ExtrusionOrdersPage() {
                                 <Check size={11} />Added
                               </span>
                             ) : (
-                              <button onClick={() => addFromEnquiry(row)}
-                                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                                <Plus size={11} />Add
-                              </button>
+                              <Button variant="primary" size="xs" icon={<Plus size={11} />} onClick={() => addFromEnquiry(row)}>Add</Button>
                             )}
                           </td>
                         </tr>
@@ -598,10 +595,7 @@ export default function ExtrusionOrdersPage() {
               <span className="text-xs font-bold uppercase tracking-wide">Product Lines</span>
               <div className="flex items-center gap-3">
                 <span className="text-blue-200 text-xs">{form.obLines.length} line{form.obLines.length !== 1 ? "s" : ""}</span>
-                <button onClick={addLine}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs font-semibold transition-colors">
-                  <Plus size={12} />Add Row
-                </button>
+                <Button variant="action-create" size="xs" icon={<Plus size={12} />} onClick={addLine}>Add Row</Button>
               </div>
             </div>
 
@@ -759,9 +753,10 @@ export default function ExtrusionOrdersPage() {
             </div>
             <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 border-b border-gray-100">
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
                 {form.obLines.length > 1 ? (
-                  <select value={dlvInput.pmCode}
+                  <Select
+                    label="PM Code"
+                    value={dlvInput.pmCode}
                     onChange={e => {
                       const line = form.obLines.find(l => l.productCode === e.target.value);
                       setDlvInput(p => ({
@@ -770,16 +765,15 @@ export default function ExtrusionOrdersPage() {
                         jobName: line ? (line.productName || p.jobName) : p.jobName,
                       }));
                     }}
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                    <option value="">-- Select --</option>
-                    {form.obLines.filter(l => l.productCode).map(l => (
-                      <option key={l.id} value={l.productCode}>{l.productCode} – {l.productName}</option>
-                    ))}
-                  </select>
+                    options={[{ value: "", label: "-- Select --" }, ...form.obLines.filter(l => l.productCode).map(l => ({ value: l.productCode, label: `${l.productCode} – ${l.productName}` }))]}
+                  />
                 ) : (
-                  <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
-                    {form.obLines[0]?.productCode || <span className="text-gray-300 text-xs">Auto-filled</span>}
-                  </div>
+                  <>
+                    <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
+                    <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
+                      {form.obLines[0]?.productCode || <span className="text-gray-300 text-xs">Auto-filled</span>}
+                    </div>
+                  </>
                 )}
               </div>
               <div>
@@ -788,46 +782,37 @@ export default function ExtrusionOrdersPage() {
                   {dlvInput.quoteNo || form.obLines[0]?.estimationNo || <span className="text-gray-300 text-xs">Auto-filled</span>}
                 </div>
               </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500">Job Name</label>
-                <input value={dlvInput.jobName} onChange={e => setDlvInput(p => ({ ...p, jobName: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500">Quantity</label>
-                <input type="number" value={dlvInput.scheduleQty || ""} onChange={e => setDlvInput(p => ({ ...p, scheduleQty: Number(e.target.value) }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500">Delivery Date</label>
-                <input type="date" value={dlvInput.deliveryDate} onChange={e => setDlvInput(p => ({ ...p, deliveryDate: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500">Consignee</label>
-                <select value={dlvInput.consignee} onChange={e => setDlvInput(p => ({ ...p, consignee: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                  <option value="">-- Select Consignee --</option>
-                  {ledgers.filter(l => l.ledgerType === "Consignee" && l.status === "Active").map(l => (
-                    <option key={l.id} value={l.name}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500">Transporter</label>
-                <select value={dlvInput.transporter} onChange={e => setDlvInput(p => ({ ...p, transporter: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white">
-                  <option value="">-- Select Transporter --</option>
-                  {ledgers.filter(l => l.ledgerType === "Transporter" && l.status === "Active").map(l => (
-                    <option key={l.id} value={l.name}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
+              <Input
+                label="Job Name"
+                value={dlvInput.jobName}
+                onChange={e => setDlvInput(p => ({ ...p, jobName: e.target.value }))}
+              />
+              <Input
+                label="Quantity"
+                type="number"
+                value={dlvInput.scheduleQty || ""}
+                onChange={e => setDlvInput(p => ({ ...p, scheduleQty: Number(e.target.value) }))}
+              />
+              <Input
+                label="Delivery Date"
+                type="date"
+                value={dlvInput.deliveryDate}
+                onChange={e => setDlvInput(p => ({ ...p, deliveryDate: e.target.value }))}
+              />
+              <Select
+                label="Consignee"
+                value={dlvInput.consignee}
+                onChange={e => setDlvInput(p => ({ ...p, consignee: e.target.value }))}
+                options={[{ value: "", label: "-- Select Consignee --" }, ...ledgers.filter(l => l.ledgerType === "Consignee" && l.status === "Active").map(l => ({ value: l.name, label: l.name }))]}
+              />
+              <Select
+                label="Transporter"
+                value={dlvInput.transporter}
+                onChange={e => setDlvInput(p => ({ ...p, transporter: e.target.value }))}
+                options={[{ value: "", label: "-- Select Transporter --" }, ...ledgers.filter(l => l.ledgerType === "Transporter" && l.status === "Active").map(l => ({ value: l.name, label: l.name }))]}
+              />
               <div className="flex items-end">
-                <button onClick={addDeliveryRow}
-                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">
-                  + Add
-                </button>
+                <Button variant="action-create" icon={<Plus size={14} />} onClick={addDeliveryRow} className="w-full">+ Add</Button>
               </div>
             </div>
 
@@ -866,16 +851,20 @@ export default function ExtrusionOrdersPage() {
           {/* ── SECTION 4: Summary + Remarks ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <label className="text-[10px] font-bold text-gray-500 uppercase">Remark</label>
-              <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
-                rows={4} placeholder="Special instructions, notes…"
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+              <Textarea
+                label="Remark"
+                value={form.remarks}
+                onChange={e => f("remarks", e.target.value)}
+                rows={4}
+                placeholder="Special instructions, notes…"
+              />
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-semibold text-gray-500">Advance Paid (₹)</label>
-                  <input type="number" value={form.advancePaid || ""} onChange={e => f("advancePaid", Number(e.target.value))}
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                </div>
+                <Input
+                  label="Advance Paid (₹)"
+                  type="number"
+                  value={form.advancePaid || ""}
+                  onChange={e => f("advancePaid", Number(e.target.value))}
+                />
                 <div className="flex flex-col justify-end">
                   <span className="text-[10px] text-gray-500">Balance Pending</span>
                   <div className={`px-3 py-1.5 rounded-lg font-bold text-sm mt-1 ${totalAmount - form.advancePaid > 0 ? "bg-red-50 text-red-700 border border-red-200" : "bg-green-50 text-green-700 border border-green-200"}`}>
@@ -903,23 +892,12 @@ export default function ExtrusionOrdersPage() {
 
           {/* ── Action buttons ── */}
           <div className="flex items-center gap-3 pb-6">
-            <button onClick={save}
-              className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors">
-              <Save size={14} />{editing ? "Update" : "Save"}
-            </button>
+            <Button variant="action-save" icon={<Save size={14} />} onClick={save}>{editing ? "Update" : "Save"}</Button>
             {editing && (
-              <button onClick={() => { setDelId(editing.id); closeForm(); }}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors">
-                <Trash2 size={14} />Delete
-              </button>
+              <Button variant="action-delete" icon={<Trash2 size={14} />} onClick={() => { setDelId(editing.id); closeForm(); }}>Delete</Button>
             )}
-            <button className="flex items-center gap-2 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white text-sm font-semibold rounded-lg transition-colors">
-              <FileText size={14} />Print
-            </button>
-            <button onClick={closeForm}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold rounded-lg transition-colors">
-              Back
-            </button>
+            <Button variant="action-print" icon={<FileText size={14} />}>Print</Button>
+            <Button variant="action-back" onClick={closeForm}>Back</Button>
           </div>
         </div>
       </div>

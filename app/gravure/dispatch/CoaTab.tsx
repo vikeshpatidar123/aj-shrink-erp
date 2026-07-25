@@ -4,6 +4,7 @@ import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, RefreshCw, Plus, Pencil, Trash2, Printer, Search, X } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
@@ -256,8 +257,8 @@ export default function CoaTab() {
       {/* toolbar */}
       <div className="flex flex-wrap items-end gap-3 justify-between">
         <div className="flex items-end gap-3">
-          <div><div className={lbl}>From</div><input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className={inputCls} /></div>
-          <div><div className={lbl}>To</div><input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className={inputCls} /></div>
+          <Input label="From" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+          <Input label="To" type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
           <Button variant="secondary" size="md" icon={<RefreshCw size={14} />} onClick={loadList}>Refresh</Button>
         </div>
         <Button variant="primary" size="md" icon={<Plus size={16} />} onClick={openCreate}>Create COA</Button>
@@ -307,35 +308,27 @@ export default function CoaTab() {
             <Button variant="secondary" size="sm" icon={<Search size={13} />} onClick={openJobPicker}>Select Job</Button>
           )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><div className={lbl}>COA No</div><input value={form.coaNo} readOnly className={roCls} placeholder="(auto)" /></div>
-            <div><div className={lbl}>COA Date</div><input type="date" value={form.coaDate} onChange={e => f("coaDate", e.target.value)} className={inputCls} /></div>
-            <div><div className={lbl}>PWO No</div><input value={form.batchNo} readOnly className={roCls} /></div>
-            <div><div className={lbl}>Product Code</div><input value={form.productCode} readOnly className={roCls} /></div>
+            <Input label="COA No" value={form.coaNo} readOnly placeholder="(auto)" />
+            <Input label="COA Date" type="date" value={form.coaDate} onChange={e => f("coaDate", e.target.value)} />
+            <Input label="PWO No" value={form.batchNo} readOnly />
+            <Input label="Product Code" value={form.productCode} readOnly />
 
-            <div><div className={lbl}>Delivery Note No</div>
-              <select value={form.dnFGID} onChange={e => f("dnFGID", e.target.value)} className={inputCls}>
-                <option value="">— Select —</option>
-                {dnList.map(d => <option key={d.FGTransactionID} value={d.FGTransactionID}>{d.DNNO}</option>)}
-              </select></div>
-            <div><div className={lbl}>Invoice No</div>
-              <select value={form.invoiceTransactionID} onChange={e => f("invoiceTransactionID", e.target.value)} className={inputCls}>
-                <option value="">— Select —</option>
-                {invList.map(i => <option key={i.InvoiceTransactionID} value={i.InvoiceTransactionID}>{i.InvoiceNo}</option>)}
-              </select></div>
-            <div><div className={lbl}>Ref. Invoice No</div><input value={form.refInvoiceNo} onChange={e => f("refInvoiceNo", e.target.value)} className={inputCls} /></div>
-            <div><div className={lbl}>Ref. Invoice Date</div><input type="date" value={form.refInvoiceDate} onChange={e => f("refInvoiceDate", e.target.value)} className={inputCls} /></div>
+            <Select label="Delivery Note No" value={form.dnFGID} onChange={e => f("dnFGID", e.target.value)} options={[{value:"",label:"— Select —"}, ...dnList.map(d=>({value:String(d.FGTransactionID),label:d.DNNO}))]} />
+            <Select label="Invoice No" value={form.invoiceTransactionID} onChange={e => f("invoiceTransactionID", e.target.value)} options={[{value:"",label:"— Select —"}, ...invList.map(i=>({value:String(i.InvoiceTransactionID),label:i.InvoiceNo}))]} />
+            <Input label="Ref. Invoice No" value={form.refInvoiceNo} onChange={e => f("refInvoiceNo", e.target.value)} />
+            <Input label="Ref. Invoice Date" type="date" value={form.refInvoiceDate} onChange={e => f("refInvoiceDate", e.target.value)} />
 
-            <div><div className={lbl}>Manufacturing Date</div><input type="date" value={form.mfgDate} onChange={e => f("mfgDate", e.target.value)} className={inputCls} /></div>
-            <div><div className={lbl}>Expiry Date</div><input type="date" value={form.expiryDate} onChange={e => f("expiryDate", e.target.value)} className={inputCls} /></div>
-            <div><div className={lbl}>PO No</div><input value={form.poNo} readOnly className={roCls} /></div>
-            <div><div className={lbl}>Category</div><input value={form.category} readOnly className={roCls} /></div>
+            <Input label="Manufacturing Date" type="date" value={form.mfgDate} onChange={e => f("mfgDate", e.target.value)} />
+            <Input label="Expiry Date" type="date" value={form.expiryDate} onChange={e => f("expiryDate", e.target.value)} />
+            <Input label="PO No" value={form.poNo} readOnly />
+            <Input label="Category" value={form.category} readOnly />
 
-            <div><div className={lbl}>Client Name</div><input value={form.clientName} readOnly className={roCls} /></div>
-            <div className="md:col-span-2"><div className={lbl}>Job Name</div><input value={form.jobName} readOnly className={roCls} /></div>
-            <div><div className={lbl}>Specification No</div><input value={form.specificationNo} onChange={e => f("specificationNo", e.target.value)} className={inputCls} /></div>
+            <Input label="Client Name" value={form.clientName} readOnly />
+            <div className="md:col-span-2"><Input label="Job Name" value={form.jobName} readOnly /></div>
+            <Input label="Specification No" value={form.specificationNo} onChange={e => f("specificationNo", e.target.value)} />
 
-            <div><div className={lbl}>Batch No</div><input value={form.batchNo} onChange={e => f("batchNo", e.target.value)} className={inputCls} /></div>
-            <div className="md:col-span-3"><div className={lbl}>Packing Details</div><input value={form.packingDetails} onChange={e => f("packingDetails", e.target.value)} className={inputCls} /></div>
+            <Input label="Batch No" value={form.batchNo} onChange={e => f("batchNo", e.target.value)} />
+            <div className="md:col-span-3"><Input label="Packing Details" value={form.packingDetails} onChange={e => f("packingDetails", e.target.value)} /></div>
           </div>
 
           {/* parameters grid */}
@@ -354,12 +347,10 @@ export default function CoaTab() {
                     <tr key={i}>
                       <td className="px-3 py-1.5 text-gray-800">{p.TestParaMeterName}</td>
                       <td className="px-3 py-1.5">
-                        <input value={p.SpecificationFieldUnit ?? ""} className={inputCls}
-                          onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, SpecificationFieldUnit: e.target.value } : x))} />
+                        <Input value={p.SpecificationFieldUnit ?? ""} onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, SpecificationFieldUnit: e.target.value } : x))} />
                       </td>
                       <td className="px-3 py-1.5">
-                        <input value={p.Defaults ?? ""} className={inputCls}
-                          onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, Defaults: e.target.value } : x))} />
+                        <Input value={p.Defaults ?? ""} onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, Defaults: e.target.value } : x))} />
                       </td>
                     </tr>
                   ))}
@@ -368,7 +359,7 @@ export default function CoaTab() {
             </div>
           </div>
 
-          <div><div className={lbl}>Remark</div><textarea rows={2} value={form.remark} onChange={e => f("remark", e.target.value)} className={inputCls} /></div>
+          <Textarea label="Remark" rows={2} value={form.remark} onChange={e => f("remark", e.target.value)} />
 
           <div className="flex gap-2 pt-1 justify-end">
             <Button variant="secondary" size="md" onClick={() => setModalOpen(false)}>Cancel</Button>
@@ -382,8 +373,7 @@ export default function CoaTab() {
         <div className="space-y-3">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-2.5 text-gray-400" />
-            <input value={jobSearch} onChange={e => setJobSearch(e.target.value)} placeholder="Search job no / name / client…"
-              className={inputCls + " pl-9"} />
+            <Input value={jobSearch} onChange={e => setJobSearch(e.target.value)} placeholder="Search job no / name / client…" className="pl-9" />
           </div>
           <div className="border border-gray-200 rounded-lg overflow-x-auto max-h-96 overflow-y-auto">
             <table className="min-w-full text-sm">

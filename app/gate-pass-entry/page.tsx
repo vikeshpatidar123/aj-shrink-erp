@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, X, Check, Loader2, Printer } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import TutorialButton from "@/components/ui/TutorialButton";
+import { Input, Select } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -113,7 +114,6 @@ const blankForm = (): FormState => ({
   items: [],
 });
 
-const isCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
 
 // Convert "DD-MMM-YYYY" (SQL format 106 with spaces→dashes) to "YYYY-MM-DD" for <input type="date">
 function parseDisplayDate(v: string): string {
@@ -457,15 +457,9 @@ export default function GatePassEntryPage() {
 
               {/* GP No + Date */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">GP No.</label>
-                  <input value={form.voucherNo} readOnly className={isCls + " bg-gray-50"} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Date</label>
-                  <input type="date" value={form.voucherDate}
-                    onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))} className={isCls} />
-                </div>
+                <Input label="GP No." value={form.voucherNo} readOnly />
+                <Input label="Date" type="date" value={form.voucherDate}
+                  onChange={e => setForm(f => ({ ...f, voucherDate: e.target.value }))} />
               </div>
 
               {/* Material Sent To + Ledger Type */}
@@ -488,71 +482,57 @@ export default function GatePassEntryPage() {
                   ))}
                 </div>
                 {form.ledgerType === "Other" ? (
-                  <input value={form.materialSentTo}
+                  <Input value={form.materialSentTo}
                     onChange={e => setForm(f => ({ ...f, materialSentTo: e.target.value }))}
-                    placeholder="Enter name" className={isCls} />
+                    placeholder="Enter name" />
                 ) : (
-                  <select value={form.ledgerId} onChange={e => setForm(f => ({ ...f, ledgerId: e.target.value }))}
-                    disabled={isMaintenance} className={isCls}>
-                    <option value="">-- Select --</option>
-                    {ledgers.map(l => (
-                      <option key={l.LedgerID} value={l.LedgerID}>{l.LedgerName}</option>
-                    ))}
-                  </select>
+                  <Select
+                    value={form.ledgerId}
+                    onChange={e => setForm(f => ({ ...f, ledgerId: e.target.value }))}
+                    disabled={isMaintenance}
+                    options={[{value:"",label:"-- Select --"}, ...ledgers.map(l => ({value:l.LedgerID, label:l.LedgerName}))]}
+                  />
                 )}
               </div>
 
               {/* Department + Document No */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Department</label>
-                  <select value={form.departmentId} onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))} className={isCls}>
-                    <option value="">-- Select --</option>
-                    {dropdowns.Department.map(d => (
-                      <option key={d.DepartmentID} value={d.DepartmentID}>{d.DepartmentName}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Document No.</label>
-                  <input value={form.documentNo} onChange={e => setForm(f => ({ ...f, documentNo: e.target.value }))}
-                    placeholder="Doc No." className={isCls} />
-                </div>
+                <Select
+                  label="Department"
+                  value={form.departmentId}
+                  onChange={e => setForm(f => ({ ...f, departmentId: e.target.value }))}
+                  options={[{value:"",label:"-- Select --"}, ...dropdowns.Department.map(d => ({value:d.DepartmentID, label:d.DepartmentName}))]}
+                />
+                <Input label="Document No." value={form.documentNo} onChange={e => setForm(f => ({ ...f, documentNo: e.target.value }))}
+                  placeholder="Doc No." />
               </div>
 
               {/* Material Sent Through + Sent Through Name */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Material Sent Through</label>
-                  <select value={form.materialSentThrough}
-                    onChange={e => setForm(f => ({ ...f, materialSentThrough: e.target.value }))} className={isCls}>
-                    <option value="">-- Select --</option>
-                    <option>By Hand</option>
-                    <option>Courier</option>
-                    <option>Transport</option>
-                    {dropdowns.Material.filter(m => m.MaterialSentThrough && !["By Hand","Courier","Transport"].includes(m.MaterialSentThrough))
-                      .map((m, i) => <option key={i}>{m.MaterialSentThrough}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Sent Through Name</label>
-                  <input value={form.sentThroughName} onChange={e => setForm(f => ({ ...f, sentThroughName: e.target.value }))}
-                    placeholder="Courier / Transporter name" className={isCls} />
-                </div>
+                <Select
+                  label="Material Sent Through"
+                  value={form.materialSentThrough}
+                  onChange={e => setForm(f => ({ ...f, materialSentThrough: e.target.value }))}
+                  options={[
+                    {value:"",label:"-- Select --"},
+                    {value:"By Hand",label:"By Hand"},
+                    {value:"Courier",label:"Courier"},
+                    {value:"Transport",label:"Transport"},
+                    ...dropdowns.Material.filter(m => m.MaterialSentThrough && !["By Hand","Courier","Transport"].includes(m.MaterialSentThrough))
+                      .map(m => ({value:m.MaterialSentThrough, label:m.MaterialSentThrough}))
+                  ]}
+                />
+                <Input label="Sent Through Name" value={form.sentThroughName}
+                  onChange={e => setForm(f => ({ ...f, sentThroughName: e.target.value }))}
+                  placeholder="Courier / Transporter name" />
               </div>
 
               {/* Vehicle No + Remark */}
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Vehicle / LR No.</label>
-                  <input value={form.vehicleNo} onChange={e => setForm(f => ({ ...f, vehicleNo: e.target.value }))}
-                    placeholder="Vehicle / LR No." className={isCls} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Remark</label>
-                  <input value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
-                    placeholder="Remark" className={isCls} />
-                </div>
+                <Input label="Vehicle / LR No." value={form.vehicleNo} onChange={e => setForm(f => ({ ...f, vehicleNo: e.target.value }))}
+                  placeholder="Vehicle / LR No." />
+                <Input label="Remark" value={form.remark} onChange={e => setForm(f => ({ ...f, remark: e.target.value }))}
+                  placeholder="Remark" />
               </div>
 
               {/* Item Grid */}
@@ -605,27 +585,26 @@ export default function GatePassEntryPage() {
                               <td className="px-3 py-2">{item.MWONo || "—"}</td>
                               <td className="px-3 py-2">{item.SpareName || item.ItemName}</td>
                               <td className="px-3 py-2">
-                                <input value={item.Quantity} onChange={e => updateItem(item._id, "Quantity", e.target.value)}
-                                  className="w-20 px-2 py-1 border border-gray-300 rounded text-sm" />
+                                <Input value={item.Quantity} onChange={e => updateItem(item._id, "Quantity", e.target.value)}
+                                  className="w-20" />
                               </td>
                               <td className="px-3 py-2">{item.UnitSymbol}</td>
                             </>
                           ) : (
                             <>
                               <td className="px-3 py-2">
-                                <input value={item.ItemName} onChange={e => updateItem(item._id, "ItemName", e.target.value)}
-                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm" placeholder="Item name" />
+                                <Input value={item.ItemName} onChange={e => updateItem(item._id, "ItemName", e.target.value)}
+                                  className="w-full" placeholder="Item name" />
                               </td>
                               <td className="px-3 py-2">
-                                <input value={item.Quantity} onChange={e => updateItem(item._id, "Quantity", e.target.value)}
-                                  type="number" className="w-24 px-2 py-1 border border-gray-300 rounded text-sm" />
+                                <Input value={item.Quantity} onChange={e => updateItem(item._id, "Quantity", e.target.value)}
+                                  type="number" className="w-24" />
                               </td>
                               <td className="px-3 py-2">
-                                <select value={item.UnitSymbol} onChange={e => updateItem(item._id, "UnitSymbol", e.target.value)}
-                                  className="w-24 px-2 py-1 border border-gray-300 rounded text-sm">
-                                  <option value="">—</option>
-                                  {dropdowns.Unit.map(u => <option key={u.UnitID} value={u.UnitSymbol}>{u.UnitSymbol}</option>)}
-                                </select>
+                                <Select value={item.UnitSymbol} onChange={e => updateItem(item._id, "UnitSymbol", e.target.value)}
+                                  className="w-24"
+                                  options={[{value:"",label:"—"}, ...dropdowns.Unit.map(u => ({value:u.UnitSymbol, label:u.UnitSymbol}))]}
+                                />
                               </td>
                             </>
                           )}

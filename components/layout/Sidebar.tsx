@@ -71,7 +71,7 @@ const navItems: NavItem[] = [
   },
   {
     label: "Masters", icon: Settings2, children: [
-      { label: "Product Category Master", href: "/masters/categories",   icon: Boxes },
+      { label: "Finish Goods Category Master", href: "/masters/categories",   icon: Boxes },
       { label: "Item Master",             href: "/masters/items",         icon: FlaskConical },
       { label: "Ledger Master",           href: "/masters/employees",     icon: UserCheck },
       { label: "Sales Person Master",     href: "/masters/sales-persons", icon: Users },
@@ -167,7 +167,8 @@ function Flyout({ group, anchorY, pathname, onClose, onNavigate, onNavClick }: F
             onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
           >
             <child.icon size={15} className="flex-shrink-0" />
-            <span className="whitespace-nowrap">{child.label}</span>
+            <span className="whitespace-nowrap flex-1">{child.label}</span>
+            {active && <ActiveBadge />}
           </Link>
         );
       })}

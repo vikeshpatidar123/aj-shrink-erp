@@ -13,7 +13,7 @@ import {
   physicalVerifications as initData,
   PhysicalVerification, PhysicalVerificationLine,
 } from "@/data/dummyData";
-import { inputCls } from "@/lib/styles";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
@@ -185,16 +185,11 @@ function ScannerModal({ title, hint, onScan, onClose }: {
         )}
         {mode === "manual" && (
           <div className="p-5 space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">Enter / Paste value</label>
-              <textarea autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
-                placeholder="Paste QR data or type batch no…"
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono" />
-            </div>
-            <button onClick={() => { if (manual.trim()) onScan(manual.trim()); }} disabled={!manual.trim()}
-              className="w-full py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40">
+            <Textarea label="Enter / Paste value" autoFocus value={manual} onChange={(e) => setManual(e.target.value)} rows={3}
+              placeholder="Paste QR data or type batch no…" />
+            <Button className="w-full" onClick={() => { if (manual.trim()) onScan(manual.trim()); }} disabled={!manual.trim()}>
               Use This Value
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -255,32 +250,20 @@ function NewBatchModal({
 
           {/* Entry fields */}
           <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Warehouse *</label>
-              <select value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setBin(""); }} className={inputCls}>
-                <option value="">Select warehouse…</option>
-                {WAREHOUSES.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Bin *</label>
-              <select value={bin} onChange={(e) => setBin(e.target.value)} disabled={!wh} className={inputCls}>
-                <option value="">Select bin…</option>
-                {wh?.bins.map((b) => <option key={b}>{b}</option>)}
-              </select>
-            </div>
+            <Select label="Warehouse *" value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setBin(""); }}
+              options={[{ value: "", label: "Select warehouse…" }, ...WAREHOUSES.map((w) => ({ value: String(w.id), label: w.name }))]} />
+            <Select label="Bin *" value={bin} onChange={(e) => setBin(e.target.value)} disabled={!wh}
+              options={[{ value: "", label: "Select bin…" }, ...(wh?.bins.map((b) => ({ value: b, label: b })) ?? [])]} />
             <div className="col-span-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Physical Qty ({scanned.stockUnit}) *</label>
-              <input type="number" min={0} step={0.01} value={physicalQty || ""}
-                onChange={(e) => setPhysicalQty(Number(e.target.value))}
-                className={inputCls} autoFocus />
+              <Input label={`Physical Qty (${scanned.stockUnit}) *`} type="number" min={0} step={0.01} value={physicalQty || ""}
+                onChange={(e) => setPhysicalQty(Number(e.target.value))} autoFocus />
             </div>
           </div>
         </div>
 
         <div className="px-6 pb-5 flex items-center justify-between">
-          <button onClick={onClose} className="px-5 py-2 text-sm font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-          <button
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
             onClick={() => {
               if (!physicalQty || !warehouseId || !bin) return;
               const w = WAREHOUSES.find((x) => x.id === warehouseId);
@@ -327,10 +310,9 @@ function NewBatchModal({
                 originalBatchNo: scanned.batchNo,
               });
             }}
-            disabled={!physicalQty || !warehouseId || !bin}
-            className="px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2">
+            disabled={!physicalQty || !warehouseId || !bin}>
             <PackagePlus size={15} /> Create New Batch
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -500,12 +482,12 @@ export default function PhysicalVerificationPage() {
           </div>
           <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
             <Search size={14} className="text-gray-400 shrink-0" />
-            <input
+            <Input
               type="text"
               placeholder="Search by voucher no, remark..."
               value={listSearch}
               onChange={e => setListSearch(e.target.value)}
-              className="flex-1 text-sm outline-none bg-transparent placeholder-gray-400"
+              className="flex-1"
             />
           </div>
         </div>
@@ -619,9 +601,7 @@ export default function PhysicalVerificationPage() {
       {/* Date bar */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3 mb-4 flex items-center gap-6">
         <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Verification Date</label>
-          <input type="date" value={verificationDate} onChange={(e) => setVerificationDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <Input type="date" label="Verification Date" value={verificationDate} onChange={(e) => setVerificationDate(e.target.value)} />
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500 ml-auto">
           <span>{lines.length} lines</span>
@@ -743,14 +723,11 @@ export default function PhysicalVerificationPage() {
                   {/* Physical qty entry */}
                   <div className="flex items-end gap-6">
                     <div className="flex-1 max-w-xs">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
-                        Physical Qty ({scannedBatch.stockUnit}) *
-                      </label>
-                      <input
+                      <Input
+                        label={`Physical Qty (${scannedBatch.stockUnit}) *`}
                         type="number" min={0} step={0.01}
                         value={physicalQty || ""}
                         onChange={(e) => setPhysicalQty(Number(e.target.value))}
-                        className={inputCls}
                         autoFocus
                       />
                     </div>
@@ -885,8 +862,8 @@ export default function PhysicalVerificationPage() {
               {/* Remark */}
               <div>
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark</p>
-                <input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" className={inputCls} />
+                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+                  placeholder="Optional notes…" />
               </div>
 
               {/* Summary */}

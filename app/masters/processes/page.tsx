@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, Save, Check, List, X } from "lucide-react";
 import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
-import { inputCls } from "@/lib/styles";
+import { Input, Select } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -508,13 +508,8 @@ export default function ProcessMasterPage() {
             <h2 className="text-xl font-bold text-gray-800">Process Master</h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <List size={16} /> List ({data.length})
-            </button>
-
-            <button onClick={save} disabled={saving} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-              <Save size={16} /> {saving ? "Saving..." : "Save"}
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>List ({data.length})</Button>
+            <Button variant="primary" loading={saving} icon={<Save size={16}/>} onClick={save}>Save</Button>
           </div>
         </div>
 
@@ -550,48 +545,21 @@ export default function ProcessMasterPage() {
                     <div>
                       <SectionTitle title="Process Identity" />
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Field label="Process Name" required>
-                          <input type="text" value={form.ProcessName} onChange={(e) => f("ProcessName", e.target.value)}
-                            placeholder="e.g. 8-Color Roto Printing"
-                            className={submitAttempted && !form.ProcessName.trim() ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls} />
-                        </Field>
-                        <Field label="Display Name">
-                          <input type="text" value={form.DisplayProcessName} onChange={(e) => f("DisplayProcessName", e.target.value)} className={inputCls} />
-                        </Field>
+                        <Input label="Process Name" value={form.ProcessName} onChange={(e) => f("ProcessName", e.target.value)} placeholder="e.g. 8-Color Roto Printing" error={submitAttempted && !form.ProcessName.trim() ? "Required" : undefined} />
+                        <Input label="Display Name" value={form.DisplayProcessName} onChange={(e) => f("DisplayProcessName", e.target.value)} />
                       </div>
                     </div>
 
                     <div className="max-w-sm">
-                      <Field label="Department" required>
-                        <select value={form.DepartmentID} onChange={(e) => f("DepartmentID", e.target.value)}
-                          className={submitAttempted && !form.DepartmentID ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls}>
-                          <option value="">{departments.length === 0 ? "Loading departments..." : "Select..."}</option>
-                          {departments.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
-                        </select>
-                      </Field>
+                      <Select label="Department" value={form.DepartmentID} onChange={(e) => f("DepartmentID", e.target.value)} options={[{ value: "", label: departments.length === 0 ? "Loading departments..." : "Select..." }, ...departments.map(d => ({ value: d.value, label: d.label }))]} error={submitAttempted && !form.DepartmentID ? "Required" : undefined} />
                     </div>
 
                     <div>
                       <SectionTitle title="Rate Setup" />
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <Field label="Type of Charges">
-                          <select value={form.TypeofCharges} onChange={(e) => f("TypeofCharges", e.target.value)} className={inputCls}>
-                            <option value="">Select...</option>
-                            {chargeTypes.map((c, i) => <option key={`${i}-${c.value}`} value={c.value}>{c.label}</option>)}
-                          </select>
-                        </Field>
-                        <Field label="Start Unit">
-                          <select value={form.StartUnit} onChange={(e) => f("StartUnit", e.target.value)} className={inputCls}>
-                            <option value="">Select...</option>
-                            {units.map((u, i) => <option key={`${i}-${u.value}`} value={u.value}>{u.label}</option>)}
-                          </select>
-                        </Field>
-                        <Field label="End Unit">
-                          <select value={form.EndUnit} onChange={(e) => f("EndUnit", e.target.value)} className={inputCls}>
-                            <option value="">Select...</option>
-                            {units.map((u, i) => <option key={`${i}-${u.value}`} value={u.value}>{u.label}</option>)}
-                          </select>
-                        </Field>
+                        <Select label="Type of Charges" value={form.TypeofCharges} onChange={(e) => f("TypeofCharges", e.target.value)} options={[{ value: "", label: "Select..." }, ...chargeTypes.map(c => ({ value: c.value, label: c.label }))]} />
+                        <Select label="Start Unit" value={form.StartUnit} onChange={(e) => f("StartUnit", e.target.value)} options={[{ value: "", label: "Select..." }, ...units.map(u => ({ value: u.value, label: u.label }))]} />
+                        <Select label="End Unit" value={form.EndUnit} onChange={(e) => f("EndUnit", e.target.value)} options={[{ value: "", label: "Select..." }, ...units.map(u => ({ value: u.value, label: u.label }))]} />
                         <Field label="Rate (₹)">
                           <PrefixInput value={form.Rate} onChange={(e: any) => f("Rate", e.target.value)} prefix="₹" placeholder="0.00" type="number" />
                         </Field>
@@ -616,9 +584,7 @@ export default function ProcessMasterPage() {
                         <Field label="Production Tolerance %">
                           <SuffixInput value={form.ProductionTolerancePercentage} onChange={(e: any) => f("ProductionTolerancePercentage", e.target.value)} suffix="%" placeholder="e.g. 2" type="number" />
                         </Field>
-                        <Field label="Drying / Curing Time (min)">
-                          <input type="number" value={form.DryingTime} onChange={(e) => f("DryingTime", e.target.value)} className={inputCls} />
-                        </Field>
+                        <Input label="Drying / Curing Time (min)" type="number" value={form.DryingTime} onChange={(e) => f("DryingTime", e.target.value)} />
                       </div>
                     </div>
 
@@ -630,7 +596,7 @@ export default function ProcessMasterPage() {
                     </div>
 
                     <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-                      <button onClick={() => { setForm(blank); resetChildData(); }} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
+                      <Button variant="secondary" onClick={() => { setForm(blank); resetChildData(); }}>Clear</Button>
                       <button onClick={() => setActiveTab("machines")} className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">Machine Allocation →</button>
                     </div>
                   </div>
@@ -687,36 +653,19 @@ export default function ProcessMasterPage() {
                     <div className="space-y-3">
                       {slabs.map((s, i) => (
                         <div key={i} className="grid grid-cols-2 md:grid-cols-6 gap-3 items-end bg-gray-50/60 border border-gray-200 rounded-xl p-3">
-                          <Field label="From Qty">
-                            <input type="number" value={s.FromQty} onChange={(e) => updateSlab(i, "FromQty", e.target.value)} className={inputCls} />
-                          </Field>
-                          <Field label="To Qty">
-                            <input type="number" value={s.ToQty} onChange={(e) => updateSlab(i, "ToQty", e.target.value)} className={inputCls} />
-                          </Field>
-                          <Field label="Unit">
-                            <select value={s.StartUnit} onChange={(e) => updateSlab(i, "StartUnit", e.target.value)} className={inputCls}>
-                              <option value="">Select...</option>
-                              {units.map((u, ui) => <option key={`${ui}-${u.value}`} value={u.value}>{u.label}</option>)}
-                            </select>
-                          </Field>
-                          <Field label="Factor">
-                            <input type="text" value={s.RateFactor} onChange={(e) => updateSlab(i, "RateFactor", e.target.value)} className={inputCls} />
-                          </Field>
-                          <Field label="Rate (₹)">
-                            <input type="number" value={s.Rate} onChange={(e) => updateSlab(i, "Rate", e.target.value)} className={inputCls} />
-                          </Field>
+                          <Input label="From Qty" type="number" value={s.FromQty} onChange={(e) => updateSlab(i, "FromQty", e.target.value)} />
+                          <Input label="To Qty" type="number" value={s.ToQty} onChange={(e) => updateSlab(i, "ToQty", e.target.value)} />
+                          <Select label="Unit" value={s.StartUnit} onChange={(e) => updateSlab(i, "StartUnit", e.target.value)} options={[{ value: "", label: "Select..." }, ...units.map(u => ({ value: u.value, label: u.label }))]} />
+                          <Input label="Factor" value={s.RateFactor} onChange={(e) => updateSlab(i, "RateFactor", e.target.value)} />
+                          <Input label="Rate (₹)" type="number" value={s.Rate} onChange={(e) => updateSlab(i, "Rate", e.target.value)} />
                           <div className="flex items-end gap-2">
-                            <Field label="Min. Charge (₹)">
-                              <input type="number" value={s.MinimumCharges} onChange={(e) => updateSlab(i, "MinimumCharges", e.target.value)} className={inputCls} />
-                            </Field>
+                            <Input label="Min. Charge (₹)" type="number" value={s.MinimumCharges} onChange={(e) => updateSlab(i, "MinimumCharges", e.target.value)} />
                             <button onClick={() => removeSlab(i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg flex-shrink-0"><X size={16} /></button>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <button onClick={addSlab} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                      <Plus size={14} /> Add Slab
-                    </button>
+                    <Button variant="secondary" icon={<Plus size={14}/>} onClick={addSlab}>Add Slab</Button>
                   </div>
                 )}
 
@@ -728,24 +677,16 @@ export default function ProcessMasterPage() {
                     <div className="space-y-3">
                       {inspectionParams.map((p, i) => (
                         <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-gray-50/60 border border-gray-200 rounded-xl p-3">
-                          <Field label="Parameter Name">
-                            <input type="text" value={p.ParameterName} onChange={(e) => updateParam("inspection", i, "ParameterName", e.target.value)} className={inputCls} />
-                          </Field>
-                          <Field label="Standard Value">
-                            <input type="text" value={p.StandardValue} onChange={(e) => updateParam("inspection", i, "StandardValue", e.target.value)} className={inputCls} />
-                          </Field>
+                          <Input label="Parameter Name" value={p.ParameterName} onChange={(e) => updateParam("inspection", i, "ParameterName", e.target.value)} />
+                          <Input label="Standard Value" value={p.StandardValue} onChange={(e) => updateParam("inspection", i, "StandardValue", e.target.value)} />
                           <div className="flex items-end gap-2">
-                            <Field label="Default Value">
-                              <input type="text" value={p.DefaultValue} onChange={(e) => updateParam("inspection", i, "DefaultValue", e.target.value)} className={inputCls} />
-                            </Field>
+                            <Input label="Default Value" value={p.DefaultValue} onChange={(e) => updateParam("inspection", i, "DefaultValue", e.target.value)} />
                             <button onClick={() => removeParam("inspection", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg flex-shrink-0"><X size={16} /></button>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => addParam("inspection")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                      <Plus size={14} /> Add Parameter
-                    </button>
+                    <Button variant="secondary" icon={<Plus size={14}/>} onClick={() => addParam("inspection")}>Add Parameter</Button>
                   </div>
                 )}
 
@@ -757,32 +698,22 @@ export default function ProcessMasterPage() {
                     <div className="space-y-3">
                       {lineClearanceParams.map((p, i) => (
                         <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end bg-gray-50/60 border border-gray-200 rounded-xl p-3">
-                          <Field label="Parameter Name">
-                            <input type="text" value={p.ParameterName} onChange={(e) => updateParam("lineclearance", i, "ParameterName", e.target.value)} className={inputCls} />
-                          </Field>
-                          <Field label="Standard Value">
-                            <input type="text" value={p.StandardValue} onChange={(e) => updateParam("lineclearance", i, "StandardValue", e.target.value)} className={inputCls} />
-                          </Field>
+                          <Input label="Parameter Name" value={p.ParameterName} onChange={(e) => updateParam("lineclearance", i, "ParameterName", e.target.value)} />
+                          <Input label="Standard Value" value={p.StandardValue} onChange={(e) => updateParam("lineclearance", i, "StandardValue", e.target.value)} />
                           <div className="flex items-end gap-2">
-                            <Field label="Default Value">
-                              <input type="text" value={p.DefaultValue} onChange={(e) => updateParam("lineclearance", i, "DefaultValue", e.target.value)} className={inputCls} />
-                            </Field>
+                            <Input label="Default Value" value={p.DefaultValue} onChange={(e) => updateParam("lineclearance", i, "DefaultValue", e.target.value)} />
                             <button onClick={() => removeParam("lineclearance", i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg flex-shrink-0"><X size={16} /></button>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <button onClick={() => addParam("lineclearance")} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                      <Plus size={14} /> Add Parameter
-                    </button>
+                    <Button variant="secondary" icon={<Plus size={14}/>} onClick={() => addParam("lineclearance")}>Add Parameter</Button>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between pt-6 mt-8 border-t border-gray-200">
-                  <button onClick={() => { setForm(blank); resetChildData(); }} className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Clear</button>
-                  <button onClick={save} disabled={saving} className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-                    <Check size={16} /> {saving ? "Saving..." : "Save Process"}
-                  </button>
+                  <Button variant="secondary" onClick={() => { setForm(blank); resetChildData(); }}>Clear</Button>
+                  <Button variant="primary" loading={saving} icon={<Check size={16}/>} onClick={save}>Save Process</Button>
                 </div>
               </>
             )}

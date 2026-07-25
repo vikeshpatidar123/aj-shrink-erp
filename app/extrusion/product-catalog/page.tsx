@@ -17,6 +17,7 @@ import {
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import Modal  from "@/components/ui/Modal";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 
 // ─── Micron distribution by layerRatio ───────────────────────
 function distributeByRatio(totalMicron: number, ratioStr: string, layerCount: number): number[] {
@@ -362,15 +363,18 @@ export default function ExtrusionProductCatalogPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <select value={form.status} onChange={e => f("status", e.target.value as "Active" | "Inactive")}
-              className="text-xs px-2 py-1 bg-purple-700 border border-purple-600 rounded-lg text-white focus:outline-none">
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-            <button onClick={save} disabled={hasError}
-              className={`flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg font-bold transition-colors ${hasError ? "bg-gray-500 cursor-not-allowed" : "bg-green-500 hover:bg-green-400"}`}>
-              <Save size={13} />{editing ? "Update" : "Save Catalog"}
-            </button>
+            <Select
+              value={form.status}
+              onChange={e => f("status", e.target.value as "Active" | "Inactive")}
+              options={[
+                { value: "Active", label: "Active" },
+                { value: "Inactive", label: "Inactive" },
+              ]}
+              className="w-36"
+            />
+            <Button onClick={save} disabled={hasError} variant="primary" size="sm" icon={<Save size={13} />}>
+              {editing ? "Update" : "Save Catalog"}
+            </Button>
             <button onClick={closeForm}
               className="flex items-center gap-1 text-purple-200 hover:text-white text-xs px-3 py-1.5 rounded hover:bg-purple-700 transition-colors">
               <X size={13} />Back
@@ -391,28 +395,31 @@ export default function ExtrusionProductCatalogPage() {
               <div className="p-4 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="sm:col-span-2 lg:col-span-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Catalog Name *</label>
-                    <input value={form.catalogName} onChange={e => f("catalogName", e.target.value)}
+                    <Input
+                      label="Catalog Name *"
+                      value={form.catalogName}
+                      onChange={e => f("catalogName", e.target.value)}
                       placeholder="e.g. LLDPE Shrink 40μ 3-Layer"
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Customer</label>
-                    <select value={form.customerId}
+                    <Select
+                      label="Customer"
+                      value={form.customerId}
                       onChange={e => {
                         const c = customers.find(x => x.id === e.target.value);
                         setForm(p => ({ ...p, customerId: e.target.value, customerName: c?.name || "" }));
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400">
-                      <option value="">-- Generic / All Customers --</option>
-                      {customers.filter(c => c.status === "Active").map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Generic / All Customers --" },
+                        ...customers.filter(c => c.status === "Active").map(c => ({ value: String(c.id), label: c.name })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Recipe *</label>
-                    <select value={form.recipeId}
+                    <Select
+                      label="Recipe *"
+                      value={form.recipeId}
                       onChange={e => {
                         const r = recipes.find(x => x.id === e.target.value);
                         if (!r) { setForm(p => ({ ...p, recipeId: "", recipeName: "", layers: [] })); return; }
@@ -427,16 +434,16 @@ export default function ExtrusionProductCatalogPage() {
                           layers,
                         }));
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400">
-                      <option value="">-- Select Recipe --</option>
-                      {recipes.filter(r => r.status === "Active").map(r => (
-                        <option key={r.id} value={r.id}>{r.name} ({r.layers.length}-Layer)</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Select Recipe --" },
+                        ...recipes.filter(r => r.status === "Active").map(r => ({ value: String(r.id), label: `${r.name} (${r.layers.length}-Layer)` })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Roll Master</label>
-                    <select value={form.rollMasterId}
+                    <Select
+                      label="Roll Master"
+                      value={form.rollMasterId}
                       onChange={e => {
                         const roll = rollMasters.find(x => x.id === e.target.value);
                         const recipe = recipes.find(x => x.id === form.recipeId);
@@ -447,34 +454,42 @@ export default function ExtrusionProductCatalogPage() {
                           rollWidth: roll?.width ?? p.rollWidth, layers,
                         }));
                       }}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-purple-400">
-                      <option value="">-- Select Roll --</option>
-                      {rollMasters.filter(r => r.status === "Active").map(r => (
-                        <option key={r.id} value={r.id}>{r.name} — {r.width}mm · {r.micron}μ</option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: "", label: "-- Select Roll --" },
+                        ...rollMasters.filter(r => r.status === "Active").map(r => ({ value: String(r.id), label: `${r.name} — ${r.width}mm · ${r.micron}μ` })),
+                      ]}
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Standard Rate (₹/Kg)</label>
-                    <input type="number" value={form.standardRate || ""} onChange={e => f("standardRate", Number(e.target.value))}
+                    <Input
+                      label="Standard Rate (₹/Kg)"
+                      type="number"
+                      value={form.standardRate || ""}
+                      onChange={e => f("standardRate", Number(e.target.value))}
                       step={0.01}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
-                      placeholder="0.00" />
+                      placeholder="0.00"
+                    />
                   </div>
                   <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Unit</label>
-                    <select value={form.unit} onChange={e => f("unit", e.target.value)}
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400">
-                      <option>Kg</option>
-                      <option>Pcs</option>
-                      <option>Nos</option>
-                    </select>
+                    <Select
+                      label="Unit"
+                      value={form.unit}
+                      onChange={e => f("unit", e.target.value)}
+                      options={[
+                        { value: "Kg", label: "Kg" },
+                        { value: "Pcs", label: "Pcs" },
+                        { value: "Nos", label: "Nos" },
+                      ]}
+                    />
                   </div>
                   <div className="lg:col-span-3">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Remarks</label>
-                    <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
-                      rows={2} placeholder="Optional notes about this catalog entry…"
-                      className="w-full text-sm border border-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none" />
+                    <Textarea
+                      label="Remarks"
+                      value={form.remarks}
+                      onChange={e => f("remarks", e.target.value)}
+                      rows={2}
+                      placeholder="Optional notes about this catalog entry…"
+                    />
                   </div>
                 </div>
 
@@ -506,10 +521,9 @@ export default function ExtrusionProductCatalogPage() {
             {secOpen.layers && (
               <div className="p-4 space-y-3">
                 <div className="flex items-center gap-3 mb-2">
-                  <button onClick={addLayer}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors">
-                    <Plus size={12} />Add Layer
-                  </button>
+                  <Button onClick={addLayer} variant="secondary" size="sm" icon={<Plus size={12} />}>
+                    Add Layer
+                  </Button>
                   {form.layers.length === 0 && (
                     <p className="text-xs text-gray-400">Select a recipe above to auto-fill layers, or add manually.</p>
                   )}
@@ -524,15 +538,20 @@ export default function ExtrusionProductCatalogPage() {
                       <div className={`flex items-center justify-between px-4 py-2 ${pctOk ? "bg-indigo-50" : "bg-red-50"}`}>
                         <div className="flex items-center gap-3 flex-wrap">
                           <span className="text-xs font-bold text-indigo-700">Layer {layer.layerNo}</span>
-                          <input value={layer.layerName}
+                          <Input
+                            value={layer.layerName}
                             onChange={e => updateLayer(li, { layerName: e.target.value })}
-                            className="text-xs border border-indigo-200 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-400 w-28"
-                            placeholder="Layer name" />
+                            placeholder="Layer name"
+                            className="w-28"
+                          />
                           <div className="flex items-center gap-1">
                             <label className="text-[10px] text-gray-500 uppercase font-semibold">Micron</label>
-                            <input type="number" value={layer.micron}
+                            <Input
+                              type="number"
+                              value={layer.micron}
                               onChange={e => updateLayer(li, { micron: Number(e.target.value) })}
-                              className="w-16 text-xs border border-indigo-200 rounded px-2 py-0.5 text-center focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                              className="w-16 text-center"
+                            />
                           </div>
                           <span className="text-[10px] text-indigo-600 font-mono bg-indigo-100 px-2 py-0.5 rounded">
                             ρ={layer.blendDensity.toFixed(4)} · GSM={layer.gsm.toFixed(4)} · ₹/m²={layer.costPerSqM}
@@ -544,10 +563,9 @@ export default function ExtrusionProductCatalogPage() {
                           )}
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => addMaterial(li)}
-                            className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold px-2 py-0.5 hover:bg-indigo-100 rounded transition-colors">
-                            + Material
-                          </button>
+                          <Button onClick={() => addMaterial(li)} variant="ghost" size="sm" icon={<Plus size={12} />}>
+                            Material
+                          </Button>
                           <button onClick={() => removeLayer(li)}
                             className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
                             <X size={12} />
@@ -576,7 +594,8 @@ export default function ExtrusionProductCatalogPage() {
                               return (
                                 <tr key={mi} className={mi % 2 === 0 ? "bg-white" : "bg-indigo-50/30"}>
                                   <td className="px-2 py-1">
-                                    <select value={mat.name}
+                                    <Select
+                                      value={mat.name}
                                       onChange={e => {
                                         const rm = rawMaterials.find(r => r.name === e.target.value);
                                         updateMaterial(li, mi, {
@@ -585,30 +604,39 @@ export default function ExtrusionProductCatalogPage() {
                                           rate: rm?.rate ?? mat.rate,
                                         });
                                       }}
-                                      className="w-full text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white min-w-[140px]">
-                                      <option value="">-- Select Material --</option>
-                                      {rawMaterials.map(r => (
-                                        <option key={r.id} value={r.name}>{r.name}</option>
-                                      ))}
-                                    </select>
+                                      options={[
+                                        { value: "", label: "-- Select Material --" },
+                                        ...rawMaterials.map(r => ({ value: r.name, label: r.name })),
+                                      ]}
+                                      className="min-w-[140px]"
+                                    />
                                   </td>
                                   <td className="px-2 py-1">
-                                    <input type="number" value={mat.pct}
+                                    <Input
+                                      type="number"
+                                      value={mat.pct}
                                       onChange={e => updateMaterial(li, mi, { pct: Number(e.target.value) })}
-                                      className={`w-full text-center text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 ${pctOk ? "border-indigo-200 focus:ring-indigo-300" : "border-red-300 focus:ring-red-300 bg-red-50"}`}
-                                      min={0} max={100} step={0.1} />
+                                      min={0} max={100} step={0.1}
+                                      className="text-center"
+                                    />
                                   </td>
                                   <td className="px-2 py-1">
-                                    <input type="number" value={mat.density}
+                                    <Input
+                                      type="number"
+                                      value={mat.density}
                                       onChange={e => updateMaterial(li, mi, { density: Number(e.target.value) })}
-                                      className="w-full text-center text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-                                      step={0.001} />
+                                      step={0.001}
+                                      className="text-center"
+                                    />
                                   </td>
                                   <td className="px-2 py-1">
-                                    <input type="number" value={mat.rate}
+                                    <Input
+                                      type="number"
+                                      value={mat.rate}
                                       onChange={e => updateMaterial(li, mi, { rate: Number(e.target.value) })}
-                                      className="w-full text-center text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-300"
-                                      step={0.01} />
+                                      step={0.01}
+                                      className="text-center"
+                                    />
                                   </td>
                                   <td className="px-2 py-1 text-center font-mono text-gray-600">{contribConsumption}</td>
                                   <td className="px-2 py-1 text-center font-mono text-green-700">₹{contribCost}</td>
@@ -681,17 +709,15 @@ export default function ExtrusionProductCatalogPage() {
                 )}
 
                 <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={save} disabled={hasError}
-                    className={`flex items-center gap-2 px-5 py-2.5 text-sm font-bold rounded-xl transition-colors ${hasError ? "bg-gray-300 text-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-700 text-white"}`}>
-                    <Save size={15} />{editing ? "Update Catalog" : "Save to Catalog"}
-                  </button>
-                  <button className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors">
-                    <Printer size={15} />Print
-                  </button>
-                  <button onClick={closeForm}
-                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-colors">
+                  <Button onClick={save} disabled={hasError} variant="primary" icon={<Save size={15} />}>
+                    {editing ? "Update Catalog" : "Save to Catalog"}
+                  </Button>
+                  <Button variant="secondary" icon={<Printer size={15} />}>
+                    Print
+                  </Button>
+                  <Button onClick={closeForm} variant="ghost">
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

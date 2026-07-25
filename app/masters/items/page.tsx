@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, Save, List, Check, Loader2 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -137,17 +138,12 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
         }
 
         return (
-          <select
+          <Select
             value={value ?? ""}
             onChange={e => onChange(e.target.value)}
             disabled={!!field.IsLocked}
-            className={INPUT_CLS}
-          >
-            <option value="">-- Select --</option>
-            {finalOpts.map((o, i) => (
-              <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+            options={[{ value: "", label: "-- Select --" }, ...finalOpts.map(o => ({ value: o.value, label: o.label }))]}
+          />
         );
       }
 
@@ -160,16 +156,11 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
           finalOpts.unshift({ value: value, label: value });
         }
         return (
-          <select
+          <Select
             value={value ?? ""}
             onChange={e => onChange(e.target.value)}
-            className={INPUT_CLS}
-          >
-            <option value="">-- Select --</option>
-            {finalOpts.map((o, i) => (
-              <option key={`${i}-${o.value}`} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+            options={[{ value: "", label: "-- Select --" }, ...finalOpts.map(o => ({ value: o.value, label: o.label }))]}
+          />
         );
       }
 
@@ -212,24 +203,22 @@ function DynamicField({ field, value, options, onChange, submitAttempted }: {
     }
     if (field.FieldType === "textarea") {
       return (
-        <textarea
+        <Textarea
           value={value ?? ""}
           onChange={e => onChange(stripSpecial(e.target.value))}
           rows={3}
           disabled={!!field.IsLocked}
           placeholder={field.FieldDefaultValue && field.FieldDefaultValue !== "false" && field.FieldDefaultValue !== "null" ? field.FieldDefaultValue : ""}
-          className={INPUT_CLS + " resize-none"}
         />
       );
     }
     if (field.FieldType === "datebox") {
       return (
-        <input
+        <Input
           type="date"
           value={value ?? ""}
           onChange={e => onChange(e.target.value)}
           disabled={!!field.IsLocked}
-          className={INPUT_CLS}
         />
       );
     }
@@ -1187,21 +1176,11 @@ export default function ItemMasterPage() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <List size={16} /> Back to List
-            </button>
+            <Button variant="secondary" onClick={() => setView("list")}>Back to List</Button>
             {formStep === "fill-form" && !formLoading && (
-              <button
-                onClick={saveItem}
-                disabled={formSaving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
-              >
-                {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {formSaving ? "Saving..." : "Save"}
-              </button>
+              <Button variant="primary" loading={formSaving} onClick={saveItem}>
+                {editing ? "Update Item" : "Save Item"}
+              </Button>
             )}
           </div>
         </div>
@@ -1312,56 +1291,66 @@ export default function ItemMasterPage() {
 
                           {/* Sub Group 1 — label from DB FieldDisplayName */}
                           <Field label={subGroup1Field?.FieldDisplayName ?? "Sub Group 1"} required={!!subGroup1Field?.IsRequiredFieldValidator}>
-                            <select value={sgid} onChange={e => {
-                              const id = e.target.value;
-                              const sgOpt = sgSubGroupOpts.find(o => o.id === id);
-                              setSgSubGroupName(sgOpt?.name ?? "");
-                              setSgSubGroupDisplayName(sgOpt?.displayName ?? "");
-                              setSgSubGroupPrefix(sgOpt?.subGroupPrefix ?? "");
-                              setFormValues(v => ({ ...v, ItemSubGroupID: id, [sg2FieldName]: "", [sg3FieldName]: "" }));
-                              loadSgTypes(formGroupID, id);
-                            }} className={INPUT_CLS}>
-                              <option value="">-- Select --</option>
-                              {sgSubGroupOpts.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-                            </select>
+                            <Select
+                              value={sgid}
+                              onChange={e => {
+                                const id = e.target.value;
+                                const sgOpt = sgSubGroupOpts.find(o => o.id === id);
+                                setSgSubGroupName(sgOpt?.name ?? "");
+                                setSgSubGroupDisplayName(sgOpt?.displayName ?? "");
+                                setSgSubGroupPrefix(sgOpt?.subGroupPrefix ?? "");
+                                setFormValues(v => ({ ...v, ItemSubGroupID: id, [sg2FieldName]: "", [sg3FieldName]: "" }));
+                                loadSgTypes(formGroupID, id);
+                              }}
+                              options={[{ value: "", label: "-- Select --" }, ...sgSubGroupOpts.map(o => ({ value: o.id, label: o.name }))]}
+                            />
                           </Field>
 
                           {/* Sub Group 2 — label from DB FieldDisplayName */}
                           {subGroup2Field && (
                             <Field label={subGroup2Field.FieldDisplayName ?? "Sub Group 2"} required={!!subGroup2Field.IsRequiredFieldValidator}>
-                              <select value={String(formValues[sg2FieldName] ?? "")} onChange={e => {
-                                const t = e.target.value;
-                                const opt = sgTypeOpts.find(o => o.type === t);
-                                setSgTypePrefix(opt?.prefix ?? "");
-                                setSgSpecPrefix("");
-                                setFormValues(v => ({ ...v, [sg2FieldName]: t, [sg3FieldName]: "" }));
-                                setSgTypeSpecOpts([]);
-                                if (t && sgid) loadSgTypeSpecs(formGroupID, sgid, t);
-                              }} className={INPUT_CLS} disabled={!sgid && !sgTypeOpts.length}>
-                                <option value="">-- Select --</option>
-                                {sgTypeOpts.map(o => <option key={o.type} value={o.type}>{o.type}</option>)}
-                                {formValues[sg2FieldName] && !sgTypeOpts.some(o => o.type === formValues[sg2FieldName]) && (
-                                  <option value={formValues[sg2FieldName]}>{formValues[sg2FieldName]}</option>
-                                )}
-                              </select>
+                              <Select
+                                value={String(formValues[sg2FieldName] ?? "")}
+                                onChange={e => {
+                                  const t = e.target.value;
+                                  const opt = sgTypeOpts.find(o => o.type === t);
+                                  setSgTypePrefix(opt?.prefix ?? "");
+                                  setSgSpecPrefix("");
+                                  setFormValues(v => ({ ...v, [sg2FieldName]: t, [sg3FieldName]: "" }));
+                                  setSgTypeSpecOpts([]);
+                                  if (t && sgid) loadSgTypeSpecs(formGroupID, sgid, t);
+                                }}
+                                disabled={!sgid && !sgTypeOpts.length}
+                                options={[
+                                  { value: "", label: "-- Select --" },
+                                  ...sgTypeOpts.map(o => ({ value: o.type, label: o.type })),
+                                  ...(formValues[sg2FieldName] && !sgTypeOpts.some(o => o.type === formValues[sg2FieldName])
+                                    ? [{ value: formValues[sg2FieldName], label: formValues[sg2FieldName] }]
+                                    : []),
+                                ]}
+                              />
                             </Field>
                           )}
 
                           {/* Sub Group 3 — label from DB FieldDisplayName */}
                           {subGroup3Field && (
                             <Field label={subGroup3Field.FieldDisplayName ?? "Sub Group 3"}>
-                              <select value={String(formValues[sg3FieldName] ?? "")} onChange={e => {
-                                const s = e.target.value;
-                                const opt = sgTypeSpecOpts.find(o => o.spec === s);
-                                setSgSpecPrefix(opt?.prefix ?? "");
-                                setFormValues(v => ({ ...v, [sg3FieldName]: s }));
-                              }} className={INPUT_CLS}>
-                                <option value="">-- Select --</option>
-                                {sgTypeSpecOpts.map(o => <option key={o.spec} value={o.spec}>{o.spec}</option>)}
-                                {formValues[sg3FieldName] && !sgTypeSpecOpts.some(o => o.spec === formValues[sg3FieldName]) && (
-                                  <option value={formValues[sg3FieldName]}>{formValues[sg3FieldName]}</option>
-                                )}
-                              </select>
+                              <Select
+                                value={String(formValues[sg3FieldName] ?? "")}
+                                onChange={e => {
+                                  const s = e.target.value;
+                                  const opt = sgTypeSpecOpts.find(o => o.spec === s);
+                                  setSgSpecPrefix(opt?.prefix ?? "");
+                                  setFormValues(v => ({ ...v, [sg3FieldName]: s }));
+                                }}
+                                options={[
+                                  { value: "", label: "-- Select --" },
+                                  ...sgTypeSpecOpts.map(o => ({ value: o.spec, label: o.spec })),
+                                  ...(formValues[sg3FieldName] && !sgTypeSpecOpts.some(o => o.spec === formValues[sg3FieldName])
+                                    ? [{ value: formValues[sg3FieldName], label: formValues[sg3FieldName] }]
+                                    : []),
+                                ]}
+                              />
                             </Field>
                           )}
 
@@ -1379,42 +1368,44 @@ export default function ItemMasterPage() {
                               if (hasSupplier && key === "manufecturer") {
                                 return (
                                   <Field key={field.FieldName} label={supplierField?.FieldDisplayName ?? "Supplier"} required={!!supplierField?.IsRequiredFieldValidator}>
-                                    <select value={String(formValues["Manufecturer"] ?? "")} onChange={e => {
-                                      setFormValues(v => ({ ...v, Manufecturer: e.target.value }));
-                                    }} className={INPUT_CLS}>
-                                      <option value="">-- Select --</option>
-                                      {sgSupplierOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                    </select>
+                                    <Select
+                                      value={String(formValues["Manufecturer"] ?? "")}
+                                      onChange={e => setFormValues(v => ({ ...v, Manufecturer: e.target.value }))}
+                                      options={[{ value: "", label: "-- Select --" }, ...sgSupplierOpts.map(o => ({ value: o.name, label: o.name }))]}
+                                    />
                                   </Field>
                                 );
                               }
                               if (hasUnits && key === "purchaseunit" && puField) {
                                 return (
                                   <Field key={field.FieldName} label={puField.FieldDisplayName ?? "Purchase Unit"} required={!!puField.IsRequiredFieldValidator}>
-                                    <select value={String(formValues["PurchaseUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, PurchaseUnit: e.target.value }))} className={INPUT_CLS}>
-                                      <option value="">-- Select --</option>
-                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                    </select>
+                                    <Select
+                                      value={String(formValues["PurchaseUnit"] ?? "")}
+                                      onChange={e => setFormValues(v => ({ ...v, PurchaseUnit: e.target.value }))}
+                                      options={[{ value: "", label: "-- Select --" }, ...sgUnitOpts.map(o => ({ value: o.name, label: o.name }))]}
+                                    />
                                   </Field>
                                 );
                               }
                               if (hasUnits && key === "estimationunit" && euField) {
                                 return (
                                   <Field key={field.FieldName} label={euField.FieldDisplayName ?? "Estimation Unit"} required={!!euField.IsRequiredFieldValidator}>
-                                    <select value={String(formValues["EstimationUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, EstimationUnit: e.target.value }))} className={INPUT_CLS}>
-                                      <option value="">-- Select --</option>
-                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                    </select>
+                                    <Select
+                                      value={String(formValues["EstimationUnit"] ?? "")}
+                                      onChange={e => setFormValues(v => ({ ...v, EstimationUnit: e.target.value }))}
+                                      options={[{ value: "", label: "-- Select --" }, ...sgUnitOpts.map(o => ({ value: o.name, label: o.name }))]}
+                                    />
                                   </Field>
                                 );
                               }
                               if (hasUnits && key === "stockunit" && suField) {
                                 return (
                                   <Field key={field.FieldName} label={suField.FieldDisplayName ?? "Stock Unit"} required={!!suField.IsRequiredFieldValidator}>
-                                    <select value={String(formValues["StockUnit"] ?? "")} onChange={e => setFormValues(v => ({ ...v, StockUnit: e.target.value }))} className={INPUT_CLS}>
-                                      <option value="">-- Select --</option>
-                                      {sgUnitOpts.map(o => <option key={o.id} value={o.name}>{o.name}</option>)}
-                                    </select>
+                                    <Select
+                                      value={String(formValues["StockUnit"] ?? "")}
+                                      onChange={e => setFormValues(v => ({ ...v, StockUnit: e.target.value }))}
+                                      options={[{ value: "", label: "-- Select --" }, ...sgUnitOpts.map(o => ({ value: o.name, label: o.name }))]}
+                                    />
                                   </Field>
                                 );
                               }
@@ -1512,14 +1503,9 @@ export default function ItemMasterPage() {
                     >
                       ← Change Group
                     </button>
-                    <button
-                      onClick={saveItem}
-                      disabled={formSaving}
-                      className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
-                    >
-                      {formSaving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                      {formSaving ? "Saving..." : editing ? "Update Item" : "Save Item"}
-                    </button>
+                    <Button variant="primary" loading={formSaving} onClick={saveItem}>
+                      {editing ? "Update Item" : "Save Item"}
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1601,19 +1587,9 @@ export default function ItemMasterPage() {
         {showGrid && !gridLoading && (
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => setFromDate(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
             <span className="text-xs text-gray-400">to</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={e => setToDate(e.target.value)}
-              className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
             {filteredGridData.length !== gridData.length && (
               <span className="text-xs text-gray-400">{filteredGridData.length} of {gridData.length} shown</span>
             )}

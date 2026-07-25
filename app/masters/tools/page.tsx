@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Pencil, Trash2, Check, Loader2, List, ChevronRight } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
+import { Input, Select, Textarea } from "@/components/ui/Input";
 import { authHeaders } from "@/lib/auth";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -29,7 +30,6 @@ const Field = ({ label, required, children }: { label: string; required?: boolea
   </div>
 );
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none";
-const ic = (err: boolean) => err ? inputCls.replace("border-gray-300", "border-red-400 bg-red-50/50") : inputCls;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 type ToolGroup = { ToolGroupID: string; ToolGroupName: string; };
@@ -484,18 +484,17 @@ export default function ToolMasterPage() {
       case "number":
         return (
           <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
-            <input type="number" value={String(val ?? "")}
-              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} min="0" />
+            <Input type="number" value={String(val ?? "")}
+              onChange={e => fv(fd.FieldName, e.target.value)} min="0" />
           </Field>
         );
 
       case "textarea":
         return (
           <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
-            <textarea value={String(val ?? "")}
+            <Textarea value={String(val ?? "")}
               onChange={e => fv(fd.FieldName, e.target.value)}
-              rows={2}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none" />
+              rows={2} />
           </Field>
         );
 
@@ -515,8 +514,8 @@ export default function ToolMasterPage() {
       case "datebox":
         return (
           <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
-            <input type="date" value={String(val ?? "").split("T")[0]}
-              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} />
+            <Input type="date" value={String(val ?? "").split("T")[0]}
+              onChange={e => fv(fd.FieldName, e.target.value)} />
           </Field>
         );
 
@@ -586,8 +585,8 @@ export default function ToolMasterPage() {
       default: // text
         return (
           <Field key={fd.FieldName} label={fd.FieldDisplayName} required={required}>
-            <input type="text" value={String(val ?? "")}
-              onChange={e => fv(fd.FieldName, e.target.value)} className={inputCls} />
+            <Input type="text" value={String(val ?? "")}
+              onChange={e => fv(fd.FieldName, e.target.value)} />
           </Field>
         );
     }
@@ -627,15 +626,8 @@ export default function ToolMasterPage() {
             </h2>
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setView("list")}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
-              <List size={16} /> Back to List
-            </button>
-            <button onClick={saveTool} disabled={saving || loadingForm}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              Save Tool
-            </button>
+            <Button variant="secondary" icon={<List size={16}/>} onClick={() => setView("list")}>Back to List</Button>
+            <Button variant="primary" loading={saving} disabled={saving || loadingForm} onClick={saveTool}>Save Tool</Button>
           </div>
         </div>
 
@@ -682,53 +674,42 @@ export default function ToolMasterPage() {
                     <SectionTitle title="Tool Identity" />
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="md:col-span-2">
-                        <Field label="Tool Name / Description" required>
-                          <input type="text" value={String(formValues.ToolName ?? "")}
-                            onChange={e => fv("ToolName", e.target.value)}
-                            placeholder="e.g. Cylinder Set A — Client Name"
-                            className={ic(submitAttempted && !String(formValues.ToolName ?? "").trim())} />
-                        </Field>
+                        <Input label="Tool Name / Description" value={String(formValues.ToolName ?? "")}
+                          onChange={e => fv("ToolName", e.target.value)}
+                          placeholder="e.g. Cylinder Set A — Client Name"
+                          error={submitAttempted && !String(formValues.ToolName ?? "").trim() ? "Required" : undefined} />
                       </div>
-                      <Field label="Tool Ref Code">
-                        <input type="text" value={String(formValues.ToolRefCode ?? "")}
-                          onChange={e => fv("ToolRefCode", e.target.value)}
-                          placeholder="e.g. REF-001" className={inputCls} />
-                      </Field>
+                      <Input label="Tool Ref Code" value={String(formValues.ToolRefCode ?? "")}
+                        onChange={e => fv("ToolRefCode", e.target.value)}
+                        placeholder="e.g. REF-001" />
 
                       {/* Prefix — dropdown from ToolGroupPrefix, triggers tool no generation */}
-                      <Field label="Prefix" required>
-                        {prefixOptions.length > 0 ? (
-                          <select
-                            value={String(formValues.Prefix ?? "")}
-                            onChange={async e => {
-                              fv("Prefix", e.target.value);
-                              if (!editing) await generateToolNo(e.target.value, selectedGroupID);
-                            }}
-                            disabled={!!editing}
-                            className={ic(submitAttempted && !String(formValues.Prefix ?? "").trim()) + (editing ? " bg-gray-50 cursor-not-allowed" : "")}>
-                            <option value="">— Select Prefix —</option>
-                            {prefixOptions.map(p => <option key={p} value={p}>{p}</option>)}
-                          </select>
-                        ) : (
-                          <input type="text" value={String(formValues.Prefix ?? "")}
-                            onChange={async e => {
-                              fv("Prefix", e.target.value);
-                              if (!editing && e.target.value) await generateToolNo(e.target.value, selectedGroupID);
-                            }}
-                            readOnly={!!editing}
-                            placeholder="e.g. CYL"
-                            className={ic(submitAttempted && !String(formValues.Prefix ?? "").trim()) + (editing ? " bg-gray-50 cursor-not-allowed" : "")} />
-                        )}
-                      </Field>
+                      {prefixOptions.length > 0 ? (
+                        <Select label="Prefix"
+                          value={String(formValues.Prefix ?? "")}
+                          onChange={async e => {
+                            fv("Prefix", e.target.value);
+                            if (!editing) await generateToolNo(e.target.value, selectedGroupID);
+                          }}
+                          disabled={!!editing}
+                          options={[{ value: "", label: "— Select Prefix —" }, ...prefixOptions.map(p => ({ value: p, label: p }))]}
+                          error={submitAttempted && !String(formValues.Prefix ?? "").trim() ? "Required" : undefined} />
+                      ) : (
+                        <Input label="Prefix" value={String(formValues.Prefix ?? "")}
+                          onChange={async e => {
+                            fv("Prefix", e.target.value);
+                            if (!editing && e.target.value) await generateToolNo(e.target.value, selectedGroupID);
+                          }}
+                          readOnly={!!editing}
+                          placeholder="e.g. CYL"
+                          error={submitAttempted && !String(formValues.Prefix ?? "").trim() ? "Required" : undefined} />
+                      )}
 
                       {/* Auto-generated Tool No — shown for new tools only */}
                       {!editing && (
-                        <Field label="Tool No (Auto Generated)">
-                          <input type="text" value={toolNumber}
-                            readOnly
-                            placeholder="Will be generated on save"
-                            className={inputCls + " bg-gray-50 text-gray-600 cursor-not-allowed"} />
-                        </Field>
+                        <Input label="Tool No (Auto Generated)" value={toolNumber}
+                          readOnly
+                          placeholder="Will be generated on save" />
                       )}
                     </div>
                   </div>
@@ -780,11 +761,7 @@ export default function ToolMasterPage() {
                       className="px-6 py-2.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
                       ← Details
                     </button>
-                    <button onClick={saveTool} disabled={saving}
-                      className="flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm disabled:opacity-60">
-                      {saving ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                      Save Tool
-                    </button>
+                    <Button variant="primary" loading={saving} onClick={saveTool}>Save Tool</Button>
                   </div>
                 </>
               )}
