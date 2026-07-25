@@ -1789,6 +1789,15 @@ export default function ProductCatalogPage() {
   return (
     <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-4 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
+        <div className="flex items-center gap-2">
+          <BookMarked size={18} className="text-purple-600" />
+          <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Product Catalog</h2>
+        </div>
+        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openDirectCreate}>Create Catalog</Button>
+      </div>
+
       {/* ══ CONTENT AREA ══════════════════════════════════════════ */}
       <div className="flex-1 overflow-hidden flex flex-col">
 

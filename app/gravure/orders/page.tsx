@@ -1740,6 +1740,15 @@ export default function GravureOrdersPage() {
   return (
     <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-4 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
+        <div className="flex items-center gap-2">
+          <ShoppingCart size={18} className="text-teal-600" />
+          <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Order Booking</h2>
+        </div>
+        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Order</Button>
+      </div>
+
       {/* ══ CONTENT ═══════════════════════════════════════════════ */}
       <div className="flex-1 overflow-hidden flex flex-col p-4">
         {loadingList ? (
