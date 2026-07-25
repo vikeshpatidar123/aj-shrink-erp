@@ -1770,7 +1770,6 @@ export default function GravureOrdersPage() {
           toolbar={
             <div className="flex items-center gap-2">
               <TutorialButton title="Order Booking — Tutorial" />
-              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openAdd} className="text-xs py-1.5 px-3">New Order</Button>
             </div>
           }
           actions={row => (
