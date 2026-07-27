@@ -2693,12 +2693,26 @@ export default function GravureEstimationPage() {
     <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
       {/* Page Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-4 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
+      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-3 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
         <div className="flex items-center gap-2">
           <Calculator size={18} className="text-purple-600" />
           <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Estimation</h2>
         </div>
-        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Estimation</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {[
+            { label: "Draft",    val: stats.draft,    cls: "bg-gray-100 text-gray-600" },
+            { label: "Approved", val: stats.approved, cls: "bg-green-100 text-green-700" },
+            { label: "Sent",     val: stats.sent,     cls: "bg-purple-100 text-purple-700" },
+          ].map(s => (
+            <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
+              {s.label} {s.val}
+            </span>
+          ))}
+          {loadingData && <RefreshCw size={13} className="animate-spin text-gray-400" />}
+          <TutorialButton title="Gravure Estimation — Tutorial" />
+          <Button icon={<RefreshCw size={13} />} variant="secondary" onClick={loadList} disabled={loadingData} className="text-xs py-1.5 px-3">Refresh</Button>
+          <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Estimation</Button>
+        </div>
       </div>
 
       {/* ══ CONTENT ═══════════════════════════════════════════════ */}
@@ -2709,24 +2723,6 @@ export default function GravureEstimationPage() {
           searchKeys={["estimationNo", "customerName", "jobName"]}
           stickyHeader
           scrollContainerClass="flex-1"
-          toolbar={
-            <div className="flex items-center gap-2">
-              {[
-                { label: "Draft",    val: stats.draft,    cls: "bg-gray-100 text-gray-600" },
-                { label: "Approved", val: stats.approved, cls: "bg-green-100 text-green-700" },
-                { label: "Sent",     val: stats.sent,     cls: "bg-purple-100 text-purple-700" },
-              ].map(s => (
-                <span key={s.label} className={`hidden sm:inline text-[10px] font-bold px-2 py-0.5 rounded-full ${s.cls}`}>
-                  {s.label} {s.val}
-                </span>
-              ))}
-              {loadingData && <RefreshCw size={13} className="animate-spin text-gray-400" />}
-              <TutorialButton title="Gravure Estimation — Tutorial" />
-              <Button icon={<RefreshCw size={13} />} variant="secondary" onClick={loadList} disabled={loadingData}
-                className="text-xs py-1.5 px-3">Refresh</Button>
-              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openAdd} className="text-xs py-1.5 px-3">New Estimation</Button>
-            </div>
-          }
           actions={row => (
             <div className="flex items-center gap-1.5 justify-end">
               <RowAction.View onClick={() => setViewRow(row)} />
@@ -2954,95 +2950,81 @@ export default function GravureEstimationPage() {
                   <div className="sm:col-span-2 lg:col-span-3 mt-1">
                     <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-2 pb-1 border-b border-orange-100">Product Identity</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Pack Size</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).packSize ?? ""}
-                          onChange={val => f("packSize" as any, val)}
-                          placeholder="-- Select --"
-                          options={[
-                            ...((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => ({ value: ps, label: ps })),
-                            ...((form as any).packSize && !((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).includes((form as any).packSize)
-                              ? [{ value: (form as any).packSize, label: (form as any).packSize }]
-                              : []),
-                          ]}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Brand Name</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).brandName ?? ""}
-                          onChange={val => f("brandName" as any, val)}
-                          placeholder="-- Select --"
-                          options={[
-                            ...((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => ({ value: bn, label: bn })),
-                            ...((form as any).brandName && !((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).includes((form as any).brandName)
-                              ? [{ value: (form as any).brandName, label: (form as any).brandName }]
-                              : []),
-                          ]}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Product Type</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).productType ?? ""}
-                          onChange={val => f("productType" as any, val)}
-                          placeholder="-- Select --"
-                          options={["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => ({ value: t, label: t }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">SKU Type</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).skuType ?? ""}
-                          onChange={val => f("skuType" as any, val)}
-                          placeholder="-- Select --"
-                          options={[
-                            ...((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => ({ value: sk, label: sk })),
-                            ...((form as any).skuType && !((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).includes((form as any).skuType)
-                              ? [{ value: (form as any).skuType, label: (form as any).skuType }]
-                              : []),
-                          ]}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Bottle Type</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).bottleType ?? ""}
-                          onChange={val => f("bottleType" as any, val)}
-                          placeholder="-- Select --"
-                          options={["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => ({ value: t, label: t }))}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Address Type</label>
-                        <SearchableSelect
-                          className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                          value={(form as any).addressType ?? ""}
-                          onChange={val => f("addressType" as any, val)}
-                          placeholder="-- Select --"
-                          options={[
-                            { value: "Single", label: "Single" },
-                            { value: "Multi", label: "Multi" },
-                            { value: "QR Code", label: "QR Code" },
-                          ]}
-                        />
-                      </div>
+                      <Select
+                        label="Pack Size"
+                        value={(form as any).packSize ?? ""}
+                        onChange={e => { const val = e.target.value; f("packSize" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          ...((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => ({ value: ps, label: ps })),
+                          ...((form as any).packSize && !((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).includes((form as any).packSize)
+                            ? [{ value: (form as any).packSize, label: (form as any).packSize }]
+                            : []),
+                        ]}
+                      />
+                      <Select
+                        label="Brand Name"
+                        value={(form as any).brandName ?? ""}
+                        onChange={e => { const val = e.target.value; f("brandName" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          ...((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => ({ value: bn, label: bn })),
+                          ...((form as any).brandName && !((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).includes((form as any).brandName)
+                            ? [{ value: (form as any).brandName, label: (form as any).brandName }]
+                            : []),
+                        ]}
+                      />
+                      <Select
+                        label="Product Type"
+                        value={(form as any).productType ?? ""}
+                        onChange={e => { const val = e.target.value; f("productType" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          ...["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => ({ value: t, label: t })),
+                        ]}
+                      />
+                      <Select
+                        label="SKU Type"
+                        value={(form as any).skuType ?? ""}
+                        onChange={e => { const val = e.target.value; f("skuType" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          ...((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => ({ value: sk, label: sk })),
+                          ...((form as any).skuType && !((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).includes((form as any).skuType)
+                            ? [{ value: (form as any).skuType, label: (form as any).skuType }]
+                            : []),
+                        ]}
+                      />
+                      <Select
+                        label="Bottle Type"
+                        value={(form as any).bottleType ?? ""}
+                        onChange={e => { const val = e.target.value; f("bottleType" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          ...["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => ({ value: t, label: t })),
+                        ]}
+                      />
+                      <Select
+                        label="Address Type"
+                        value={(form as any).addressType ?? ""}
+                        onChange={e => { const val = e.target.value; f("addressType" as any, val); }}
+                        options={[
+                          { value: "", label: "-- Select --" },
+                          { value: "Single", label: "Single" },
+                          { value: "Multi", label: "Multi" },
+                          { value: "QR Code", label: "QR Code" },
+                        ]}
+                      />
                       <div className="sm:col-span-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Artwork Name</label>
-                        <input className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <Input
+                          label="Artwork Name"
                           placeholder="e.g. Parle-G 100g Front Artwork v3"
                           value={(form as any).artworkName ?? ""}
                           onChange={e => f("artworkName" as any, e.target.value)} />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Special Specifications</label>
-                        <input className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <Input
+                          label="Special Specifications"
                           placeholder="e.g. @20 Rs, Free, Promo, Export"
                           value={(form as any).specialSpecs ?? ""}
                           onChange={e => f("specialSpecs" as any, e.target.value)} />
@@ -3349,20 +3331,16 @@ export default function GravureEstimationPage() {
                                 ))}
                               </div>
                             </div>
-                            <div>
-                              <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Print Type</label>
-                              <SearchableSelect
-                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                                value={form.printType}
-                                onChange={val => f("printType", val)}
-                                allowEmpty={false}
-                                options={[
-                                  { value: "Surface Print", label: "Surface Print" },
-                                  { value: "Reverse Print", label: "Reverse Print" },
-                                  { value: "Combination", label: "Combination" },
-                                ]}
-                              />
-                            </div>
+                            <Select
+                              label="Print Type"
+                              value={form.printType}
+                              onChange={e => { const val = e.target.value; f("printType", val); }}
+                              options={[
+                                { value: "Surface Print", label: "Surface Print" },
+                                { value: "Reverse Print", label: "Reverse Print" },
+                                { value: "Combination", label: "Combination" },
+                              ]}
+                            />
                           </div>
                         </div>
 
@@ -3560,72 +3538,69 @@ export default function GravureEstimationPage() {
 
                         <div className="p-3 space-y-3">
                           {/* Ply Type */}
-                          <div>
-                            <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                            <SearchableSelect
-                              className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
-                              value={l.plyType}
-                              onChange={val => onPlyTypeChange(index, val)}
-                              placeholder="-- Select Ply Type --"
-                              options={[
-                                { value: "Film", label: "Ply 1" },
-                                { value: "Printing", label: "Ply 2" },
-                                { value: "Lamination", label: "Ply 3" },
-                                { value: "Coating", label: "Ply 4" },
-                              ]}
-                            />
-                          </div>
+                          <Select
+                            label="Ply Type *"
+                            value={l.plyType}
+                            onChange={e => { const val = e.target.value; onPlyTypeChange(index, val); }}
+                            options={[
+                              { value: "", label: "-- Select Ply Type --" },
+                              { value: "Film", label: "Ply 1" },
+                              { value: "Printing", label: "Ply 2" },
+                              { value: "Lamination", label: "Ply 3" },
+                              { value: "Coating", label: "Ply 4" },
+                            ]}
+                          />
 
                           {/* Film substrate */}
                           {l.plyType && (
                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
-                              <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
-                                <SearchableSelect
-                                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none"
-                                  value={l.itemId || ""}
-                                  onChange={val => {
-                                    const fi = apiFilmItems.find(f => String(f.ItemID) === val);
-                                    const density  = fi?.Density    || 0;
-                                    const thickness = fi?.Thickness  || 0;
-                                    const gsm = thickness > 0 && density > 0 ? parseFloat((thickness * density).toFixed(3)) : 0;
-                                    const layers = [...form.secondaryLayers];
-                                    layers[index] = {
-                                      ...l,
-                                      itemId:       val,
-                                      itemName:     fi ? (fi.ItemDisplayName || fi.ItemName) : "",
-                                      itemSubGroup: fi?.ItemSubGroupName || "",
-                                      density, thickness, gsm,
-                                      filmRate: fi?.EstimationRate || l.filmRate || 0,
-                                    };
-                                    f("secondaryLayers", layers);
-                                  }}
-                                  placeholder="-- Select Film Item --"
-                                  options={apiFilmItems
+                              <Select
+                                label="Film Item"
+                                value={l.itemId || ""}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  const fi = apiFilmItems.find(f => String(f.ItemID) === val);
+                                  const density  = fi?.Density    || 0;
+                                  const thickness = fi?.Thickness  || 0;
+                                  const gsm = thickness > 0 && density > 0 ? parseFloat((thickness * density).toFixed(3)) : 0;
+                                  const layers = [...form.secondaryLayers];
+                                  layers[index] = {
+                                    ...l,
+                                    itemId:       val,
+                                    itemName:     fi ? (fi.ItemDisplayName || fi.ItemName) : "",
+                                    itemSubGroup: fi?.ItemSubGroupName || "",
+                                    density, thickness, gsm,
+                                    filmRate: fi?.EstimationRate || l.filmRate || 0,
+                                  };
+                                  f("secondaryLayers", layers);
+                                }}
+                                options={[
+                                  { value: "", label: "-- Select Film Item --" },
+                                  ...apiFilmItems
                                     .filter((fi, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(fi.ItemID)) === idx)
-                                    .map(fi => ({ value: String(fi.ItemID), label: fi.ItemDisplayName || fi.ItemName }))}
-                                />
-                              </div>
+                                    .map(fi => ({ value: String(fi.ItemID), label: fi.ItemDisplayName || fi.ItemName })),
+                                ]}
+                              />
                               <div className="grid grid-cols-4 gap-2">
                                 <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
-                                <div>
-                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                  <SearchableSelect
-                                    className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
-                                    value={l.thickness === 0 ? "" : String(l.thickness)}
-                                    onChange={val => {
-                                      const t = Number(val);
-                                      const layers = [...form.secondaryLayers];
-                                      layers[index] = { ...l, thickness: t, gsm: parseFloat((t * l.density).toFixed(3)) };
-                                      f("secondaryLayers", layers);
-                                    }}
-                                    placeholder="Select"
-                                    options={(l.thickness && !thicknesses.includes(l.thickness)
+                                <Select
+                                  label="Thickness (μ)"
+                                  value={l.thickness === 0 ? "" : String(l.thickness)}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    const t = Number(val);
+                                    const layers = [...form.secondaryLayers];
+                                    layers[index] = { ...l, thickness: t, gsm: parseFloat((t * l.density).toFixed(3)) };
+                                    f("secondaryLayers", layers);
+                                  }}
+                                  options={[
+                                    { value: "", label: "Select" },
+                                    ...(l.thickness && !thicknesses.includes(l.thickness)
                                       ? [...thicknesses, l.thickness].sort((a, b) => a - b)
                                       : thicknesses
-                                    ).map(t => ({ value: String(t), label: String(t) }))}
-                                  />
-                                </div>
+                                    ).map(t => ({ value: String(t), label: String(t) })),
+                                  ]}
+                                />
                                 <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-blue-200 text-xs" />
                                 <div>
                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Rate (₹/Kg)</label>
@@ -3727,62 +3702,60 @@ export default function GravureEstimationPage() {
 
                                       {/* Row 1: Group / SubGroup / Item / Rate */}
                                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
-                                        <div>
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                          <SearchableSelect
-                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
-                                            value={ci.itemGroup}
-                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, coveragePct: undefined, ohPct: undefined, ncoPct: undefined })}
-                                            placeholder="-- Group --"
-                                            options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                          <SearchableSelect
-                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
-                                            value={ci.itemSubGroup}
-                                            onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
-                                            disabled={!ci.itemGroup}
-                                            placeholder="-- Sub Group --"
-                                            options={subGroups.map(sg => ({ value: sg, label: sg }))}
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                          <SearchableSelect
-                                            className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
-                                            value={ci.itemId}
-                                            onChange={val => {
-                                              const apiIt  = filteredApiItems.find(x => String(x.ItemID) === val);
-                                              const staticIt = filteredItems.find(x => x.id === val);
-                                              // Rate comes from Item Master EstimationRate (API first, static fallback)
-                                              const masterRate = apiIt?.EstimationRate
-                                                ?? parseFloat(staticIt?.estimationRate ?? "0")
-                                                ?? 0;
-                                              const masterUnit = apiIt?.EstimationUnit || staticIt?.estimationUnit || "Kg";
-                                              const patch: Partial<PlyConsumableItem> = {
-                                                itemId:   val,
-                                                itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
-                                                rate:     masterRate,
-                                                rateUnit: masterUnit,
-                                              };
-                                              // For Ink: auto-fill DryGsM + SolidPerc from ItemMaster
-                                              if (ci.itemGroup === "Ink" && apiIt) {
-                                                patch.gsm = parseFloat(String(apiIt.DryGsM ?? 0)) || 0;
-                                                patch.solidPct = parseFloat(String(apiIt.SolidPerc ?? 40)) || 40;
-                                              }
-                                              updatePlyConsumable(index, ciIdx, patch);
-                                            }}
-                                            disabled={!ci.itemGroup}
-                                            placeholder="-- Select Item --"
-                                            options={filteredApiItems.length > 0
+                                        <Select
+                                          label="Item Group"
+                                          value={ci.itemGroup}
+                                          onChange={e => { const val = e.target.value; updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, coveragePct: undefined, ohPct: undefined, ncoPct: undefined }); }}
+                                          options={[
+                                            { value: "", label: "-- Group --" },
+                                            ...CONSUMABLE_GROUPS.map(g => ({ value: g, label: g })),
+                                          ]}
+                                        />
+                                        <Select
+                                          label="Sub Group"
+                                          value={ci.itemSubGroup}
+                                          onChange={e => { const val = e.target.value; updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" }); }}
+                                          disabled={!ci.itemGroup}
+                                          options={[
+                                            { value: "", label: "-- Sub Group --" },
+                                            ...subGroups.map(sg => ({ value: sg, label: sg })),
+                                          ]}
+                                        />
+                                        <Select
+                                          label="Item (Master)"
+                                          value={ci.itemId}
+                                          onChange={e => {
+                                            const val = e.target.value;
+                                            const apiIt  = filteredApiItems.find(x => String(x.ItemID) === val);
+                                            const staticIt = filteredItems.find(x => x.id === val);
+                                            // Rate comes from Item Master EstimationRate (API first, static fallback)
+                                            const masterRate = apiIt?.EstimationRate
+                                              ?? parseFloat(staticIt?.estimationRate ?? "0")
+                                              ?? 0;
+                                            const masterUnit = apiIt?.EstimationUnit || staticIt?.estimationUnit || "Kg";
+                                            const patch: Partial<PlyConsumableItem> = {
+                                              itemId:   val,
+                                              itemName: apiIt?.ItemName ?? staticIt?.name ?? "",
+                                              rate:     masterRate,
+                                              rateUnit: masterUnit,
+                                            };
+                                            // For Ink: auto-fill DryGsM + SolidPerc from ItemMaster
+                                            if (ci.itemGroup === "Ink" && apiIt) {
+                                              patch.gsm = parseFloat(String(apiIt.DryGsM ?? 0)) || 0;
+                                              patch.solidPct = parseFloat(String(apiIt.SolidPerc ?? 40)) || 40;
+                                            }
+                                            updatePlyConsumable(index, ciIdx, patch);
+                                          }}
+                                          disabled={!ci.itemGroup}
+                                          options={[
+                                            { value: "", label: "-- Select Item --" },
+                                            ...(filteredApiItems.length > 0
                                               ? filteredApiItems
                                                   .filter((it, idx, arr) => arr.findIndex(x => String(x.ItemID) === String(it.ItemID)) === idx)
                                                   .map(it => ({ value: String(it.ItemID), label: `${it.ItemName}${it.EstimationRate > 0 ? ` — ₹${it.EstimationRate}/${it.EstimationUnit || "Kg"}` : ""}` }))
-                                              : filteredItems.map(it => ({ value: it.id, label: `${it.name}${it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}` }))}
-                                          />
-                                        </div>
+                                              : filteredItems.map(it => ({ value: it.id, label: `${it.name}${it.estimationRate ? ` — ₹${it.estimationRate}/Kg` : ""}` }))),
+                                          ]}
+                                        />
                                         <div>
                                           <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">
                                             Rate (₹/{ci.rateUnit || "Kg"})

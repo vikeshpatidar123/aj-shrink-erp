@@ -1004,44 +1004,29 @@ export default function GravureOrdersPage() {
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Order Prefix</label>
-                <SearchableSelect
+                <Select label="Order Prefix"
                   value={form.orderPrefix}
-                  onChange={val => f("orderPrefix", val)}
+                  onChange={e => f("orderPrefix", e.target.value)}
                   options={[{ value: "GRV", label: "GRV" }, { value: "EXP", label: "EXP" }]}
-                  placeholder="Select..."
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Order No.</label>
-                <input readOnly value={orderNo}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-blue-100 rounded-lg bg-blue-50 text-blue-700 font-semibold" />
+                <Input label="Sales Order No." readOnly value={orderNo} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Order Date</label>
-                <input type="date" value={form.date} onChange={e => f("date", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                <Input label="Order Date" type="date" value={form.date} onChange={e => f("date", e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">PO No.</label>
-                <input value={form.poNo} onChange={e => f("poNo", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400"
-                  placeholder="Customer PO No." />
+                <Input label="PO No." value={form.poNo} onChange={e => f("poNo", e.target.value)} placeholder="Customer PO No." />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">PO Date</label>
-                <input type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                <Input label="PO Date" type="date" value={form.poDate} onChange={e => f("poDate", e.target.value)} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Type</label>
-                <SearchableSelect
+                <Select label="Sales Type"
                   value={form.salesType}
-                  onChange={val => f("salesType", val)}
-                  options={SALES_TYPES.map(s => ({ value: s, label: s }))}
-                  allowEmpty={false}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                  onChange={e => f("salesType", e.target.value)}
+                  options={[{ value: "", label: "-- Select --" }, ...SALES_TYPES.map(s => ({ value: s, label: s }))]}
                 />
               </div>
             </div>
@@ -1049,44 +1034,38 @@ export default function GravureOrdersPage() {
             {/* Row 2 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div className="sm:col-span-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Client Name *</label>
-                <SearchableSelect
+                <Select label="Client Name *"
                   value={form.customerId}
-                  onChange={val => {
+                  onChange={e => {
+                    const val = e.target.value;
                     const c = apiCustomers.find(x => x.id === val);
                     setForm(p => ({ ...blankForm(), customerId: val, customerName: c?.name || "", date: p.date, orderPrefix: p.orderPrefix }));
                     setAddedIds(new Set());
                     setEnquirySearch("");
                   }}
-                  options={apiCustomers.map(c => ({ value: c.id, label: c.name }))}
-                  placeholder="-- Select Customer --"
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                  options={[{ value: "", label: "-- Select Customer --" }, ...apiCustomers.map(c => ({ value: c.id, label: c.name }))]}
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Person</label>
-                <SearchableSelect
+                <Select label="Sales Person"
                   value={(form as any).salesPersonId || ""}
-                  onChange={val => {
+                  onChange={e => {
+                    const val = e.target.value;
                     const p = apiSalesPersons.find((x: any) => x.id === val) as any;
                     setForm(prev => ({ ...prev, salesPersonId: val, salesPerson: p?.name || "" } as any));
                   }}
-                  options={(apiSalesPersons as any[]).map((p: any) => ({ value: String(p.id ?? p), label: String(p.name ?? p) }))}
-                  placeholder="-- Select --"
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                  options={[{ value: "", label: "-- Select --" }, ...(apiSalesPersons as any[]).map((p: any) => ({ value: String(p.id ?? p), label: String(p.name ?? p) }))]}
                 />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-gray-500 uppercase">Sales Ledger</label>
-                <SearchableSelect
+                <Select label="Sales Ledger"
                   value={(form as any).salesLedgerId || ""}
-                  onChange={val => {
+                  onChange={e => {
+                    const val = e.target.value;
                     const l = (apiSalesLedgers as any[]).find((x: any) => (x.id ?? x) === val) as any;
                     setForm(prev => ({ ...prev, salesLedgerId: val, salesLedger: l?.name ?? l ?? "" } as any));
                   }}
-                  options={(apiSalesLedgers as any[]).map((l: any) => ({ value: String(l.id ?? l), label: String(l.name ?? l) }))}
-                  placeholder="-- Select --"
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
+                  options={[{ value: "", label: "-- Select --" }, ...(apiSalesLedgers as any[]).map((l: any) => ({ value: String(l.id ?? l), label: String(l.name ?? l) }))]}
                 />
               </div>
             </div>
@@ -1100,12 +1079,10 @@ export default function GravureOrdersPage() {
                   <Truck size={14} className="text-teal-600" />Direct Dispatch
                 </span>
               </label>
-              <SearchableSelect
+              <Select
                 value={form.status}
-                onChange={val => f("status", val as FormState["status"])}
+                onChange={e => f("status", e.target.value as FormState["status"])}
                 options={["Confirmed", "In Production", "Ready", "Dispatched", "Hold"].map(s => ({ value: s, label: s }))}
-                allowEmpty={false}
-                className="px-2 py-1.5 text-xs border border-gray-300 rounded-lg"
               />
             </div>
           </div>
@@ -1410,11 +1387,12 @@ export default function GravureOrdersPage() {
             {/* Input row */}
             <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 border-b border-gray-100">
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
                 {form.obLines.length > 1 ? (
-                  <SearchableSelect
+                  <Select
+                    label="PM Code"
                     value={dlvInput.pmCode}
-                    onChange={val => {
+                    onChange={e => {
+                      const val = e.target.value;
                       const line = form.obLines.find(l => l.productCode === val);
                       setDlvInput(p => ({
                         ...p,
@@ -1423,14 +1401,15 @@ export default function GravureOrdersPage() {
                         jobName: line ? (line.productName || p.jobName) : p.jobName,
                       }));
                     }}
-                    options={form.obLines.filter(l => l.productCode).map(l => ({ value: l.productCode, label: `${l.productCode} – ${l.productName}` }))}
-                    placeholder="-- Select --"
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                    options={[{ value: "", label: "-- Select --" }, ...form.obLines.filter(l => l.productCode).map(l => ({ value: l.productCode, label: `${l.productCode} – ${l.productName}` }))]}
                   />
                 ) : (
-                  <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
-                    {form.obLines[0]?.productCode || <span className="text-gray-300 text-xs">Auto-filled</span>}
-                  </div>
+                  <>
+                    <label className="text-[10px] font-semibold text-gray-500">PM Code</label>
+                    <div className="mt-1 px-2 py-1.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-600 min-h-[34px]">
+                      {form.obLines[0]?.productCode || <span className="text-gray-300 text-xs">Auto-filled</span>}
+                    </div>
+                  </>
                 )}
               </div>
               <div>
@@ -1440,44 +1419,34 @@ export default function GravureOrdersPage() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">Job Name</label>
-                <input value={dlvInput.jobName} onChange={e => setDlvInput(p => ({ ...p, jobName: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
+                <Input label="Job Name" value={dlvInput.jobName} onChange={e => setDlvInput(p => ({ ...p, jobName: e.target.value }))} />
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">Quantity</label>
-                <input type="number" value={dlvInput.scheduleQty || ""} onChange={e => setDlvInput(p => ({ ...p, scheduleQty: Number(e.target.value) }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
+                <Input label="Quantity" type="number" value={dlvInput.scheduleQty || ""} onChange={e => setDlvInput(p => ({ ...p, scheduleQty: Number(e.target.value) }))} />
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">Delivery Date</label>
-                <input type="date" value={dlvInput.deliveryDate} onChange={e => setDlvInput(p => ({ ...p, deliveryDate: e.target.value }))}
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-400" />
+                <Input label="Delivery Date" type="date" value={dlvInput.deliveryDate} onChange={e => setDlvInput(p => ({ ...p, deliveryDate: e.target.value }))} />
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">Consignee</label>
-                <SearchableSelect
+                <Select label="Consignee"
                   value={dlvInput.consigneeId}
-                  onChange={val => {
+                  onChange={e => {
+                    const val = e.target.value;
                     const c = apiConsignees.find(x => x.id === val);
                     setDlvInput(p => ({ ...p, consigneeId: val, consignee: c?.name || "" }));
                   }}
-                  options={apiConsignees.map(c => ({ value: c.id, label: c.name }))}
-                  placeholder="-- Select Consignee --"
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                  options={[{ value: "", label: "-- Select Consignee --" }, ...apiConsignees.map(c => ({ value: c.id, label: c.name }))]}
                 />
               </div>
               <div>
-                <label className="text-[10px] font-semibold text-gray-500">Transporter</label>
-                <SearchableSelect
+                <Select label="Transporter"
                   value={dlvInput.transporterId}
-                  onChange={val => {
+                  onChange={e => {
+                    const val = e.target.value;
                     const t = apiTransporters.find(x => x.id === val);
                     setDlvInput(p => ({ ...p, transporterId: val, transporter: t?.name || "" }));
                   }}
-                  options={apiTransporters.map(t => ({ value: t.id, label: t.name }))}
-                  placeholder="-- Select Transporter --"
-                  className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg bg-white"
+                  options={[{ value: "", label: "-- Select Transporter --" }, ...apiTransporters.map(t => ({ value: t.id, label: t.name }))]}
                 />
               </div>
               <div className="flex items-end">
@@ -1616,15 +1585,11 @@ export default function GravureOrdersPage() {
           {/* ── SECTION 5: Summary + Remarks ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white border border-gray-200 rounded-xl p-4">
-              <label className="text-[10px] font-bold text-gray-500 uppercase">Remark</label>
-              <textarea value={form.remarks} onChange={e => f("remarks", e.target.value)}
-                rows={4} placeholder="Special instructions, notes…"
-                className="mt-1 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400 resize-none" />
+              <Textarea label="Remark" value={form.remarks} onChange={e => f("remarks", e.target.value)}
+                rows={4} placeholder="Special instructions, notes…" />
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-semibold text-gray-500">Advance Paid (₹)</label>
-                  <input type="number" value={form.advancePaid || ""} onChange={e => f("advancePaid", Number(e.target.value))}
-                    className="mt-1 w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                  <Input label="Advance Paid (₹)" type="number" value={form.advancePaid || ""} onChange={e => f("advancePaid", Number(e.target.value))} />
                 </div>
                 <div className="flex flex-col justify-end">
                   <span className="text-[10px] text-gray-500">Balance Pending</span>
@@ -2448,13 +2413,12 @@ export default function GravureOrdersPage() {
               </div>
             </div>
             <div>
-              <label className="text-xs font-bold text-gray-600 uppercase tracking-wide">Reason for Hold *</label>
-              <textarea
+              <Textarea
+                label="Reason for Hold *"
                 value={holdReasonInput}
                 onChange={e => setHoldReasonInput(e.target.value)}
                 rows={3}
                 placeholder="e.g. Awaiting customer approval, Payment pending, Design revision required…"
-                className="mt-1.5 w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
                 autoFocus
               />
             </div>

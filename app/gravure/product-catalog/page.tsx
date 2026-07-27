@@ -239,6 +239,13 @@ export default function ProductCatalogPage() {
   const [showQuickChild,    setShowQuickChild]    = useState(false);
   const [quickChildName,    setQuickChildName]    = useState("");
   const [quickChildSaving,  setQuickChildSaving]  = useState(false);
+  const [artworkPickerOpen,  setArtworkPickerOpen]  = useState(false);
+  const [childPickerOpen,    setChildPickerOpen]    = useState(false);
+  const [artworkPreviewItem, setArtworkPreviewItem] = useState<ArtworkPickerItem | null>(null);
+  const [artworkPreviewFiles, setArtworkPreviewFiles] = useState<{FileID:string;AttachedFileName:string;AttachedFileRemark:string}[]>([]);
+  const [artworkPreviewLoading, setArtworkPreviewLoading] = useState(false);
+  const [diagramModalOpen, setDiagramModalOpen] = useState(false);
+  const [diagramZoom, setDiagramZoom] = useState(1);
 
   type FilmRequisition = { source: "Extrusion" | "Purchase" | ""; status: "Pending" | "Requested" | "Available"; requiredDate?: string; spec?: string; priority?: string; vendor?: string; expectedRate?: number; remarks?: string; };
   type ColorShade = { colorNo: number; colorName: string; inkType: "Spot" | "Process" | "Special"; pantoneRef: string; labL: string; labA: string; labB: string; actualL: string; actualA: string; actualB: string; deltaE: string; shadeCardRef: string; status: "Pending" | "Standard Received" | "Approved" | "Rejected"; remarks: string; inkItemId?: string; itemId?: string; itemName?: string; };
@@ -1790,12 +1797,27 @@ export default function ProductCatalogPage() {
     <div className="h-full overflow-hidden flex flex-col -m-4 md:-m-6 lg:-m-7">
 
       {/* Page Header */}
-      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-4 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
+      <div className="flex items-center justify-between px-4 md:px-6 lg:px-7 py-3 flex-shrink-0 border-b border-[rgb(var(--bd-default))]">
         <div className="flex items-center gap-2">
           <BookMarked size={18} className="text-purple-600" />
           <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Product Catalog</h2>
         </div>
-        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openDirectCreate}>Create Catalog</Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
+            <button onClick={() => setCatalogTab("pending")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${catalogTab === "pending" ? "bg-white shadow text-orange-600" : "text-gray-500 hover:text-gray-700"}`}>
+              <Clock size={12} />Pending
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${catalogTab === "pending" ? "bg-orange-100 text-orange-600" : "bg-gray-200 text-gray-600"}`}>{stats.pending}</span>
+            </button>
+            <button onClick={() => setCatalogTab("processed")}
+              className={`flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${catalogTab === "processed" ? "bg-white shadow text-purple-700" : "text-gray-500 hover:text-gray-700"}`}>
+              <CheckCircle2 size={12} />Processed
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${catalogTab === "processed" ? "bg-purple-100 text-purple-700" : "bg-gray-200 text-gray-600"}`}>{stats.processed}</span>
+            </button>
+          </div>
+          <TutorialButton title="Product Catalog — Tutorial" />
+          <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openDirectCreate}>Create Catalog</Button>
+        </div>
       </div>
 
       {/* ══ CONTENT AREA ══════════════════════════════════════════ */}
@@ -1804,28 +1826,6 @@ export default function ProductCatalogPage() {
       {/* ── PENDING TAB ─────────────────────────────────────────── */}
       {catalogTab === "pending" && (
         <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
-          {/* Toolbar row — mirrors DataTable search-bar row */}
-          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-3 py-2 flex-1 sm:max-w-xs shadow-sm">
-              <Clock size={14} className="text-orange-500 flex-shrink-0" />
-              <span className="text-sm text-gray-400 select-none">Pending orders</span>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
-                <button onClick={() => setCatalogTab("pending")}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-orange-600">
-                  <Clock size={12} />Pending
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-600">{stats.pending}</span>
-                </button>
-                <button onClick={() => setCatalogTab("processed")}
-                  className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
-                  <CheckCircle2 size={12} />Processed
-                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.processed}</span>
-                </button>
-              </div>
-              <Button variant="secondary" pill icon={<Plus size={13} />} onClick={openDirectCreate} className="text-xs py-1.5 px-3">Create Direct Catalog</Button>
-            </div>
-          </div>
           {/* List container */}
           <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           {pendingOrders.length === 0 ? (
@@ -1929,27 +1929,6 @@ export default function ProductCatalogPage() {
               searchKeys={["catalogNo", "productName", "customerName", "sourceOrderNo"]}
               stickyHeader
               scrollContainerClass="flex-1"
-              toolbar={
-                <div className="flex items-center gap-2">
-                  <div className="flex bg-gray-100 p-0.5 rounded-lg gap-0.5">
-                    <button onClick={() => setCatalogTab("pending")}
-                      className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap text-gray-500 hover:text-gray-700">
-                      <Clock size={12} />Pending
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-gray-200 text-gray-600">{stats.pending}</span>
-                    </button>
-                    <button onClick={() => setCatalogTab("processed")}
-                      className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap bg-white shadow text-purple-700">
-                      <CheckCircle2 size={12} />Processed
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">{stats.processed}</span>
-                    </button>
-                  </div>
-                  <TutorialButton title="Product Catalog — Tutorial" />
-                  <Button icon={<Plus size={13} />} onClick={openDirectCreate}
-                    className="bg-purple-600 text-white hover:bg-purple-700 border-0 text-xs py-1.5 px-3">
-                    Create Direct Catalog
-                  </Button>
-                </div>
-              }
               actions={row => (
                 <div className="flex items-center gap-1.5 justify-end flex-wrap">
                   <Button variant="ghost" size="sm" icon={<Eye size={13} />}
@@ -2168,178 +2147,109 @@ export default function ProductCatalogPage() {
               <div className="space-y-4">
                 <SH label="Product Details" />
 
-                {/* Artwork Picker — auto-fills Product Name, Customer, Category */}
-                {(
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
-                    <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block mb-1.5">
-                      Link Artwork Master (optional — auto-fills fields below)
-                    </label>
-                    <SearchableSelect
-                      value={selectedArtworkId}
-                      placeholder="-- Select Artwork (optional) --"
-                      options={artworkList.map(a => ({ value: String(a.ArtworkID), label: `${a.ArtworkNo} — ${a.ProductName} (${a.ClientName})` }))}
-                      onChange={val => {
-                        const aw = artworkList.find(a => String(a.ArtworkID) === val);
-                        setSelectedArtworkId(val);
-                        setSelectedSgId("");
-                        loadSubGroups(val);
-                        if (aw) {
-                          rf("productName", aw.ProductName || "");
-                          const ledgerId = String(aw.LedgerID);
-                          const catId    = String(aw.CategoryID);
-                          const c = customers.find(x => String(x.id) === ledgerId);
-                          rf("customerId", ledgerId as any);
-                          rf("customerName", c?.name ?? aw.ClientName ?? "");
-                          rf("categoryId",   catId   as any);
-                          rf("categoryName", aw.CategoryName || "");
-                          if (aw.Content) rf("content", aw.Content);
-                          rf("packSize"    as any, aw.PackSize    || "");
-                          rf("brandName"   as any, aw.BrandName   || "");
-                          rf("productType" as any, aw.ProductType || "");
-                          rf("skuType"     as any, aw.SkuType     || "");
-                          rf("bottleType"  as any, aw.BottleType  || "");
-                          rf("addressType" as any, aw.AddressType || "");
-                          rf("artworkName" as any, aw.ArtworkName || "");
-                          rf("specialSpecs" as any, aw.SpecialSpecs || "");
-                          const artBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
-                          fetch(`${artBase}/api/artworkManagement/attachments/${aw.ArtworkID}`, { headers: authHeaders() })
-                            .then(r => r.json())
-                            .then((raw: unknown) => {
-                              let d = raw;
-                              while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
-                              const atts = Array.isArray(d) ? d as { FileID: string; AttachedFileName: string; AttachedFileRemark: string }[] : [];
-                              const mapped: CatalogAttachment[] = atts.map(a => ({
-                                id: a.FileID || Math.random().toString(36).slice(2),
-                                name: a.AttachedFileName?.split("/").pop() || a.AttachedFileName || "",
-                                size: 0,
-                                url: a.AttachedFileName || "",
-                                mimeType: /\.(jpe?g|png|gif|webp|svg)$/i.test(a.AttachedFileName || "")
-                                  ? "image/jpeg"
-                                  : (a.AttachedFileName || "").toLowerCase().endsWith(".pdf")
-                                  ? "application/pdf" : "application/octet-stream",
-                                label: "From Artwork",
-                                preUploaded: true,
-                              }));
-                              setReplanAttachments(mapped);
-                            })
-                            .catch(() => {});
-                        } else {
-                          setReplanAttachments([]);
-                        }
-                      }}
-                      className="border-indigo-300"
-                    />
+                {/* Artwork Picker — compact side-by-side row */}
+                <div className="flex items-start gap-2">
 
-                    {/* Child Artwork picker — shows only when an artwork is selected */}
+                  {/* LEFT — Artwork Master (compact pill) */}
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-indigo-50 border border-indigo-200 rounded-lg min-w-0 flex-shrink-0 max-w-[52%]">
+                    <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider whitespace-nowrap">Artwork:</span>
+                    {selectedArtworkId ? (() => {
+                      const aw = artworkList.find(a => String(a.ArtworkID) === selectedArtworkId);
+                      return aw ? (
+                        <span className="text-[11px] font-semibold text-indigo-700 truncate min-w-0">
+                          {aw.ArtworkNo} — {aw.ProductName}
+                        </span>
+                      ) : null;
+                    })() : (
+                      <span className="text-[11px] text-gray-400 italic">None selected</span>
+                    )}
                     {selectedArtworkId && (
-                      <div className="mt-3">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
-                            Child Artwork
-                            {sgLoading && <span className="ml-2 text-[10px] font-normal text-gray-400">loading…</span>}
-                            {!sgLoading && sgList.length === 0 && !showQuickChild && <span className="ml-2 text-[10px] font-normal text-gray-400">(none yet)</span>}
-                          </label>
-                          {!showQuickChild && (
-                            <button
-                              type="button"
-                              onClick={() => router.push("/gravure/artwork-management")}
-                              className="flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-1 rounded-lg transition-colors"
-                            >
-                              + Add Child Artwork
+                      <button type="button" onClick={() => { setSelectedArtworkId(""); setSelectedSgId(""); setSgList([]); setReplanAttachments([]); }} className="text-gray-400 hover:text-red-500 flex-shrink-0 ml-1">
+                        <X size={11} />
+                      </button>
+                    )}
+                    <Button type="button" variant="secondary" size="sm" icon={<Search size={11}/>}
+                      onClick={() => setArtworkPickerOpen(true)} className="flex-shrink-0 whitespace-nowrap ml-1 !py-0.5 !px-2 !text-[10px]">
+                      Browse
+                    </Button>
+                  </div>
+
+                  {/* RIGHT — Child Artwork (appears only when parent selected) */}
+                  {selectedArtworkId && (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-50 border border-violet-200 rounded-lg min-w-0 flex-1">
+                      <span className="text-[10px] font-bold text-violet-500 uppercase tracking-wider whitespace-nowrap">
+                        Child:
+                        {sgLoading && <span className="ml-1 font-normal text-gray-400 normal-case">loading…</span>}
+                      </span>
+                      {sgList.length > 0 ? (
+                        <>
+                          <span className="text-[11px] text-violet-700 truncate min-w-0 flex-1">
+                            {selectedSgId
+                              ? (() => { const sg = sgList.find(s => String(s.SubGroupID) === selectedSgId); return sg ? `${sg.SubGroupNo} — ${sg.SubGroupName}` : "—"; })()
+                              : <span className="text-gray-400 italic">None selected</span>
+                            }
+                          </span>
+                          {selectedSgId && (
+                            <button type="button" onClick={() => setSelectedSgId("")} className="text-gray-400 hover:text-red-500 flex-shrink-0">
+                              <X size={11} />
                             </button>
                           )}
-                        </div>
-
-                        {/* Inline add form */}
-                        {showQuickChild && (
-                          <div className="flex gap-2 mb-2">
-                            <input
-                              value={quickChildName}
-                              onChange={e => setQuickChildName(e.target.value)}
-                              onKeyDown={e => { if (e.key === "Enter") quickAddChildArtwork(); if (e.key === "Escape") { setShowQuickChild(false); setQuickChildName(""); }}}
-                              placeholder="Child artwork name…"
-                              autoFocus
-                              className="flex-1 text-xs border border-indigo-300 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
-                            />
-                            <button
-                              type="button"
-                              onClick={quickAddChildArtwork}
-                              disabled={!quickChildName.trim() || quickChildSaving}
-                              className="text-xs font-semibold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                            >
-                              {quickChildSaving ? "Saving…" : "Save"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setShowQuickChild(false); setQuickChildName(""); }}
-                              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1.5 rounded-lg hover:bg-gray-100"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-
-                        {sgList.length > 0 && (
-                          <SearchableSelect
-                            value={selectedSgId}
-                            placeholder="-- Select Child Artwork (optional) --"
-                            options={sgList.map(s => ({ value: String(s.SubGroupID), label: `${s.SubGroupNo} — ${s.SubGroupName}${s.PackSize ? ` (${s.PackSize})` : ""}` }))}
-                            onChange={val => {
-                              const sg = sgList.find(s => String(s.SubGroupID) === val);
-                              setSelectedSgId(val);
-                              if (sg) {
-                                if (sg.Content)      rf("content",      sg.Content);
-                                if (sg.PackSize)     rf("packSize"     as any, sg.PackSize);
-                                if (sg.BrandName)    rf("brandName"    as any, sg.BrandName);
-                                if (sg.ProductType)  rf("productType"  as any, sg.ProductType);
-                                if (sg.SkuType)      rf("skuType"      as any, sg.SkuType);
-                                if (sg.BottleType)   rf("bottleType"   as any, sg.BottleType);
-                                if (sg.AddressType)  rf("addressType"  as any, sg.AddressType);
-                                if (sg.SpecialSpecs) rf("specialSpecs" as any, sg.SpecialSpecs);
-                              }
-                            }}
-                            className="mt-1 border-indigo-300"
-                          />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          <Button type="button" variant="secondary" size="sm" icon={<Eye size={11}/>}
+                            onClick={() => setChildPickerOpen(true)} className="flex-shrink-0 whitespace-nowrap !py-0.5 !px-2 !text-[10px]">
+                            Browse
+                          </Button>
+                        </>
+                      ) : !sgLoading ? (
+                        <>
+                          <span className="text-[11px] text-gray-400 italic flex-1">No child artworks</span>
+                          <button type="button" onClick={() => router.push("/gravure/artwork-management")}
+                            className="text-[10px] font-semibold text-violet-600 hover:text-violet-800 whitespace-nowrap flex-shrink-0">
+                            + Add
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2 lg:col-span-3">
-                    <Input label="Product Name *" value={replanForm.productName}
-                      onChange={e => rf("productName", e.target.value)} />
-                  </div>
-                  {/* Customer — dropdown for direct catalog; readonly if from order */}
-                  <div className="sm:col-span-2 lg:col-span-3">
-                    <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">
-                      Customer / Client Name *
-                    </label>
-                    {replanForm.sourceOrderId ? (
-                      <div className="px-3 py-2 bg-gray-100 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 flex items-center gap-2">
-                        <Lock size={12} className="text-gray-400" /> {replanForm.customerName || "—"}
-                        <span className="ml-auto text-[10px] text-gray-400 font-normal">From Order</span>
-                      </div>
-                    ) : (
-                      <>
-                        <SearchableSelect
-                          value={replanForm.customerId || ""}
-                          placeholder="-- Select Customer --"
-                          options={customers.map(c => ({ value: c.id, label: c.name }))}
-                          onChange={val => {
-                            const c = customers.find(x => x.id === val);
-                            rf("customerId", c?.id ?? "");
-                            rf("customerName", c?.name ?? "");
-                          }}
-                        />
-                        {replanForm.customerName && (
-                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                            <Check size={10} /> {replanForm.customerName}
-                          </p>
-                        )}
-                      </>
-                    )}
+                  {/* Product Name (left) + Customer (right) — same row */}
+                  <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Input label="Product Name *" value={replanForm.productName}
+                        onChange={e => rf("productName", e.target.value)} />
+                    </div>
+                    {/* Customer — dropdown for direct catalog; readonly if from order */}
+                    <div>
+                      {replanForm.sourceOrderId ? (
+                        <>
+                          <label className="block text-xs font-medium text-[rgb(var(--fg-default))] mb-1">Customer / Client Name *</label>
+                          <div className="h-10 px-3 py-2 bg-gray-100 border border-gray-200 rounded-md text-xs font-semibold text-gray-700 flex items-center gap-2">
+                            <Lock size={12} className="text-gray-400" /> {replanForm.customerName || "—"}
+                            <span className="ml-auto text-[10px] text-gray-400 font-normal">From Order</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <Select
+                            label="Customer / Client Name *"
+                            value={replanForm.customerId || ""}
+                            options={[{ value: "", label: "-- Select Customer --" }, ...customers.map(c => ({ value: c.id, label: c.name }))]}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const c = customers.find(x => x.id === val);
+                              rf("customerId", c?.id ?? "");
+                              rf("customerName", c?.name ?? "");
+                            }}
+                          />
+                          {replanForm.customerName && (
+                            <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                              <Check size={10} /> {replanForm.customerName}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                   {/* ── Product Details (merged master) ── */}
                   <div className="sm:col-span-2 lg:col-span-3">
@@ -2348,11 +2258,11 @@ export default function ProductCatalogPage() {
                       {/* Type of Product (was Category) */}
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Type of Product</label>
-                        <SearchableSelect
+                        <Select
                           value={replanForm.categoryId || ""}
-                          placeholder="-- Select Type --"
-                          options={categories.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))}
-                          onChange={val => {
+                          options={[{ value: "", label: "-- Select Type --" }, ...categories.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
+                          onChange={e => {
+                            const val = e.target.value;
                             if (!val) { setReplanForm(p => p ? { ...p, categoryId: "", categoryName: "", content: "" } : p); return; }
                             const hasPlys = replanForm.secondaryLayers.some(l => l.plyType || (l.consumableItems || []).length > 0);
                             if (hasPlys) { setPendingReplanCategoryId(val); }
@@ -2459,78 +2369,64 @@ export default function ProductCatalogPage() {
                         );
                       })()}
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Pack Size</label>
-                        <SearchableSelect
+                        <Select label="Pack Size"
                           value={(replanForm as any).packSize ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.packSizes, ...((replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) ? [(replanForm as any).packSize] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("packSize" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.packSizes, ...((replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) ? [(replanForm as any).packSize] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("packSize" as any, e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Brand Name</label>
-                        <SearchableSelect
+                        <Select label="Brand Name"
                           value={(replanForm as any).brandName ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.brandNames, ...((replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) ? [(replanForm as any).brandName] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("brandName" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.brandNames, ...((replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) ? [(replanForm as any).brandName] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("brandName" as any, e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Product Type</label>
-                        <SearchableSelect
+                        <Select label="Product Type"
                           value={(replanForm as any).productType ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.productTypes, ...((replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) ? [(replanForm as any).productType] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("productType" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.productTypes, ...((replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) ? [(replanForm as any).productType] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("productType" as any, e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">SKU Type</label>
-                        <SearchableSelect
+                        <Select label="SKU Type"
                           value={(replanForm as any).skuType ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.skuTypes, ...((replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) ? [(replanForm as any).skuType] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("skuType" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.skuTypes, ...((replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) ? [(replanForm as any).skuType] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("skuType" as any, e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Bottle Type</label>
-                        <SearchableSelect
+                        <Select label="Bottle Type"
                           value={(replanForm as any).bottleType ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.bottleTypes, ...((replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) ? [(replanForm as any).bottleType] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("bottleType" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.bottleTypes, ...((replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) ? [(replanForm as any).bottleType] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("bottleType" as any, e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Address Type</label>
-                        <SearchableSelect
+                        <Select label="Address Type"
                           value={(replanForm as any).addressType ?? ""}
-                          placeholder="-- Select --"
-                          options={[...fmOptions.addressTypes, ...((replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) ? [(replanForm as any).addressType] : [])].map(v => ({ value: v, label: v }))}
-                          onChange={val => rf("addressType" as any, val)}
+                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.addressTypes, ...((replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) ? [(replanForm as any).addressType] : [])].map(v => ({ value: v, label: v }))]}
+                          onChange={e => rf("addressType" as any, e.target.value)}
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Artwork Name</label>
-                        <input placeholder="e.g. Parle-G 100g Front Artwork v3" className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <Input label="Artwork Name"
+                          placeholder="e.g. Parle-G 100g Front Artwork v3"
                           value={(replanForm as any).artworkName ?? ""}
                           onChange={e => rf("artworkName" as any, e.target.value)} />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Special Specifications</label>
-                        <input placeholder="e.g. @20 Rs, Free, Promo, Export" className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 focus:bg-white outline-none focus:ring-2 focus:ring-orange-400"
+                        <Input label="Special Specifications"
+                          placeholder="e.g. @20 Rs, Free, Promo, Export"
                           value={(replanForm as any).specialSpecs ?? ""}
                           onChange={e => rf("specialSpecs" as any, e.target.value)} />
                       </div>
 
                       {/* ── Final Roll OD ── */}
                       <div>
-                        <label className="text-[10px] font-semibold text-teal-600 uppercase block mb-1">Final Roll OD (mm)</label>
-                        <input
+                        <Input label="Final Roll OD (mm)"
                           type="number" min={0} placeholder="e.g. 200"
-                          className="w-full text-sm border border-teal-200 rounded-xl px-3 py-2 bg-teal-50 focus:bg-white outline-none focus:ring-2 focus:ring-teal-400 font-mono"
                           value={(replanForm as any).finalRollOD ?? ""}
                           onChange={e => rf("finalRollOD" as any, Number(e.target.value) || undefined)}
                         />
@@ -2552,15 +2448,14 @@ export default function ProductCatalogPage() {
                       </div>
                       <div>
                         <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Print Type</label>
-                        <SearchableSelect
+                        <Select
                           value={replanForm.printType}
-                          allowEmpty={false}
                           options={[
                             { value: "Surface Print", label: "Surface Print" },
                             { value: "Reverse Print", label: "Reverse Print" },
                             { value: "Combination",   label: "Combination" },
                           ]}
-                          onChange={val => rf("printType", val as GravureProductCatalog["printType"])}
+                          onChange={e => rf("printType", e.target.value as GravureProductCatalog["printType"])}
                         />
                       </div>
                     </div>
@@ -2962,7 +2857,16 @@ export default function ProductCatalogPage() {
                           </div>
                         </div>
                       </div>
-                      <DimensionDiagram contentType={getDisplayContentType(replanForm.content)} dims={dimValues} />
+                      <div className="relative group">
+                        <DimensionDiagram contentType={getDisplayContentType(replanForm.content)} dims={dimValues} />
+                        <button
+                          type="button"
+                          onClick={() => { setDiagramZoom(1); setDiagramModalOpen(true); }}
+                          className="absolute top-2 right-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-white/90 hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-200 rounded-lg text-[11px] font-semibold shadow transition-all opacity-0 group-hover:opacity-100"
+                        >
+                          <EyeIcon size={13} /> View
+                        </button>
+                      </div>
                     </div>
                     {/* Unwind Direction — full width */}
                     <div className="border-t border-indigo-100 px-4 pt-3 pb-4">
@@ -3336,8 +3240,8 @@ export default function ProductCatalogPage() {
                     )}
                   </div>
                   {replanForm.processes.length > 0 ? (
-                    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                      <table className="min-w-full text-xs">
+                    <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                      <table className="min-w-full text-xs rounded-xl overflow-hidden">
                         <thead className="bg-gray-50 border-b border-gray-200">
                           <tr>
                             {["#", "Process (Master)", ""].map(h => (
@@ -3351,17 +3255,16 @@ export default function ProductCatalogPage() {
                               <td className="px-3 py-2 w-8 text-center">
                                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold">{i + 1}</span>
                               </td>
-                              <td className="px-3 py-2 min-w-[200px]">
-                                <SearchableSelect
+                              <td className="px-3 py-2 min-w-[260px]">
+                                <Select
                                   value={String(pr.processId || "")}
-                                  placeholder="-- Select Process --"
                                   options={[
+                                    { value: "", label: "-- Select Process --" },
                                     ...(pr.processId && !apiProcesses.find(p => String(p.ProcessID) === String(pr.processId)) && (pr as any).processName
                                       ? [{ value: String(pr.processId), label: (pr as any).processName }] : []),
                                     ...apiProcesses.map(p => ({ value: String(p.ProcessID), label: `${p.ProcessName} (${p.DepartmentName})` })),
                                   ]}
-                                  onChange={val => selectReplanProcess(i, val)}
-                                  className="text-xs"
+                                  onChange={e => selectReplanProcess(i, e.target.value)}
                                 />
                               </td>
                               <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeReplanProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
@@ -3427,7 +3330,7 @@ export default function ProductCatalogPage() {
                       {replanForm.secondaryLayers.map((l, index) => {
                         const thicknesses = FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)?.thicknesses || [];
                         return (
-                          <div key={l.id || `layer-${index}`} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative overflow-hidden">
+                          <div key={l.id || `layer-${index}`} className="bg-white border-2 border-purple-50 rounded-2xl shadow-sm relative">
                             <div className="flex items-center justify-between bg-purple-50 px-4 py-2 border-b border-purple-100">
                               <span className="text-xs font-bold text-purple-700 uppercase tracking-wider">
                                 {l.layerNo === 1 ? "1st" : l.layerNo === 2 ? "2nd" : l.layerNo === 3 ? "3rd" : `${l.layerNo}th`} Ply
@@ -3439,27 +3342,27 @@ export default function ProductCatalogPage() {
                             <div className="p-3 space-y-3">
                               <div>
                                 <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                                <SearchableSelect
+                                <Select
                                   value={l.plyType}
-                                  placeholder="-- Select Ply Type --"
                                   options={[
+                                    { value: "", label: "-- Select Ply Type --" },
                                     { value: "Film",       label: "Ply 1" },
                                     { value: "Printing",   label: "Ply 2" },
                                     { value: "Lamination", label: "Ply 3" },
                                     { value: "Coating",    label: "Ply 4" },
                                   ]}
-                                  onChange={val => onPlyTypeChange(index, val)}
+                                  onChange={e => onPlyTypeChange(index, e.target.value)}
                                 />
                               </div>
                               {l.plyType && (
                                 <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                                   <div>
                                     <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
-                                    <SearchableSelect
+                                    <Select
                                       value={l.itemId || ""}
-                                      placeholder="-- Select Film Item --"
-                                      options={(FILM_ITEMS as any[]).map(fi => ({ value: fi.id, label: fi.name }))}
-                                      onChange={val => {
+                                      options={[{ value: "", label: "-- Select Film Item --" }, ...(FILM_ITEMS as any[]).map(fi => ({ value: fi.id, label: fi.name }))]}
+                                      onChange={e => {
+                                        const val = e.target.value;
                                         const fi = FILM_ITEMS.find((x: any) => x.id === val);
                                         if (!fi) return;
                                         const thickness = parseFloat((fi as any).thickness) || 0;
@@ -3563,22 +3466,20 @@ export default function ProductCatalogPage() {
                                                 {/* Item Group */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                                  <SearchableSelect
+                                                  <Select
                                                     value={ci.itemGroup}
-                                                    placeholder="-- Group --"
-                                                    options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
-                                                    onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}
+                                                    options={[{ value: "", label: "-- Group --" }, ...CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))]}
+                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemGroup: e.target.value, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, ohPct: undefined, ncoPct: undefined })}
                                                     className="text-xs rounded-lg"
                                                   />
                                                 </div>
                                                 {/* Sub Group */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                                  <SearchableSelect
+                                                  <Select
                                                     value={ci.itemSubGroup}
-                                                    placeholder="-- Sub Group --"
-                                                    options={subGroups.map(sg => ({ value: sg, label: sg }))}
-                                                    onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
+                                                    options={[{ value: "", label: "-- Sub Group --" }, ...subGroups.map(sg => ({ value: sg, label: sg }))]}
+                                                    onChange={e => updatePlyConsumable(index, ciIdx, { itemSubGroup: e.target.value, itemId: "", itemName: "" })}
                                                     disabled={!ci.itemGroup}
                                                     className="text-xs rounded-lg"
                                                   />
@@ -3586,11 +3487,11 @@ export default function ProductCatalogPage() {
                                                 {/* Item Master */}
                                                 <div>
                                                   <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                                  <SearchableSelect
+                                                  <Select
                                                     value={ci.itemId}
-                                                    placeholder="-- Select Item --"
-                                                    options={filteredItems.map(it => ({ value: it.id, label: it.name }))}
-                                                    onChange={val => {
+                                                    options={[{ value: "", label: "-- Select Item --" }, ...filteredItems.map(it => ({ value: it.id, label: it.name }))]}
+                                                    onChange={e => {
+                                                      const val = e.target.value;
                                                       const it = filteredItems.find(x => x.id === val);
                                                       const updates: Record<string, unknown> = { itemId: it?.id ?? "", itemName: it?.name ?? "" };
                                                       if (ci.itemGroup === "Ink" && it) {
@@ -6168,6 +6069,215 @@ export default function ProductCatalogPage() {
           <div className="flex justify-end gap-3">
             <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
             <Button variant="danger" onClick={() => { deleteCatalogItem(deleteId); setDeleteId(null); }}>Delete</Button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ══ ARTWORK MASTER PICKER MODAL ══════════════════════════ */}
+      {artworkPickerOpen && (
+        <Modal open={artworkPickerOpen} onClose={() => setArtworkPickerOpen(false)} title="Select Artwork Master" size="xl">
+          <DataTable
+            data={artworkList}
+            pageSize={15}
+            searchKeys={["ArtworkNo", "ProductName", "ArtworkName", "BrandName"] as any}
+            columns={([
+              { key: "ArtworkNo",    header: "Artwork No",    sortable: true,  render: (a: any) => <span className="font-semibold text-[var(--erp-primary)]">{a.ArtworkNo || "—"}</span> },
+              { key: "ProductName",  header: "Product Name",  sortable: true  },
+              { key: "ArtworkName",  header: "Artwork Name",  sortable: true  },
+              { key: "Content",      header: "Content",       sortable: false },
+              { key: "PackSize",     header: "Pack Size",     sortable: false },
+              { key: "BrandName",    header: "Brand",         sortable: true  },
+            ] as Column<(typeof artworkList)[0]>[])}
+            actions={(a) => (
+              <div className="flex items-center gap-1">
+              <button type="button" title="Preview Artwork"
+                className="p-1.5 rounded-md text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                onClick={() => {
+                  setArtworkPreviewItem(a);
+                  setArtworkPreviewFiles([]);
+                  setArtworkPreviewLoading(true);
+                  const artBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+                  fetch(`${artBase}/api/artworkManagement/attachments/${a.ArtworkID}`, { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then((raw: unknown) => {
+                      let d = raw;
+                      while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
+                      setArtworkPreviewFiles(Array.isArray(d) ? d as {FileID:string;AttachedFileName:string;AttachedFileRemark:string}[] : []);
+                    })
+                    .catch(() => setArtworkPreviewFiles([]))
+                    .finally(() => setArtworkPreviewLoading(false));
+                }}>
+                <Eye size={15} />
+              </button>
+              <Button size="sm" variant="action-create"
+                onClick={() => {
+                  const val = String(a.ArtworkID);
+                  setSelectedArtworkId(val);
+                  setSelectedSgId("");
+                  loadSubGroups(val);
+                  rf("productName", a.ProductName || "");
+                  const ledgerId = String(a.LedgerID);
+                  const catId    = String(a.CategoryID);
+                  const c = customers.find(x => String(x.id) === ledgerId);
+                  rf("customerId", ledgerId as any);
+                  rf("customerName", c?.name ?? a.ClientName ?? "");
+                  rf("categoryId",   catId   as any);
+                  rf("categoryName", a.CategoryName || "");
+                  if (a.Content) rf("content", a.Content);
+                  rf("packSize"    as any, a.PackSize    || "");
+                  rf("brandName"   as any, a.BrandName   || "");
+                  rf("productType" as any, a.ProductType || "");
+                  rf("skuType"     as any, a.SkuType     || "");
+                  rf("bottleType"  as any, a.BottleType  || "");
+                  rf("addressType" as any, a.AddressType || "");
+                  rf("artworkName" as any, a.ArtworkName || "");
+                  rf("specialSpecs" as any, a.SpecialSpecs || "");
+                  const artBase = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
+                  fetch(`${artBase}/api/artworkManagement/attachments/${a.ArtworkID}`, { headers: authHeaders() })
+                    .then(r => r.json())
+                    .then((raw: unknown) => {
+                      let d = raw;
+                      while (typeof d === "string") { try { d = JSON.parse(d); } catch { break; } }
+                      const atts = Array.isArray(d) ? d as { FileID: string; AttachedFileName: string; AttachedFileRemark: string }[] : [];
+                      const mapped: CatalogAttachment[] = atts.map(att => ({
+                        id: att.FileID || Math.random().toString(36).slice(2),
+                        name: att.AttachedFileName?.split("/").pop() || att.AttachedFileName || "",
+                        size: 0,
+                        url: att.AttachedFileName || "",
+                        mimeType: /\.(jpe?g|png|gif|webp|svg)$/i.test(att.AttachedFileName || "")
+                          ? "image/jpeg"
+                          : (att.AttachedFileName || "").toLowerCase().endsWith(".pdf")
+                          ? "application/pdf" : "application/octet-stream",
+                        label: "From Artwork",
+                        preUploaded: true,
+                      }));
+                      setReplanAttachments(mapped);
+                    })
+                    .catch(() => {});
+                  setArtworkPickerOpen(false);
+                }}>
+                Select
+              </Button>
+              </div>
+            )}
+            getRowId={(a) => String(a.ArtworkID)}
+          />
+        </Modal>
+      )}
+
+      {/* ══ CHILD ARTWORK PICKER MODAL ═══════════════════════════ */}
+      {childPickerOpen && (
+        <Modal open={childPickerOpen} onClose={() => setChildPickerOpen(false)} title="Select Child Artwork" size="xl">
+          <DataTable
+            data={sgList}
+            pageSize={15}
+            searchKeys={["SubGroupNo", "SubGroupName", "PackSize", "BrandName"] as any}
+            columns={([
+              { key: "SubGroupNo",   header: "Sub Group No",   sortable: true, render: (sg: any) => <span className="font-semibold text-[var(--erp-primary)]">{sg.SubGroupNo || "—"}</span> },
+              { key: "SubGroupName", header: "Sub Group Name",  sortable: true  },
+              { key: "PackSize",     header: "Pack Size",       sortable: false },
+              { key: "BrandName",    header: "Brand Name",      sortable: true  },
+              { key: "Content",      header: "Content",         sortable: false },
+              { key: "SpecialSpecs", header: "Special Specs",   sortable: false },
+            ] as Column<(typeof sgList)[0]>[])}
+            actions={(sg) => (
+              <Button size="sm" variant="action-create"
+                onClick={() => {
+                  setSelectedSgId(String(sg.SubGroupID));
+                  if (sg.Content)      rf("content",      sg.Content);
+                  if (sg.PackSize)     rf("packSize"     as any, sg.PackSize);
+                  if (sg.BrandName)    rf("brandName"    as any, sg.BrandName);
+                  if (sg.ProductType)  rf("productType"  as any, sg.ProductType);
+                  if (sg.SkuType)      rf("skuType"      as any, sg.SkuType);
+                  if (sg.BottleType)   rf("bottleType"   as any, sg.BottleType);
+                  if (sg.AddressType)  rf("addressType"  as any, sg.AddressType);
+                  if (sg.SpecialSpecs) rf("specialSpecs" as any, sg.SpecialSpecs);
+                  setChildPickerOpen(false);
+                }}>
+                Select
+              </Button>
+            )}
+            getRowId={(sg) => String(sg.SubGroupID)}
+          />
+        </Modal>
+      )}
+
+      {/* ══ DIAGRAM ZOOM MODAL ═══════════════════════════════════ */}
+      {diagramModalOpen && replanForm?.content && (
+        <Modal open={diagramModalOpen} onClose={() => setDiagramModalOpen(false)}
+          title={`Diagram — ${replanForm?.content ?? ""}`} size="xl">
+          <div className="flex flex-col gap-3">
+            {/* Zoom controls */}
+            <div className="flex items-center justify-center gap-3">
+              <button type="button"
+                onClick={() => setDiagramZoom(z => Math.max(0.5, parseFloat((z - 0.25).toFixed(2))))}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors">−</button>
+              <span className="text-xs font-semibold text-gray-600 min-w-[48px] text-center">{Math.round(diagramZoom * 100)}%</span>
+              <button type="button"
+                onClick={() => setDiagramZoom(z => Math.min(3, parseFloat((z + 0.25).toFixed(2))))}
+                className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors">+</button>
+              <button type="button"
+                onClick={() => setDiagramZoom(1)}
+                className="px-3 py-1.5 text-[11px] font-semibold border border-gray-200 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors">Reset</button>
+            </div>
+            {/* Diagram with zoom */}
+            <div className="overflow-auto rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center min-h-[400px]">
+              <div style={{ transform: `scale(${diagramZoom})`, transformOrigin: "center center", transition: "transform 0.2s ease" }}>
+                <DimensionDiagram contentType={getDisplayContentType(replanForm?.content ?? "")} dims={dimValues} />
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ══ ARTWORK IMAGE PREVIEW MODAL ══════════════════════════ */}
+      {artworkPreviewItem && (
+        <Modal open={!!artworkPreviewItem} onClose={() => { setArtworkPreviewItem(null); setArtworkPreviewFiles([]); }}
+          title={`Artwork Preview — ${artworkPreviewItem.ArtworkNo || ""}${artworkPreviewItem.ArtworkName ? " · " + artworkPreviewItem.ArtworkName : ""}`}
+          size="xl">
+          <div className="space-y-3">
+            {artworkPreviewLoading ? (
+              <div className="flex items-center justify-center py-12 text-gray-400 text-sm gap-2">
+                <RefreshCw size={16} className="animate-spin" /> Loading artwork files…
+              </div>
+            ) : artworkPreviewFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-gray-400 gap-2">
+                <Palette size={32} className="opacity-30" />
+                <p className="text-sm">No artwork files attached to this record.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {artworkPreviewFiles.map((f, idx) => {
+                  const url = f.AttachedFileName || "";
+                  const isImage = /\.(jpe?g|png|gif|webp|svg)$/i.test(url);
+                  const isPdf   = url.toLowerCase().endsWith(".pdf");
+                  return (
+                    <div key={f.FileID || idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                      {f.AttachedFileRemark && (
+                        <div className="px-3 py-1.5 bg-gray-50 border-b border-gray-200 text-[11px] text-gray-500 flex items-center gap-1.5">
+                          <Info size={11} /> {f.AttachedFileRemark}
+                        </div>
+                      )}
+                      {isImage ? (
+                        <img src={url} alt={f.AttachedFileRemark || `Artwork ${idx + 1}`}
+                          className="w-full max-h-[480px] object-contain bg-gray-50" />
+                      ) : isPdf ? (
+                        <iframe src={url} title={f.AttachedFileRemark || `PDF ${idx + 1}`}
+                          className="w-full h-[480px] border-0" />
+                      ) : (
+                        <div className="flex items-center justify-center py-8 gap-2 text-sm text-gray-500">
+                          <FileText size={20} className="text-gray-400" />
+                          <a href={url} target="_blank" rel="noreferrer"
+                            className="text-indigo-600 underline underline-offset-2 hover:text-indigo-800">
+                            {url.split("/").pop() || "View file"}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </Modal>
       )}

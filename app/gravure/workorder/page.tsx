@@ -3692,28 +3692,28 @@ export default function GravureWorkOrderPage() {
                       <div className="p-3 space-y-3">
                         {/* Ply Type */}
                         <div>
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Ply Type *</label>
-                          <SearchableSelect
+                          <Select
+                            label="Ply Type *"
                             value={l.plyType}
-                            onChange={val => onPlyTypeChange(index, val)}
+                            onChange={e => { const val = e.target.value; onPlyTypeChange(index, val); }}
                             options={[
+                              { value: "", label: "-- Select Ply Type --" },
                               { value: "Film", label: "Ply 1" },
                               { value: "Printing", label: "Ply 2" },
                               { value: "Lamination", label: "Ply 3" },
                               { value: "Coating", label: "Ply 4" },
                             ]}
-                            placeholder="-- Select Ply Type --"
-                            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 outline-none"
                           />
                         </div>
                         {/* Film Substrate */}
                         {l.plyType && (
                           <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                             <div>
-                              <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Type</label>
-                              <SearchableSelect
+                              <Select
+                                label="Film Type"
                                 value={l.itemSubGroup}
-                                onChange={val => {
+                                onChange={e => {
+                                  const val = e.target.value;
                                   const subGroup = val;
                                   const sg = FILM_SUBGROUPS.find(s => s.subGroup === subGroup);
                                   const layers = [...form.secondaryLayers];
@@ -3721,30 +3721,31 @@ export default function GravureWorkOrderPage() {
                                   f("secondaryLayers", layers);
                                 }}
                                 options={[
+                                  { value: "", label: "Select Film Type" },
                                   ...(l.itemSubGroup && !FILM_SUBGROUPS.find(s => s.subGroup === l.itemSubGroup)
                                     ? [{ value: l.itemSubGroup, label: `${l.itemSubGroup} ${l.itemName ? `(${l.itemName})` : "(from catalog)"}` }]
                                     : []),
                                   ...FILM_SUBGROUPS.map(opt => ({ value: opt.subGroup, label: opt.subGroup })),
                                 ]}
-                                placeholder="Select Film Type"
-                                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white outline-none"
                               />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                               <Input label="Density" type="number" value={l.density || ""} readOnly className="bg-gray-50 text-gray-400 text-xs" />
                               <div>
-                                <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Thickness (μ)</label>
-                                <SearchableSelect
+                                <Select
+                                  label="Thickness (μ)"
                                   value={l.thickness ? String(l.thickness) : ""}
-                                  onChange={val => {
+                                  onChange={e => {
+                                    const val = e.target.value;
                                     const thickness = Number(val);
                                     const layers = [...form.secondaryLayers];
                                     layers[index] = { ...l, thickness, gsm: parseFloat((thickness * l.density).toFixed(3)) };
                                     f("secondaryLayers", layers);
                                   }}
-                                  options={thicknesses.map(t => ({ value: String(t), label: String(t) }))}
-                                  placeholder="Select"
-                                  className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
+                                  options={[
+                                    { value: "", label: "Select" },
+                                    ...thicknesses.map(t => ({ value: String(t), label: String(t) })),
+                                  ]}
                                 />
                               </div>
                               <Input label="Film GSM" type="number" value={l.gsm || ""} readOnly className="font-bold bg-purple-50 text-purple-800 border-blue-200 text-xs" />
@@ -3806,33 +3807,36 @@ export default function GravureWorkOrderPage() {
                                     <div className={`grid grid-cols-2 gap-2 sm:grid-cols-${colCount}`}>
                                       {/* Item Group */}
                                       <div>
-                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
-                                        <SearchableSelect
+                                        <Select
+                                          label="Item Group"
                                           value={ci.itemGroup}
-                                          onChange={val => updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, solidPct: undefined, ohPct: undefined, ncoPct: undefined })}
-                                          options={CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))}
-                                          placeholder="-- Group --"
-                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          onChange={e => { const val = e.target.value; updatePlyConsumable(index, ciIdx, { itemGroup: val, itemSubGroup: "", itemId: "", itemName: "", gsm: 0, solidPct: undefined, ohPct: undefined, ncoPct: undefined }); }}
+                                          options={[
+                                            { value: "", label: "-- Group --" },
+                                            ...CONSUMABLE_GROUPS.map(g => ({ value: g, label: g })),
+                                          ]}
                                         />
                                       </div>
                                       {/* Sub Group */}
                                       <div>
-                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
-                                        <SearchableSelect
+                                        <Select
+                                          label="Sub Group"
                                           value={ci.itemSubGroup}
-                                          onChange={val => updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" })}
-                                          options={subGroups.map(sg => ({ value: sg, label: sg }))}
-                                          placeholder="-- Sub Group --"
-                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          onChange={e => { const val = e.target.value; updatePlyConsumable(index, ciIdx, { itemSubGroup: val, itemId: "", itemName: "" }); }}
+                                          options={[
+                                            { value: "", label: "-- Sub Group --" },
+                                            ...subGroups.map(sg => ({ value: sg, label: sg })),
+                                          ]}
                                           disabled={!ci.itemGroup}
                                         />
                                       </div>
                                       {/* Item Master */}
                                       <div>
-                                        <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
-                                        <SearchableSelect
+                                        <Select
+                                          label="Item (Master)"
                                           value={ci.itemId}
-                                          onChange={val => {
+                                          onChange={e => {
+                                            const val = e.target.value;
                                             const apiIt = filteredApiItems.find(x => String(x.ItemID) === val);
                                             const staticIt = filteredStaticItems.find(x => x.id === val);
                                             const patch: Record<string, unknown> = {
@@ -3845,11 +3849,12 @@ export default function GravureWorkOrderPage() {
                                             }
                                             updatePlyConsumable(index, ciIdx, patch);
                                           }}
-                                          options={filteredApiItems.length > 0
-                                            ? filteredApiItems.map(it => ({ value: String(it.ItemID), label: it.ItemName }))
-                                            : filteredStaticItems.map(it => ({ value: it.id, label: it.name }))}
-                                          placeholder="-- Select Item --"
-                                          className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white outline-none"
+                                          options={[
+                                            { value: "", label: "-- Select Item --" },
+                                            ...(filteredApiItems.length > 0
+                                              ? filteredApiItems.map(it => ({ value: String(it.ItemID), label: it.ItemName }))
+                                              : filteredStaticItems.map(it => ({ value: it.id, label: it.name }))),
+                                          ]}
                                           disabled={!ci.itemGroup}
                                         />
                                       </div>
@@ -4452,18 +4457,17 @@ export default function GravureWorkOrderPage() {
                                   <p className="text-[10px] font-bold text-blue-800 uppercase tracking-widest">Purchase Request Details</p>
                                   <div className="grid grid-cols-2 gap-2">
                                     <div>
-                                      <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Preferred Vendor</label>
-                                      <SearchableSelect
+                                      <Select
+                                        label="Preferred Vendor"
                                         value={req.vendor ?? ""}
-                                        onChange={val => setReq({ vendor: val })}
+                                        onChange={e => { const val = e.target.value; setReq({ vendor: val }); }}
                                         options={[
+                                          { value: "", label: "-- Select Vendor --" },
                                           ...(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).map(v => ({ value: v.name, label: v.name })),
                                           ...(req.vendor && !(dbVendors.length > 0 ? dbVendors : VENDOR_LEDGERS).some(v => v.name === req.vendor)
                                             ? [{ value: req.vendor, label: req.vendor }]
                                             : []),
                                         ]}
-                                        placeholder="-- Select Vendor --"
-                                        className="w-full text-xs border border-gray-200 rounded-xl px-2 py-2 bg-white outline-none"
                                       />
                                     </div>
                                     <Input label="Expected Rate (₹/Kg)" type="number" value={req.expectedRate ?? ""}
@@ -5979,41 +5983,22 @@ export default function GravureWorkOrderPage() {
               Creating a replacement cylinder for <strong>{newCylModal.fromTool.code}</strong>. Specs are pre-filled — update code and name, then save.
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Cylinder Code *</label>
-                <input className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={newCylForm.code} onChange={e => setNewCylForm(p => ({ ...p, code: e.target.value }))} placeholder="e.g. CYL-P001-R" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Cylinder Name *</label>
-                <input className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={newCylForm.name} onChange={e => setNewCylForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Parle – Reprint – 8C" />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Print Width (mm)</label>
-                <input type="number" className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
-                  value={newCylForm.printWidth} onChange={e => setNewCylForm(p => ({ ...p, printWidth: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Repeat Length (mm)</label>
-                <input type="number" className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
-                  value={newCylForm.repeatLength} onChange={e => setNewCylForm(p => ({ ...p, repeatLength: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Shelf Life (meters)</label>
-                <input type="number" className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-400 font-mono"
-                  value={newCylForm.shelfLifeMeters} onChange={e => setNewCylForm(p => ({ ...p, shelfLifeMeters: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Material</label>
-                <SearchableSelect
-                  value={newCylForm.cylinderMaterial}
-                  onChange={val => setNewCylForm(p => ({ ...p, cylinderMaterial: val }))}
-                  options={[{ value: "Steel", label: "Steel" }, { value: "Aluminium", label: "Aluminium" }, { value: "Copper", label: "Copper" }]}
-                  className="mt-1 w-full text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 bg-white outline-none"
-                  allowEmpty={false}
-                />
-              </div>
+              <Input label="Cylinder Code *"
+                value={newCylForm.code} onChange={e => setNewCylForm(p => ({ ...p, code: e.target.value }))} placeholder="e.g. CYL-P001-R" />
+              <Input label="Cylinder Name *"
+                value={newCylForm.name} onChange={e => setNewCylForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Parle – Reprint – 8C" />
+              <Input label="Print Width (mm)" type="number" className="font-mono"
+                value={newCylForm.printWidth} onChange={e => setNewCylForm(p => ({ ...p, printWidth: e.target.value }))} />
+              <Input label="Repeat Length (mm)" type="number" className="font-mono"
+                value={newCylForm.repeatLength} onChange={e => setNewCylForm(p => ({ ...p, repeatLength: e.target.value }))} />
+              <Input label="Shelf Life (meters)" type="number" className="font-mono"
+                value={newCylForm.shelfLifeMeters} onChange={e => setNewCylForm(p => ({ ...p, shelfLifeMeters: e.target.value }))} />
+              <Select
+                label="Material"
+                value={newCylForm.cylinderMaterial}
+                onChange={e => setNewCylForm(p => ({ ...p, cylinderMaterial: e.target.value }))}
+                options={[{ value: "Steel", label: "Steel" }, { value: "Aluminium", label: "Aluminium" }, { value: "Copper", label: "Copper" }]}
+              />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" onClick={() => setNewCylModal(null)}>Cancel</Button>
