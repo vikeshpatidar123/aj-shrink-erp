@@ -1,6 +1,6 @@
 "use client";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 
 interface ModalProps {
   open: boolean;
@@ -9,6 +9,7 @@ interface ModalProps {
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl" | "full";
   subHeader?: React.ReactNode;
+  bodyRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const SIZE_CLASS: Record<string, string> = {
@@ -19,7 +20,7 @@ const SIZE_CLASS: Record<string, string> = {
   full: "w-full h-full",
 };
 
-export default function Modal({ open, onClose, title, children, size = "md", subHeader }: ModalProps) {
+export default function Modal({ open, onClose, title, children, size = "md", subHeader, bodyRef }: ModalProps) {
   const isFullScreen = size === "full";
 
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function Modal({ open, onClose, title, children, size = "md", sub
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">{children}</div>
+        <div ref={bodyRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5">{children}</div>
       </div>
     </div>
   );
