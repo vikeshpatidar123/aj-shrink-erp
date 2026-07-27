@@ -1,10 +1,10 @@
 "use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
 import {
-  ChevronRight, ChevronLeft, Plus, X, Save, FileText, Settings,
+  ChevronRight, ChevronLeft, ChevronDown, Plus, X, Save, FileText, Settings,
   Trash2, Edit, Search, Eye, Filter, Download, MoreHorizontal, Check,
   Calculator, Pencil, ArrowRight, RefreshCw, Wrench, Archive, Palette,
   Eye as EyeIcon, Printer, ShoppingCart, BookCheck,
@@ -29,6 +29,8 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { CustomerSelectField } from "@/components/ui/CustomerSelectField";
+import { FieldMasterSelectField } from "@/components/ui/FieldMasterSelectField";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
 // ─── Master-filtered lists ────────────────────────────────────
@@ -38,6 +40,12 @@ const SOLVENT_ITEMS  = items.filter(i => i.group === "Solvent"  && i.active);
 const ADHESIVE_ITEMS = items.filter(i => i.group === "Adhesive" && i.active);
 const HARDNER_ITEMS  = items.filter(i => i.group === "Hardner"  && i.active);
 const ALL_MAT_ITEMS  = [...FILM_ITEMS, ...INK_ITEMS, ...SOLVENT_ITEMS, ...ADHESIVE_ITEMS, ...HARDNER_ITEMS];
+
+const FINISH_GOODS_TYPES = [
+  "3 Side Seal Sachet", "Center Seal Pouch", "Stand Up Pouch",
+  "Gusset Bag", "Flat Bottom Pouch", "Sleeve — Shrink",
+  "In-Mould Labels", "BOPP Label", "CSD", "Shrink Sleeve",
+];
 
 // Fallback static data (used when API not yet loaded)
 const STATIC_PRINT_MACHINES = machines.filter(m => m.department === "Printing");
@@ -421,10 +429,10 @@ const FILM_SUBGROUPS = Array.from(
 
 export default function GravureEstimationPage() {
   const router = useRouter();
-  const { categories } = useCategories();
+  const { categories, refresh: refreshCategories } = useCategories();
   const { enquiries: allEnquiries } = useEnquiries();
   const { catalog: productCatalog } = useProductCatalog();
-  const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw } = useMasters();
+  const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw, refresh: refreshMasters } = useMasters();
   const gravureEnqList = allEnquiries.filter(e => e.businessUnit === "Gravure");
   const activeCatalog  = productCatalog.filter(c => c.status === "Active");
 
@@ -964,6 +972,7 @@ export default function GravureEstimationPage() {
 
   const [showPlan, setShowPlan] = useState(false);
   const [pendingCategoryId, setPendingCategoryId] = useState<string | null>(null);
+  const [estContentPickerOpen, setEstContentPickerOpen] = useState(false);
   const [previewCode, setPreviewCode] = useState<string>("");
 
   // ── Cylinder Alloc state ─────────────────────────────────
@@ -1007,6 +1016,8 @@ export default function GravureEstimationPage() {
 
   // Tab navigation states
   const [activeTab, setActiveTab] = useState<number>(1);
+  const estModalBodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { estModalBodyRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [activeTab]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [isPlanApplied, setIsPlanApplied] = useState(false);
   const [pendingSavedPlan, setPendingSavedPlan] = useState<{ planId: string; plan: any } | null>(null);
@@ -2771,7 +2782,7 @@ export default function GravureEstimationPage() {
       </div>
 
       {/* ══ ADD / EDIT MODAL ══════════════════════════════════════ */}
-      <Modal open={modalOpen} onClose={() => setModal(false)} title={editing ? "Edit Estimation" : "New Gravure Estimation"} size="xl"
+      <Modal open={modalOpen} onClose={() => setModal(false)} title={editing ? "Edit Estimation" : "New Gravure Estimation"} size="xl" bodyRef={estModalBodyRef}
         subHeader={
           <div className="flex bg-gray-100 p-1.5 rounded-xl mb-3 shadow-inner gap-1 overflow-x-auto">
             <button onClick={() => setActiveTab(1)} className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all whitespace-nowrap flex-shrink-0 ${activeTab === 1 ? 'bg-white shadow text-purple-700' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}><span className="hidden sm:inline">1. Basic Info</span><span className="sm:hidden">① Info</span></button>
@@ -2868,7 +2879,7 @@ export default function GravureEstimationPage() {
                    }}
                    options={[{ value: "", label: "-- Direct Estimation --" }, ...gravureEnqList.map(e => ({ value: e.id, label: `${e.enquiryNo} – ${e.customerName}` }))]}
                  />
-                 <Select
+                 <CustomerSelectField
                    label="Customer *"
                    value={form.customerId}
                    onChange={e => {
@@ -2880,10 +2891,24 @@ export default function GravureEstimationPage() {
                      { value: "", label: apiCustomers.length === 0 ? "Loading customers..." : "-- Select Customer --" },
                      ...apiCustomers.map(c => ({ value: String(c.LedgerID), label: c.CustomerName }))
                    ]}
+                   onRefresh={refreshMasters}
                  />
                  <Input label="Job Name *" value={form.jobName} onChange={e => f("jobName", e.target.value)} placeholder="Job / carton description" />
-                 <Select
-                   label="Select Category"
+                 <div className="flex flex-col gap-1">
+                   <div className="flex items-center justify-between mb-0.5">
+                     <label className="block text-xs font-medium text-[rgb(var(--fg-default))]">Finish Goods Category</label>
+                     <div className="flex items-center gap-1">
+                       <a href="/masters/categories" target="_blank" rel="noopener noreferrer" title="Add new category"
+                         className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                         <Plus size={10} strokeWidth={2.5} /> New
+                       </a>
+                       <button type="button" title="Refresh categories" onClick={() => refreshCategories()}
+                         className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                         <RefreshCw size={11} />
+                       </button>
+                     </div>
+                   </div>
+                   <Select
                    value={form.categoryId || ""}
                    onChange={e => {
                      const hasPlys = form.secondaryLayers.some(l => l.plyType || l.consumableItems.length > 0);
@@ -2894,7 +2919,7 @@ export default function GravureEstimationPage() {
                      }
                    }}
                    options={[
-                     { value: "", label: "-- Select Category --" },
+                     { value: "", label: "-- Select Finish Goods Category --" },
                      ...categories.map(c => ({ value: c.id, label: c.name })),
                      // Fallback: show pre-selected value even if API categories not loaded yet
                      ...(form.categoryId && form.categoryName && !categories.find(c => c.id === form.categoryId)
@@ -2902,27 +2927,83 @@ export default function GravureEstimationPage() {
                        : []),
                    ]}
                  />
-                 <Select
-                   label="Select Product Type *"
-                   value={form.content || ""}
-                   onChange={e => {
-                     const cn = (e.target.value || "").toLowerCase();
-                     setForm(p => ({
-                       ...p,
-                       content: e.target.value,
-                       structureType: getStructureType(e.target.value),
-                     } as any));
-                   }}
-                   options={[
-                     ...(!form.categoryId ? [] : [{ value: "", label: "-- Select Product Type --" }]),
-                     ...(categories.find(c => c.id === form.categoryId)?.contents || []).map(ctx => ({ value: ctx, label: ctx })),
-                     // Fallback: show pre-selected content even if category contents not loaded yet
-                     ...(form.content && !(categories.find(c => c.id === form.categoryId)?.contents || []).includes(form.content)
-                       ? [{ value: form.content, label: form.content }]
-                       : []),
-                   ]}
-                   disabled={!form.categoryId}
-                 />
+                 </div>
+                 {/* Sub Type card picker — same as product catalog */}
+                 {(() => {
+                   const selCat = categories.find(c => c.id === form.categoryId);
+                   const contentDetails = selCat?.contentDetails ?? [];
+                   const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
+                   const imgSrc = (href: string) => href.startsWith("http") ? href : `${apiBase}/${href.replace(/^\//, "")}`;
+                   const imgFallback = (e: React.SyntheticEvent<HTMLImageElement>, href: string) => {
+                     const img = e.target as HTMLImageElement;
+                     const pub = `/${href.replace(/^\//, "")}`;
+                     if (img.src !== window.location.origin + pub) { img.src = pub; } else { img.style.display = "none"; }
+                   };
+                   return (
+                     <div>
+                       <label className="block text-xs font-medium text-[rgb(var(--fg-default))] mb-1">Select Product Type *</label>
+                       <button
+                         type="button"
+                         disabled={!form.categoryId}
+                         onClick={() => setEstContentPickerOpen(true)}
+                         className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-200 rounded-xl bg-gray-50 hover:bg-purple-50 hover:border-purple-300 transition-colors outline-none focus:ring-2 focus:ring-purple-400 disabled:opacity-40 disabled:cursor-not-allowed">
+                         {form.content
+                           ? <span className="text-gray-800 font-medium truncate">{form.content}</span>
+                           : <span className="text-gray-400">{form.categoryId ? "-- Select Sub Type --" : "-- Select Category first --"}</span>}
+                         <ChevronDown size={14} className="text-gray-400 ml-2 shrink-0" />
+                       </button>
+                       {form.content && (
+                         <p className="text-[10px] text-purple-600 mt-1 flex items-center gap-1">
+                           <Check size={10} /> {form.content}
+                         </p>
+                       )}
+                       {estContentPickerOpen && contentDetails.length > 0 && (
+                         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40" onClick={() => setEstContentPickerOpen(false)}>
+                           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                               <div>
+                                 <h3 className="text-base font-bold text-gray-800">Select Sub Type</h3>
+                                 <p className="text-xs text-gray-400 mt-0.5">{selCat?.name}</p>
+                               </div>
+                               <button onClick={() => setEstContentPickerOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
+                                 <X size={18} />
+                               </button>
+                             </div>
+                             <div className="overflow-y-auto p-5 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                               {contentDetails.map(cd => {
+                                 const selected = form.content === cd.name;
+                                 return (
+                                   <button
+                                     key={cd.name}
+                                     type="button"
+                                     onClick={() => {
+                                       setForm(p => ({ ...p, content: cd.name, structureType: getStructureType(cd.name) } as any));
+                                       setEstContentPickerOpen(false);
+                                     }}
+                                     className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all ${
+                                       selected ? "border-purple-500 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-300 hover:bg-purple-50/40"
+                                     }`}>
+                                     <div className="w-24 h-24 flex items-center justify-center bg-gray-50 rounded-xl overflow-hidden">
+                                       {cd.imageUrl ? (
+                                         <img src={imgSrc(cd.imageUrl)} alt={cd.caption} className="w-full h-full object-contain" onError={e => imgFallback(e, cd.imageUrl)} />
+                                       ) : (
+                                         <div className="text-[10px] text-gray-400 text-center px-1">No Image</div>
+                                       )}
+                                     </div>
+                                     <span className={`text-xs font-semibold text-center leading-tight ${selected ? "text-purple-700" : "text-gray-700"}`}>
+                                       {cd.caption || cd.name}
+                                     </span>
+                                     {selected && <Check size={14} className="text-purple-600" />}
+                                   </button>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                         </div>
+                       )}
+                     </div>
+                   );
+                 })()}
                   <Select
                     label="Sales Person *"
                     value={form.salesPerson}
@@ -2950,10 +3031,11 @@ export default function GravureEstimationPage() {
                   <div className="sm:col-span-2 lg:col-span-3 mt-1">
                     <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-2 pb-1 border-b border-orange-100">Product Identity</p>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                      <Select
+                      <FieldMasterSelectField
                         label="Pack Size"
                         value={(form as any).packSize ?? ""}
                         onChange={e => { const val = e.target.value; f("packSize" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
                           ...((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => ({ value: ps, label: ps })),
@@ -2962,10 +3044,11 @@ export default function GravureEstimationPage() {
                             : []),
                         ]}
                       />
-                      <Select
+                      <FieldMasterSelectField
                         label="Brand Name"
                         value={(form as any).brandName ?? ""}
                         onChange={e => { const val = e.target.value; f("brandName" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
                           ...((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => ({ value: bn, label: bn })),
@@ -2974,19 +3057,21 @@ export default function GravureEstimationPage() {
                             : []),
                         ]}
                       />
-                      <Select
+                      <FieldMasterSelectField
                         label="Product Type"
                         value={(form as any).productType ?? ""}
                         onChange={e => { const val = e.target.value; f("productType" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
-                          ...["CSD", "Water", "Juice", "Sleeve", "Label", "Pouch", "Roll Form", "Other"].map(t => ({ value: t, label: t })),
+                          ...[...FINISH_GOODS_TYPES, ...((form as any).productType && !FINISH_GOODS_TYPES.includes((form as any).productType) ? [(form as any).productType] : [])].map(v => ({ value: v, label: v })),
                         ]}
                       />
-                      <Select
+                      <FieldMasterSelectField
                         label="SKU Type"
                         value={(form as any).skuType ?? ""}
                         onChange={e => { const val = e.target.value; f("skuType" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
                           ...((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => ({ value: sk, label: sk })),
@@ -2995,19 +3080,21 @@ export default function GravureEstimationPage() {
                             : []),
                         ]}
                       />
-                      <Select
+                      <FieldMasterSelectField
                         label="Bottle Type"
                         value={(form as any).bottleType ?? ""}
                         onChange={e => { const val = e.target.value; f("bottleType" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
                           ...["RPET", "VPET", "Glass", "Tin", "Pouch", "Carton", "N/A"].map(t => ({ value: t, label: t })),
                         ]}
                       />
-                      <Select
+                      <FieldMasterSelectField
                         label="Address Type"
                         value={(form as any).addressType ?? ""}
                         onChange={e => { const val = e.target.value; f("addressType" as any, val); }}
+                        onRefresh={refreshMasters}
                         options={[
                           { value: "", label: "-- Select --" },
                           { value: "Single", label: "Single" },

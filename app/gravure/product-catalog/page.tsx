@@ -1,7 +1,7 @@
 "use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import TutorialButton from "@/components/ui/TutorialButton";
 import { useRouter } from "next/navigation";
 import {
@@ -45,6 +45,8 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { CustomerSelectField } from "@/components/ui/CustomerSelectField";
+import { FieldMasterSelectField } from "@/components/ui/FieldMasterSelectField";
 
 // ─── Sleeve tools stay as local dummy data (no DB master) ─────
 const AVAILABLE_TOOL_IDS = new Set(toolInventory.filter(ti => ti.status === "Available").map(ti => ti.toolId));
@@ -54,6 +56,12 @@ const SLEEVE_TOOLS = allTools.filter(t => t.toolType === "Sleeve" && AVAILABLE_T
 const SH = ({ label }: { label: string }) => (
   <p className="text-xs font-bold text-purple-700 uppercase tracking-widest mb-2 pb-1.5 border-b border-purple-100">{label}</p>
 );
+
+const FINISH_GOODS_TYPES = [
+  "3 Side Seal Sachet", "Center Seal Pouch", "Stand Up Pouch",
+  "Gusset Bag", "Flat Bottom Pouch", "Sleeve — Shrink",
+  "In-Mould Labels", "BOPP Label", "CSD", "Shrink Sleeve",
+];
 
 const Pill = ({ label, value, cls = "bg-gray-50 text-gray-700 border-gray-200" }: { label: string; value: string; cls?: string }) => (
   <div className={`rounded-lg border px-3 py-2 ${cls}`}>
@@ -65,11 +73,11 @@ const Pill = ({ label, value, cls = "bg-gray-50 text-gray-700 border-gray-200" }
 // ─── Main Page ────────────────────────────────────────────────
 export default function ProductCatalogPage() {
   const router = useRouter();
-  const { categories } = useCategories();
+  const { categories, refresh: refreshCategories } = useCategories();
   const { catalog, loading: catalogLoading, error: catalogError, refresh: refreshCatalog, saveCatalogItem, deleteCatalogItem, updateCatalogStatus } = useProductCatalog();
   const { machines: apiMachines, processes: apiProcesses, customers: apiCustomers,
     filmItems: apiFilmItems, inkItems: apiInkItems, vendorLedgers: apiVendors,
-    cylinderMaster: apiCylinders, sleeveItems: apiSleeveItems } = useMasters();
+    cylinderMaster: apiCylinders, sleeveItems: apiSleeveItems, refresh: refreshMasters } = useMasters();
   const { showToast } = useToast();
 
   // ── Cylinder tools from API (ToolMaster) ─────────────────────
@@ -226,6 +234,8 @@ export default function ProductCatalogPage() {
   const [replanOpen, setReplanOpen] = useState(false);
   const [replanForm, setReplanForm] = useState<GravureProductCatalog | null>(null);
   const [replanTab, setReplanTab] = useState<"info" | "planning" | "material">("info");
+  const replanScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { replanScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" }); }, [replanTab]);
   const [isNewCatalog, setIsNewCatalog] = useState(false);
 
   // ── Artwork picker ─────────────────────────────────────────
@@ -272,23 +282,22 @@ export default function ProductCatalogPage() {
   const [fmOptions, setFmOptions] = useState<Record<string, string[]>>({
     packSizes: [], brandNames: [], productTypes: [], skuTypes: [], bottleTypes: [], addressTypes: [],
   });
-  useEffect(() => {
+  const refreshFmOptions = async () => {
     const fetchField = (fieldName: string) =>
       apiGet<any[]>(`api/FieldMasterAJ/GetFieldValues?fieldName=${encodeURIComponent(fieldName)}`)
         .then(rows => (Array.isArray(rows) ? rows.map((r: any) => String(r.FieldValue ?? "")).filter(Boolean) : []))
         .catch(() => [] as string[]);
-
-    Promise.all([
+    const [packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes] = await Promise.all([
       fetchField("Standard Pack Sizes"),
       fetchField("Brand Names"),
       fetchField("Product Types"),
       fetchField("SKU Types"),
       fetchField("Bottle Type"),
       fetchField("Product Address Type"),
-    ]).then(([packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes]) => {
-      setFmOptions({ packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes });
-    });
-  }, []);
+    ]);
+    setFmOptions({ packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes });
+  };
+  useEffect(() => { refreshFmOptions(); }, []);
 
   // ── Plan grid column filters (Excel-style) ────────────────
   const [planColFilters, setPlanColFilters] = useState<Record<string, Set<string>>>({});
@@ -1772,7 +1781,6 @@ export default function ProductCatalogPage() {
     { key: "createdDate", header: "DATE", sortable: true, render: r => <span className="text-xs text-gray-600 whitespace-nowrap">{r.createdDate || "—"}</span> },
     { key: "productName", header: "PRODUCT NAME", sortable: true },
     { key: "customerName", header: "CUSTOMER", sortable: true },
-    { key: "machineName", header: "MACHINE", render: r => <span className="text-xs text-gray-600 font-medium">{r.machineName || "—"}</span> },
     {
       key: "noOfColors", header: "COLORS",
       render: r => <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold">{r.noOfColors}C</span>
@@ -2140,7 +2148,7 @@ export default function ProductCatalogPage() {
             ))}
           </div>
 
-          <div className="max-h-[65vh] overflow-y-auto pr-1">
+          <div ref={replanScrollRef} className="max-h-[65vh] overflow-y-auto pr-1">
 
             {/* ── Tab 1: Basic Info ── */}
             {replanTab === "info" && (
@@ -2231,7 +2239,7 @@ export default function ProductCatalogPage() {
                         </>
                       ) : (
                         <>
-                          <Select
+                          <CustomerSelectField
                             label="Customer / Client Name *"
                             value={replanForm.customerId || ""}
                             options={[{ value: "", label: "-- Select Customer --" }, ...customers.map(c => ({ value: c.id, label: c.name }))]}
@@ -2241,6 +2249,7 @@ export default function ProductCatalogPage() {
                               rf("customerId", c?.id ?? "");
                               rf("customerName", c?.name ?? "");
                             }}
+                            onRefresh={refreshMasters}
                           />
                           {replanForm.customerName && (
                             <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
@@ -2257,7 +2266,19 @@ export default function ProductCatalogPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {/* Type of Product (was Category) */}
                       <div>
-                        <label className="text-[10px] font-semibold text-gray-400 uppercase block mb-1">Type of Product</label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-semibold text-gray-400 uppercase">Finish Goods Category</label>
+                          <div className="flex items-center gap-1">
+                            <a href="/masters/categories" target="_blank" rel="noopener noreferrer" title="Add new category"
+                              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                              <Plus size={10} strokeWidth={2.5} /> New
+                            </a>
+                            <button type="button" title="Refresh categories" onClick={() => refreshCategories()}
+                              className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                              <RefreshCw size={11} />
+                            </button>
+                          </div>
+                        </div>
                         <Select
                           value={replanForm.categoryId || ""}
                           options={[{ value: "", label: "-- Select Type --" }, ...categories.filter(c => c.status === "Active").map(c => ({ value: c.id, label: c.name }))]}
@@ -2369,45 +2390,54 @@ export default function ProductCatalogPage() {
                         );
                       })()}
                       <div>
-                        <Select label="Pack Size"
+                        <FieldMasterSelectField label="Pack Size"
                           value={(replanForm as any).packSize ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.packSizes, ...((replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) ? [(replanForm as any).packSize] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("packSize" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div>
-                        <Select label="Brand Name"
+                        <FieldMasterSelectField label="Brand Name"
                           value={(replanForm as any).brandName ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.brandNames, ...((replanForm as any).brandName && !fmOptions.brandNames.includes((replanForm as any).brandName) ? [(replanForm as any).brandName] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("brandName" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div>
-                        <Select label="Product Type"
+                        <FieldMasterSelectField label="Product Type"
                           value={(replanForm as any).productType ?? ""}
-                          options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.productTypes, ...((replanForm as any).productType && !fmOptions.productTypes.includes((replanForm as any).productType) ? [(replanForm as any).productType] : [])].map(v => ({ value: v, label: v }))]}
+                          options={[
+                            { value: "", label: "-- Select --" },
+                            ...[...FINISH_GOODS_TYPES, ...((replanForm as any).productType && !FINISH_GOODS_TYPES.includes((replanForm as any).productType) ? [(replanForm as any).productType] : [])].map(v => ({ value: v, label: v })),
+                          ]}
                           onChange={e => rf("productType" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div>
-                        <Select label="SKU Type"
+                        <FieldMasterSelectField label="SKU Type"
                           value={(replanForm as any).skuType ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.skuTypes, ...((replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) ? [(replanForm as any).skuType] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("skuType" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div>
-                        <Select label="Bottle Type"
+                        <FieldMasterSelectField label="Bottle Type"
                           value={(replanForm as any).bottleType ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.bottleTypes, ...((replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) ? [(replanForm as any).bottleType] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("bottleType" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div>
-                        <Select label="Address Type"
+                        <FieldMasterSelectField label="Address Type"
                           value={(replanForm as any).addressType ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.addressTypes, ...((replanForm as any).addressType && !fmOptions.addressTypes.includes((replanForm as any).addressType) ? [(replanForm as any).addressType] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("addressType" as any, e.target.value)}
+                          onRefresh={refreshFmOptions}
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -3197,9 +3227,24 @@ export default function ProductCatalogPage() {
                 <div>
                   <SH label="Machine" />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <Select label="Printing Machine" value={replanForm.machineId}
-                      onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { rf("machineId", m.id); rf("machineName", m.name); } }}
-                      options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: (m as any).Colors ? `${m.name} [${(m as any).Colors}C]` : m.name }))]} />
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <label className="block text-xs font-medium text-[rgb(var(--fg-default))]">Printing Machine</label>
+                        <div className="flex items-center gap-1">
+                          <a href="/masters/machines" target="_blank" rel="noopener noreferrer" title="Add new machine in Machine Master"
+                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                            <Plus size={10} strokeWidth={2.5} /> New
+                          </a>
+                          <button type="button" title="Refresh machine list" onClick={() => refreshMasters()}
+                            className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                            <RefreshCw size={11} />
+                          </button>
+                        </div>
+                      </div>
+                      <Select value={replanForm.machineId}
+                        onChange={e => { const m = PRINT_MACHINES.find(x => x.id === e.target.value); if (m) { rf("machineId", m.id); rf("machineName", m.name); } }}
+                        options={[{ value: "", label: "-- Select Machine --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: (m as any).Colors ? `${m.name} [${(m as any).Colors}C]` : m.name }))]} />
+                    </div>
                   </div>
                   {(() => {
                     const selMachine = replanForm.machineId ? PRINT_MACHINES.find(m => m.id === replanForm.machineId) : null;
@@ -3230,7 +3275,17 @@ export default function ProductCatalogPage() {
                 {/* Process Planning */}
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <SH label="Process List (from Process Master)" />
+                    <div className="flex items-center gap-2">
+                      <SH label="Process List (from Process Master)" />
+                      <a href="/masters/processes" target="_blank" rel="noopener noreferrer" title="Add new process in Process Master"
+                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                        <Plus size={10} strokeWidth={2.5} /> New
+                      </a>
+                      <button type="button" title="Refresh process list" onClick={() => refreshMasters()}
+                        className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                        <RefreshCw size={11} />
+                      </button>
+                    </div>
                     {apiProcesses.length > 0 ? (
                       <button onClick={addReplanProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
                         <Plus size={12} /> Add Process
@@ -3357,7 +3412,19 @@ export default function ProductCatalogPage() {
                               {l.plyType && (
                                 <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-3 space-y-3">
                                   <div>
-                                    <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Film Item</label>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <label className="text-[10px] font-semibold text-gray-500 uppercase">Film Item</label>
+                                      <div className="flex items-center gap-1">
+                                        <a href="/masters/items" target="_blank" rel="noopener noreferrer" title="Add new item in Item Master"
+                                          className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                                          <Plus size={10} strokeWidth={2.5} /> New
+                                        </a>
+                                        <button type="button" title="Refresh item list" onClick={() => refreshMasters()}
+                                          className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                                          <RefreshCw size={11} />
+                                        </button>
+                                      </div>
+                                    </div>
                                     <Select
                                       value={l.itemId || ""}
                                       options={[{ value: "", label: "-- Select Film Item --" }, ...(FILM_ITEMS as any[]).map(fi => ({ value: fi.id, label: fi.name }))]}
@@ -3465,7 +3532,19 @@ export default function ProductCatalogPage() {
                                               <div className={`grid grid-cols-2 gap-2 sm:grid-cols-${colCount}`}>
                                                 {/* Item Group */}
                                                 <div>
-                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item Group</label>
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase">Item Group</label>
+                                                    <div className="flex items-center gap-1">
+                                                      <a href="/masters/items" target="_blank" rel="noopener noreferrer" title="Add item in Item Master"
+                                                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                                                        <Plus size={10} strokeWidth={2.5} /> New
+                                                      </a>
+                                                      <button type="button" onClick={() => refreshMasters()}
+                                                        className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                                                        <RefreshCw size={11} />
+                                                      </button>
+                                                    </div>
+                                                  </div>
                                                   <Select
                                                     value={ci.itemGroup}
                                                     options={[{ value: "", label: "-- Group --" }, ...CONSUMABLE_GROUPS.map(g => ({ value: g, label: g }))]}
@@ -3475,7 +3554,19 @@ export default function ProductCatalogPage() {
                                                 </div>
                                                 {/* Sub Group */}
                                                 <div>
-                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Sub Group</label>
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase">Sub Group</label>
+                                                    <div className="flex items-center gap-1">
+                                                      <a href="/masters/items" target="_blank" rel="noopener noreferrer" title="Add item in Item Master"
+                                                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                                                        <Plus size={10} strokeWidth={2.5} /> New
+                                                      </a>
+                                                      <button type="button" onClick={() => refreshMasters()}
+                                                        className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                                                        <RefreshCw size={11} />
+                                                      </button>
+                                                    </div>
+                                                  </div>
                                                   <Select
                                                     value={ci.itemSubGroup}
                                                     options={[{ value: "", label: "-- Sub Group --" }, ...subGroups.map(sg => ({ value: sg, label: sg }))]}
@@ -3486,7 +3577,19 @@ export default function ProductCatalogPage() {
                                                 </div>
                                                 {/* Item Master */}
                                                 <div>
-                                                  <label className="text-[10px] font-semibold text-gray-500 uppercase block mb-1">Item (Master)</label>
+                                                  <div className="flex items-center justify-between mb-1">
+                                                    <label className="text-[10px] font-semibold text-gray-500 uppercase">Item (Master)</label>
+                                                    <div className="flex items-center gap-1">
+                                                      <a href="/masters/items" target="_blank" rel="noopener noreferrer" title="Add item in Item Master"
+                                                        className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 transition-colors select-none">
+                                                        <Plus size={10} strokeWidth={2.5} /> New
+                                                      </a>
+                                                      <button type="button" onClick={() => refreshMasters()}
+                                                        className="p-1 rounded border border-gray-200 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 transition-colors">
+                                                        <RefreshCw size={11} />
+                                                      </button>
+                                                    </div>
+                                                  </div>
                                                   <Select
                                                     value={ci.itemId}
                                                     options={[{ value: "", label: "-- Select Item --" }, ...filteredItems.map(it => ({ value: it.id, label: it.name }))]}
@@ -3704,18 +3807,10 @@ export default function ProductCatalogPage() {
 
                     {replanShowPlan && !replanIsPlanApplied && (
                       <div className="border-2 border-indigo-100 rounded-2xl overflow-hidden shadow-lg">
-                        <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] p-3 flex items-center justify-between gap-3">
+                        <div className="bg-[#f5f9fc] border-b border-[#e2e8f0] p-3 flex items-center justify-between gap-3 flex-wrap">
                           <div>
                             <p className="text-[#003366] font-bold text-xs uppercase tracking-wide">Select Production Plan</p>
-                            <p className="text-gray-500 text-[10px] mt-0.5">
-                              {replanForm.machineName} · {replanVisiblePlans.length}/{replanAllPlans.length} plans
-                              {Object.keys(planColFilters).length > 0 && (
-                                <button onClick={() => setPlanColFilters({})}
-                                  className="ml-2 px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[9px] font-bold rounded-full hover:bg-yellow-300">
-                                  ✕ {Object.keys(planColFilters).length} filter{Object.keys(planColFilters).length > 1 ? "s" : ""} active
-                                </button>
-                              )}
-                            </p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">{replanForm.machineName} · {replanAllPlans.length} plans</p>
                             {(() => {
                               const ply1Id = String(replanForm?.secondaryLayers?.[0]?.itemId ?? "");
                               const plyFilm = ply1Id ? apiFilmItems.find(f => String(f.ItemID) === ply1Id) : null;
@@ -3727,8 +3822,6 @@ export default function ProductCatalogPage() {
                               ) : null;
                             })()}
                           </div>
-                          <input value={replanPlanSearch} onChange={e => setReplanPlanSearch(e.target.value)} placeholder="Search plans..."
-                            className="bg-indigo-700 text-white placeholder-indigo-300 text-xs rounded-lg px-3 py-1.5 border border-indigo-500 outline-none focus:ring-2 focus:ring-indigo-400 w-36" />
                           {replanSelPlanId && (
                             <button onClick={() => { setReplanIsPlanApplied(true); setReplanShowPlan(false); }} className="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-1.5 rounded-lg flex-shrink-0">Apply Plan</button>
                           )}
@@ -3805,265 +3898,147 @@ export default function ProductCatalogPage() {
                           );
                         })()}
 
-                        <div className="overflow-x-auto" onClick={() => planFilterOpen && setPlanFilterOpen(null)}>
-                          <table className="min-w-full text-[10px] whitespace-nowrap border-collapse">
-                            <thead className="bg-slate-800 text-slate-300">
-                              <tr>
-                                <th className="p-2 border border-slate-700 text-center">Select</th>
-                                <th className="p-2 border border-slate-700 text-center">Layout</th>
-                                {[
-                                  { key: "machineName", label: "Machine" },
-                                  { key: "acUps", label: "AC UPS" },
-                                  { key: "printingWidth", label: "Printing W (mm)" },
-                                  { key: "sleeveCode", label: "Sleeve" },
-                                  { key: "sleeveWidthVal", label: "Sleeve W (mm)" },
-                                  { key: "sideWaste", label: "Side Waste (mm)" },
-                                  { key: "filmSize", label: "Film Size (mm)" },
-                                  { key: "deadMargin", label: "Dead Margin (mm)" },
-                                  { key: "totalWaste", label: "Total Waste (mm)" },
-                                  { key: "cylinderCode", label: "Cylinder" },
-                                  { key: "cylinderWidthVal", label: "Cyl W (mm)" },
-                                  { key: "cylExtra", label: "Cyl Extra (mm)" },
-                                  { key: "cylCirc", label: "Cyl. Circ (mm)" },
-                                  { key: "repeatUPS", label: "Repeat UPS" },
-                                  { key: "totalUPS", label: "Total Pieces" },
-                                ].map(col => {
-                                  const isFiltered = !!(planColFilters[col.key]?.size);
-                                  const isOpen = planFilterOpen === col.key;
-                                  const uniqueVals = Array.from(new Set(replanAllPlans.map(r => String((r as any)[col.key] ?? "")))).sort((a, b) => isNaN(+a) ? a.localeCompare(b) : +a - +b);
-                                  const fSearch = planFilterSearch[col.key] ?? "";
-                                  const visVals = fSearch ? uniqueVals.filter(v => v.toLowerCase().includes(fSearch.toLowerCase())) : uniqueVals;
-                                  const draft = planFilterDraft[col.key] ?? new Set<string>();
-                                  return (
-                                    <th key={col.key} className="p-0 border border-slate-700 text-center relative">
-                                      {/* Header row: sort + filter icon */}
-                                      <div className="flex items-center justify-between px-2 py-2 gap-1 cursor-pointer hover:bg-slate-700 select-none"
-                                        onClick={() => replanTogglePlanSort(col.key)}>
-                                        <span className="text-[10px]">{col.label}{replanPlanSort.key === col.key ? (replanPlanSort.dir === "asc" ? " ▲" : " ▼") : ""}</span>
-                                        <button
-                                          onClick={e => { e.stopPropagation(); isOpen ? setPlanFilterOpen(null) : openPlanFilter(col.key); }}
-                                          className={`flex-shrink-0 p-0.5 rounded transition-colors ${isFiltered ? "text-yellow-300" : "text-slate-400 hover:text-white"}`}
-                                          title="Filter">
-                                          ▼
-                                        </button>
-                                      </div>
-                                      {/* Filter dropdown */}
-                                      {isOpen && (
-                                        <div className="absolute top-full left-0 z-50 bg-white border border-gray-300 rounded-xl shadow-2xl min-w-[200px] text-gray-800"
-                                          onClick={e => e.stopPropagation()}>
-                                          {/* Search */}
-                                          <div className="p-2 border-b border-gray-100">
-                                            <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
-                                              <Search size={11} className="text-gray-400 flex-shrink-0" />
-                                              <input autoFocus value={fSearch}
-                                                onChange={e => setPlanFilterSearch(s => ({ ...s, [col.key]: e.target.value }))}
-                                                placeholder="Search…"
-                                                className="text-xs bg-transparent outline-none w-full text-gray-700" />
-                                              {fSearch && <button onClick={() => setPlanFilterSearch(s => ({ ...s, [col.key]: "" }))} className="text-gray-400"><X size={10} /></button>}
-                                            </div>
-                                          </div>
-                                          {/* Select All */}
-                                          <div className="px-3 py-1.5 border-b border-gray-100 hover:bg-gray-50 cursor-pointer flex items-center gap-2"
-                                            onClick={() => togglePlanFilterAll(col.key, visVals)}>
-                                            <input type="checkbox" readOnly
-                                              checked={draft.size === visVals.length && visVals.length > 0}
-                                              className="accent-indigo-600 cursor-pointer" />
-                                            <span className="text-xs font-semibold text-gray-600">Select All</span>
-                                          </div>
-                                          {/* Values list */}
-                                          <div className="max-h-48 overflow-y-auto">
-                                            {visVals.map(v => (
-                                              <div key={v} className="px-3 py-1.5 hover:bg-indigo-50 cursor-pointer flex items-center gap-2"
-                                                onClick={() => togglePlanFilterVal(col.key, v)}>
-                                                <input type="checkbox" readOnly checked={draft.has(v)} className="accent-indigo-600 cursor-pointer" />
-                                                <span className="text-xs text-gray-700">{v || "(blank)"}</span>
-                                              </div>
-                                            ))}
-                                            {visVals.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches</div>}
-                                          </div>
-                                          {/* OK / Cancel */}
-                                          <div className="flex gap-2 p-2 border-t border-gray-100">
-                                            <button onClick={() => applyPlanFilter(col.key)}
-                                              className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-1.5 rounded-lg">OK</button>
-                                            <button onClick={() => clearPlanFilter(col.key)}
-                                              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-medium py-1.5 rounded-lg">Clear</button>
-                                          </div>
-                                        </div>
-                                      )}
-                                    </th>
-                                  );
-                                })}
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-100">
-                              {replanVisiblePlans.map(plan => {
-                                const isSelected = replanSelPlanId === plan.planId;
-                                const p = plan as any;
+                        <div className="p-2">
+                        <DataTable
+                          data={replanAllPlans}
+                          pageSize={20}
+                          enableRowSelection={false}
+                          getRowId={(p: any) => String(p.planId)}
+                          searchKeys={["machineName", "sleeveCode", "sleeveName", "cylinderCode", "cylinderName"] as any}
+                          columns={([
+                            {
+                              key: "planId", header: "", sortable: false, size: 28,
+                              render: (p: any) => (
+                                <div className={`w-3 h-3 rounded-full border-2 mx-auto flex items-center justify-center cursor-pointer ${replanSelPlanId === p.planId ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"}`}
+                                  onClick={() => setReplanSelPlanId(p.planId)}>
+                                  {replanSelPlanId === p.planId && <div className="w-1 h-1 rounded-full bg-white" />}
+                                </div>
+                              ),
+                            },
+                            {
+                              key: "layoutBtn" as any, header: "", sortable: false, size: 30,
+                              render: (p: any) => (
+                                <button onClick={e => { e.stopPropagation(); setUpsPreviewPlan(p); }}
+                                  className="p-0.5 rounded hover:bg-indigo-100 text-indigo-500 hover:text-indigo-700 transition-colors" title="View UPS Layout">
+                                  <EyeIcon size={12} />
+                                </button>
+                              ),
+                            },
+                            {
+                              key: "machineName", header: "Machine", sortable: true,
+                              render: (p: any) => (
+                                <div className="flex flex-wrap gap-1 items-center">
+                                  <span className="font-medium text-gray-700 text-xs">{p.machineName}</span>
+                                  {replanSelPlanId === p.planId && <span className="px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-bold rounded-full animate-pulse">SELECTED</span>}
+                                  {p.isBest && <span className="px-1.5 py-0.5 bg-green-500 text-white text-[9px] font-bold rounded-full">BEST</span>}
+                                  {p.isDoctorBlade && <span className="px-1.5 py-0.5 bg-teal-600 text-white text-[9px] font-bold rounded-full">DB: {p.doctorBladeWidth}mm</span>}
+                                  {p.isSpecial && !p.isSpecialSleeve && !p.isDoctorBlade && <span className="px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">SPECIAL CYL</span>}
+                                  {p.isSpecialSleeve && <span className="px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full">SPECIAL SLV</span>}
+                                </div>
+                              ),
+                            },
+                            {
+                              key: "acUps", header: "AC UPS", sortable: true, size: 80,
+                              render: (p: any) => <span className="font-bold text-indigo-700">{p.acUps}</span>,
+                            },
+                            {
+                              key: "printingWidth", header: "Printing W (mm)", sortable: true, size: 120,
+                              render: (p: any) => <span className="font-mono">{p.printingWidth}</span>,
+                            },
+                            {
+                              key: "sleeveCode", header: "Sleeve", sortable: true,
+                              render: (p: any) => p.isSpecialSleeve ? (
+                                <div className="space-y-1">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-full">NO SLEEVE</span>
+                                  <div className="text-[9px] text-rose-600">Need {p.filmSize}–{p.filmSize + 10}mm</div>
+                                  <button onClick={e => { e.stopPropagation(); window.open("/masters/items", "_blank"); }}
+                                    className="text-[9px] font-semibold text-white bg-rose-500 hover:bg-rose-600 px-2 py-0.5 rounded-md">+ Create Sleeve</button>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-semibold text-blue-600">{p.sleeveCode}</span>
+                                  <div className="text-[9px] text-gray-400">{p.sleeveName}</div>
+                                </div>
+                              ),
+                            },
+                            {
+                              key: "sleeveWidthVal", header: "Sleeve W (mm)", sortable: true, size: 110,
+                              render: (p: any) => p.isSpecialSleeve
+                                ? <span className="text-rose-400 text-[9px]">—</span>
+                                : <span className="font-bold text-blue-700">{p.sleeveWidthVal}</span>,
+                            },
+                            {
+                              key: "sideWaste", header: "Side Waste (mm)", sortable: true, size: 120,
+                              render: (p: any) => <span className={`font-bold ${p.sideWaste > 100 ? "text-red-600" : "text-amber-600"}`}>{p.sideWaste}</span>,
+                            },
+                            {
+                              key: "filmSize", header: "Film Size (mm)", sortable: true, size: 110,
+                              render: (p: any) => {
+                                const jobW = replanForm?.actualWidth || replanForm?.jobWidth || 0;
+                                const trim = (replanForm as any)?.trimmingSize || 0;
                                 return (
-                                  <tr key={plan.planId} onClick={() => setReplanSelPlanId(plan.planId)}
-                                    data-selected-plan={isSelected ? "true" : undefined}
-                                    className={`cursor-pointer transition-colors ${p.isDoctorBlade ? "bg-teal-50 hover:bg-teal-100 ring-1 ring-inset ring-teal-300" : p.isSpecialSleeve ? "bg-rose-50 hover:bg-rose-100" : p.isSpecial ? "bg-amber-50 hover:bg-amber-100" : p.isBest ? "ring-2 ring-inset ring-green-400 bg-green-50" : isSelected ? "bg-indigo-50" : "hover:bg-gray-50"}`}>
-                                    <td className="p-2 border border-gray-100 text-center">
-                                      <div className={`w-4 h-4 rounded-full border-2 mx-auto flex items-center justify-center ${isSelected ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"}`}>
-                                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                                      </div>
-                                    </td>
-                                    <td className="p-2 border border-gray-100 text-center">
-                                      <button
-                                        onClick={e => { e.stopPropagation(); setUpsPreviewPlan(plan); }}
-                                        className="p-1 rounded-md hover:bg-indigo-100 text-indigo-500 hover:text-indigo-700 transition-colors"
-                                        title="View UPS Layout">
-                                        <EyeIcon size={13} />
-                                      </button>
-                                    </td>
-                                    <td className="p-2 border border-gray-100 font-medium text-gray-700">
-                                      {plan.machineName}
-                                      {isSelected && <span className="ml-1.5 px-1.5 py-0.5 bg-indigo-600 text-white text-[9px] font-bold rounded-full shadow-sm animate-pulse">SELECTED</span>}
-                                      {p.isBest && <span className="ml-1.5 px-1.5 py-0.5 bg-green-500 text-white text-[9px] font-bold rounded-full">BEST</span>}
-                                      {p.isDoctorBlade && <span className="ml-1.5 px-1.5 py-0.5 bg-teal-600 text-white text-[9px] font-bold rounded-full">🔧 DB: {p.doctorBladeWidth}mm</span>}
-                                      {p.isSpecial && !p.isSpecialSleeve && !p.isDoctorBlade && <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">SPECIAL CYL</span>}
-                                      {p.isSpecialSleeve && <span className="ml-1.5 px-1.5 py-0.5 bg-rose-500 text-white text-[9px] font-bold rounded-full">SPECIAL SLV</span>}
-                                    </td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold text-indigo-700">{plan.acUps}</td>
-                                    <td className="p-2 border border-gray-100 text-center font-mono">{p.printingWidth}</td>
-                                    <td className="p-2 border border-gray-100">
-                                      {p.isSpecialSleeve ? (
-                                        <div className="space-y-1">
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-[9px] font-bold px-1.5 py-0.5 bg-rose-100 text-rose-700 border border-rose-300 rounded-full">NO SLEEVE</span>
-                                          </div>
-                                          <div className="text-[9px] text-rose-600 leading-tight">
-                                            Need {plan.filmSize}–{plan.filmSize + 10}mm sleeve
-                                          </div>
-                                          <button
-                                            onClick={e => { e.stopPropagation(); window.open("/masters/items", "_blank"); }}
-                                            className="flex items-center gap-1 text-[9px] font-semibold text-white bg-rose-500 hover:bg-rose-600 px-2 py-0.5 rounded-md transition-colors whitespace-nowrap"
-                                          >
-                                            + Create Sleeve
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <span className="font-semibold text-blue-600">{p.sleeveCode}</span>
-                                          <br />
-                                          <span className="text-[9px] text-gray-400">{p.sleeveName}</span>
-                                        </>
-                                      )}
-                                    </td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecialSleeve ? "text-rose-600" : "text-blue-700"}`}>
-                                      {p.isSpecialSleeve ? <span className="text-rose-400 text-[9px]">—</span> : p.sleeveWidthVal}
-                                    </td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.sideWaste > 100 ? "text-red-600" : "text-amber-600"}`}>{p.sideWaste}</td>
-                                    <td className="p-2 border border-gray-100 text-center">
-                                      <div className="font-bold text-indigo-700 text-xs">{plan.filmSize}</div>
-                                      {(() => {
-                                        const jobW = replanForm?.actualWidth || replanForm?.jobWidth || 0;
-                                        const trim = replanForm?.trimmingSize || 0;
-                                        if (!trim) return null;
-                                        return (
-                                          <div className="flex items-center justify-center flex-wrap gap-0.5 mt-1">
-                                            <span className="text-[8px] text-indigo-500 font-semibold leading-none">{plan.acUps}×{jobW}</span>
-                                            <span className="text-[8px] font-bold leading-none px-1 py-0.5 rounded"
-                                              style={{ background: "#fff7ed", color: "#c2410c" }}>
-                                              +{2 * trim}T
-                                            </span>
-                                          </div>
-                                        );
-                                      })()}
-                                    </td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.deadMargin < 0 ? "text-red-600" : "text-orange-600"}`}>{p.deadMargin}</td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.isBest ? "text-green-700" : p.totalWaste > 300 ? "text-red-600" : "text-amber-600"}`}>{p.totalWaste}</td>
-                                    <td className="p-2 border border-gray-100"><span className={`font-semibold ${p.isSpecial ? "text-amber-600" : "text-violet-600"}`}>{p.cylinderCode}</span><br /><span className={`text-[9px] ${p.isSpecial ? "text-amber-500" : "text-gray-400"}`}>{p.cylinderName}</span></td>
-                                    <td className={`p-2 border border-gray-100 text-center font-bold ${p.isSpecial ? "text-amber-600" : "text-violet-700"}`}>{p.cylinderWidthVal}</td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold">
-                                      {(() => {
-                                        const extra = Math.round((p.cylinderWidthVal || 0) - (p.sleeveWidthVal || 0) - 100);
-                                        return extra > 0
-                                          ? <span className="text-orange-600">+{extra}</span>
-                                          : <span className="text-gray-400">0</span>;
-                                      })()}
-                                    </td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold text-emerald-700">{p.cylCirc}</td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold text-teal-700">
-                                      {p.repeatUPS}
-                                      {p.mpTotalUPS > 0 && (
-                                        <div className="text-[8px] text-teal-500 font-normal leading-none mt-0.5">×{p.mpTotalUPS} layout</div>
-                                      )}
-                                    </td>
-                                    <td className="p-2 border border-gray-100 text-center font-bold">
-                                      {plan.totalUPS}
-                                      {p.mpAcrossUPS > 0 && p.mpVerticalUPS > 0 && (
-                                        <div className="text-[8px] text-gray-400 font-normal leading-none mt-0.5">{p.mpAcrossUPS}AC×{p.mpVerticalUPS}VT×{p.repeatUPS}R</div>
-                                      )}
-                                    </td>
-                                  </tr>
+                                  <div>
+                                    <div className="font-bold text-indigo-700 text-xs">{p.filmSize}</div>
+                                    {trim > 0 && <div className="flex items-center gap-0.5 mt-0.5">
+                                      <span className="text-[8px] text-indigo-500 font-semibold">{p.acUps}×{jobW}</span>
+                                      <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ background: "#fff7ed", color: "#c2410c" }}>+{2 * trim}T</span>
+                                    </div>}
+                                  </div>
                                 );
-                              })}
-                              {replanVisiblePlans.length === 0 && (() => {
-                                const sT = (replanForm as any).structureType || "Label";
-                                const machine = PRINT_MACHINES.find(m => m.id === replanForm.machineId);
-                                const minC = parseFloat((machine as any)?.repeatLengthMin) || 0;
-                                const maxC = parseFloat((machine as any)?.repeatLengthMax) || 9999;
-                                const maxF = parseFloat((machine as any)?.maxWebWidth) || 0;
-                                const minF = parseFloat((machine as any)?.minWebWidth) || 0;
-                                const sh = replanForm.widthShrinkage || 0;
-                                const jW = replanForm.jobWidth || 0;
-                                const jH = replanForm.jobHeight || 0;
-
-                                let reason = "";
-                                let tip = "";
-                                if (sT === "MultiPackShrink") {
-                                  const mpRL = (replanForm as any).repeatLength || 0;
-                                  const maxN = mpRL > 0 ? Math.floor(maxC / mpRL) : 0;
-                                  if (mpRL <= 0) reason = "Enter Repeat Length in the Info tab to generate plans.";
-                                  else if (jW <= 0) reason = "Enter Job Width (film width) in the Info tab.";
-                                  else if (jW < minF || jW > maxF) reason = `Film width (${jW}mm) is ${jW < minF ? `below machine min ${minF}mm` : `above machine max ${maxF}mm`}.`;
-                                  else if (mpRL * maxN < minC) reason = `Repeat = ${mpRL}mm. Even ${maxN}× = ${mpRL * maxN}mm is below machine min ${minC}mm.`;
-                                  else reason = "No cylinders found. Special order cylinders should appear — check machine limits.";
-                                  if (mpRL > 0 && maxN >= 1)
-                                    tip = `Cylinder circ must be exact multiple of Repeat ${mpRL}mm. Valid: ${Array.from({ length: Math.min(3, maxN) }, (_, i) => `${(i + 1) * mpRL}mm`).join(", ")}${maxN > 3 ? "…" : ""}.`;
-                                } else if (sT === "Sleeve") {
-                                  const dc = jW * 2 + sh;
-                                  const maxN = dc > 0 ? Math.floor(maxC / dc) : 0;
-                                  const minN = dc > 0 ? Math.ceil(minC / dc) : 0;
-                                  // Film width for Sleeve = ply film from Item Master (not layflat)
-                                  const plyId = String(replanForm?.secondaryLayers?.[0]?.itemId ?? "");
-                                  const plyFilmW = plyId ? Number(apiFilmItems.find(f => String(f.ItemID) === plyId)?.WebWidth ?? 0) : 0;
-                                  const effectiveFilmW = plyFilmW > 0 ? plyFilmW : jW;
-                                  if (dc <= 0) reason = "Enter Layflat Width to generate plans.";
-                                  else if (!plyFilmW) reason = "Select a Film in Ply Configuration — film width drives the plan.";
-                                  else if (effectiveFilmW < minF) reason = `Film width (${effectiveFilmW}mm) is below machine minimum ${minF}mm.`;
-                                  else if (effectiveFilmW > maxF) reason = `Film width (${effectiveFilmW}mm) exceeds machine max ${maxF}mm.`;
-                                  else if (dc * maxN < minC) reason = `Design Circ = ${dc}mm. Even ${maxN}× repeat = ${dc * maxN}mm is below machine min ${minC}mm. Use a larger Layflat.`;
-                                  else reason = "No plans generated. Check machine selection and limits.";
-                                  if (dc > 0 && minN >= 1 && minN <= maxN)
-                                    tip = `Machine min circ = ${minC}mm → min repeat count = ${minN}× (cylinder = ${dc}×${minN} = ${dc * minN}mm). Plans with ${minN}× to ${maxN}× repeat should appear.`;
-                                } else {
-                                  const gus = (replanForm as any).gusset || 0;
-                                  const seal = (replanForm as any).sealSize || 0;
-                                  const effRep = jH + seal + (gus > 0 ? gus / 2 : 0) + sh;
-                                  if (effRep > 0 && effRep < minC) reason = `Effective Repeat = ${effRep}mm (H${jH}${seal > 0 ? `+Seal${seal}` : ""}${gus > 0 ? `+Gusset/2=${gus / 2}` : ""}${sh > 0 ? `+Shrink${sh}` : ""}) is below machine minimum ${minC}mm.`;
-                                  else if (effRep > maxC) reason = `Effective Repeat = ${effRep}mm exceeds machine maximum ${maxC}mm.`;
-                                  else if ((replanForm.actualWidth || jW) > maxF) reason = `Job width exceeds machine max film width ${maxF}mm.`;
-                                  else reason = "No sleeve/cylinder in stock fits this job. Only special orders should appear — check if filters are active.";
-                                }
-                                return (
-                                  <tr>
-                                    <td colSpan={17} className="p-5">
-                                      <div className="flex flex-col items-center gap-2 text-center">
-                                        <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 font-bold text-lg">!</div>
-                                        <p className="text-sm font-bold text-gray-700">No Plans Generated</p>
-                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 max-w-lg">{reason}</p>
-                                        {tip && (
-                                          <p className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 max-w-lg">{tip}</p>
-                                        )}
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })()}
-                            </tbody>
-                          </table>
+                              },
+                            },
+                            {
+                              key: "deadMargin", header: "Dead Margin (mm)", sortable: true, size: 130,
+                              render: (p: any) => <span className={`font-bold ${p.deadMargin < 0 ? "text-red-600" : "text-orange-600"}`}>{p.deadMargin}</span>,
+                            },
+                            {
+                              key: "totalWaste", header: "Total Waste (mm)", sortable: true, size: 130,
+                              render: (p: any) => <span className={`font-bold ${p.isBest ? "text-green-700" : p.totalWaste > 300 ? "text-red-600" : "text-amber-600"}`}>{p.totalWaste}</span>,
+                            },
+                            {
+                              key: "cylinderCode", header: "Cylinder", sortable: true,
+                              render: (p: any) => (
+                                <div>
+                                  <span className={`font-semibold ${p.isSpecial ? "text-amber-600" : "text-violet-600"}`}>{p.cylinderCode}</span>
+                                  <div className={`text-[9px] ${p.isSpecial ? "text-amber-500" : "text-gray-400"}`}>{p.cylinderName}</div>
+                                </div>
+                              ),
+                            },
+                            {
+                              key: "cylinderWidthVal", header: "Cyl W (mm)", sortable: true, size: 100,
+                              render: (p: any) => <span className={`font-bold ${p.isSpecial ? "text-amber-600" : "text-violet-700"}`}>{p.cylinderWidthVal}</span>,
+                            },
+                            {
+                              key: "cylExtra" as any, header: "Cyl Extra (mm)", sortable: false, size: 110,
+                              render: (p: any) => {
+                                const extra = Math.round((p.cylinderWidthVal || 0) - (p.sleeveWidthVal || 0) - 100);
+                                return extra > 0 ? <span className="font-bold text-orange-600">+{extra}</span> : <span className="text-gray-400">0</span>;
+                              },
+                            },
+                            {
+                              key: "cylCirc", header: "Cyl. Circ (mm)", sortable: true, size: 110,
+                              render: (p: any) => <span className="font-bold text-emerald-700">{p.cylCirc}</span>,
+                            },
+                            {
+                              key: "repeatUPS", header: "Repeat UPS", sortable: true, size: 100,
+                              render: (p: any) => (
+                                <div>
+                                  <span className="font-bold text-teal-700">{p.repeatUPS}</span>
+                                  {p.mpTotalUPS > 0 && <div className="text-[8px] text-teal-500 font-normal leading-none mt-0.5">×{p.mpTotalUPS} layout</div>}
+                                </div>
+                              ),
+                            },
+                            {
+                              key: "totalUPS", header: "Total Pieces", sortable: true, size: 100,
+                              render: (p: any) => (
+                                <div>
+                                  <span className="font-bold">{p.totalUPS}</span>
+                                  {p.mpAcrossUPS > 0 && p.mpVerticalUPS > 0 && <div className="text-[8px] text-gray-400 font-normal leading-none mt-0.5">{p.mpAcrossUPS}AC×{p.mpVerticalUPS}VT×{p.repeatUPS}R</div>}
+                                </div>
+                              ),
+                            },
+                          ] as Column<(typeof replanAllPlans)[0]>[])}
+                        />
                         </div>
                         {replanSelPlanId && (
                           <div className="bg-indigo-900 text-indigo-100 px-4 py-2.5 flex items-center justify-between text-[11px]">

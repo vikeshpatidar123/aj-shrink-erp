@@ -33,6 +33,7 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { CustomerSelectField } from "@/components/ui/CustomerSelectField";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 
@@ -358,6 +359,14 @@ export default function GravureOrdersPage() {
         referenceImageDataUrl: String(r.referenceImageDataUrl ?? ""),
       } as any;
     });
+
+  const refreshCustomers = async () => {
+    const res = await apiGet<any>("api/gravureOrderBookingShrink/getdropdowns");
+    if (res?.customers) {
+      const list = res.customers.map((c: any) => ({ id: String(c.id ?? ""), name: String(c.name ?? ""), stateTinNo: Number(c.stateTinNo ?? 0) }));
+      setApiCustomers(list);
+    }
+  };
 
   const loadOrders = (invalidate = false) => {
     if (invalidate) { try { localStorage.removeItem(ORDERS_CACHE_KEY); } catch { /* ignore */ } }
@@ -1007,7 +1016,13 @@ export default function GravureOrdersPage() {
                 <Select label="Order Prefix"
                   value={form.orderPrefix}
                   onChange={e => f("orderPrefix", e.target.value)}
-                  options={[{ value: "GRV", label: "GRV" }, { value: "EXP", label: "EXP" }]}
+                  options={[
+                    { value: "Export", label: "Export" },
+                    { value: "ISO",    label: "ISO" },
+                    { value: "JW",     label: "JW" },
+                    { value: "SL",     label: "SL" },
+                    { value: "SO",     label: "SO" },
+                  ]}
                 />
               </div>
               <div>
@@ -1034,7 +1049,8 @@ export default function GravureOrdersPage() {
             {/* Row 2 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div className="sm:col-span-2">
-                <Select label="Client Name *"
+                <CustomerSelectField
+                  label="Client Name *"
                   value={form.customerId}
                   onChange={e => {
                     const val = e.target.value;
@@ -1044,6 +1060,7 @@ export default function GravureOrdersPage() {
                     setEnquirySearch("");
                   }}
                   options={[{ value: "", label: "-- Select Customer --" }, ...apiCustomers.map(c => ({ value: c.id, label: c.name }))]}
+                  onRefresh={refreshCustomers}
                 />
               </div>
               <div>
@@ -1365,8 +1382,8 @@ export default function GravureOrdersPage() {
                     );
                   })}
                   {/* Totals row */}
-                  <tr className="bg-teal-700 text-white font-bold text-xs">
-                    <td colSpan={6} className="px-3 py-2 text-right text-teal-200 text-[10px] uppercase tracking-wide">Totals</td>
+                  <tr className="bg-gray-100 text-gray-700 font-bold text-xs border-t border-gray-200">
+                    <td colSpan={6} className="px-3 py-2 text-right text-gray-500 text-[10px] uppercase tracking-wide">Totals</td>
                     <td className="px-2 py-2 text-right">{totalOrderQty.toLocaleString()}</td>
                     <td colSpan={7}></td>
                     <td className="px-2 py-2 text-right">₹{totalAmount.toLocaleString()}</td>

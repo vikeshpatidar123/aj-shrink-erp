@@ -28,6 +28,7 @@ interface DataTableProps<T> {
   loading?: boolean;
   getRowId?: (row: T) => string;
   rowHeight?: number;
+  enableRowSelection?: boolean;
 }
 
 // ── DataTable — now powered by DataGrid ──────────────────────────────────────
@@ -42,6 +43,7 @@ export function DataTable<T>({
   stickyHeader = false,
   getRowId,
   rowHeight,
+  enableRowSelection = true,
 }: DataTableProps<T>) {
 
   const gridColumns = useMemo<ColumnDef<T>[]>(() => {
@@ -52,7 +54,7 @@ export function DataTable<T>({
         header: col.header,
         enableSorting: col.sortable !== false,
         meta: col.wrap ? { wrap: true } : undefined,
-        ...(col.size ? { size: col.size, minSize: Math.min(col.size, 80) } : {}),
+        ...(col.size ? { size: col.size, minSize: Math.min(col.size, 80), maxSize: col.size } : {}),
       };
       if (col.render) {
         colDef.cell = ({ row }) => col.render!(row.original);
@@ -97,6 +99,7 @@ export function DataTable<T>({
       enableColumnReordering
       paginationPageSize={pageSize}
       headerActions={toolbar}
+      enableRowSelection={enableRowSelection}
       getRowId={getRowId as ((row: T) => string) | undefined ?? ((row: any) => String(row.id ?? row.ID ?? row.ItemID ?? row.LedgerID ?? row.CategoryID ?? row.ProcessID ?? row.ToolID ?? row.GangWorkOrderNo ?? ""))}
       className={stickyHeader ? "flex-1 min-h-0" : undefined}
       maxHeight={stickyHeader ? "100%" : undefined}

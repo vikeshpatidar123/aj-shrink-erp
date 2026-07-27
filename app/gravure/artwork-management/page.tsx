@@ -1,6 +1,7 @@
 ﻿"use client";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, Pencil, Trash2, X, Check, Loader2, Eye, EyeOff,
   FileText, Image as ImgIcon, Download, Paperclip, RefreshCw,
@@ -189,6 +190,111 @@ const blankForm = (): FormState => ({
   AttachmentFilesName: "",
 });
 
+// ─── Artwork stages & colors (module-level so portal component can use them) ──
+const ARTWORK_STAGES = [
+  "Artwork Pending", "Artwork Received", "Under Process",
+  "Pending Mail to MB", "Brand Approved", "LSD Shade Approved",
+  "Engraving", "Cylinder Received", "Released to Production", "On Hold",
+];
+
+const STAGE_COLORS: Record<string, { dot: string; bg: string; text: string; border: string }> = {
+  "Artwork Pending":        { dot: "#9ca3af", bg: "bg-gray-100",   text: "text-gray-700",   border: "border-gray-300"  },
+  "Artwork Received":       { dot: "#f59e0b", bg: "bg-yellow-100", text: "text-yellow-800", border: "border-yellow-300"},
+  "Under Process":          { dot: "#0d9488", bg: "bg-teal-100",   text: "text-teal-800",   border: "border-teal-300"  },
+  "Pending Mail to MB":     { dot: "#f59e0b", bg: "bg-amber-50",   text: "text-amber-800",  border: "border-amber-300" },
+  "Brand Approved":         { dot: "#7c3aed", bg: "bg-purple-100", text: "text-purple-800", border: "border-purple-300"},
+  "LSD Shade Approved":     { dot: "#3b82f6", bg: "bg-blue-100",   text: "text-blue-800",   border: "border-blue-300"  },
+  "Engraving":              { dot: "#4f46e5", bg: "bg-indigo-100", text: "text-indigo-800", border: "border-indigo-300"},
+  "Cylinder Received":      { dot: "#16a34a", bg: "bg-green-100",  text: "text-green-800",  border: "border-green-300" },
+  "Released to Production": { dot: "#15803d", bg: "bg-green-200",  text: "text-green-900",  border: "border-green-400" },
+  "On Hold":                { dot: "#dc2626", bg: "bg-red-100",    text: "text-red-800",    border: "border-red-300"   },
+};
+
+// ─── Portal-based stage dropdown (escapes DataGrid overflow clipping) ─────────
+function StageDropdown({
+  artworkId, stage, onSelect, openId, setOpenId,
+}: {
+  artworkId: string;
+  stage: string;
+  onSelect: (s: string) => void;
+  openId: string | null;
+  setOpenId: (id: string | null) => void;
+}) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const isOpen = openId === artworkId;
+  const c = STAGE_COLORS[stage] ?? { dot: "#9ca3af", bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-300" };
+
+  useEffect(() => { setMounted(true); }, []);
+
+  // Compute dropdown position after isOpen becomes true (handles remount after parent re-render)
+  useEffect(() => {
+    if (isOpen && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    } else {
+      setPos(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      const portal = document.getElementById("__stage-drop-portal__");
+      if (btnRef.current?.contains(e.target as Node)) return;
+      if (portal?.contains(e.target as Node)) return;
+      setOpenId(null);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen, setOpenId]);
+
+  const open = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenId(isOpen ? null : artworkId);
+  };
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        onClick={open}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}
+      >
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
+        {stage}
+        <ChevronDown size={10} className="opacity-60" />
+      </button>
+
+      {isOpen && pos && mounted && createPortal(
+        <div
+          id="__stage-drop-portal__"
+          style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 99999 }}
+          className="w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden"
+        >
+          {ARTWORK_STAGES.map(s => {
+            const sc = STAGE_COLORS[s] ?? { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "" };
+            const isCur = s === stage;
+            return (
+              <button key={s}
+                onClick={() => { onSelect(s); setOpenId(null); }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-medium transition-colors
+                  ${isCur ? `${sc.bg} ${sc.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sc.dot }} />
+                {s}
+                {isCur && <Check size={11} className="ml-auto" />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 // ─── Shared input style ───────────────────────────────────────────────────────
 const lCls = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1";
 
@@ -328,11 +434,7 @@ export default function ArtworkManagementPage() {
     AttachmentFilesName: string;
   };
 
-  const ARTWORK_STAGES = [
-    "Artwork Pending", "Artwork Received", "Under Process",
-    "Pending Mail to MB", "Brand Approved", "LSD Shade Approved",
-    "Engraving", "Cylinder Received", "Released to Production", "On Hold",
-  ];
+  // ARTWORK_STAGES & STAGE_COLORS are now module-level constants above
 
   const [libRows, setLibRows] = useState<LibRow[]>([]);
   const [libLoading, setLibLoading] = useState(false);
@@ -567,13 +669,13 @@ export default function ArtworkManagementPage() {
   // ─── Search ───────────────────────────────────────────────────────────────
   const [search, setSearch] = useState("");
 
-  // Close dropdowns on outside click
+  // Close dropdowns on outside click (openStageRow is managed by StageDropdown itself)
   useEffect(() => {
-    if (!openStageRow && !colFilterOpen && !masterAttOpen) return;
-    const handler = () => { setOpenStageRow(null); setColFilterOpen(null); setMasterAttOpen(null); };
+    if (!colFilterOpen && !masterAttOpen) return;
+    const handler = () => { setColFilterOpen(null); setMasterAttOpen(null); };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [openStageRow, colFilterOpen, masterAttOpen]);
+  }, [colFilterOpen, masterAttOpen]);
 
   // ─── Load list + dropdowns ────────────────────────────────────────────────
   const loadList = useCallback(async () => {
@@ -945,6 +1047,7 @@ export default function ArtworkManagementPage() {
               ),
             },
           ]}
+          getRowId={r => String(r.ArtworkID)}
           actions={row => (
             <div className="flex items-center gap-2 justify-end">
               <button
@@ -1274,19 +1377,7 @@ export default function ArtworkManagementPage() {
         const setLF = (k: keyof typeof libFilters, v: string) =>
           setLibFilters(f => ({ ...f, [k]: v }));
 
-        // ── stage color map ───────────────────────────────────────────────
-        const STAGE_COLORS: Record<string, { dot: string; bg: string; text: string; border: string }> = {
-          "Artwork Pending": { dot: "#9ca3af", bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-300" },
-          "Artwork Received": { dot: "#f59e0b", bg: "bg-yellow-100", text: "text-yellow-800", border: "border-yellow-300" },
-          "Under Process": { dot: "#0d9488", bg: "bg-teal-100", text: "text-teal-800", border: "border-teal-300" },
-          "Pending Mail to MB": { dot: "#f59e0b", bg: "bg-amber-50", text: "text-amber-800", border: "border-amber-300" },
-          "Brand Approved": { dot: "#7c3aed", bg: "bg-purple-100", text: "text-purple-800", border: "border-purple-300" },
-          "LSD Shade Approved": { dot: "#3b82f6", bg: "bg-blue-100", text: "text-blue-800", border: "border-blue-300" },
-          "Engraving": { dot: "#4f46e5", bg: "bg-indigo-100", text: "text-indigo-800", border: "border-indigo-300" },
-          "Cylinder Received": { dot: "#16a34a", bg: "bg-green-100", text: "text-green-800", border: "border-green-300" },
-          "Released to Production": { dot: "#15803d", bg: "bg-green-200", text: "text-green-900", border: "border-green-400" },
-          "On Hold": { dot: "#dc2626", bg: "bg-red-100", text: "text-red-800", border: "border-red-300" },
-        };
+        // STAGE_COLORS is module-level constant
         const stageBadge = (s: string) => {
           const c = STAGE_COLORS[s];
           return c ? `${c.bg} ${c.text}` : "bg-gray-100 text-gray-500";
@@ -1750,7 +1841,7 @@ export default function ArtworkManagementPage() {
               rowHeight={52}
               columns={[
                 {
-                  key: "JobName", header: "Job Name", wrap: true, size: 220,
+                  key: "JobName", header: "Job Name", wrap: true, size: 240,
                   render: r => (
                     <div className="leading-snug">
                       <p className="font-semibold text-gray-800">{r.JobName || "—"}</p>
@@ -1760,11 +1851,11 @@ export default function ArtworkManagementPage() {
                   ),
                 },
                 {
-                  key: "PackSize", header: "SKU Size",
+                  key: "PackSize", header: "SKU Size", size: 110,
                   render: r => <span className="font-medium text-gray-700">{r.PackSize || "—"}</span>,
                 },
                 {
-                  key: "StructureType", header: "Material",
+                  key: "StructureType", header: "Material", size: 150,
                   render: r => r.StructureType
                     ? <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.StructureType}</span>
                     : <span className="text-gray-400">—</span>,
@@ -1774,7 +1865,7 @@ export default function ArtworkManagementPage() {
                   render: r => <span className="text-gray-700 leading-snug">{r.TypeOfProduct || "—"}</span>,
                 },
                 {
-                  key: "ArtworkStage", header: "Current Status", size: 170,
+                  key: "ArtworkStage", header: "Current Status", size: 180,
                   render: r => {
                     const stage = r.ArtworkStage || "Artwork Pending";
                     const cls = (() => {
@@ -1792,19 +1883,19 @@ export default function ArtworkManagementPage() {
                   },
                 },
                 {
-                  key: "Customer", header: "Customer / Party", wrap: true, size: 140,
+                  key: "Customer", header: "Customer / Party", wrap: true, size: 160,
                   render: r => <span className="text-gray-700 text-[11px] leading-snug">{r.Customer || "—"}</span>,
                 },
                 {
-                  key: "CylVendor", header: "Cyl. Maker",
+                  key: "CylVendor", header: "Cyl. Maker", wrap: true, size: 150,
                   render: r => <span className="text-gray-700 font-medium">{r.CylVendor || "—"}</span>,
                 },
                 {
-                  key: "NoOfColors", header: "Colors",
+                  key: "NoOfColors", header: "Colors", size: 80,
                   render: r => <span className="font-bold text-gray-700">{r.NoOfColors || "—"}</span>,
                 },
                 {
-                  key: "Brand", header: "Brand / Product", wrap: true, size: 140,
+                  key: "Brand", header: "Brand / Product", wrap: true, size: 160,
                   render: r => (
                     <div className="leading-snug">
                       <p className="font-bold text-red-600 text-[11px]">{r.Brand || "—"}</p>
@@ -1813,23 +1904,22 @@ export default function ArtworkManagementPage() {
                   ),
                 },
                 {
-                  key: "Substrate", header: "Substrate",
+                  key: "Substrate", header: "Substrate", size: 130,
                   render: r => <span className="text-gray-600">{r.Substrate || "—"}</span>,
                 },
                 {
-                  key: "CylStatus", header: "Cylinder Status",
+                  key: "CylStatus", header: "Cylinder Status", size: 150,
                   render: r => r.CylStatus
                     ? <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 rounded text-[10px] font-medium">{r.CylStatus}</span>
                     : <span className="text-gray-400">—</span>,
                 },
                 {
-                  key: "CreatedDate", header: "Artwork Recd.",
+                  key: "CreatedDate", header: "Artwork Recd.", size: 130,
                   render: r => <span className="text-gray-600 text-[11px]">{r.CreatedDate || "—"}</span>,
                 },
               ]}
               actions={r => {
                 const stage = r.ArtworkStage || "Artwork Pending";
-                const stageIdx = ARTWORK_STAGES.indexOf(stage);
                 const isUpdating = libUpdating === r.ArtworkID;
                 return isUpdating ? (
                   <div className="flex items-center gap-1.5 text-indigo-500">
@@ -1838,49 +1928,13 @@ export default function ArtworkManagementPage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
-                    <button disabled={stageIdx <= 0}
-                      onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.max(0, stageIdx - 1)])}
-                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-indigo-600 disabled:opacity-20 disabled:cursor-not-allowed">
-                      <ChevronLeft size={13} />
-                    </button>
-                    <div className="relative">
-                      <button
-                        onClick={e => { e.stopPropagation(); setOpenStageRow(openStageRow === r.ArtworkID ? null : r.ArtworkID); }}
-                        className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap
-                          ${STAGE_COLORS[stage]?.bg || "bg-gray-100"}
-                          ${STAGE_COLORS[stage]?.text || "text-gray-700"}
-                          ${STAGE_COLORS[stage]?.border || "border-gray-300"}
-                        `}
-                      >
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: STAGE_COLORS[stage]?.dot || "#9ca3af" }} />
-                        {stage}
-                        <ChevronDown size={10} className="opacity-60" />
-                      </button>
-                      {openStageRow === r.ArtworkID && (
-                        <div className="absolute z-50 left-0 top-full mt-1 w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden">
-                          {ARTWORK_STAGES.map(s => {
-                            const c = STAGE_COLORS[s] || { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "border-gray-200" };
-                            const isCur = s === stage;
-                            return (
-                              <button key={s}
-                                onClick={() => { updateStage(r.ArtworkID, s); setOpenStageRow(null); }}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left text-[11px] font-medium transition-colors
-                                  ${isCur ? `${c.bg} ${c.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
-                              >
-                                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
-                                {s}
-                                {isCur && <Check size={11} className="ml-auto" />}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                    <button disabled={stageIdx >= ARTWORK_STAGES.length - 1}
-                      onClick={() => updateStage(r.ArtworkID, ARTWORK_STAGES[Math.min(ARTWORK_STAGES.length - 1, stageIdx + 1)])}
-                      className="p-1 rounded-md hover:bg-gray-100 text-gray-400 hover:text-green-600 disabled:opacity-20 disabled:cursor-not-allowed">
-                      <ChevronRight size={13} />
-                    </button>
+                    <StageDropdown
+                      artworkId={r.ArtworkID}
+                      stage={stage}
+                      onSelect={s => updateStage(r.ArtworkID, s)}
+                      openId={openStageRow}
+                      setOpenId={setOpenStageRow}
+                    />
                   </div>
                 );
               }}
