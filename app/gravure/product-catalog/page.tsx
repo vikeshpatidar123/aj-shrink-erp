@@ -24,6 +24,7 @@ import { useCategories } from "@/context/CategoriesContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { useMasters } from "@/context/MastersContext";
 import { useToast } from "@/components/ui/Toast";
+import { usePermissions } from "@/context/PermissionsContext";
 import { apiGet, apiPost } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
 
@@ -71,7 +72,10 @@ const Pill = ({ label, value, cls = "bg-gray-50 text-gray-700 border-gray-200" }
 );
 
 // ─── Main Page ────────────────────────────────────────────────
+const MOD = "/gravure/product-catalog";
+
 export default function ProductCatalogPage() {
+  const { can } = usePermissions();
   const router = useRouter();
   const { categories, refresh: refreshCategories } = useCategories();
   const { catalog, loading: catalogLoading, error: catalogError, refresh: refreshCatalog, saveCatalogItem, deleteCatalogItem, updateCatalogStatus } = useProductCatalog();
@@ -1824,7 +1828,7 @@ export default function ProductCatalogPage() {
             </button>
           </div>
           <TutorialButton title="Product Catalog — Tutorial" />
-          <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openDirectCreate}>Create Catalog</Button>
+          {can(MOD, "CanSave") && <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openDirectCreate}>Create Catalog</Button>}
         </div>
       </div>
 
@@ -1987,7 +1991,7 @@ export default function ProductCatalogPage() {
                     className={!row.isActive ? "text-gray-400 cursor-not-allowed" : "text-purple-700 hover:text-purple-800 hover:bg-purple-50"}>
                     Use in Estimation
                   </Button>
-                  <RowAction.Delete onClick={() => setDeleteId(row.id)} />
+                  {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => setDeleteId(row.id)} />}
                 </div>
               )}
             />

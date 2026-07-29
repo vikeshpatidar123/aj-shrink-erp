@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Plus, Pencil, Trash2, X, Search, Check, List,
-  ClipboardList, ChevronRight,
+  ClipboardList, ChevronRight, RefreshCw,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
@@ -86,6 +87,7 @@ interface POHeader {
 }
 
 interface OverflowItem {
+  _uid: number; // synthetic per-row key (GetOverFlowGrid can repeat ItemID across rows)
   ItemID: number;
   ItemGroupID: number;
   ItemGroupNameID: number;
@@ -321,6 +323,8 @@ export default function PurchaseOrderPage() {
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerGroup, setPickerGroup] = useState("All");
   const [showChargeMenu, setShowChargeMenu] = useState(false);
+  // multi-select in item picker (tracked by synthetic _uid)
+  const [pickerSel, setPickerSel] = useState<Set<number>>(new Set());
 
   // ── Password modal (for Update/Delete) ──
   const [pwModal, setPwModal] = useState<"update" | "delete" | null>(null);
@@ -402,6 +406,23 @@ export default function PurchaseOrderPage() {
     finally { setLoadingPos(false); }
   }, []);
 
+  // Close a PO — its remaining un-received qty drops out of GRN's pending list
+  // (backend sets IsCompleted=1). Use when a partial PO won't be fulfilled further.
+  const closePO = useCallback(async (po: POHeader) => {
+    if (!window.confirm(`Close PO ${po.VoucherNo}?\nRemaining un-received quantity will be removed from the GRN pending list.`)) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/ClosePO`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ transactionId: po.TransactionID }),
+      });
+      const text = (await res.text()).replace(/^"|"$/g, "");
+      if (!res.ok || text.startsWith("Error")) { alert("Close failed: " + text); return; }
+      alert("Purchase Order closed.");
+      fetchPos();
+    } catch (e: any) { alert("Close failed: " + e.message); }
+  }, [fetchPos]);
+
   const fetchContacts = useCallback(async (ledgerId: number) => {
     if (!ledgerId) { setContacts([]); return; }
     try {
@@ -416,7 +437,7 @@ export default function PurchaseOrderPage() {
         ? `${BASE_URL}/api/PurchaseOrderAJ/GetOverFlowGrid?selSupplierName=${ledgerId}`
         : `${BASE_URL}/api/PurchaseOrderAJ/GetOverFlowGrid`;
       const data = await apiFetch(url);
-      setOverflowItems(Array.isArray(data) ? data : []);
+      setOverflowItems((Array.isArray(data) ? data : []).map((it: OverflowItem, i: number) => ({ ...it, _uid: i })));
     } catch { setOverflowItems([]); }
   }, []);
 
@@ -574,7 +595,7 @@ export default function PurchaseOrderPage() {
         ItemCode: r.ItemCode ?? "",
         ItemName: r.ItemName ?? "",
         ItemDescription: r.ItemDescription ?? null,
-        ItemNarration: (r as any).ItemNarration ?? "",
+        ItemNarration: r.Narration ?? "",
         RequisitionTransactionID: r.TransactionID,
         ReqQtyInPU: poQty,
         StockUnit: r.StockUnit ?? r.OrderUnit ?? "",
@@ -756,10 +777,11 @@ export default function PurchaseOrderPage() {
 
   // ─── Line operations ───────────────────────────────────────────────────────
 
-  const addItemFromPicker = useCallback((item: OverflowItem) => {
+  // Build a PO line from a picker item (shared by multi-select add).
+  const buildLineFromItem = useCallback((item: OverflowItem, idx: number): POLine => {
     const rate = itemRates.find(r => r.ItemID === item.ItemID);
-    const line: POLine = recalcLine({
-      lineKey: `pick-${item.ItemID}-${Date.now()}`,
+    return recalcLine({
+      lineKey: `pick-${item.ItemID}-${idx}-${Date.now()}`,
       ItemID: item.ItemID,
       ItemGroupID: item.ItemGroupID,
       ItemGroupNameID: toNum(item.ItemGroupNameID),
@@ -789,11 +811,49 @@ export default function PurchaseOrderPage() {
       GrossAmount: 0, DiscPct: 0, DiscAmount: 0, BasicAmount: 0,
       TaxableAmount: 0, CGSTAmount: 0, SGSTAmount: 0, IGSTAmount: 0, NetAmount: 0,
     }, sameState);
-    setLines(prev => [...prev, line]);
+  }, [sameState, itemRates]);
+
+  const togglePickerSel = (uid: number) =>
+    setPickerSel(prev => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+
+  // Picker rows (by _uid) still addable — not already present in the grid.
+  const pickerAddableIds = useMemo(
+    () => filteredPickerItems.filter(i => !lines.some(l => l.ItemID === i.ItemID)).map(i => i._uid),
+    [filteredPickerItems, lines]
+  );
+  const allPickerSelected = pickerAddableIds.length > 0 && pickerAddableIds.every(id => pickerSel.has(id));
+
+  const toggleAllPicker = () =>
+    setPickerSel(prev => {
+      const allSelected = pickerAddableIds.length > 0 && pickerAddableIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) pickerAddableIds.forEach(id => next.delete(id));
+      else pickerAddableIds.forEach(id => next.add(id));
+      return next;
+    });
+
+  // Add every selected (and not-already-present) picker item at once.
+  // Selection is tracked by _uid; still dedupe by ItemID so an item is never added twice.
+  const addSelectedFromPicker = () => {
+    const seen = new Set<number>();
+    const toAdd = overflowItems.filter(i => {
+      if (!pickerSel.has(i._uid)) return false;
+      if (lines.some(l => l.ItemID === i.ItemID)) return false;
+      if (seen.has(i.ItemID)) return false;
+      seen.add(i.ItemID);
+      return true;
+    });
+    if (!toAdd.length) { alert("No items selected."); return; }
+    setLines(prev => [...prev, ...toAdd.map((it, i) => buildLineFromItem(it, prev.length + i))]);
     setShowPicker(false);
     setPickerSearch("");
     setPickerGroup("All");
-  }, [sameState, itemRates]);
+    setPickerSel(new Set());
+  };
 
   const updateLineNum = useCallback((key: string, field: keyof POLine, value: number) => {
     setLines(prev => prev.map(l => {
@@ -1130,24 +1190,51 @@ export default function PurchaseOrderPage() {
     });
   };
 
-  const toggleAllReqs = () => {
-    if (selectedReqIds.size === reqs.length) {
-      setSelectedReqIds(new Set());
-    } else {
-      setSelectedReqIds(new Set(reqs.map(reqKey)));
-    }
-  };
+  // ─── List table columns ───────────────────────────────────────────────────
 
-  // Group reqs by VoucherNo for display
-  const reqsByVoucher = useMemo(() => {
-    const map = new Map<string, ReqRow[]>();
-    for (const r of reqs) {
-      const k = r.VoucherNo ?? String(r.TransactionID);
-      if (!map.has(k)) map.set(k, []);
-      map.get(k)!.push(r);
-    }
-    return map;
-  }, [reqs]);
+  const reqColumns: Column<ReqRow>[] = useMemo(() => [
+    {
+      key: "sel", header: "", width: "w-8", sortable: false,
+      render: r => (
+        <input
+          type="checkbox"
+          checked={selectedReqIds.has(reqKey(r))}
+          onChange={() => toggleReqRow(r)}
+          onClick={e => e.stopPropagation()}
+          className="w-4 h-4 text-blue-600 rounded border-gray-300"
+        />
+      ),
+    },
+    { key: "VoucherNo", header: "Req. No.", render: r => <span className="font-mono text-blue-700 font-semibold whitespace-nowrap">{r.VoucherNo || "—"}</span> },
+    { key: "VoucherDate", header: "Date", render: r => <span className="text-gray-600 whitespace-nowrap">{r.VoucherDate || "—"}</span> },
+    {
+      key: "ItemCode", header: "Item Code",
+      render: r => (
+        <div>
+          <span className="font-mono text-blue-700 font-semibold">{r.ItemCode}</span>
+          {r.ItemDescription && <span className="text-gray-400 block font-normal text-xs">{r.ItemDescription}</span>}
+        </div>
+      ),
+    },
+    { key: "ItemName", header: "Item Name", render: r => <span className="text-gray-800 font-medium">{r.ItemName}</span> },
+    { key: "ItemGroupName", header: "Group", render: r => <span className="text-gray-600">{r.ItemGroupName}</span> },
+    { key: "PurchaseQuantity", header: "Pending Qty", render: r => <span className="font-semibold text-gray-800">{toNum(r.PurchaseQuantity).toLocaleString()}</span> },
+    { key: "PurchaseUnit", header: "P.Unit", render: r => <span className="text-gray-600">{r.PurchaseUnit}</span> },
+    { key: "PurchaseRate", header: "Rate", render: r => <span className="text-gray-700">₹{toNum(r.PurchaseRate).toFixed(2)}</span> },
+    { key: "HSNCode", header: "HSN", render: r => <span className="font-mono text-gray-600">{r.HSNCode || "—"}</span> },
+    { key: "GSTTaxPercentage", header: "GST%", render: r => <span className="text-gray-700">{toNum(r.GSTTaxPercentage)}%</span> },
+    { key: "ExpectedDeliveryDate", header: "Exp. Delivery", render: r => <span className="text-gray-600 whitespace-nowrap">{r.ExpectedDeliveryDate || "—"}</span> },
+  ], [selectedReqIds]);
+
+  const poColumns: Column<POHeader>[] = useMemo(() => [
+    { key: "VoucherNo", header: "PO No.", render: p => <span className="font-mono text-xs font-semibold text-blue-700">{p.VoucherNo}</span> },
+    { key: "VoucherDate", header: "Date", render: p => <span className="text-gray-600 text-xs">{p.VoucherDate}</span> },
+    { key: "LedgerName", header: "Supplier", render: p => <span className="text-gray-800 text-xs font-medium">{p.LedgerName}</span> },
+    { key: "BasicAmount", header: "Basic Amt", render: p => <span className="text-gray-700 text-xs font-semibold">₹{fmtAmt(toNum(p.BasicAmount))}</span> },
+    { key: "GSTTaxAmount", header: "GST", render: p => <span className="text-gray-600 text-xs">₹{fmtAmt(toNum(p.GSTTaxAmount))}</span> },
+    { key: "NetAmount", header: "Net Amount", render: p => <span className="text-blue-700 text-xs font-bold">₹{fmtAmt(toNum(p.NetAmount))}</span> },
+    { key: "CurrencyCode", header: "Currency", render: p => <span className="text-gray-600 text-xs">{p.CurrencyCode || "INR"}</span> },
+  ], []);
 
   // ─── Password modal submit ─────────────────────────────────────────────────
 
@@ -1163,114 +1250,92 @@ export default function PurchaseOrderPage() {
 
   if (view === "list") {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
+      <div className="w-full space-y-4">
 
-        {/* Page header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Purchase Orders</h2>
-            <p className="text-sm text-gray-500">Manage requisition-based and direct purchase orders</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Purchase Order</Button>
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Orders</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">
+            {listTab === "reqs" ? `${reqs.length} pending requisition lines` : `${pos.length} purchase orders`}
+          </p>
         </div>
 
-        {/* List tabs */}
-        <div className="flex gap-6 border-b border-gray-200">
-          {(["reqs", "pos"] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setListTab(tab)}
-              className={`pb-3 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                listTab === tab ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
-              }`}
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+
+          {/* Tab pills */}
+          <div className="flex items-center gap-2">
+            {([
+              { key: "reqs" as const, label: "Pending Requisitions", count: reqs.length, amber: true },
+              { key: "pos" as const, label: "Created POs", count: pos.length, amber: false },
+            ]).map(t => (
+              <button
+                key={t.key} onClick={() => setListTab(t.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${listTab === t.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))] shadow-sm" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${listTab === t.key ? "bg-white/20 text-white" : t.amber ? "bg-amber-100 text-amber-700" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]"}`}>
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {listTab === "pos" && (
+              <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+                <Search size={14} className="text-[rgb(var(--fg-muted))] flex-shrink-0" />
+                <input
+                  value={posSearch} onChange={e => setPosSearch(e.target.value)}
+                  placeholder="Search PO no., supplier…"
+                  className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-40 sm:w-56 border-none"
+                />
+                {posSearch && (
+                  <button onClick={() => setPosSearch("")} className="text-[rgb(var(--fg-muted))] hover:text-[rgb(var(--fg-default))]">
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+            <Button
+              variant="action-refresh" size="sm" icon={<RefreshCw size={14} />}
+              onClick={() => (listTab === "reqs" ? fetchReqs() : fetchPos())}
+            />
+            <Button
+              variant="action-create" size="sm" icon={<Plus size={15} />}
+              onClick={() => (listTab === "reqs" && selectedReqIds.size > 0 ? openFromSelectedReqs() : openNew())}
             >
-              {tab === "reqs" ? (
-                <span className="flex items-center gap-2"><ClipboardList size={14} /> Pending Requisitions
-                  {reqs.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs font-bold rounded-full">{reqs.length}</span>}
-                </span>
-              ) : (
-                <span className="flex items-center gap-2"><List size={14} /> Created POs
-                  {pos.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-gray-100 text-gray-600 text-xs font-bold rounded-full">{pos.length}</span>}
-                </span>
-              )}
-            </button>
-          ))}
+              {listTab === "reqs" && selectedReqIds.size > 0 ? `Create (${selectedReqIds.size})` : "New Purchase Order"}
+            </Button>
+          </div>
         </div>
 
         {/* ── PENDING REQUISITIONS TAB ── */}
         {listTab === "reqs" && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            {selectedReqIds.size > 0 && (
-              <div className="px-5 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
-                <span className="text-sm text-blue-700 font-medium">{selectedReqIds.size} item(s) selected</span>
-                <button
-                  onClick={openFromSelectedReqs}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                >
-                  <ChevronRight size={15} /> Create Purchase Order
-                </button>
-              </div>
-            )}
-
+          <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
             {loadingReqs ? (
-              <div className="text-center py-14 text-gray-400 text-sm">Loading requisitions…</div>
+              <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading requisitions…</div>
             ) : reqs.length === 0 ? (
-              <div className="text-center py-14 text-gray-400 text-sm">No pending requisitions found</div>
+              <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No pending requisitions found</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs" style={{ minWidth: 1100 }}>
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="px-3 py-3 text-left">
-                        <input type="checkbox"
-                          checked={selectedReqIds.size === reqs.length && reqs.length > 0}
-                          onChange={toggleAllReqs}
-                          className="w-4 h-4 text-blue-600 rounded border-gray-300" />
-                      </th>
-                      {["Req. No.", "Date", "Item Code", "Item Name", "Group", "Pending Qty", "P.Unit", "Rate", "HSN", "GST%", "Exp. Delivery"].map(h => (
-                        <th key={h} className="px-3 py-3 text-left font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Array.from(reqsByVoucher.entries()).map(([voucherNo, rows]) => (
-                      <React.Fragment key={voucherNo}>
-                        {rows.map((r, ri) => {
-                        const k = reqKey(r);
-                        const selected = selectedReqIds.has(k);
-                        return (
-                          <tr
-                            key={k}
-                            onClick={() => toggleReqRow(r)}
-                            className={`border-b border-gray-100 cursor-pointer transition-colors ${selected ? "bg-blue-50 hover:bg-blue-100" : ri % 2 === 0 ? "bg-white hover:bg-gray-50" : "bg-gray-50/40 hover:bg-gray-100"}`}
-                          >
-                            <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                              <input type="checkbox" checked={selected} onChange={() => toggleReqRow(r)}
-                                className="w-4 h-4 text-blue-600 rounded border-gray-300" />
-                            </td>
-                            <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
-                              {ri === 0 ? voucherNo : ""}
-                            </td>
-                            <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{ri === 0 ? r.VoucherDate : ""}</td>
-                            <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold">
-                              {r.ItemCode}
-                              {r.ItemDescription && <span className="text-gray-400 block font-normal text-xs">{r.ItemDescription}</span>}
-                            </td>
-                            <td className="px-3 py-2.5 text-gray-800 font-medium max-w-[180px]">{r.ItemName}</td>
-                            <td className="px-3 py-2.5 text-gray-600">{r.ItemGroupName}</td>
-                            <td className="px-3 py-2.5 text-right font-semibold text-gray-800">{toNum(r.PurchaseQuantity).toLocaleString()}</td>
-                            <td className="px-3 py-2.5 text-gray-600">{r.PurchaseUnit}</td>
-                            <td className="px-3 py-2.5 text-right text-gray-700">₹{toNum(r.PurchaseRate).toFixed(2)}</td>
-                            <td className="px-3 py-2.5 font-mono text-gray-600">{r.HSNCode || "—"}</td>
-                            <td className="px-3 py-2.5 text-right text-gray-700">{toNum(r.GSTTaxPercentage)}%</td>
-                            <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.ExpectedDeliveryDate || "—"}</td>
-                          </tr>
-                        );
-                        })}
-                      </React.Fragment>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="p-4">
+                <DataTable
+                  data={reqs}
+                  columns={reqColumns}
+                  getRowId={r => reqKey(r)}
+                  enableRowSelection={false}
+                  toolbar={
+                    selectedReqIds.size > 0 ? (
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-semibold text-[rgb(var(--color-primary))]">{selectedReqIds.size} selected</span>
+                        <button onClick={() => setSelectedReqIds(new Set())} className="text-xs text-[rgb(var(--fg-muted))] hover:text-red-600 underline">Clear selection</button>
+                      </div>
+                    ) : undefined
+                  }
+                />
               </div>
             )}
           </div>
@@ -1278,57 +1343,29 @@ export default function PurchaseOrderPage() {
 
         {/* ── CREATED POs TAB ── */}
         {listTab === "pos" && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-3">
-              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50 flex-1 max-w-xs">
-                <Search size={13} className="text-gray-400" />
-                <Input
-                  value={posSearch}
-                  onChange={e => setPosSearch(e.target.value)}
-                  placeholder="Search PO no., supplier…"
-                  className="flex-1"
+          <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+            {loadingPos ? (
+              <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading purchase orders…</div>
+            ) : filteredPos.length === 0 ? (
+              <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No purchase orders found</div>
+            ) : (
+              <div className="p-4">
+                <DataTable
+                  data={filteredPos}
+                  columns={poColumns}
+                  getRowId={po => String(po.TransactionID)}
+                  actions={po => (
+                    <div className="flex items-center gap-1">
+                      <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(po)}>
+                        Edit
+                      </Button>
+                      <Button variant="action-cancel" size="xs" icon={<X size={11} />} onClick={() => closePO(po)}>
+                        Close
+                      </Button>
+                    </div>
+                  )}
                 />
               </div>
-              <button onClick={fetchPos} className="text-xs text-blue-600 hover:underline font-medium">Refresh</button>
-            </div>
-
-            {loadingPos ? (
-              <div className="text-center py-14 text-gray-400 text-sm">Loading purchase orders…</div>
-            ) : filteredPos.length === 0 ? (
-              <div className="text-center py-14 text-gray-400 text-sm">No purchase orders found</div>
-            ) : (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-200">
-                    {["PO No.", "Date", "Supplier", "Basic Amt", "GST", "Net Amount", "Currency", "Actions"].map(h => (
-                      <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${h === "Actions" || h === "Currency" ? "text-center" : h.includes("Amt") || h === "GST" || h === "Net Amount" ? "text-right" : "text-left"}`}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPos.map((po, i) => (
-                    <tr key={po.TransactionID} className={`border-t border-gray-100 hover:bg-blue-50/20 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{po.VoucherNo}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{po.VoucherDate}</td>
-                      <td className="px-4 py-3 text-gray-800 text-xs font-medium">{po.LedgerName}</td>
-                      <td className="px-4 py-3 text-right text-gray-700 text-xs font-semibold">₹{fmtAmt(toNum(po.BasicAmount))}</td>
-                      <td className="px-4 py-3 text-right text-gray-600 text-xs">₹{fmtAmt(toNum(po.GSTTaxAmount))}</td>
-                      <td className="px-4 py-3 text-right text-blue-700 text-xs font-bold">₹{fmtAmt(toNum(po.NetAmount))}</td>
-                      <td className="px-4 py-3 text-center text-gray-600 text-xs">{po.CurrencyCode || "INR"}</td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <button
-                            onClick={() => openEdit(po)}
-                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors"
-                          >
-                            <Pencil size={11} /> Edit
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             )}
           </div>
         )}
@@ -1348,7 +1385,7 @@ export default function PurchaseOrderPage() {
   ];
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+    <div className="w-full pb-10">
 
       {/* Header ribbon */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -1486,7 +1523,7 @@ export default function PurchaseOrderPage() {
               <div className="flex items-center justify-between">
                 <SectionTitle title="Purchase Order Lines" />
                 <button
-                  onClick={() => { setShowPicker(true); setPickerSearch(""); setPickerGroup("All"); }}
+                  onClick={() => { setShowPicker(true); setPickerSearch(""); setPickerGroup("All"); setPickerSel(new Set()); }}
                   className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Plus size={13} /> Add Item
@@ -1825,6 +1862,16 @@ export default function PurchaseOrderPage() {
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-3 py-2 text-center w-10">
+                      <input
+                        type="checkbox"
+                        checked={allPickerSelected}
+                        onChange={toggleAllPicker}
+                        disabled={pickerAddableIds.length === 0}
+                        className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                        title="Select all"
+                      />
+                    </th>
                     {["Code", "Item Name", "Group", "P.Unit", "Purchase Rate", "GST%", "Stock"].map(h => (
                       <th key={h} className="px-4 py-2 text-left font-semibold text-gray-500">{h}</th>
                     ))}
@@ -1832,27 +1879,63 @@ export default function PurchaseOrderPage() {
                 </thead>
                 <tbody>
                   {filteredPickerItems.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">No items found</td></tr>
-                  ) : filteredPickerItems.map(item => (
-                    <tr key={item.ItemID} onClick={() => addItemFromPicker(item)}
-                      className="border-b border-gray-50 hover:bg-blue-50 cursor-pointer transition-colors">
-                      <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
-                        {item.ItemCode}
-                        {item.ItemDescription && <span className="block text-gray-400 font-normal text-xs">{item.ItemDescription}</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-800 font-medium">{item.ItemName}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{item.ItemGroupName}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{item.PurchaseUnit}</td>
-                      <td className="px-4 py-2.5 text-right font-semibold text-gray-800">₹{toNum(item.PurchaseRate).toFixed(2)}</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.GSTTaxPercentage)}%</td>
-                      <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.PhysicalStock).toLocaleString()} {item.StockUnit}</td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan={8} className="text-center py-12 text-gray-400">No items found</td></tr>
+                  ) : filteredPickerItems.map(item => {
+                    const added = lines.some(l => l.ItemID === item.ItemID);
+                    const selected = pickerSel.has(item._uid);
+                    return (
+                      <tr
+                        key={item._uid}
+                        onClick={() => !added && togglePickerSel(item._uid)}
+                        className={`border-b border-gray-50 transition-colors ${added ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-blue-50"} ${selected ? "bg-blue-50" : ""}`}
+                      >
+                        <td className="px-3 py-2.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={added || selected}
+                            disabled={added}
+                            readOnly
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 pointer-events-none"
+                          />
+                        </td>
+                        <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
+                          {item.ItemCode}
+                          {item.ItemDescription && <span className="block text-gray-400 font-normal text-xs">{item.ItemDescription}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-800 font-medium">
+                          {item.ItemName}
+                          {added && <span className="ml-2 text-[10px] font-semibold text-gray-400 uppercase">Added</span>}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600">{item.ItemGroupName}</td>
+                        <td className="px-4 py-2.5 text-gray-600">{item.PurchaseUnit}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800">₹{toNum(item.PurchaseRate).toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.GSTTaxPercentage)}%</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.PhysicalStock).toLocaleString()} {item.StockUnit}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-            <div className="px-5 py-2.5 border-t border-gray-100 text-right shrink-0">
-              <p className="text-xs text-gray-400">Click any row to add item</p>
+            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 shrink-0">
+              <p className="text-xs text-gray-400">
+                {pickerSel.size > 0 ? `${pickerSel.size} item${pickerSel.size > 1 ? "s" : ""} selected` : "Select items to add"}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowPicker(false)}
+                  className="px-4 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addSelectedFromPicker}
+                  disabled={pickerSel.size === 0}
+                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
+                >
+                  <Plus size={13} /> Add{pickerSel.size > 0 ? ` (${pickerSel.size})` : ""}
+                </button>
+              </div>
             </div>
           </div>
         </div>

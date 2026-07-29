@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
@@ -8,6 +8,7 @@ import {
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -852,7 +853,19 @@ export default function ItemConsumptionPage() {
       setVoucherDate(firstRow.VoucherDateISO || todayISO());
       setRemark(firstRow.Narration || "");
 
-      setLines(d.map((row: any) => ({
+      // Guard against backend JOIN fan-out: collapse duplicate detail rows by
+      // ConsumptionTransactionDetailID so edit-load never shows duplicate lines
+      // or double-posts quantities on save (rows without an id are kept as-is).
+      const seenDetIds = new Set<number>();
+      const uniqueRows = (d as any[]).filter((row: any) => {
+        const detId = Number(row.ConsumptionTransactionDetailID) || 0;
+        if (!detId) return true;
+        if (seenDetIds.has(detId)) return false;
+        seenDetIds.add(detId);
+        return true;
+      });
+
+      setLines(uniqueRows.map((row: any) => ({
         lineId: Math.random().toString(36).slice(2),
         TransactionDetailID: row.ConsumptionTransactionDetailID || 0,
         IssueTransactionID: row.TransactionID || 0,
@@ -915,39 +928,63 @@ export default function ItemConsumptionPage() {
   const showScanTab = consumeMode === "Job-wise" && issuedItems.length > 0;
   const totalConsumed = lines.reduce((s, l) => s + l.ConsumeQuantity, 0);
 
+  // ── Consumption list columns (MASTER UI DataTable) ────────
+  const consumptionColumns: Column<ConsumptionRecord>[] = useMemo(() => [
+    { key: "VoucherNo", header: "Voucher No.", render: rec => <span className="font-mono text-xs font-semibold text-[rgb(var(--color-primary))]">{rec.VoucherNo}</span> },
+    { key: "VoucherDate", header: "Date", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{fmtDate(rec.VoucherDate)}</span> },
+    {
+      key: "IsJobWiseConsumption", header: "Mode", render: rec =>
+        Number(rec.IsJobWiseConsumption) === 1
+          ? <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]">Job-wise</span>
+          : <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">Item-wise</span>
+    },
+    { key: "JobCardNo", header: "Job Card", render: rec => <span className="text-[rgb(var(--color-primary))] text-xs font-mono">{rec.JobCardNo || "—"}</span> },
+    { key: "IssueNo", header: "Issue Voucher", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{rec.IssueNo || "—"}</span> },
+    {
+      key: "ItemName", header: "Items", render: rec =>
+        (rec._itemCount ?? 1) > 1
+          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))] font-semibold text-xs">{rec._itemCount} items</span>
+          : <span className="text-[rgb(var(--fg-default))] text-xs">{rec.ItemName || "—"}</span>
+    },
+    { key: "_totalQty", header: "Total Consumed", render: rec => <span className="text-[rgb(var(--fg-default))] text-xs font-semibold">{(rec._totalQty ?? rec.ConsumeQuantity ?? 0).toLocaleString()} {rec.StockUnit || ""}</span> },
+    { key: "CreatedBy", header: "Created By", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{rec.CreatedBy || "—"}</span> },
+  ], []);
+
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Item Consumption</h2>
-            <p className="text-sm text-gray-500">{filteredList.length} consumption vouchers</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Consumption</Button>
+      <div className="w-full space-y-4">
+
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Item Consumption</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} consumption vouchers</p>
         </div>
 
-        {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Left: date range + search */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            <button onClick={loadList} disabled={loadingList}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
-              <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} />
-              {loadingList ? "Loading…" : "Refresh"}
-            </button>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">From</span>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
+              <input type="text" placeholder="Search voucher, job card, department, item, issue no…" value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
+            </div>
           </div>
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <Input type="text"
-              placeholder="Search by voucher no, job card, department, item, issue no…"
-              value={listSearch} onChange={(e) => setListSearch(e.target.value)}
-              className="flex-1" />
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
+            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Consumption</Button>
           </div>
         </div>
 
@@ -957,68 +994,27 @@ export default function ItemConsumptionPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Mode</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Card</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Consumed</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Created By</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingList ? (
-                <tr><td colSpan={9} className="text-center py-16 text-gray-400">Loading…</td></tr>
-              ) : filteredList.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-16 text-gray-400">
-                    No consumption vouchers found. Click &ldquo;New Consumption&rdquo; to begin.
-                  </td>
-                </tr>
-              ) : filteredList.map((rec, i) => (
-                <tr key={rec.ConsumptionTransactionID}
-                  className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{rec.VoucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(rec.VoucherDate)}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${Number(rec.IsJobWiseConsumption) === 1 ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
-                      {Number(rec.IsJobWiseConsumption) === 1 ? "Job-wise" : "Item-wise"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{rec.JobCardNo || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{rec.IssueNo || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">
-                    {(rec._itemCount ?? 1) > 1
-                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">{rec._itemCount} items</span>
-                      : <span className="text-gray-800">{rec.ItemName || "—"}</span>
-                    }
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
-                    {(rec._totalQty ?? rec.ConsumeQuantity ?? 0).toLocaleString()} {rec.StockUnit || ""}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{rec.CreatedBy || "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => openEdit(rec)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                        <Pencil size={11} /> Edit
-                      </button>
-                      <button onClick={() => handleDelete(rec.ConsumptionTransactionID)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+          {loadingList ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading…</div>
+          ) : filteredList.length === 0 ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No consumption vouchers found. Click &ldquo;New Consumption&rdquo; to begin.</div>
+          ) : (
+            <div className="p-4">
+              <DataTable
+                data={filteredList}
+                columns={consumptionColumns}
+                getRowId={rec => String(rec.ConsumptionTransactionID)}
+                loading={loadingList}
+                actions={rec => (
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(rec)}>Edit</Button>
+                    <Button variant="action-delete" size="xs" icon={<Trash2 size={11} />} onClick={() => handleDelete(rec.ConsumptionTransactionID)} />
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1029,7 +1025,7 @@ export default function ItemConsumptionPage() {
   // ══════════════════════════════════════════════════════════
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+    <div className="w-full pb-10">
 
       {/* Header ribbon */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -1310,7 +1306,7 @@ export default function ItemConsumptionPage() {
                 </div>
 
                 <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1000 }}>
+                  <table className="w-full text-xs" style={{ minWidth: 1200 }}>
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {[
@@ -1355,11 +1351,13 @@ export default function ItemConsumptionPage() {
                         <tr key={line.lineId}
                           className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                           <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800" style={{ maxWidth: 200 }}>{line.ItemName}</td>
+                          <td className="px-3 py-2.5 text-gray-800">
+                            <div className="truncate" style={{ maxWidth: 200 }} title={line.ItemName}>{line.ItemName}</div>
+                          </td>
                           <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.BatchNo || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-600">{line.SupplierBatchNo || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">{line.IssuedQty > 0 ? line.IssuedQty.toLocaleString() : "—"}</td>
-                          <td className="px-3 py-2.5 text-right font-bold text-blue-700">{line.ConsumeQuantity.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 whitespace-nowrap">{line.IssuedQty > 0 ? line.IssuedQty.toLocaleString() : "—"}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-blue-700 whitespace-nowrap">{line.ConsumeQuantity.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
                           <td className="px-3 py-2.5">
                             {line.jobCardContentNo ? (

@@ -10,6 +10,7 @@ import { statusBadge } from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const API = "api/gravureEnquiryShrink";
 const CUST_API = "api/gravureestimationShrink/getcustomerlist";
@@ -63,7 +64,10 @@ const statusColor: Record<string, string> = {
   Rejected:  "bg-red-50 text-red-600 border-red-200",
 };
 
+const MOD = "/enquiry";
+
 export default function GravureEnquiryPage() {
+  const { can } = usePermissions();
   const { showToast } = useToast();
 
   const [data, setData]           = useState<GravureEnquiry[]>([]);
@@ -250,7 +254,7 @@ export default function GravureEnquiryPage() {
           <Button variant="secondary" size="sm" icon={<RefreshCw size={14} className={loading ? "animate-spin" : ""} />} onClick={fetchData}>
             Refresh
           </Button>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>
+          {can(MOD, "CanSave") && <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Enquiry</Button>}
         </div>
       </div>
 
@@ -280,8 +284,8 @@ export default function GravureEnquiryPage() {
             actions={row => (
               <div className="flex items-center gap-1.5 justify-end">
                 <RowAction.View onClick={() => setViewRow(row)} />
-                <RowAction.Edit onClick={() => openEdit(row)} />
-                <RowAction.Delete onClick={() => setDeleteId(row.id)} />
+                {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEdit(row)} />}
+                {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => setDeleteId(row.id)} />}
               </div>
             )}
           />

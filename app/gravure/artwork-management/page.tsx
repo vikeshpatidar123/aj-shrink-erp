@@ -15,6 +15,7 @@ import { Input, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { DataTable } from "@/components/tables/DataTable";
+import { usePermissions } from "@/context/PermissionsContext";
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
@@ -383,7 +384,10 @@ function AttCard({ att, onRemove, onPreview, onRemarkChange }: {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+const MOD = "/gravure/artwork-management";
+
 export default function ArtworkManagementPage() {
+  const { can } = usePermissions();
   const [activeTab, setActiveTab] = useState<"master" | "management" | "library" | "bbartwork">("master");
   const [showVideoModal, setShowVideoModal] = useState(false);
 
@@ -969,7 +973,7 @@ export default function ArtworkManagementPage() {
               (libLoading && activeTab === "library") ? "animate-spin" : ""
             } />
           </button>
-          {activeTab === "master" && (
+          {activeTab === "master" && can(MOD, "CanSave") && (
             <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openAdd}>New Artwork</Button>
           )}
         </div>
@@ -1059,8 +1063,8 @@ export default function ArtworkManagementPage() {
                   ? <Loader2 size={15} className="animate-spin" />
                   : <Eye size={15} />}
               </button>
-              <RowAction.Edit onClick={() => openEdit(row)} />
-              <RowAction.Delete onClick={() => deleteArtwork(row)} />
+              {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEdit(row)} />}
+              {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => deleteArtwork(row)} />}
             </div>
           )}
         />
@@ -1114,8 +1118,8 @@ export default function ArtworkManagementPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
-                    <RowAction.Edit onClick={() => openEdit(row)} />
-                    <RowAction.Delete onClick={() => deleteArtwork(row)} />
+                    {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEdit(row)} />}
+                    {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => deleteArtwork(row)} />}
                   </div>
                 </div>
 
@@ -2218,8 +2222,8 @@ export default function ArtworkManagementPage() {
           ]}
           actions={r => (
             <>
-              <RowAction.Edit onClick={() => openEditSG(r)} />
-              <RowAction.Delete onClick={() => deleteSG(r)} />
+              {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEditSG(r)} />}
+              {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => deleteSG(r)} />}
             </>
           )}
         />

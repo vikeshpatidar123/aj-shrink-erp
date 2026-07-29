@@ -282,13 +282,25 @@ export default function MachineMasterPage() {
   // ── Load machine list ─────────────────────────────────────────────────────
   const loadMachines = useCallback(() => {
     setLoading(true);
+    setError("");
     fetch(`${BASE_URL}/api/machinemasterShrink/machinemaster`, { headers: authHeaders() })
-      .then(r => r.text())
-      .then(text => {
+      .then(async r => {
+        const text = await r.text();
         const result = unwrap(text);
-        setMachines(Array.isArray(result) ? result : []);
+        if (Array.isArray(result)) {
+          setMachines(result);
+        } else {
+          const msg = result?.Message ?? result?.message ?? text ?? "Unknown error";
+          console.error("[MachineMaster] API error:", msg, "| Status:", r.status);
+          setError(`API Error (${r.status}): ${msg}`);
+          setMachines([]);
+        }
       })
-      .catch(() => setMachines([]))
+      .catch(err => {
+        console.error("[MachineMaster] Network error:", err);
+        setError(`Network error: ${err?.message ?? err}`);
+        setMachines([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -701,6 +713,13 @@ export default function MachineMasterPage() {
           ))}
         </div>
       </div>
+
+      {/* API Error banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3 text-sm text-red-700 font-medium">
+          {error}
+        </div>
+      )}
 
       {/* Grid */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">

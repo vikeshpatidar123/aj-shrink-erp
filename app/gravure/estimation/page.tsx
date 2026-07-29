@@ -20,6 +20,7 @@ import { useCategories }     from "@/context/CategoriesContext";
 import { useEnquiries }      from "@/context/EnquiryContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { useMasters }        from "@/context/MastersContext";
+import { usePermissions }    from "@/context/PermissionsContext";
 import { generateCode, UNIT_CODE, MODULE_CODE } from "@/lib/generateCode";
 import { apiGet, apiPost, API_BASE } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
@@ -427,7 +428,10 @@ const FILM_SUBGROUPS = Array.from(
 });
 
 
+const MOD = "/gravure/estimation";
+
 export default function GravureEstimationPage() {
+  const { can } = usePermissions();
   const router = useRouter();
   const { categories, refresh: refreshCategories } = useCategories();
   const { enquiries: allEnquiries } = useEnquiries();
@@ -2722,7 +2726,7 @@ export default function GravureEstimationPage() {
           {loadingData && <RefreshCw size={13} className="animate-spin text-gray-400" />}
           <TutorialButton title="Gravure Estimation — Tutorial" />
           <Button icon={<RefreshCw size={13} />} variant="secondary" onClick={loadList} disabled={loadingData} className="text-xs py-1.5 px-3">Refresh</Button>
-          <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Estimation</Button>
+          {can(MOD, "CanSave") && <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Estimation</Button>}
         </div>
       </div>
 
@@ -2774,8 +2778,8 @@ export default function GravureEstimationPage() {
                   <ShoppingCart size={11} /> Book Order
                 </button>
               )}
-              <RowAction.Edit onClick={() => openEditFromApi(row)} />
-              <RowAction.Delete onClick={() => setDeleteId(row.id)} />
+              {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEditFromApi(row)} />}
+              {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => setDeleteId(row.id)} />}
             </div>
           )}
         />

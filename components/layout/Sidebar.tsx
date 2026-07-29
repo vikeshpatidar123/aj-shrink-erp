@@ -32,12 +32,12 @@ const ActiveBadge = () => (
   </span>
 );
 
-type NavBadge = "EXT" | "GRV" | null;
-type FlatItem  = { label: string; href: string; icon: React.ElementType; badge?: NavBadge };
-type GroupItem = { label: string; icon: React.ElementType; badge?: NavBadge; children: { label: string; href: string; icon: React.ElementType }[] };
-type NavItem   = FlatItem | GroupItem;
+export type NavBadge = "EXT" | "GRV" | null;
+export type FlatItem  = { label: string; href: string; icon: React.ElementType; badge?: NavBadge };
+export type GroupItem = { label: string; icon: React.ElementType; badge?: NavBadge; children: { label: string; href: string; icon: React.ElementType }[] };
+export type NavItem   = FlatItem | GroupItem;
 
-const navItems: NavItem[] = [
+export const navItems: NavItem[] = [
   { label: "Dashboard",          href: "/dashboard",                 icon: LayoutDashboard },
   { label: "Gravure Dashboard", href: "/gravure/dashboard",         icon: BarChart2,      badge: "GRV" },
   { label: "Enquiry",          href: "/extrusion/enquiry",         icon: ClipboardList,  badge: "EXT" },

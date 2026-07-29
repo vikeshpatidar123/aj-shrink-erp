@@ -19,6 +19,7 @@ import {
 import { useCategories } from "@/context/CategoriesContext";
 import { useProductCatalog } from "@/context/ProductCatalogContext";
 import { useMasters } from "@/context/MastersContext";
+import { usePermissions } from "@/context/PermissionsContext";
 import { GravureProductCatalog } from "@/data/dummyData";
 import { PlanViewer, PlanInput } from "@/components/gravure/PlanViewer";
 import { DimensionDiagram, DimensionInputPanel, DimValues, CONTENT_TYPE_CONFIG } from "@/components/gravure/DimensionDiagram";
@@ -206,7 +207,10 @@ const SH = ({ label }: { label: string }) => (
 );
 
 
+const MOD = "/gravure/workorder";
+
 export default function GravureWorkOrderPage() {
+  const { can } = usePermissions();
   const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
   const { categories } = useCategories();
   const { catalog, saveCatalogItem } = useProductCatalog();
@@ -5013,9 +5017,9 @@ export default function GravureWorkOrderPage() {
                     </div>
                   )}
                   <div className="flex-shrink-0">
-                    <Button size="sm" icon={<ArrowRight size={13} />} onClick={() => convertToWO(order)}>
+                    {can(MOD, "CanSave") && <Button size="sm" icon={<ArrowRight size={13} />} onClick={() => convertToWO(order)}>
                       Create WO
-                    </Button>
+                    </Button>}
                   </div>
                 </div>
               ))}
@@ -5059,8 +5063,8 @@ export default function GravureWorkOrderPage() {
                 <Button variant="ghost" size="sm" icon={<Printer size={13} />} onClick={() => setPrintWO(row)}>Job Card</Button>
                 <Button variant="ghost" size="sm" icon={<Layers size={13} />} onClick={() => setViewPlanWO(row)}>View Plan</Button>
                 <Button variant="ghost" size="sm" icon={<BookMarked size={13} />} onClick={() => openSaveToCatalog(row)}>Save to Catalog</Button>
-                <RowAction.Edit onClick={() => openEdit(row)} />
-                <RowAction.Delete onClick={() => setDeleteId(row.id)} />
+                {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEdit(row)} />}
+                {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => setDeleteId(row.id)} />}
               </div>
             )}
           />

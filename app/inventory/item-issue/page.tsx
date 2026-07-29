@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   FileText, X, Scan, QrCode, CheckCircle2, Pencil,
@@ -9,6 +9,7 @@ import {
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -403,7 +404,10 @@ function BatchConfirmModal({
   }, [floorWarehouseName]);
 
   const today = todayISO();
-  const needsReason = requiredQty > 0 && issueQty > requiredQty * 1.1;
+  const overAvailable = issueQty > batch.BatchStock;           // cannot issue more than in stock
+  const overIssue = requiredQty > 0 && issueQty > requiredQty; // issuing more than required
+  const needsReason = overIssue;   // over-issue → reason mandatory
+  const needsJobCard = overIssue;  // over-issue → job card (job booking) mandatory
   const isMultiJob = issueReason === "For Multi Job Consumption";
 
   // Load job bookings for Multi Job allocations and Item-wise optional picker
@@ -432,8 +436,10 @@ function BatchConfirmModal({
   };
 
   const validAllocs = allocations.filter((a) => (a.jobBookingID > 0 || a.search.trim() !== "") && a.allocatedQty > 0);
-  const canConfirm = !!issueQty && issueQty > 0 && !!floorWarehouseName && !!floorBin &&
+  const jobCardSelected = jobBookingID > 0 || (isMultiJob && validAllocs.length > 0);
+  const canConfirm = !!issueQty && issueQty > 0 && !overAvailable && !!floorWarehouseName && !!floorBin &&
     !(needsReason && !issueReason) &&
+    !(needsJobCard && !jobCardSelected) &&
     !(isMultiJob && validAllocs.length === 0);
 
   return (
@@ -486,6 +492,17 @@ function BatchConfirmModal({
               <Input label={`Issue Qty (${batch.StockUnit}) *`} type="number" min={0.01} max={batch.BatchStock} step={0.01}
                 value={issueQty}
                 onChange={(e) => { setIssueQty(Number(e.target.value)); setIssueReason(""); }} />
+              {overAvailable ? (
+                <p className="text-xs text-red-600 font-semibold mt-1">
+                  Cannot issue more than available stock ({batch.BatchStock.toLocaleString()} {batch.StockUnit}).
+                </p>
+              ) : overIssue ? (
+                <p className="text-xs text-amber-600 font-medium mt-1">
+                  Issuing more than required ({requiredQty.toLocaleString()}) — Job Card &amp; Reason are mandatory.
+                </p>
+              ) : requiredQty > 0 ? (
+                <p className="text-[11px] text-gray-400 mt-1">Required: {requiredQty.toLocaleString()} {batch.StockUnit}</p>
+              ) : null}
             </div>
             <div>
               <Select label="To Floor / Warehouse *" value={floorWarehouseName}
@@ -498,11 +515,13 @@ function BatchConfirmModal({
                 disabled={!floorWarehouseName || loadingBins}
                 options={[{ value: "", label: loadingBins ? "Loading…" : "Select bin…" }, ...floorBins.map((b) => ({ value: b.Bin, label: b.Bin }))]} />
             </div>
-            {issueMode === "Item-wise" && (
+            {(issueMode === "Item-wise" || overIssue) && !isMultiJob && (
               <div className="col-span-2">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">
                   Job Booking No.
-                  <span className="ml-1 text-gray-400 font-normal normal-case">(optional)</span>
+                  {needsJobCard
+                    ? <span className="ml-1 text-red-500 font-bold">* (required — over-issue)</span>
+                    : <span className="ml-1 text-gray-400 font-normal normal-case">(optional)</span>}
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1 min-w-0">
@@ -545,7 +564,7 @@ function BatchConfirmModal({
             <label className="text-xs font-bold text-gray-600 uppercase tracking-widest flex items-center gap-2">
               Issue Reason
               <span className="font-normal normal-case tracking-normal text-gray-400">
-                {needsReason ? "— required, qty exceeds 110% of remaining" : "(optional)"}
+                {needsReason ? "— required (issuing more than required qty)" : "(optional)"}
               </span>
             </label>
             <Select value={issueReason}
@@ -1146,7 +1165,19 @@ export default function ItemIssuePage() {
         });
       }
 
-      setLines(d.map((row: any) => {
+      // Guard against backend JOIN fan-out: collapse duplicate detail rows by
+      // TransactionDetailID (rows without a stable id are kept as-is) so edit-load
+      // never shows duplicate lines or double-posts quantities on save.
+      const seenDetIds = new Set<number>();
+      const uniqueRows = (d as any[]).filter((row: any) => {
+        const detId = Number(row.TransactionDetailID) || 0;
+        if (!detId) return true;
+        if (seenDetIds.has(detId)) return false;
+        seenDetIds.add(detId);
+        return true;
+      });
+
+      setLines(uniqueRows.map((row: any) => {
         const detId = row.TransactionDetailID || 0;
         const multiAllocs = allocMap.get(detId) || [];
         const hasMultiJob = multiAllocs.length > 0;
@@ -1223,37 +1254,57 @@ export default function ItemIssuePage() {
 
   const totalScans = lines.length;
 
+  // ── Issue list columns (MASTER UI DataTable) ──────────────
+  const issueColumns: Column<IssueRecord>[] = useMemo(() => [
+    { key: "VoucherNo", header: "Voucher No.", render: iss => <span className="font-mono text-xs font-semibold text-[rgb(var(--color-primary))]">{iss.VoucherNo}</span> },
+    { key: "VoucherDate", header: "Date", render: iss => <span className="text-[rgb(var(--fg-muted))] text-xs">{fmtDate(iss.VoucherDate)}</span> },
+    { key: "DepartmentName", header: "Department", render: iss => <span className="text-[rgb(var(--fg-default))] text-xs">{iss.DepartmentName || "—"}</span> },
+    { key: "JobCardNo", header: "Job Card", render: iss => <span className="text-[rgb(var(--fg-muted))] text-xs font-mono">{iss.JobCardNo || "—"}</span> },
+    {
+      key: "ItemName", header: "Items", render: iss =>
+        (iss._itemCount ?? 1) > 1
+          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))] font-semibold text-xs">{iss._itemCount} items</span>
+          : <span className="text-[rgb(var(--fg-default))] text-xs">{iss.ItemName || iss.JobName || "—"}</span>
+    },
+    { key: "_totalQty", header: "Total Issue Qty", render: iss => <span className="text-[rgb(var(--fg-default))] text-xs font-semibold">{(iss._totalQty ?? iss.IssueQuantity ?? 0).toLocaleString()} {iss.StockUnit || ""}</span> },
+    { key: "UserName", header: "Created By", render: iss => <span className="text-[rgb(var(--fg-muted))] text-xs">{iss.UserName || "—"}</span> },
+  ], []);
+
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Item Issue</h2>
-            <p className="text-sm text-gray-500">{filteredList.length} issue vouchers</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Issue</Button>
+      <div className="w-full space-y-4">
+
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Item Issue</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} issue vouchers</p>
         </div>
 
-        {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Left: date range + search */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            <button onClick={loadList} disabled={loadingList}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50">
-              <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} /> {loadingList ? "Loading…" : "Refresh"}
-            </button>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">From</span>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
+              <input type="text" placeholder="Search voucher, job card, department, item…" value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
+            </div>
           </div>
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <Input type="text" placeholder="Search by voucher no, job card, department, item…" value={listSearch}
-              onChange={(e) => setListSearch(e.target.value)}
-              className="flex-1" />
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
+            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Issue</Button>
           </div>
         </div>
 
@@ -1263,57 +1314,27 @@ export default function ItemIssuePage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Department</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Card</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Issue Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Created By</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingList ? (
-                <tr><td colSpan={8} className="text-center py-16 text-gray-400">Loading…</td></tr>
-              ) : filteredList.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-16 text-gray-400">No issue vouchers found. Click &ldquo;New Issue&rdquo; to begin.</td></tr>
-              ) : filteredList.map((iss, i) => (
-                <tr key={iss.TransactionID} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{iss.VoucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(iss.VoucherDate)}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">{iss.DepartmentName || "—"}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{iss.JobCardNo || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">
-                    {(iss._itemCount ?? 1) > 1
-                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">{iss._itemCount} items</span>
-                      : <span className="text-gray-800">{iss.ItemName || iss.JobName || "—"}</span>
-                    }
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
-                    {(iss._totalQty ?? iss.IssueQuantity ?? 0).toLocaleString()} {iss.StockUnit || ""}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{iss.UserName || "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => openEdit(iss)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                        <Pencil size={11} /> Edit
-                      </button>
-                      <button onClick={() => handleDelete(iss.TransactionID)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+          {loadingList ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading…</div>
+          ) : filteredList.length === 0 ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No issue vouchers found. Click &ldquo;New Issue&rdquo; to begin.</div>
+          ) : (
+            <div className="p-4">
+              <DataTable
+                data={filteredList}
+                columns={issueColumns}
+                getRowId={iss => String(iss.TransactionID)}
+                loading={loadingList}
+                actions={iss => (
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(iss)}>Edit</Button>
+                    <Button variant="action-delete" size="xs" icon={<Trash2 size={11} />} onClick={() => handleDelete(iss.TransactionID)} />
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1325,7 +1346,7 @@ export default function ItemIssuePage() {
   const showScanTab = jobItems.length > 0;
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+    <div className="w-full pb-10">
 
       {/* Header */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -1590,8 +1611,8 @@ export default function ItemIssuePage() {
                 <div>
                   <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-3">Recently Scanned</p>
                   <div className="space-y-2">
-                    {recentScans.map((line, i) => (
-                      <div key={i} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs">
+                    {recentScans.map((line) => (
+                      <div key={line.lineId} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 text-xs">
                         <div className="flex items-center gap-3">
                           <CheckCircle2 size={14} className="text-green-500 shrink-0" />
                           <div>
@@ -1625,7 +1646,7 @@ export default function ItemIssuePage() {
                 </div>
 
                 <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1100 }}>
+                  <table className="w-full text-xs" style={{ minWidth: 1360 }}>
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {[
@@ -1674,8 +1695,10 @@ export default function ItemIssuePage() {
                       ) : lines.map((line, idx) => (
                         <tr key={line.lineId} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                           <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800" style={{ maxWidth: 180 }}>{line.ItemName}</td>
-                          <td className="px-3 py-2.5 text-right font-bold text-blue-700">{line.issueQty || "—"}</td>
+                          <td className="px-3 py-2.5 text-gray-800">
+                            <div className="truncate" style={{ maxWidth: 180 }} title={line.ItemName}>{line.ItemName}</div>
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-bold text-blue-700 whitespace-nowrap">{line.issueQty ? line.issueQty.toLocaleString() : "—"}</td>
                           <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
                           <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap max-w-[160px] truncate">{line.batchNo || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-600">{line.supplierBatchNo || "—"}</td>

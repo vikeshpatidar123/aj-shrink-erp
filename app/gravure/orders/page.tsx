@@ -15,6 +15,7 @@ import {
 } from "@/data/dummyData";
 import { apiGet, apiPost } from "@/lib/api";
 import { authHeaders } from "@/lib/auth";
+import { usePermissions } from "@/context/PermissionsContext";
 
 const BASE_ORDERS = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
 
@@ -218,7 +219,10 @@ function CS({ value, onChange, options, cls = "" }: {
 }
 
 // ═══════════════════════════════════════════════════════════════
+const MOD = "/gravure/orders";
+
 export default function GravureOrdersPage() {
+  const { can } = usePermissions();
   const { catalog } = useProductCatalog();
   const router = useRouter();
   const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
@@ -1728,7 +1732,7 @@ export default function GravureOrdersPage() {
           <ShoppingCart size={18} className="text-teal-600" />
           <h2 className="text-lg font-semibold text-[rgb(var(--fg-default))]">Order Booking</h2>
         </div>
-        <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Order</Button>
+        {can(MOD, "CanSave") && <Button variant="action-create" size="sm" icon={<Plus size={15}/>} onClick={openAdd}>New Order</Button>}
       </div>
 
       {/* ══ CONTENT ═══════════════════════════════════════════════ */}
@@ -1758,7 +1762,7 @@ export default function GravureOrdersPage() {
             <div className="flex items-center gap-1.5 justify-end">
               <RowAction.View onClick={() => setViewRow(row)} />
               <RowAction.Print onClick={() => setPrintOrder(row)} />
-              <RowAction.Edit onClick={() => openEdit(row)} />
+              {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEdit(row)} />}
               {row.status !== "Hold" ? (
                 <button
                   onClick={() => { setHoldTarget(row); setHoldReasonInput(""); }}
@@ -1815,7 +1819,7 @@ export default function GravureOrdersPage() {
                   </button>
                 );
               })()}
-              <RowAction.Delete onClick={() => setDelId(row.id)} />
+              {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => setDelId(row.id)} />}
             </div>
           )}
         />

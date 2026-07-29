@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
@@ -14,6 +14,7 @@ import {
   PhysicalVerification, PhysicalVerificationLine,
 } from "@/data/dummyData";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
@@ -455,94 +456,76 @@ export default function PhysicalVerificationPage() {
       );
     });
 
+  // ── Verification list columns (MASTER UI DataTable) ───────
+  const pvColumns: Column<PhysicalVerification>[] = useMemo(() => [
+    { key: "voucherNo", header: "Voucher No.", render: pv => <span className="font-mono text-xs font-semibold text-[rgb(var(--color-primary))]">{pv.voucherNo}</span> },
+    { key: "verificationDate", header: "Date", render: pv => <span className="text-[rgb(var(--fg-muted))] text-xs">{fmtDate(pv.verificationDate)}</span> },
+    { key: "lines", header: "Lines", render: pv => <span className="text-[rgb(var(--fg-default))] text-xs font-medium">{pv.lines.length}</span> },
+    { key: "increases", header: "Increases", render: pv => <span className="text-green-700 font-semibold text-xs">{pv.lines.filter((l) => l.difference > 0).length}</span> },
+    { key: "decreases", header: "Decreases", render: pv => <span className="text-red-600 font-semibold text-xs">{pv.lines.filter((l) => l.difference < 0).length}</span> },
+    { key: "newBatches", header: "New Batches", render: pv => <span className="text-[rgb(var(--color-primary))] font-semibold text-xs">{pv.lines.filter((l) => l.isNewBatch).length}</span> },
+    { key: "status", header: "Status", render: pv => <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[pv.status]}`}>{pv.status}</span> },
+  ], []);
+
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="max-w-6xl mx-auto space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Physical Verification</h2>
-            <p className="text-sm text-gray-500">{filteredData.length} verification records</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Verification</Button>
+      <div className="w-full space-y-4">
+
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Physical Verification</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredData.length} verification records</p>
         </div>
 
-        {/* Filter bar */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider mr-1">Status</span>
-            {(["All", "Draft", "Completed"] as const).map((s) => (
-              <button key={s} onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-blue-600 text-white shadow-sm" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                {s}
-              </button>
-            ))}
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Left: status filter + search */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">Status</span>
+              {(["All", "Draft", "Completed"] as const).map((s) => (
+                <button key={s} onClick={() => setFilterStatus(s)}
+                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-[rgb(var(--color-primary))] text-white shadow-sm" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--fg-muted))] hover:opacity-80"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
+              <input type="text" placeholder="Search by voucher no, remark…" value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
+            </div>
           </div>
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <Input
-              type="text"
-              placeholder="Search by voucher no, remark..."
-              value={listSearch}
-              onChange={e => setListSearch(e.target.value)}
-              className="flex-1"
-            />
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Verification</Button>
           </div>
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Lines</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Increases</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Decreases</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">New Batches</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredData.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-16 text-gray-400">No verification records. Click &ldquo;New Verification&rdquo; to begin.</td></tr>
-              ) : filteredData.map((pv, i) => (
-                <tr key={pv.id} className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{pv.voucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(pv.verificationDate)}</td>
-                  <td className="px-4 py-3 text-center font-medium text-gray-700">{pv.lines.length}</td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-green-700 font-semibold text-xs">{pv.lines.filter((l) => l.difference > 0).length}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-red-600 font-semibold text-xs">{pv.lines.filter((l) => l.difference < 0).length}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className="text-blue-600 font-semibold text-xs">{pv.lines.filter((l) => l.isNewBatch).length}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[pv.status]}`}>{pv.status}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => openEdit(pv)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                        <Pencil size={11} /> Edit
-                      </button>
-                      <button onClick={() => handleDelete(pv.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+          {filteredData.length === 0 ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No verification records. Click &ldquo;New Verification&rdquo; to begin.</div>
+          ) : (
+            <div className="p-4">
+              <DataTable
+                data={filteredData}
+                columns={pvColumns}
+                getRowId={pv => String(pv.id)}
+                actions={pv => (
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(pv)}>Edit</Button>
+                    <Button variant="action-delete" size="xs" icon={<Trash2 size={11} />} onClick={() => handleDelete(pv.id)} />
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -553,7 +536,7 @@ export default function PhysicalVerificationPage() {
   // ══════════════════════════════════════════════════════════
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
+    <div className="w-full pb-10">
 
       {/* Header Ribbon */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -805,12 +788,12 @@ export default function PhysicalVerificationPage() {
                             <span className="block truncate" title={line.batchNo}>{line.batchNo}</span>
                           </td>
                           <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.itemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800 max-w-[160px]">
-                            <span className="block truncate">{line.itemName}</span>
+                          <td className="px-3 py-2.5 text-gray-800">
+                            <div className="truncate" style={{ maxWidth: 160 }} title={line.itemName}>{line.itemName}</div>
                           </td>
                           <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.itemGroup}</td>
-                          <td className="px-3 py-2.5 text-gray-500 max-w-[120px]">
-                            <span className="block truncate">{line.itemSubGroup}</span>
+                          <td className="px-3 py-2.5 text-gray-500">
+                            <div className="truncate" style={{ maxWidth: 120 }} title={line.itemSubGroup}>{line.itemSubGroup}</div>
                           </td>
                           <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.warehouseName}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-700">{line.bin}</td>

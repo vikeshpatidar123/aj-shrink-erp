@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
@@ -9,6 +9,7 @@ import {
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -787,7 +788,18 @@ export default function ReturnToStockPage() {
           PlanContName: first.ContentName || "",
         });
       }
-      setLines(d.map((row: any) => ({
+      // Guard against backend JOIN fan-out: collapse duplicate detail rows by
+      // TransactionDetailID so edit-load never shows duplicate lines or
+      // double-posts quantities on save (rows without an id are kept as-is).
+      const seenDetIds = new Set<number>();
+      const uniqueRows = (d as any[]).filter((row: any) => {
+        const detId = Number(row.TransactionDetailID) || 0;
+        if (!detId) return true;
+        if (seenDetIds.has(detId)) return false;
+        seenDetIds.add(detId);
+        return true;
+      });
+      setLines(uniqueRows.map((row: any) => ({
         lineId: Math.random().toString(36).slice(2),
         TransactionDetailID: row.TransactionDetailID || 0,
         IssueTransactionID: row.TransactionID || 0,
@@ -849,37 +861,58 @@ export default function ReturnToStockPage() {
   const showPicklistTab = returnMode === "Job-wise" && floorItems.length > 0;
   const totalReturnQty = lines.reduce((s, l) => s + l.ReturnQuantity, 0);
 
+  // ── Return to Stock list columns (MASTER UI DataTable) ────
+  const returnColumns: Column<RTSRecord>[] = useMemo(() => [
+    { key: "VoucherNo", header: "Voucher No.", render: rec => <span className="font-mono text-xs font-semibold text-[rgb(var(--color-primary))]">{rec.VoucherNo}</span> },
+    { key: "VoucherDate", header: "Date", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{fmtDate(rec.VoucherDate)}</span> },
+    { key: "JobCardNo", header: "Job Card", render: rec => <span className="text-[rgb(var(--color-primary))] text-xs font-mono">{rec.JobCardNo || "—"}</span> },
+    { key: "IssueVoucherNo", header: "Issue Voucher", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{rec.IssueVoucherNo || "—"}</span> },
+    {
+      key: "ItemName", header: "Items", render: rec =>
+        (rec._itemCount ?? 1) > 1
+          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))] font-semibold text-xs">{rec._itemCount} items</span>
+          : <span className="text-[rgb(var(--fg-default))] text-xs">{rec.ItemName || "—"}</span>
+    },
+    { key: "_totalQty", header: "Total Return Qty", render: rec => <span className="text-[rgb(var(--fg-default))] text-xs font-semibold whitespace-nowrap">{(rec._totalQty ?? rec.ReturnQuantity ?? 0).toLocaleString()} {rec.StockUnit || ""}</span> },
+    { key: "Warehouse", header: "Warehouse", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{rec.Warehouse || "—"}</span> },
+    { key: "CreatedBy", header: "Created By", render: rec => <span className="text-[rgb(var(--fg-muted))] text-xs">{rec.CreatedBy || "—"}</span> },
+  ], []);
+
   // ══════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="w-full max-w-[1600px] mx-auto px-1 space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Return to Stock</h2>
-            <p className="text-sm text-gray-500">{filteredList.length} vouchers</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New Return</Button>
+      <div className="w-full space-y-4">
+
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Return to Stock</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} return vouchers</p>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 space-y-3">
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Left: date range + search */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">From</span>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">To</span>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            <button onClick={loadList} disabled={loadingList}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 disabled:opacity-50">
-              <RefreshCw size={12} className={loadingList ? "animate-spin" : ""} />
-              {loadingList ? "Loading…" : "Refresh"}
-            </button>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">From</span>
+              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
+              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </div>
+            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
+              <input type="text" placeholder="Search voucher, job card, department, item…" value={listSearch}
+                onChange={(e) => setListSearch(e.target.value)}
+                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
+            </div>
           </div>
-          <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-1.5 bg-gray-50">
-            <Search size={14} className="text-gray-400 shrink-0" />
-            <Input type="text" placeholder="Search by voucher no, job card, department, item…"
-              value={listSearch} onChange={(e) => setListSearch(e.target.value)}
-              className="flex-1" />
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
+            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Return</Button>
           </div>
         </div>
 
@@ -889,60 +922,27 @@ export default function ReturnToStockPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Voucher No.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Card</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Items</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Total Return Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Warehouse</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Created By</th>
-                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingList ? (
-                <tr><td colSpan={9} className="text-center py-16 text-gray-400">Loading…</td></tr>
-              ) : filteredList.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-16 text-gray-400">No return vouchers found. Click &ldquo;New Return&rdquo; to begin.</td></tr>
-              ) : filteredList.map((rec, i) => (
-                <tr key={rec.TransactionID}
-                  className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{rec.VoucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(rec.VoucherDate)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-blue-600">{rec.JobCardNo || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{rec.IssueVoucherNo || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-700">
-                    {(rec._itemCount ?? 1) > 1
-                      ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-semibold">{rec._itemCount} items</span>
-                      : <span className="text-gray-800">{rec.ItemName || "—"}</span>
-                    }
-                  </td>
-                  <td className="px-4 py-3 text-right text-xs font-semibold text-gray-700">
-                    {(rec._totalQty ?? rec.ReturnQuantity ?? 0).toLocaleString()} {rec.StockUnit || ""}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{rec.Warehouse || "—"}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500">{rec.CreatedBy || "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => openEdit(rec)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                        <Pencil size={11} /> Edit
-                      </button>
-                      <button onClick={() => handleDelete(rec.TransactionID)}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                        <Trash2 size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+          {loadingList ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading…</div>
+          ) : filteredList.length === 0 ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No return vouchers found. Click &ldquo;New Return&rdquo; to begin.</div>
+          ) : (
+            <div className="p-4">
+              <DataTable
+                data={filteredList}
+                columns={returnColumns}
+                getRowId={rec => String(rec.TransactionID)}
+                loading={loadingList}
+                actions={rec => (
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(rec)}>Edit</Button>
+                    <Button variant="action-delete" size="xs" icon={<Trash2 size={11} />} onClick={() => handleDelete(rec.TransactionID)} />
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -952,7 +952,7 @@ export default function ReturnToStockPage() {
   // FORM VIEW
   // ══════════════════════════════════════════════════════════
   return (
-    <div className="w-full max-w-[1600px] mx-auto pb-10 px-1">
+    <div className="w-full pb-10">
 
       {/* Header ribbon */}
       <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -1275,7 +1275,7 @@ export default function ReturnToStockPage() {
                 </div>
 
                 <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1100 }}>
+                  <table className="w-full text-xs" style={{ minWidth: 1200 }}>
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
                         {["Item Code", "Item Name", "Batch No.", "Sup. Batch", "Issue Voucher", "Floor Stk", "Return Qty", "Unit", "Dest. Warehouse", "Dest. Bin", ""].map((l, i) => (
@@ -1303,12 +1303,14 @@ export default function ReturnToStockPage() {
                         <tr key={line.lineId}
                           className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                           <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800" style={{ maxWidth: 180 }}>{line.ItemName}</td>
+                          <td className="px-3 py-2.5 text-gray-800">
+                            <div className="truncate" style={{ maxWidth: 180 }} title={line.ItemName}>{line.ItemName}</div>
+                          </td>
                           <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.BatchNo || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-600">{line.SupplierBatchNo || "—"}</td>
                           <td className="px-3 py-2.5 font-mono text-gray-600">{line.IssueVoucherNo || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">{line.FloorStock > 0 ? line.FloorStock.toLocaleString() : "—"}</td>
-                          <td className="px-3 py-2.5 text-right font-bold text-blue-700">{line.ReturnQuantity.toLocaleString()}</td>
+                          <td className="px-3 py-2.5 text-right text-gray-600 whitespace-nowrap">{line.FloorStock > 0 ? line.FloorStock.toLocaleString() : "—"}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-blue-700 whitespace-nowrap">{line.ReturnQuantity.toLocaleString()}</td>
                           <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
                           <td className="px-3 py-2.5 text-gray-700">{line.DestWarehouseName || "—"}</td>
                           <td className="px-3 py-2.5 text-gray-600">{line.DestBinName || "—"}</td>

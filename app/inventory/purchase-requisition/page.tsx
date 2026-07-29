@@ -99,6 +99,7 @@ interface JobCardOption {
 }
 
 interface OverflowItem {
+  _uid: number; // synthetic per-row key (ItemsForOverflow can repeat ItemID across rows)
   ItemID: number;
   ItemGroupID: number;
   ItemGroupName: string | null;
@@ -208,6 +209,8 @@ export default function PurchaseRequisitionPage() {
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerGroup, setPickerGroup] = useState("All");
   const [pickerLoading, setPickerLoading] = useState(false);
+  // multi-select in item picker (by ItemID)
+  const [pickerSel, setPickerSel] = useState<Set<number>>(new Set());
 
   // ── Fetch ───────────────────────────────────────────────────────────────────
 
@@ -239,7 +242,8 @@ export default function PurchaseRequisitionPage() {
     setPickerLoading(true);
     try {
       const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/ItemsForOverflow`, { headers: authHeaders() });
-      setPickerItems(await unwrap(res));
+      const data = await unwrap(res);
+      setPickerItems((Array.isArray(data) ? data : []).map((it: OverflowItem, i: number) => ({ ...it, _uid: i })));
     } catch (e: any) {
       showToast("error", "Failed to load items", e.message);
     } finally { setPickerLoading(false); }
@@ -266,6 +270,27 @@ export default function PurchaseRequisitionPage() {
     } finally { setStockLoading(false); }
   };
 
+  // Close an indent line — its remaining qty is no longer required, so it drops
+  // out of the pending indent list (backend sets IsCompleted=1).
+  const closeIndent = async (row: IndentRow) => {
+    if (!window.confirm(`Close indent for ${row.ItemCode || row.ItemName}?\nIt will be removed from the pending indent list.`)) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/CloseIndent`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ transactionDetailId: row.TransactionDetailID }),
+      });
+      const result = await unwrap(res);
+      if (typeof result === "string" && result.startsWith("Error")) {
+        showToast("error", "Close failed", result);
+        return;
+      }
+      showToast("success", "Indent closed");
+      setSelKeys(prev => { const n = new Set(prev); n.delete(row.TransactionDetailID); return n; });
+      await fetchLists();
+    } catch (e: any) { showToast("error", "Close failed", e.message); }
+  };
+
   // ── Navigation ──────────────────────────────────────────────────────────────
 
   const openBlank = async () => {
@@ -274,7 +299,12 @@ export default function PurchaseRequisitionPage() {
     await fetchVoucherNo();
     void ensureJobCards();
     setView("form");
-    setShowPicker(true); setPickerSearch(""); setPickerGroup("All");
+    // Note: item picker no longer opens automatically — user clicks "Add Item".
+  };
+
+  const openPicker = async () => {
+    setShowPicker(true);
+    setPickerSearch(""); setPickerGroup("All"); setPickerSel(new Set());
     if (!pickerItems.length) await fetchPickerItems();
   };
 
@@ -381,32 +411,58 @@ export default function PurchaseRequisitionPage() {
 
   // ── Line ops ────────────────────────────────────────────────────────────────
 
-  const addFromPicker = (item: OverflowItem) => {
-    if (lines.some(l => l.ItemID === item.ItemID)) {
-      showToast("warning", "Item already in list");
-      return;
-    }
-    setLines(p => [...p, {
-      lineKey: `pk${item.ItemID}${Date.now()}`,
-      ItemID: item.ItemID, ItemGroupID: item.ItemGroupID,
-      ItemGroupName: item.ItemGroupName ?? "",
-      ItemSubGroupName: item.ItemSubGroupName ?? "",
-      ItemCode: item.ItemCode, ItemName: item.ItemName,
-      IndentDetailID: 0, IndentTxnID: 0, IndentQty: 0,
-      BookedStock: item.BookedStock, AllocatedStock: item.AllocatedStock,
-      PhysicalStock: item.PhysicalStock, StockUnit: item.StockUnit ?? "",
-      PurchaseUnit: item.PurchaseUnit ?? "",
-      PhysicalStockInPU: item.PhysicalStock,
-      WtPerPacking: item.WtPerPacking, UnitPerPacking: item.UnitPerPacking,
-      RequiredNoOfPacks: 0, QuantityPerPack: 0,
-      POQtyInPU: 0, POQtyInSU: 0,
-      JobContentNo: "", JobName: "",
-      JobBookingJobCardContentsID: 0,
-      GSM: toNum(item.GSM), SizeW: toNum(item.SizeW),
-      ItemNarration: "", ExpectedDelivery: "",
-      CustomerName: "", PWONo: "",
-    }]);
-    setShowPicker(false); setPickerSearch(""); setPickerGroup("All");
+  const buildLineFromItem = (item: OverflowItem, idx: number): PRLine => ({
+    lineKey: `pk${item.ItemID}-${idx}-${Date.now()}`,
+    ItemID: item.ItemID, ItemGroupID: item.ItemGroupID,
+    ItemGroupName: item.ItemGroupName ?? "",
+    ItemSubGroupName: item.ItemSubGroupName ?? "",
+    ItemCode: item.ItemCode, ItemName: item.ItemName,
+    IndentDetailID: 0, IndentTxnID: 0, IndentQty: 0,
+    BookedStock: item.BookedStock, AllocatedStock: item.AllocatedStock,
+    PhysicalStock: item.PhysicalStock, StockUnit: item.StockUnit ?? "",
+    PurchaseUnit: item.PurchaseUnit ?? "",
+    PhysicalStockInPU: item.PhysicalStock,
+    WtPerPacking: item.WtPerPacking, UnitPerPacking: item.UnitPerPacking,
+    RequiredNoOfPacks: 0, QuantityPerPack: 0,
+    POQtyInPU: 0, POQtyInSU: 0,
+    JobContentNo: "", JobName: "",
+    JobBookingJobCardContentsID: 0,
+    GSM: toNum(item.GSM), SizeW: toNum(item.SizeW),
+    ItemNarration: "", ExpectedDelivery: "",
+    CustomerName: "", PWONo: "",
+  });
+
+  const togglePickerSel = (id: number) =>
+    setPickerSel(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const toggleAllPicker = () =>
+    setPickerSel(prev => {
+      const allSelected = pickerAddableIds.length > 0 && pickerAddableIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) pickerAddableIds.forEach(id => next.delete(id));
+      else pickerAddableIds.forEach(id => next.add(id));
+      return next;
+    });
+
+  // Add every selected (and not-already-present) picker item to the grid at once.
+  // Selection is tracked by _uid (ItemsForOverflow can repeat ItemID), but we still
+  // dedupe by ItemID so the same item is never added to the grid twice.
+  const addSelectedFromPicker = () => {
+    const seen = new Set<number>();
+    const toAdd = pickerItems.filter(i => {
+      if (!pickerSel.has(i._uid)) return false;
+      if (lines.some(l => l.ItemID === i.ItemID)) return false;
+      if (seen.has(i.ItemID)) return false;
+      seen.add(i.ItemID);
+      return true;
+    });
+    if (!toAdd.length) { showToast("warning", "No items selected"); return; }
+    setLines(p => [...p, ...toAdd.map((it, i) => buildLineFromItem(it, p.length + i))]);
+    setShowPicker(false); setPickerSearch(""); setPickerGroup("All"); setPickerSel(new Set());
   };
 
   const updateLine = (key: string, field: "RequiredNoOfPacks" | "QuantityPerPack", val: number) => {
@@ -420,19 +476,7 @@ export default function PurchaseRequisitionPage() {
 
   const removeLine = (key: string) => setLines(p => p.filter(l => l.lineKey !== key));
 
-  const setLinePWO = (key: string, contentsId: string) => {
-    const jc = jobCards.find(j => String(j.JobBookingJobCardContentsID) === contentsId);
-    setLines(p => p.map(l => l.lineKey === key ? {
-      ...l,
-      JobBookingJobCardContentsID: jc?.JobBookingJobCardContentsID ?? 0,
-      JobContentNo: jc?.JobCardContentNo ?? "",
-      JobName: jc?.JobName ?? "",
-      CustomerName: jc?.CustomerName ?? "",
-      PWONo: jc?.PWONo ?? "",
-    } : l));
-  };
-
-  const updateLineStr = (key: string, field: "ItemNarration" | "ExpectedDelivery", val: string) =>
+  const updateLineStr =(key: string, field: "ItemNarration" | "ExpectedDelivery", val: string) =>
     setLines(p => p.map(l => l.lineKey === key ? { ...l, [field]: val } : l));
 
   const enrichWithJobs = useCallback((arr: PRLine[], cards: JobCardOption[]): PRLine[] => {
@@ -496,10 +540,14 @@ export default function PurchaseRequisitionPage() {
           ItemNarration: l.ItemNarration,
           ExpectedDeliveryDate: l.ExpectedDelivery || null,
           IsVoucherItemApproved: 1,
+          // Partial-fulfilment: link this requisition line back to its source indent
+          // line and record the stock-unit qty it consumes (used to reverse on delete).
+          SourceIndentDetailID: l.IndentDetailID > 0 ? l.IndentDetailID : 0,
+          RequisitionedQuantity: l.IndentDetailID > 0 ? l.POQtyInSU : 0,
         })),
         UpdateIndentDetails: lines
           .filter(l => l.IndentDetailID > 0)
-          .map(l => ({ TransactionDetailID: l.IndentDetailID })),
+          .map(l => ({ TransactionDetailID: l.IndentDetailID, Qty: l.POQtyInSU })),
         UserApprovalArray: lines.map(l => ({
           ItemID: l.ItemID,
           ItemName: l.ItemName,
@@ -684,6 +732,13 @@ export default function PurchaseRequisitionPage() {
     );
   }, [pickerItems, pickerSearch, pickerGroup]);
 
+  // Picker rows (by _uid) that can still be added (not already in the grid)
+  const pickerAddableIds = useMemo(
+    () => filteredPicker.filter(i => !lines.some(l => l.ItemID === i.ItemID)).map(i => i._uid),
+    [filteredPicker, lines]
+  );
+  const allPickerSelected = pickerAddableIds.length > 0 && pickerAddableIds.every(id => pickerSel.has(id));
+
   // ════════════════════════════════════════════════════════════════════════════
   // FORM VIEW
   // ════════════════════════════════════════════════════════════════════════════
@@ -738,10 +793,7 @@ export default function PurchaseRequisitionPage() {
             <div className="ml-auto">
               <Button
                 variant="action-create" size="sm" icon={<Plus size={14} />}
-                onClick={async () => {
-                  setShowPicker(true); setPickerSearch(""); setPickerGroup("All");
-                  if (!pickerItems.length) await fetchPickerItems();
-                }}
+                onClick={openPicker}
               >
                 Add Item
               </Button>
@@ -771,11 +823,7 @@ export default function PurchaseRequisitionPage() {
                     { label: "Stock\nUnit", right: false },
                     { label: "Current Stock\n(In P.U.)", right: true },
                     { label: "Purchase\nUnit", right: false },
-                    { label: "Job\nName", right: false },
-                    { label: "PWO No", right: false },
-                    { label: "ERP\nNo", right: false },
                     { label: "Expec.\nDel.Date *", right: false },
-                    { label: "Customer\nName", right: false },
                     { label: "", right: false },
                   ].map((c, i) => (
                     <th
@@ -812,7 +860,7 @@ export default function PurchaseRequisitionPage() {
                         value={l.RequiredNoOfPacks || ""}
                         onChange={e => updateLine(l.lineKey, "RequiredNoOfPacks", Number(e.target.value))}
                         onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                        className="w-20 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                        className="no-spinner w-20 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                         placeholder="0"
                       />
                     </td>
@@ -822,7 +870,7 @@ export default function PurchaseRequisitionPage() {
                         value={l.QuantityPerPack || ""}
                         onChange={e => updateLine(l.lineKey, "QuantityPerPack", Number(e.target.value))}
                         onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                        className="w-24 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                        className="no-spinner w-24 text-right px-2 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                         placeholder="0"
                       />
                     </td>
@@ -843,25 +891,6 @@ export default function PurchaseRequisitionPage() {
                     <td className="px-3 py-2 text-[rgb(var(--fg-muted))]">{l.StockUnit}</td>
                     <td className="px-3 py-2 text-right text-[rgb(var(--fg-default))]">{l.PhysicalStockInPU.toLocaleString()}</td>
                     <td className="px-3 py-2 text-[rgb(var(--fg-muted))]">{l.PurchaseUnit}</td>
-                    <td className="px-3 py-2 text-[rgb(var(--fg-default))] whitespace-nowrap" style={{ maxWidth: 160 }}>
-                      <span className="block truncate" title={l.JobName || undefined}>{l.JobName || "—"}</span>
-                    </td>
-                    <td className="px-2 py-1.5">
-                      <select
-                        value={l.JobBookingJobCardContentsID ? String(l.JobBookingJobCardContentsID) : ""}
-                        onChange={e => setLinePWO(l.lineKey, e.target.value)}
-                        className="w-36 px-1.5 py-1 border border-[rgb(var(--bd-default))] rounded-md text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
-                        title={l.PWONo || undefined}
-                      >
-                        <option value="">Select SOP</option>
-                        {jobCards.map(j => (
-                          <option key={j.JobBookingJobCardContentsID} value={String(j.JobBookingJobCardContentsID)}>
-                            {j.PWONo || j.JobCardContentNo}{j.JobName ? ` · ${j.JobName}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2 text-[rgb(var(--fg-subtle))]">—</td>
                     <td className="px-2 py-1.5">
                       <input
                         type="date"
@@ -869,9 +898,6 @@ export default function PurchaseRequisitionPage() {
                         onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
                         className={`w-32 px-2 py-1 border rounded-md text-xs text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))] ${l.ExpectedDelivery ? "border-[rgb(var(--bd-default))]" : "border-red-300"}`}
                       />
-                    </td>
-                    <td className="px-3 py-2 text-[rgb(var(--fg-default))] whitespace-nowrap" style={{ maxWidth: 160 }}>
-                      <span className="block truncate" title={l.CustomerName || undefined}>{l.CustomerName || "—"}</span>
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <button onClick={() => removeLine(l.lineKey)} className="text-[rgb(var(--fg-subtle))] hover:text-red-500 transition-colors p-1 rounded">
@@ -886,7 +912,7 @@ export default function PurchaseRequisitionPage() {
                   <tr className="bg-[rgb(var(--color-primary-subtle))] border-t-2 border-[rgb(var(--color-primary))]">
                     <td colSpan={9} className="px-3 py-2 text-right text-xs font-bold text-[rgb(var(--color-primary))]">Total Purchase Qty (In PU)</td>
                     <td className="px-3 py-2 text-right text-sm font-bold text-[rgb(var(--color-primary))]">{totalPOQty.toLocaleString()}</td>
-                    <td colSpan={13} />
+                    <td colSpan={9} />
                   </tr>
                 </tfoot>
               )}
@@ -930,7 +956,7 @@ export default function PurchaseRequisitionPage() {
                           type="number" min={0} value={l.RequiredNoOfPacks || ""}
                           onChange={e => updateLine(l.lineKey, "RequiredNoOfPacks", Number(e.target.value))}
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                          className="w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                          className="no-spinner w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                           placeholder="0"
                         />
                       </div>
@@ -940,7 +966,7 @@ export default function PurchaseRequisitionPage() {
                           type="number" min={0} value={l.QuantityPerPack || ""}
                           onChange={e => updateLine(l.lineKey, "QuantityPerPack", Number(e.target.value))}
                           onWheel={e => (e.currentTarget as HTMLInputElement).blur()}
-                          className="w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
+                          className="no-spinner w-full text-right px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm font-semibold text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
                           placeholder="0"
                         />
                       </div>
@@ -960,28 +986,6 @@ export default function PurchaseRequisitionPage() {
                           onChange={e => updateLineStr(l.lineKey, "ExpectedDelivery", e.target.value)}
                           className={`w-full px-3 py-2 border rounded-md text-sm text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))] ${l.ExpectedDelivery ? "border-[rgb(var(--bd-default))]" : "border-red-300"}`}
                         />
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase mb-1.5">PWO No</p>
-                        <select
-                          value={l.JobBookingJobCardContentsID ? String(l.JobBookingJobCardContentsID) : ""}
-                          onChange={e => setLinePWO(l.lineKey, e.target.value)}
-                          className="w-full px-3 py-2 border border-[rgb(var(--bd-default))] rounded-md text-sm text-[rgb(var(--fg-default))] bg-[rgb(var(--bg-surface))]"
-                        >
-                          <option value="">Select SOP</option>
-                          {jobCards.map(j => (
-                            <option key={j.JobBookingJobCardContentsID} value={String(j.JobBookingJobCardContentsID)}>
-                              {j.PWONo || j.JobCardContentNo}{j.JobName ? ` · ${j.JobName}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                        {(l.JobName || l.CustomerName) && (
-                          <p className="text-xs text-[rgb(var(--fg-muted))] mt-1">
-                            {l.JobName && <span>Job: <span className="text-[rgb(var(--fg-default))] font-medium">{l.JobName}</span></span>}
-                            {l.JobName && l.CustomerName && " · "}
-                            {l.CustomerName && <span>Customer: <span className="text-[rgb(var(--fg-default))] font-medium">{l.CustomerName}</span></span>}
-                          </p>
-                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 divide-x divide-[rgb(var(--bd-default))] bg-[rgb(var(--color-primary-subtle))]">
@@ -1051,6 +1055,16 @@ export default function PurchaseRequisitionPage() {
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))]">
                     <tr>
+                      <th className="px-3 py-2 text-center w-10">
+                        <input
+                          type="checkbox"
+                          checked={allPickerSelected}
+                          onChange={toggleAllPicker}
+                          disabled={pickerAddableIds.length === 0}
+                          className="rounded border-none"
+                          title="Select all"
+                        />
+                      </th>
                       {["Code", "Item Name", "Group", "Sub Group", "Curr. Stock", "Purch. Unit", "Stock UOM"].map((h, i) => (
                         <th key={i} className={`px-4 py-2 font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider ${i >= 4 ? "text-right" : "text-left"}`}>{h}</th>
                       ))}
@@ -1058,30 +1072,59 @@ export default function PurchaseRequisitionPage() {
                   </thead>
                   <tbody>
                     {filteredPicker.length === 0 ? (
-                      <tr><td colSpan={7} className="text-center py-12 text-[rgb(var(--fg-subtle))]">No items found</td></tr>
-                    ) : filteredPicker.map(item => (
-                      <tr
-                        key={item.ItemID} onClick={() => addFromPicker(item)}
-                        className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] cursor-pointer transition-colors"
-                      >
-                        <td className="px-4 py-2.5">
-                          <span className="font-mono text-[rgb(var(--color-primary))] font-semibold block">{item.ItemCode}</span>
-                          {item.ItemDescription && <span className="text-[rgb(var(--fg-subtle))] text-xs block leading-tight mt-0.5">{item.ItemDescription}</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-[rgb(var(--fg-default))] font-medium">{item.ItemName}</td>
-                        <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemGroupName}</td>
-                        <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemSubGroupName || "—"}</td>
-                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-default))]">{toNum(item.PhysicalStock).toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.PurchaseUnit}</td>
-                        <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.StockUnit}</td>
-                      </tr>
-                    ))}
+                      <tr><td colSpan={8} className="text-center py-12 text-[rgb(var(--fg-subtle))]">No items found</td></tr>
+                    ) : filteredPicker.map(item => {
+                      const added = lines.some(l => l.ItemID === item.ItemID);
+                      const selected = pickerSel.has(item._uid);
+                      return (
+                        <tr
+                          key={item._uid}
+                          onClick={() => !added && togglePickerSel(item._uid)}
+                          className={`border-b border-[rgb(var(--bd-default))] transition-colors ${added ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-[rgb(var(--bg-hover))]"} ${selected ? "bg-[rgb(var(--color-primary-subtle))]" : ""}`}
+                        >
+                          <td className="px-3 py-2.5 text-center">
+                            <input
+                              type="checkbox"
+                              checked={added || selected}
+                              disabled={added}
+                              readOnly
+                              className="rounded border-none pointer-events-none"
+                            />
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="font-mono text-[rgb(var(--color-primary))] font-semibold block">{item.ItemCode}</span>
+                            {item.ItemDescription && <span className="text-[rgb(var(--fg-subtle))] text-xs block leading-tight mt-0.5">{item.ItemDescription}</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-[rgb(var(--fg-default))] font-medium">
+                            {item.ItemName}
+                            {added && <span className="ml-2 text-[10px] font-semibold text-[rgb(var(--fg-subtle))] uppercase">Added</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemGroupName}</td>
+                          <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{item.ItemSubGroupName || "—"}</td>
+                          <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-default))]">{toNum(item.PhysicalStock).toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.PurchaseUnit}</td>
+                          <td className="px-4 py-2.5 text-right text-[rgb(var(--fg-muted))]">{item.StockUnit}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
             </div>
-            <div className="px-5 py-2 border-t border-[rgb(var(--bd-default))] text-right">
-              <p className="text-xs text-[rgb(var(--fg-subtle))]">Click any row to add item to requisition</p>
+            <div className="px-5 py-3 border-t border-[rgb(var(--bd-default))] flex items-center justify-between gap-3">
+              <p className="text-xs text-[rgb(var(--fg-subtle))]">
+                {pickerSel.size > 0 ? `${pickerSel.size} item${pickerSel.size > 1 ? "s" : ""} selected` : "Select items to add"}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setShowPicker(false)}>Cancel</Button>
+                <Button
+                  variant="action-create" size="sm" icon={<Plus size={14} />}
+                  onClick={addSelectedFromPicker}
+                  disabled={pickerSel.size === 0}
+                >
+                  Add{pickerSel.size > 0 ? ` (${pickerSel.size})` : ""}
+                </Button>
+              </div>
             </div>
           </div>
         </Modal>
@@ -1174,10 +1217,19 @@ export default function PurchaseRequisitionPage() {
             <DataTable
               data={filteredIndent}
               columns={indentColumns}
+              getRowId={r => String(r.TransactionDetailID)}
+              enableRowSelection={false}
               actions={row => (
-                <Button variant="secondary" size="xs" icon={<Boxes size={12} />} onClick={() => openStockView(row)}>
-                  Stock
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button variant="secondary" size="xs" icon={<Boxes size={12} />} onClick={() => openStockView(row)}>
+                    Stock
+                  </Button>
+                  {row.TransactionDetailID > 0 && (
+                    <Button variant="action-cancel" size="xs" icon={<X size={12} />} onClick={() => closeIndent(row)}>
+                      Close
+                    </Button>
+                  )}
+                </div>
               )}
               toolbar={
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1210,6 +1262,7 @@ export default function PurchaseRequisitionPage() {
             <DataTable
               data={filteredReqs}
               columns={reqColumns}
+              getRowId={r => String(r.TransactionID)}
               actions={r => (
                 <RowActions>
                   <RowAction.Edit onClick={() => openEdit(r)} disabled={formLoading || deleting} />
@@ -1246,8 +1299,8 @@ export default function PurchaseRequisitionPage() {
                 </tr>
               </thead>
               <tbody>
-                {stockBatches.map(b => (
-                  <tr key={b.BatchID} className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] transition-colors">
+                {stockBatches.map((b, i) => (
+                  <tr key={`${b.BatchID}-${b.WarehouseID}-${b.Bin}-${i}`} className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] transition-colors">
                     <td className="px-4 py-2.5 font-mono text-[rgb(var(--color-primary))]">{b.BatchNo}</td>
                     <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{b.WarehouseName}</td>
                     <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{b.Bin}</td>

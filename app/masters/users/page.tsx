@@ -267,20 +267,37 @@ export default function UserMasterPage() {
     setAuthLoading(false);
   };
 
-  const toggleModuleAuth = (moduleID: string, field: keyof CanFields, value: boolean) => {
+  const toggleModuleAuth = useCallback((moduleID: string, field: keyof CanFields, value: boolean) => {
     if (moduleID === "ALL") {
       setModuleAuth(prev => prev.map(r => ({ ...r, [field]: value })));
     } else {
       setModuleAuth(prev => prev.map(r => r.ModuleID === moduleID ? { ...r, [field]: value } : r));
     }
-  };
-  const toggleSubModuleAuth = (groupKey: string, field: keyof CanFields, value: boolean) => {
+  }, []);
+  const toggleAllModuleRow = useCallback((moduleID: string, value: boolean) => {
+    const full: CanFields = { CanView: value, CanSave: value, CanEdit: value, CanDelete: value, CanPrint: value, CanExport: value };
+    if (moduleID === "ALL") {
+      setModuleAuth(prev => prev.map(r => ({ ...r, ...full })));
+    } else {
+      setModuleAuth(prev => prev.map(r => r.ModuleID === moduleID ? { ...r, ...full } : r));
+    }
+  }, []);
+
+  const toggleSubModuleAuth = useCallback((groupKey: string, field: keyof CanFields, value: boolean) => {
     if (groupKey === "ALL") {
       setSubModuleAuth(prev => prev.map(r => ({ ...r, [field]: value })));
     } else {
       setSubModuleAuth(prev => prev.map(r => `${r.GroupType}-${r.GroupID}` === groupKey ? { ...r, [field]: value } : r));
     }
-  };
+  }, []);
+  const toggleAllSubModuleRow = useCallback((groupKey: string, value: boolean) => {
+    const full: CanFields = { CanView: value, CanSave: value, CanEdit: value, CanDelete: value, CanPrint: value, CanExport: value };
+    if (groupKey === "ALL") {
+      setSubModuleAuth(prev => prev.map(r => ({ ...r, ...full })));
+    } else {
+      setSubModuleAuth(prev => prev.map(r => `${r.GroupType}-${r.GroupID}` === groupKey ? { ...r, ...full } : r));
+    }
+  }, []);
 
   // open add
   const openAdd = () => {
@@ -624,12 +641,12 @@ export default function UserMasterPage() {
               <div>
                 <SectionTitle title="Basic Information" />
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  <Input label="User Name" value={form.UserName}
+                  <Input label="Login User Name" value={form.UserName}
                     onChange={e => f("UserName", e.target.value)}
                     placeholder="Full name"
                     error={submitAttempted && !form.UserName.trim() ? "Required" : undefined} />
 
-                  <Input label="Login User Name" value={form.LoginUserName}
+                  <Input label="User Name" value={form.LoginUserName}
                     onChange={e => f("LoginUserName", e.target.value)}
                     placeholder="ajshrink"
                     error={submitAttempted && !form.LoginUserName.trim() ? "Required" : undefined} />
@@ -788,57 +805,73 @@ export default function UserMasterPage() {
             {activeTab === "moduleauth" && (
               <div>
                 <SectionTitle title="Module Authority" />
-                <p className="text-xs text-gray-400 mb-3">
-                  Grants this user access to each module. Use the &quot;All&quot; row to toggle an entire column at once.
-                </p>
-                {authLoading ? (
-                  <div className="flex items-center justify-center py-16 text-gray-400">
-                    <Loader2 className="animate-spin mr-2" size={18} /> Loading...
-                  </div>
-                ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-blue-700 text-white sticky top-0 z-10">
-                          <tr>
-                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Module</th>
-                            {CAN_COLS.map(c => (
-                              <th key={c.key} className="px-3 py-2 text-center text-xs font-semibold uppercase">{c.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          <tr className="bg-blue-50">
-                            <td className="px-3 py-2 font-semibold text-blue-700">All</td>
-                            {CAN_COLS.map(c => (
-                              <td key={c.key} className="px-3 py-2 text-center">
-                                <input type="checkbox"
-                                  onChange={e => toggleModuleAuth("ALL", c.key, e.target.checked)} />
-                              </td>
-                            ))}
-                          </tr>
-                          {moduleAuth.map(row => (
-                            <tr key={row.ModuleID} className="hover:bg-gray-50">
-                              <td className="px-3 py-2">
-                                <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">{row.ModuleHeadName}</div>
-                                <div className="text-gray-800 font-medium">{row.ModuleDisplayName}</div>
-                              </td>
-                              {CAN_COLS.map(c => (
-                                <td key={c.key} className="px-3 py-2 text-center">
-                                  <input type="checkbox" checked={row[c.key]}
-                                    onChange={e => toggleModuleAuth(row.ModuleID, c.key, e.target.checked)} />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                          {moduleAuth.length === 0 && (
-                            <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No modules found.</td></tr>
-                          )}
-                        </tbody>
-                      </table>
+                <DataTable<ModuleAuthRow>
+                  data={moduleAuth}
+                  loading={authLoading}
+                  pageSize={100}
+                  enableRowSelection={false}
+                  getRowId={r => r.ModuleID}
+                  toolbar={
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Select All:</span>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 cursor-pointer hover:text-blue-900 select-none">
+                        <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer accent-blue-600"
+                          onChange={e => toggleAllModuleRow("ALL", e.target.checked)} />
+                        Full Access
+                      </label>
+                      <span className="text-gray-300 text-sm">|</span>
+                      {CAN_COLS.map(c => (
+                        <label key={c.key} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800 select-none">
+                          <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer"
+                            onChange={e => toggleModuleAuth("ALL", c.key, e.target.checked)} />
+                          {c.label}
+                        </label>
+                      ))}
                     </div>
-                  </div>
-                )}
+                  }
+                  columns={[
+                    {
+                      key: "ModuleDisplayName", header: "Module", size: 220,
+                      render: r => (
+                        <div>
+                          <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider leading-none mb-0.5">{r.ModuleHeadName}</div>
+                          <div className="font-medium text-gray-800 text-xs">{r.ModuleDisplayName}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "ModuleID" as keyof ModuleAuthRow,
+                      header: "All",
+                      size: 60,
+                      sortable: false,
+                      render: (r: ModuleAuthRow) => {
+                        const allChecked = r.CanView && r.CanSave && r.CanEdit && r.CanDelete && r.CanPrint && r.CanExport;
+                        const someChecked = !allChecked && (r.CanView || r.CanSave || r.CanEdit || r.CanDelete || r.CanPrint || r.CanExport);
+                        return (
+                          <div className="flex justify-center">
+                            <input type="checkbox" className="w-4 h-4 cursor-pointer accent-blue-700"
+                              checked={allChecked}
+                              ref={el => { if (el) el.indeterminate = someChecked; }}
+                              onChange={e => toggleAllModuleRow(r.ModuleID, e.target.checked)} />
+                          </div>
+                        );
+                      },
+                    },
+                    ...CAN_COLS.map(c => ({
+                      key: c.key as keyof ModuleAuthRow,
+                      header: c.label,
+                      size: 72,
+                      sortable: false,
+                      render: (r: ModuleAuthRow) => (
+                        <div className="flex justify-center">
+                          <input type="checkbox" className="w-4 h-4 cursor-pointer accent-blue-600"
+                            checked={r[c.key]}
+                            onChange={e => toggleModuleAuth(r.ModuleID, c.key, e.target.checked)} />
+                        </div>
+                      ),
+                    })),
+                  ]}
+                />
               </div>
             )}
 
@@ -846,59 +879,75 @@ export default function UserMasterPage() {
             {activeTab === "submoduleauth" && (
               <div>
                 <SectionTitle title="Sub-Module Authority" />
-                <p className="text-xs text-gray-400 mb-3">
-                  Finer-grained access per Item Group / Ledger Group (e.g. restrict this user to only Clients, not Suppliers).
-                </p>
-                {authLoading ? (
-                  <div className="flex items-center justify-center py-16 text-gray-400">
-                    <Loader2 className="animate-spin mr-2" size={18} /> Loading...
-                  </div>
-                ) : (
-                  <div className="border border-gray-200 rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-blue-700 text-white sticky top-0 z-10">
-                          <tr>
-                            <th className="px-3 py-2 text-left text-xs font-semibold uppercase">Group</th>
-                            {CAN_COLS.map(c => (
-                              <th key={c.key} className="px-3 py-2 text-center text-xs font-semibold uppercase">{c.label}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          <tr className="bg-blue-50">
-                            <td className="px-3 py-2 font-semibold text-blue-700">All</td>
-                            {CAN_COLS.map(c => (
-                              <td key={c.key} className="px-3 py-2 text-center">
-                                <input type="checkbox"
-                                  onChange={e => toggleSubModuleAuth("ALL", c.key, e.target.checked)} />
-                              </td>
-                            ))}
-                          </tr>
-                          {subModuleAuth.map(row => (
-                            <tr key={`${row.GroupType}-${row.GroupID}`} className="hover:bg-gray-50">
-                              <td className="px-3 py-2">
-                                <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">
-                                  {row.GroupType === "Item" ? "Item Group" : "Ledger Group"}
-                                </div>
-                                <div className="text-gray-800 font-medium">{row.GroupName}</div>
-                              </td>
-                              {CAN_COLS.map(c => (
-                                <td key={c.key} className="px-3 py-2 text-center">
-                                  <input type="checkbox" checked={row[c.key]}
-                                    onChange={e => toggleSubModuleAuth(`${row.GroupType}-${row.GroupID}`, c.key, e.target.checked)} />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                          {subModuleAuth.length === 0 && (
-                            <tr><td colSpan={7} className="px-3 py-8 text-center text-gray-400">No groups found.</td></tr>
-                          )}
-                        </tbody>
-                      </table>
+                <DataTable<SubModuleAuthRow>
+                  data={subModuleAuth}
+                  loading={authLoading}
+                  pageSize={100}
+                  enableRowSelection={false}
+                  getRowId={r => `${r.GroupType}-${r.GroupID}`}
+                  toolbar={
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Select All:</span>
+                      <label className="flex items-center gap-1.5 text-xs font-semibold text-blue-700 cursor-pointer hover:text-blue-900 select-none">
+                        <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer accent-blue-600"
+                          onChange={e => toggleAllSubModuleRow("ALL", e.target.checked)} />
+                        Full Access
+                      </label>
+                      <span className="text-gray-300 text-sm">|</span>
+                      {CAN_COLS.map(c => (
+                        <label key={c.key} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800 select-none">
+                          <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer"
+                            onChange={e => toggleSubModuleAuth("ALL", c.key, e.target.checked)} />
+                          {c.label}
+                        </label>
+                      ))}
                     </div>
-                  </div>
-                )}
+                  }
+                  columns={[
+                    {
+                      key: "GroupName", header: "Group", size: 220,
+                      render: r => (
+                        <div>
+                          <div className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider leading-none mb-0.5">
+                            {r.GroupType === "Item" ? "Item Group" : "Ledger Group"}
+                          </div>
+                          <div className="font-medium text-gray-800 text-xs">{r.GroupName}</div>
+                        </div>
+                      ),
+                    },
+                    {
+                      key: "GroupID" as keyof SubModuleAuthRow,
+                      header: "All",
+                      size: 60,
+                      sortable: false,
+                      render: (r: SubModuleAuthRow) => {
+                        const allChecked = r.CanView && r.CanSave && r.CanEdit && r.CanDelete && r.CanPrint && r.CanExport;
+                        const someChecked = !allChecked && (r.CanView || r.CanSave || r.CanEdit || r.CanDelete || r.CanPrint || r.CanExport);
+                        return (
+                          <div className="flex justify-center">
+                            <input type="checkbox" className="w-4 h-4 cursor-pointer accent-blue-700"
+                              checked={allChecked}
+                              ref={el => { if (el) el.indeterminate = someChecked; }}
+                              onChange={e => toggleAllSubModuleRow(`${r.GroupType}-${r.GroupID}`, e.target.checked)} />
+                          </div>
+                        );
+                      },
+                    },
+                    ...CAN_COLS.map(c => ({
+                      key: c.key as keyof SubModuleAuthRow,
+                      header: c.label,
+                      size: 72,
+                      sortable: false,
+                      render: (r: SubModuleAuthRow) => (
+                        <div className="flex justify-center">
+                          <input type="checkbox" className="w-4 h-4 cursor-pointer accent-blue-600"
+                            checked={r[c.key]}
+                            onChange={e => toggleSubModuleAuth(`${r.GroupType}-${r.GroupID}`, c.key, e.target.checked)} />
+                        </div>
+                      ),
+                    })),
+                  ]}
+                />
               </div>
             )}
           </div>

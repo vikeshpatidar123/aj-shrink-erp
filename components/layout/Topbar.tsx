@@ -127,10 +127,10 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
       {/* ── Left: hamburger + brand icon + company name + unit dropdown + FY badge ── */}
       <div className="flex items-center gap-2 min-w-0 flex-1">
-        {/* Hamburger — mobile only; desktop uses the sidebar's own toggle button */}
+        {/* Hamburger — hidden on mobile (BottomNav handles it); desktop uses sidebar's own toggle */}
         <button
           onClick={onMenuClick}
-          className="lg:hidden p-2 rounded flex-shrink-0 transition-colors"
+          className="hidden p-2 rounded flex-shrink-0 transition-colors"
           style={{ color: "rgba(255,255,255,0.6)" }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#fff"; }}
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.6)"; }}

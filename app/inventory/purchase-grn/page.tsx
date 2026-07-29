@@ -2,14 +2,15 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import {
   Plus, X, Scan, Printer, CheckCircle2,
-  Camera, Keyboard, Trash2, QrCode,
-  Layers, Package, ArrowLeft, FileText, ChevronRight, ChevronDown, RefreshCw,
+  Camera, Keyboard, Trash2, QrCode, Pencil,
+  Layers, Package, ArrowLeft, FileText, ChevronRight, RefreshCw,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { authHeaders, getSession } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -168,19 +169,22 @@ function buildSlipHtml(line: PrintLine, qrDataURL: string, grnNo: string, suppli
   </div>`;
 }
 
-function openPrintTab(html: string) {
+// `tab` is opened synchronously by the click handler (before any await) so the
+// browser doesn't block it as a non-user-gesture pop-up. We just point it at the blob.
+function openPrintTab(html: string, tab: Window | null) {
   const printableHtml = html.replace(
     "</head>",
     "<script>window.onload=function(){window.print();}<\/script></head>"
   );
   const blob = new Blob([printableHtml], { type: "text/html" });
   const url = URL.createObjectURL(blob);
-  const tab = window.open(url, "_blank");
-  if (!tab) alert("Pop-up blocked. Please allow pop-ups for this site.");
+  const target = tab ?? window.open(url, "_blank");
+  if (!target) { alert("Pop-up blocked. Please allow pop-ups for this site."); return; }
+  target.location.href = url;
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-async function printQRSlips(lines: PrintLine[], grnNo: string, supplier: string, eachPage: boolean) {
+async function printQRSlips(lines: PrintLine[], grnNo: string, supplier: string, eachPage: boolean, tab: Window | null) {
   const slipHtmls = await Promise.all(lines.map(async (line) => {
     const qrDataURL = await QRCode.toDataURL(
       JSON.stringify({ batchNo: line.batchNo, itemCode: line.itemCode, supplierBatchNo: line.supplierBatchNo }),
@@ -202,14 +206,14 @@ async function printQRSlips(lines: PrintLine[], grnNo: string, supplier: string,
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GRN Labels — ${grnNo}</title>
     <style>${QR_SLIP_STYLES}${GRID_STYLES}</style>
     </head><body>${body}</body></html>`;
-    openPrintTab(html);
+    openPrintTab(html, tab);
   } else {
     // Multiple slips — 2 columns × N rows grid
     const body = slipHtmls.join("");
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>GRN Labels — ${grnNo}</title>
     <style>${QR_SLIP_STYLES}${GRID_STYLES}</style>
     </head><body><div class="grid">${body}</div></body></html>`;
-    openPrintTab(html);
+    openPrintTab(html, tab);
   }
 }
 
@@ -605,11 +609,11 @@ export default function PurchaseGRNPage() {
   const [supplierId, setSupplierId] = useState<number>(0);
   const [receivedById, setReceivedById] = useState<number>(0);
   const [invoiceNo, setInvoiceNo]   = useState("");
-  const [invoiceDate, setInvoiceDate] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(todayISO);
   const [eWayBillNo, setEWayBillNo] = useState("");
-  const [eWayBillDate, setEWayBillDate] = useState("");
+  const [eWayBillDate, setEWayBillDate] = useState(todayISO);
   const [gateEntryNo, setGateEntryNo] = useState("");
-  const [gateEntryDate, setGateEntryDate] = useState("");
+  const [gateEntryDate, setGateEntryDate] = useState(todayISO);
   const [lrVehicleNo, setLrVehicleNo] = useState("");
   const [transporter, setTransporter] = useState("");
   const [remark, setRemark]         = useState("");
@@ -636,7 +640,6 @@ export default function PurchaseGRNPage() {
   const [deleting, setDeleting]     = useState(false);
 
   // ── QR print from list ──────────────────────────────────────
-  const [qrMenuGrnId, setQrMenuGrnId] = useState<number | null>(null);
   const [qrPrinting, setQrPrinting]   = useState<number | null>(null);
 
   const supplierName = useMemo(
@@ -686,14 +689,6 @@ export default function PurchaseGRNPage() {
 
   useEffect(() => { fetchGrnList(); }, [fetchGrnList]);
 
-  // Close QR dropdown on outside click (bubble phase so button onClick fires first)
-  useEffect(() => {
-    if (!qrMenuGrnId) return;
-    const handler = () => setQrMenuGrnId(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [qrMenuGrnId]);
-
   // ── Fetch pending POs when supplier changes ─────────────────
   useEffect(() => {
     if (!supplierId) { setPendingItems([]); return; }
@@ -723,8 +718,8 @@ export default function PurchaseGRNPage() {
   const openNew = useCallback(async () => {
     setEditTxnId(null);
     setGrnDate(todayISO()); setSupplierId(0); setReceivedById(0);
-    setInvoiceNo(""); setInvoiceDate(""); setEWayBillNo(""); setEWayBillDate("");
-    setGateEntryNo(""); setGateEntryDate(""); setLrVehicleNo("");
+    setInvoiceNo(""); setInvoiceDate(todayISO()); setEWayBillNo(""); setEWayBillDate(todayISO());
+    setGateEntryNo(""); setGateEntryDate(todayISO()); setLrVehicleNo("");
     setTransporter(""); setRemark(""); setLines([]); setLineBins({});
     await fetchGrnNo();
     setActiveTab("basic");
@@ -738,11 +733,11 @@ export default function PurchaseGRNPage() {
     setSupplierId(row.LedgerID);
     setReceivedById(row.ReceivedBy ?? 0);
     setInvoiceNo(row.DeliveryNoteNo ?? "");
-    setInvoiceDate(toInputDate(row.DeliveryNoteDate));
+    setInvoiceDate(toInputDate(row.DeliveryNoteDate) || todayISO());
     setEWayBillNo(row.EWayBillNumber ?? "");
-    setEWayBillDate(toInputDate(row.EWayBillDate));
+    setEWayBillDate(toInputDate(row.EWayBillDate) || todayISO());
     setGateEntryNo(row.GateEntryNo ?? "");
-    setGateEntryDate(toInputDate(row.GateEntryDate));
+    setGateEntryDate(toInputDate(row.GateEntryDate) || todayISO());
     setLrVehicleNo(row.LRNoVehicleNo ?? "");
     setTransporter(row.Transporter ?? "");
     setRemark(row.Narration ?? "");
@@ -860,11 +855,13 @@ export default function PurchaseGRNPage() {
 
   // ── QR print handler (list view) ───────────────────────────
   const handleQRPrint = useCallback(async (row: GRNListRow, mode: "each" | "all") => {
-    setQrMenuGrnId(null);
+    // Open the print tab synchronously inside the click handler so it is treated as
+    // a user gesture (window.open after an await gets blocked as a pop-up).
+    const printTab = window.open("", "_blank");
     setQrPrinting(row.TransactionID);
     try {
       const detail = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptVoucherBatchDetail?transactionId=${row.TransactionID}`);
-      if (!Array.isArray(detail) || detail[0]?.ErrMsg) { alert("Could not load GRN detail."); return; }
+      if (!Array.isArray(detail) || detail[0]?.ErrMsg) { printTab?.close(); alert("Could not load GRN detail."); return; }
       const seenTransIds = new Set<number>();
       const printLines: PrintLine[] = detail
         .filter((d: any) => {
@@ -885,9 +882,9 @@ export default function PurchaseGRNPage() {
           warehouseName: d.Warehouse ?? "",
           bin: d.Bin ?? "",
         }));
-      if (!printLines.length) { alert("No batch lines found for this GRN."); return; }
-      await printQRSlips(printLines, row.ReceiptVoucherNo, row.LedgerName, mode === "each");
-    } catch (e: any) { alert("Print error: " + e.message); }
+      if (!printLines.length) { printTab?.close(); alert("No batch lines found for this GRN."); return; }
+      await printQRSlips(printLines, row.ReceiptVoucherNo, row.LedgerName, mode === "each", printTab);
+    } catch (e: any) { printTab?.close(); alert("Print error: " + e.message); }
     finally { setQrPrinting(null); }
   }, []);
 
@@ -1055,96 +1052,85 @@ export default function PurchaseGRNPage() {
     finally { setDeleting(false); setPwModal(null); }
   }, [editTxnId, lines, fetchGrnList]);
 
+  // ── GRN list columns ────────────────────────────────────────
+  const grnColumns: Column<GRNListRow>[] = useMemo(() => [
+    { key: "ReceiptVoucherNo", header: "GRN No.", render: g => <span className="font-mono text-xs font-semibold text-[rgb(var(--color-primary))]">{g.ReceiptVoucherNo}</span> },
+    { key: "ReceiptVoucherDate", header: "Date", render: g => <span className="text-[rgb(var(--fg-muted))] text-xs">{fmtDate(g.ReceiptVoucherDate)}</span> },
+    { key: "LedgerName", header: "Supplier", render: g => <span className="text-[rgb(var(--fg-default))] text-xs font-medium">{g.LedgerName}</span> },
+    { key: "PurchaseVoucherNo", header: "PO Ref.", render: g => <span className="text-[rgb(var(--fg-muted))] text-xs font-mono">{g.PurchaseVoucherNo}</span> },
+    { key: "DeliveryNoteNo", header: "Invoice No.", render: g => <span className="text-[rgb(var(--fg-muted))] text-xs font-mono">{g.DeliveryNoteNo || "—"}</span> },
+    { key: "Transporter", header: "Transporter", render: g => <span className="text-[rgb(var(--fg-muted))] text-xs">{g.Transporter || "—"}</span> },
+  ], []);
+
   // ══════════════════════════════════════════════════════════════
   // LIST VIEW
   // ══════════════════════════════════════════════════════════════
   if (view === "list") {
     return (
-      <div className="max-w-6xl mx-auto space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-bold text-gray-800">Purchase GRN</h2>
-            <p className="text-sm text-gray-500">Goods Receipt Note · {grnList.length} records</p>
-          </div>
-          <Button variant="secondary" pill icon={<Plus size={16} />} onClick={openNew}>New GRN</Button>
+      <div className="w-full space-y-4">
+
+        {/* Page heading */}
+        <div className="text-center pt-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase GRN</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">Goods Receipt Note · {grnList.length} records</p>
         </div>
 
-        {/* Date filter */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3 flex items-center gap-4">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Date Range</span>
-          <div className="flex items-center gap-2">
+        {/* Controls row */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {/* Date range filter */}
+          <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+            <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">Date Range</span>
             <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-gray-400 text-xs">to</span>
+            <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
             <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
           </div>
-          <button onClick={fetchGrnList} disabled={listLoading}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            <RefreshCw size={12} className={listLoading ? "animate-spin" : ""} /> Refresh
-          </button>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} />} onClick={fetchGrnList} />
+            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New GRN</Button>
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                {["GRN No.", "Date", "Supplier", "PO Ref.", "Invoice No.", "Transporter", "Actions"].map((h, i) => (
-                  <th key={h} className={`px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider ${i >= 6 ? "text-center" : "text-left"}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {listLoading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Loading…</td></tr>
-              ) : grnList.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-16 text-gray-400">No GRN records found</td></tr>
-              ) : grnList.map((g) => (
-                <tr key={g.TransactionID}
-                  className="border-t border-gray-100 hover:bg-blue-50/30 transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{g.ReceiptVoucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{fmtDate(g.ReceiptVoucherDate)}</td>
-                  <td className="px-4 py-3 text-gray-800 text-xs font-medium">{g.LedgerName}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs font-mono">{g.PurchaseVoucherNo}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs font-mono">{g.DeliveryNoteNo || "—"}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{g.Transporter || "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 justify-center">
-                      <button onClick={() => openEdit(g)}
-                        className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:text-blue-700 transition-colors">
-                        Edit
-                      </button>
-                      {/* QR Print dropdown */}
-                      <div className="relative">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setQrMenuGrnId(qrMenuGrnId === g.TransactionID ? null : g.TransactionID); }}
-                          disabled={qrPrinting === g.TransactionID}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50">
-                          {qrPrinting === g.TransactionID
-                            ? <><RefreshCw size={11} className="animate-spin" /> Printing…</>
-                            : <><QrCode size={11} /> QR <ChevronDown size={10} /></>}
-                        </button>
-                        {qrMenuGrnId === g.TransactionID && (
-                          <div className="absolute right-0 top-full mt-1 z-[999] bg-white border border-gray-200 rounded-xl shadow-lg py-1 w-52">
-                            <button
-                              onClick={() => handleQRPrint(g, "each")}
-                              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
-                              <Printer size={12} />
-                              Print Each QR (Individual)
-                            </button>
-                            <button
-                              onClick={() => handleQRPrint(g, "all")}
-                              className="w-full text-left px-4 py-2.5 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
-                              <QrCode size={12} />
-                              Print All QR (Single Page)
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
+          {listLoading ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading…</div>
+          ) : grnList.length === 0 ? (
+            <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No GRN records found</div>
+          ) : (
+            <div className="p-4">
+              <DataTable
+                data={grnList}
+                columns={grnColumns}
+                getRowId={g => String(g.TransactionID)}
+                loading={listLoading}
+                actions={g => (
+                  <div className="flex items-center gap-1.5 justify-center">
+                    <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(g)}>
+                      Edit
+                    </Button>
+                    {/* QR Print — direct buttons (no dropdown, so nothing gets clipped by the grid) */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleQRPrint(g, "each"); }}
+                      disabled={qrPrinting === g.TransactionID}
+                      title="Print each QR (individual labels)"
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50">
+                      {qrPrinting === g.TransactionID
+                        ? <><RefreshCw size={11} className="animate-spin" /> Printing…</>
+                        : <><Printer size={11} /> QR Each</>}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleQRPrint(g, "all"); }}
+                      disabled={qrPrinting === g.TransactionID}
+                      title="Print all QR on a single page"
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-teal-700 bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-50">
+                      <QrCode size={11} /> QR All
+                    </button>
+                  </div>
+                )}
+              />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1156,7 +1142,7 @@ export default function PurchaseGRNPage() {
   const totalQty = lines.reduce((s, l) => s + l.challanQty, 0);
 
   return (
-    <div className="max-w-5xl mx-auto pb-10">
+    <div className="w-full pb-10">
       {/* Header ribbon */}
       <div className="flex items-center justify-between mb-5 bg-white px-5 py-3.5 rounded-xl border border-gray-200 shadow-sm">
         <div className="flex items-center gap-3">
@@ -1379,19 +1365,19 @@ export default function PurchaseGRNPage() {
               </div>
             ) : (
               <div className="overflow-x-auto border border-gray-200 rounded-xl">
-                <table className="w-full text-xs border-collapse" style={{ minWidth: 1100 }}>
+                <table className="w-full text-xs border-collapse" style={{ minWidth: 1360 }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-8">#</th>
                       <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-24">PO Ref</th>
-                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase">Item</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase" style={{ minWidth: 200 }}>Item</th>
                       <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-28">Tag No.</th>
-                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-24">Grade</th>
-                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase" style={{ minWidth: 180 }}>Supplier Batch No.</th>
-                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-28">Qty</th>
-                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-36">Warehouse</th>
-                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-28">Bin</th>
-                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-24">Rate</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-28">Grade</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase" style={{ minWidth: 190 }}>Supplier Batch No.</th>
+                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-32">Qty</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-52">Warehouse</th>
+                      <th className="px-2 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase w-36">Bin</th>
+                      <th className="px-2 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase w-28">Rate</th>
                       <th className="px-2 py-2.5 w-8"></th>
                     </tr>
                   </thead>

@@ -2,6 +2,8 @@
 import { useState, useEffect } from "react";
 import Sidebar from "./Sidebar";
 import Topbar from "./Topbar";
+import { BottomNav } from "./BottomNav";
+import { MobileMenuSheet } from "./MobileMenuSheet";
 import { usePathname } from "next/navigation";
 import { UnitProvider } from "@/context/UnitContext";
 import { PermissionsProvider } from "@/context/PermissionsContext";
@@ -61,8 +63,9 @@ const pageTitles: Record<string, string> = {
 const AUTH_PATHS = ["/login", "/login/user"];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const [mobileOpen, setMobileOpen]   = useState(false);   // mobile overlay
-  const [desktopOpen, setDesktopOpen] = useState(true);    // desktop in-layout
+  const [mobileOpen, setMobileOpen]         = useState(false);   // mobile sidebar overlay (legacy)
+  const [desktopOpen, setDesktopOpen]       = useState(true);    // desktop in-layout
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);   // bottom sheet menu
 
   const pathname = usePathname();
   const [title, setTitle] = useState(pageTitles[pathname] ?? "ERP");
@@ -103,7 +106,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col min-w-0" style={{ flex: 1, overflow: "hidden" }}>
           <Topbar onMenuClick={handleMenuClick} title={title} />
           <main
-            className="p-4 md:p-6 lg:p-7"
+            className="p-4 pb-20 md:p-6 md:pb-6 lg:p-7 lg:pb-7"
             style={{ flex: 1, overflowY: "scroll", overflowX: "hidden" }}
           >
             {children}
@@ -111,6 +114,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </div>
       <ERPChatBot />
+      <BottomNav onOpenMenu={() => setMobileMenuOpen(true)} />
+      <MobileMenuSheet open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
     </UnitProvider>
     </CategoriesProvider>
     </EnquiryProvider>
