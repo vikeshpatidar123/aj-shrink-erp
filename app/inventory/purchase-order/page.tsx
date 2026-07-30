@@ -1,18 +1,22 @@
 "use client";
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Plus, Pencil, Trash2, X, Search, Check, List,
-  ClipboardList, ChevronRight, RefreshCw,
+  Plus, Trash2, X, Search, List,
+  RefreshCw, FileText, History, Printer,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders, getSession } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
+import { RowAction, RowActions } from "@/components/ui/RowAction";
+import { statusBadge } from "@/components/ui/Badge";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
 const TRANSPORT_MODES = ["Road", "Rail", "Air", "Sea", "Courier"];
 const CALCU_ON = ["Value", "Qty", "Weight", "Fixed"];
+const PAYMENT_TERMS_OPTIONS = ["15 Days", "30 Days", "45 Days", "60 Days"];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +68,32 @@ interface ReqRow {
   Tolerance: number;
   ExpectedDeliveryDate: string;
   Narration: string;
+  GSM?: number;
+  SizeW?: number;
+  JobName?: string | null;
+}
+
+type POLineStatus = "Pending" | "Approved" | "Cancelled" | "Closed";
+
+interface POLineRow {
+  TransactionID: number;
+  TransactionDetailID: number;
+  VoucherNo: string;
+  VoucherDate: string;
+  LedgerName: string;
+  ItemCode: string;
+  ItemGroupName: string;
+  ItemSubGroupName: string;
+  ItemName: string;
+  PREVoucherNo: string | null;
+  PurchaseQuantity: number;
+  PurchaseUnit: string;
+  PurchaseRate: number;
+  NetAmount: number;
+  ExpectedDeliveryDate: string;
+  IsVoucherItemApproved: number;
+  IsCancelled: number;
+  IsCompleted: number;
 }
 
 interface POHeader {
@@ -223,6 +253,12 @@ const fmtDate = (d: string) => {
 const fmtAmt = (n: number) =>
   n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const escapeHtml = (v: any) =>
+  String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+
+const poLineStatus = (l: POLineRow): POLineStatus =>
+  l.IsCancelled ? "Cancelled" : l.IsCompleted ? "Closed" : l.IsVoucherItemApproved ? "Approved" : "Pending";
+
 const recalcLine = (line: POLine, sameState: boolean): POLine => {
   const gross = line.POQtyInPU * line.Rate;
   const discAmt = gross * line.DiscPct / 100;
@@ -281,7 +317,6 @@ export default function PurchaseOrderPage() {
   // ── View state ──
   const [view, setView] = useState<"list" | "form">("list");
   const [listTab, setListTab] = useState<"reqs" | "pos">("reqs");
-  const [activeTab, setActiveTab] = useState<"basic" | "items" | "terms" | "summary">("basic");
   const [editTxnID, setEditTxnID] = useState<number | null>(null);
   const [editVoucherNo, setEditVoucherNo] = useState("");
 
@@ -320,7 +355,6 @@ export default function PurchaseOrderPage() {
 
   // ── Picker state ──
   const [showPicker, setShowPicker] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState("");
   const [pickerGroup, setPickerGroup] = useState("All");
   const [showChargeMenu, setShowChargeMenu] = useState(false);
   // multi-select in item picker (tracked by synthetic _uid)
@@ -333,6 +367,12 @@ export default function PurchaseOrderPage() {
 
   // ── List filters ──
   const [posSearch, setPosSearch] = useState("");
+
+  // ── Item-level PO list (for Created POs tab) ──
+  const [poLines, setPoLines] = useState<POLineRow[]>([]);
+  const [loadingPoLines, setLoadingPoLines] = useState(false);
+  const [poStatusFilter, setPoStatusFilter] = useState<"All" | POLineStatus>("All");
+  const [viewPo, setViewPo] = useState<{ header: POHeader; rows: POLineRow[] } | null>(null);
 
   // ─── Derived ───────────────────────────────────────────────────────────────
 
@@ -350,21 +390,22 @@ export default function PurchaseOrderPage() {
   }, [overflowItems]);
 
   const filteredPickerItems = useMemo(() => {
-    const s = pickerSearch.toLowerCase();
-    return overflowItems.filter(i => {
-      if (pickerGroup !== "All" && i.ItemGroupName !== pickerGroup) return false;
-      return !s || i.ItemCode?.toLowerCase().includes(s) || i.ItemName?.toLowerCase().includes(s);
-    });
-  }, [overflowItems, pickerGroup, pickerSearch]);
+    return overflowItems.filter(i => pickerGroup === "All" || i.ItemGroupName === pickerGroup);
+  }, [overflowItems, pickerGroup]);
 
-  const filteredPos = useMemo(() => {
-    if (!posSearch) return pos;
-    const s = posSearch.toLowerCase();
-    return pos.filter(p =>
-      p.VoucherNo?.toLowerCase().includes(s) ||
-      p.LedgerName?.toLowerCase().includes(s)
+  const poStatusCounts = useMemo(() => {
+    const c: Record<"All" | POLineStatus, number> = { All: poLines.length, Pending: 0, Approved: 0, Cancelled: 0, Closed: 0 };
+    poLines.forEach(l => { const s = poLineStatus(l); c[s] = (c[s] ?? 0) + 1; });
+    return c;
+  }, [poLines]);
+
+  const filteredPoLines = useMemo(() => {
+    const s = posSearch.trim().toLowerCase();
+    return poLines.filter(l =>
+      (poStatusFilter === "All" || poLineStatus(l) === poStatusFilter) &&
+      (!s || [l.VoucherNo, l.ItemCode, l.ItemName, l.LedgerName].some(v => (v ?? "").toLowerCase().includes(s)))
     );
-  }, [pos, posSearch]);
+  }, [poLines, poStatusFilter, posSearch]);
 
   // Totals
   const totalBasic = lines.reduce((s, l) => s + l.BasicAmount, 0);
@@ -406,22 +447,67 @@ export default function PurchaseOrderPage() {
     finally { setLoadingPos(false); }
   }, []);
 
-  // Close a PO — its remaining un-received qty drops out of GRN's pending list
-  // (backend sets IsCompleted=1). Use when a partial PO won't be fulfilled further.
-  const closePO = useCallback(async (po: POHeader) => {
-    if (!window.confirm(`Close PO ${po.VoucherNo}?\nRemaining un-received quantity will be removed from the GRN pending list.`)) return;
+  // Item-level rows for the "Created POs" tab — same data source, detail=True gives
+  // one row per line (Item Code/Group/SubGroup/Name + PR No + real Status flags).
+  const fetchPoLines = useCallback(async () => {
+    setLoadingPoLines(true);
     try {
-      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/ClosePO`, {
+      const data = await apiFetch(
+        `${BASE_URL}/api/PurchaseOrderAJ/ProcessList?fromDateValue=2000-01-01&toDateValue=2099-12-31&detail=True`
+      );
+      setPoLines(Array.isArray(data) ? data : []);
+    } catch { setPoLines([]); }
+    finally { setLoadingPoLines(false); }
+  }, []);
+
+  const cancelPoLine = useCallback(async (line: POLineRow) => {
+    if (!window.confirm(`Cancel line "${line.ItemName || line.ItemCode}"?\nThis will mark it Cancelled.`)) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseOrderAJ/CancelLine`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ transactionId: po.TransactionID }),
+        body: JSON.stringify({ transactionDetailId: line.TransactionDetailID }),
       });
-      const text = (await res.text()).replace(/^"|"$/g, "");
-      if (!res.ok || text.startsWith("Error")) { alert("Close failed: " + text); return; }
-      alert("Purchase Order closed.");
-      fetchPos();
-    } catch (e: any) { alert("Close failed: " + e.message); }
-  }, [fetchPos]);
+      const text = unwrapOk(await res.text());
+      if (text === "TransactionUsed") { alert("Cannot cancel — a GRN has already received against this line."); return; }
+      if (text.startsWith("Error")) { alert("Cancel failed: " + text); return; }
+      await Promise.all([fetchPos(), fetchPoLines()]);
+    } catch (e: any) { alert("Cancel failed: " + e.message); }
+  }, [fetchPos, fetchPoLines]);
+
+  const openViewPo = useCallback((header: POHeader) => {
+    setViewPo({ header, rows: poLines.filter(l => l.TransactionID === header.TransactionID) });
+  }, [poLines]);
+
+  const printPo = useCallback((header: POHeader) => {
+    const rows = poLines.filter(l => l.TransactionID === header.TransactionID);
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) { alert("Popup blocked. Allow popups to print."); return; }
+    const rowsHtml = rows.map(r => `
+      <tr>
+        <td>${escapeHtml(r.ItemCode)}</td>
+        <td>${escapeHtml(r.ItemName)}</td>
+        <td style="text-align:right">${toNum(r.PurchaseQuantity).toLocaleString()}</td>
+        <td>${escapeHtml(r.PurchaseUnit)}</td>
+        <td style="text-align:right">${fmtAmt(toNum(r.PurchaseRate))}</td>
+        <td style="text-align:right">${fmtAmt(toNum(r.NetAmount))}</td>
+      </tr>`).join("");
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(header.VoucherNo)}</title>
+      <style>
+        body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
+        h2{margin:0 0 4px} p{margin:0 0 16px;color:#555;font-size:13px}
+        table{width:100%;border-collapse:collapse;font-size:12px}
+        th,td{border:1px solid #ccc;padding:6px 8px;text-align:left} th{background:#f3f4f6}
+      </style></head><body>
+      <h2>Purchase Order — ${escapeHtml(header.VoucherNo)}</h2>
+      <p>Supplier: ${escapeHtml(header.LedgerName)} &nbsp;|&nbsp; Date: ${escapeHtml(fmtDate(header.VoucherDate))} &nbsp;|&nbsp; Net Amount: ₹${fmtAmt(toNum(header.NetAmount))}</p>
+      <table><thead><tr><th>Item Code</th><th>Item Name</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table>
+      </body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 300);
+  }, [poLines]);
 
   const fetchContacts = useCallback(async (ledgerId: number) => {
     if (!ledgerId) { setContacts([]); return; }
@@ -487,6 +573,7 @@ export default function PurchaseOrderPage() {
     fetchSuppliers();
     fetchReqs();
     fetchPos();
+    fetchPoLines();
   }, []);
 
   // ─── Form reset ────────────────────────────────────────────────────────────
@@ -505,7 +592,6 @@ export default function PurchaseOrderPage() {
     setCharges([]);
     setContacts([]);
     setSupplierGrades([]);
-    setActiveTab("basic");
     setEditTxnID(null);
     setEditVoucherNo("");
   }, []);
@@ -550,11 +636,11 @@ export default function PurchaseOrderPage() {
     setLines(prev => prev.map(l => recalcLine(l, sameState)));
   }, [sameState]);
 
-  // Load charge ledgers based on state when entering terms tab
-  const handleEnterTermsTab = useCallback(() => {
-    setActiveTab("terms");
-    fetchChargeLedgers(sameState ? "IntraState" : "InterState");
-  }, [sameState, fetchChargeLedgers]);
+  // Load charge ledgers whenever the form is open and the supplier's GST state is known
+  // (everything now renders in one continuous view, so there's no separate "terms tab" to enter).
+  useEffect(() => {
+    if (view === "form") fetchChargeLedgers(sameState ? "IntraState" : "InterState");
+  }, [view, sameState, fetchChargeLedgers]);
 
   // ─── Open New ──────────────────────────────────────────────────────────────
 
@@ -562,7 +648,6 @@ export default function PurchaseOrderPage() {
     resetForm();
     await Promise.all([fetchPONo(), fetchOverflowItems(0)]);
     setView("form");
-    setActiveTab("basic");
   }, [resetForm, fetchPONo, fetchOverflowItems]);
 
   // ─── Open from selected requisitions ──────────────────────────────────────
@@ -625,7 +710,6 @@ export default function PurchaseOrderPage() {
     setLines(newLines);
     setSelectedReqIds(new Set());
     setView("form");
-    setActiveTab("basic");
     await fetchOverflowItems(0);
   }, [selectedReqIds, reqs, resetForm, fetchPONo, fetchOverflowItems]);
 
@@ -767,8 +851,7 @@ export default function PurchaseOrderPage() {
       } catch { /* charges remain empty if API fails */ }
 
       setView("form");
-      setActiveTab("basic");
-    } catch (e: any) {
+      } catch (e: any) {
       alert("Failed to load PO: " + e.message);
     } finally {
       setFormLoading(false);
@@ -850,7 +933,6 @@ export default function PurchaseOrderPage() {
     if (!toAdd.length) { alert("No items selected."); return; }
     setLines(prev => [...prev, ...toAdd.map((it, i) => buildLineFromItem(it, prev.length + i))]);
     setShowPicker(false);
-    setPickerSearch("");
     setPickerGroup("All");
     setPickerSel(new Set());
   };
@@ -1217,24 +1299,73 @@ export default function PurchaseOrderPage() {
       ),
     },
     { key: "ItemName", header: "Item Name", render: r => <span className="text-gray-800 font-medium">{r.ItemName}</span> },
-    { key: "ItemGroupName", header: "Group", render: r => <span className="text-gray-600">{r.ItemGroupName}</span> },
+    { key: "ItemGroupName", header: "Item Group", render: r => <span className="text-gray-600">{r.ItemGroupName}</span> },
+    { key: "ItemSubGroupName", header: "Sub Group", render: r => <span className="text-gray-600">{r.ItemSubGroupName || "—"}</span> },
+    { key: "GSM", header: "Face GSM", render: r => <span className="text-gray-600">{r.GSM || "—"}</span> },
+    { key: "SizeW", header: "Width", render: r => <span className="text-gray-600">{r.SizeW || "—"}</span> },
+    { key: "JobName", header: "Job Name", render: r => <span className="text-gray-600">{r.JobName || "—"}</span> },
     { key: "PurchaseQuantity", header: "Pending Qty", render: r => <span className="font-semibold text-gray-800">{toNum(r.PurchaseQuantity).toLocaleString()}</span> },
     { key: "PurchaseUnit", header: "P.Unit", render: r => <span className="text-gray-600">{r.PurchaseUnit}</span> },
     { key: "PurchaseRate", header: "Rate", render: r => <span className="text-gray-700">₹{toNum(r.PurchaseRate).toFixed(2)}</span> },
-    { key: "HSNCode", header: "HSN", render: r => <span className="font-mono text-gray-600">{r.HSNCode || "—"}</span> },
-    { key: "GSTTaxPercentage", header: "GST%", render: r => <span className="text-gray-700">{toNum(r.GSTTaxPercentage)}%</span> },
     { key: "ExpectedDeliveryDate", header: "Exp. Delivery", render: r => <span className="text-gray-600 whitespace-nowrap">{r.ExpectedDeliveryDate || "—"}</span> },
   ], [selectedReqIds]);
 
-  const poColumns: Column<POHeader>[] = useMemo(() => [
-    { key: "VoucherNo", header: "PO No.", render: p => <span className="font-mono text-xs font-semibold text-blue-700">{p.VoucherNo}</span> },
-    { key: "VoucherDate", header: "Date", render: p => <span className="text-gray-600 text-xs">{p.VoucherDate}</span> },
-    { key: "LedgerName", header: "Supplier", render: p => <span className="text-gray-800 text-xs font-medium">{p.LedgerName}</span> },
-    { key: "BasicAmount", header: "Basic Amt", render: p => <span className="text-gray-700 text-xs font-semibold">₹{fmtAmt(toNum(p.BasicAmount))}</span> },
-    { key: "GSTTaxAmount", header: "GST", render: p => <span className="text-gray-600 text-xs">₹{fmtAmt(toNum(p.GSTTaxAmount))}</span> },
-    { key: "NetAmount", header: "Net Amount", render: p => <span className="text-blue-700 text-xs font-bold">₹{fmtAmt(toNum(p.NetAmount))}</span> },
-    { key: "CurrencyCode", header: "Currency", render: p => <span className="text-gray-600 text-xs">{p.CurrencyCode || "INR"}</span> },
+  const poLineColumns: Column<POLineRow>[] = useMemo(() => [
+    { key: "LedgerName", header: "Supplier Name", render: r => <span className="text-gray-800 text-xs font-medium">{r.LedgerName}</span> },
+    { key: "VoucherNo", header: "P.O. No", render: r => <span className="font-mono text-xs font-semibold text-blue-700">{r.VoucherNo}</span> },
+    { key: "VoucherDate", header: "P.O. Date", render: r => <span className="text-gray-600 text-xs">{r.VoucherDate}</span> },
+    { key: "PREVoucherNo", header: "P.R. No", render: r => <span className="font-mono text-gray-600 text-xs">{r.PREVoucherNo || "—"}</span> },
+    { key: "ItemCode", header: "Item Code", render: r => <span className="font-mono text-xs text-blue-700">{r.ItemCode}</span> },
+    { key: "ItemGroupName", header: "Item Group", render: r => <span className="text-gray-600 text-xs">{r.ItemGroupName}</span> },
+    { key: "ItemSubGroupName", header: "Sub Group", render: r => <span className="text-gray-600 text-xs">{r.ItemSubGroupName || "—"}</span> },
+    { key: "ItemName", header: "Item Name", render: r => <span className="text-gray-800 text-xs font-medium">{r.ItemName}</span> },
+    { key: "Status", header: "Status", render: r => statusBadge(poLineStatus(r)) },
   ], []);
+
+  const pickerColumns: Column<OverflowItem>[] = useMemo(() => [
+    {
+      key: "sel", header: "", width: "w-10", sortable: false,
+      render: item => {
+        const added = lines.some(l => l.ItemID === item.ItemID);
+        return (
+          <input
+            type="checkbox"
+            checked={added || pickerSel.has(item._uid)}
+            disabled={added}
+            onChange={() => !added && togglePickerSel(item._uid)}
+            onClick={e => e.stopPropagation()}
+            className="w-4 h-4 text-blue-600 rounded border-gray-300"
+          />
+        );
+      },
+    },
+    {
+      key: "ItemCode", header: "Code",
+      render: item => (
+        <div>
+          <span className="font-mono text-blue-700 font-semibold">{item.ItemCode}</span>
+          {item.ItemDescription && <span className="block text-gray-400 font-normal text-xs">{item.ItemDescription}</span>}
+        </div>
+      ),
+    },
+    {
+      key: "ItemName", header: "Item Name",
+      render: item => {
+        const added = lines.some(l => l.ItemID === item.ItemID);
+        return (
+          <span className="text-gray-800 font-medium">
+            {item.ItemName}
+            {added && <span className="ml-2 text-[10px] font-semibold text-gray-400 uppercase">Added</span>}
+          </span>
+        );
+      },
+    },
+    { key: "ItemGroupName", header: "Group", render: item => <span className="text-gray-600">{item.ItemGroupName}</span> },
+    { key: "PurchaseUnit", header: "P.Unit", render: item => <span className="text-gray-600">{item.PurchaseUnit}</span> },
+    { key: "PurchaseRate", header: "Purchase Rate", render: item => <span className="font-semibold text-gray-800">₹{toNum(item.PurchaseRate).toFixed(2)}</span> },
+    { key: "GSTTaxPercentage", header: "GST%", render: item => <span className="text-gray-700">{toNum(item.GSTTaxPercentage)}%</span> },
+    { key: "PhysicalStock", header: "Stock", render: item => <span className="text-gray-700">{toNum(item.PhysicalStock).toLocaleString()} {item.StockUnit}</span> },
+  ], [lines, pickerSel]);
 
   // ─── Password modal submit ─────────────────────────────────────────────────
 
@@ -1253,32 +1384,36 @@ export default function PurchaseOrderPage() {
       <div className="w-full space-y-4">
 
         {/* Page heading */}
-        <div className="text-center pt-1">
-          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Orders</h2>
-          <p className="text-sm text-[rgb(var(--fg-muted))]">
-            {listTab === "reqs" ? `${reqs.length} pending requisition lines` : `${pos.length} purchase orders`}
-          </p>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="w-[124px] flex-shrink-0" />
+          <div className="text-center flex-1">
+            <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Order</h2>
+            <p className="text-sm text-[rgb(var(--fg-muted))]">
+              {listTab === "reqs" ? `${reqs.length} pending requisition lines` : `${filteredPoLines.length} purchase order lines`}
+            </p>
+          </div>
+          <div className="w-[124px] flex-shrink-0 flex justify-end">
+            <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => alert("Audit Trail — coming soon")}>
+              Audit Trail
+            </Button>
+          </div>
         </div>
 
         {/* Controls row */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
 
-          {/* Tab pills */}
-          <div className="flex items-center gap-2">
+          {/* Tab pills — segmented control */}
+          <div className="flex items-center gap-1 p-1 bg-[rgb(var(--bg-subtle))] border border-[rgb(var(--bd-default))] rounded-full">
             {([
-              { key: "reqs" as const, label: "Pending Requisitions", count: reqs.length, amber: true },
-              { key: "pos" as const, label: "Created POs", count: pos.length, amber: false },
+              { key: "reqs" as const, label: "Pending Requisitions", icon: <List size={14} /> },
+              { key: "pos" as const, label: "Purchase Orders", icon: <FileText size={14} /> },
             ]).map(t => (
               <button
                 key={t.key} onClick={() => setListTab(t.key)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${listTab === t.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))] shadow-sm" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${listTab === t.key ? "bg-[rgb(var(--color-primary))] text-white shadow-sm" : "text-[rgb(var(--fg-muted))] hover:text-[rgb(var(--fg-default))]"}`}
               >
+                {t.icon}
                 {t.label}
-                {t.count > 0 && (
-                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${listTab === t.key ? "bg-white/20 text-white" : t.amber ? "bg-amber-100 text-amber-700" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]"}`}>
-                    {t.count}
-                  </span>
-                )}
               </button>
             ))}
           </div>
@@ -1302,7 +1437,7 @@ export default function PurchaseOrderPage() {
             )}
             <Button
               variant="action-refresh" size="sm" icon={<RefreshCw size={14} />}
-              onClick={() => (listTab === "reqs" ? fetchReqs() : fetchPos())}
+              onClick={() => (listTab === "reqs" ? fetchReqs() : Promise.all([fetchPos(), fetchPoLines()]))}
             />
             <Button
               variant="action-create" size="sm" icon={<Plus size={15} />}
@@ -1341,32 +1476,106 @@ export default function PurchaseOrderPage() {
           </div>
         )}
 
-        {/* ── CREATED POs TAB ── */}
+        {/* ── PURCHASE ORDERS TAB (item-level) ── */}
         {listTab === "pos" && (
           <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
-            {loadingPos ? (
+            {loadingPos || loadingPoLines ? (
               <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading purchase orders…</div>
-            ) : filteredPos.length === 0 ? (
-              <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No purchase orders found</div>
             ) : (
               <div className="p-4">
                 <DataTable
-                  data={filteredPos}
-                  columns={poColumns}
-                  getRowId={po => String(po.TransactionID)}
-                  actions={po => (
-                    <div className="flex items-center gap-1">
-                      <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(po)}>
-                        Edit
-                      </Button>
-                      <Button variant="action-cancel" size="xs" icon={<X size={11} />} onClick={() => closePO(po)}>
-                        Close
-                      </Button>
+                  data={filteredPoLines}
+                  columns={poLineColumns}
+                  getRowId={r => String(r.TransactionDetailID)}
+                  enableRowSelection={false}
+                  actions={line => {
+                    const header = pos.find(p => p.TransactionID === line.TransactionID);
+                    const status = poLineStatus(line);
+                    return (
+                      <RowActions>
+                        <RowAction.Print onClick={() => header && printPo(header)} disabled={!header} />
+                        <RowAction.View onClick={() => header && openViewPo(header)} disabled={!header} />
+                        <RowAction.Edit onClick={() => header && openEdit(header)} disabled={!header || formLoading} />
+                        <RowAction.Reject
+                          tooltip="Cancel line"
+                          onClick={() => cancelPoLine(line)}
+                          disabled={status === "Cancelled" || status === "Closed"}
+                        />
+                        <RowAction.Delete
+                          onClick={() => {
+                            if (!header) return;
+                            setEditTxnID(header.TransactionID);
+                            setEditVoucherNo(header.VoucherNo);
+                            setPwInput(""); setPwRemark("");
+                            setPwModal("delete");
+                          }}
+                          disabled={!header}
+                        />
+                      </RowActions>
+                    );
+                  }}
+                  toolbar={
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {([
+                        { key: "All" as const, label: "All" },
+                        { key: "Pending" as const, label: "Pending" },
+                        { key: "Approved" as const, label: "Approved" },
+                        { key: "Cancelled" as const, label: "Cancelled" },
+                        { key: "Closed" as const, label: "Closed" },
+                      ]).map(p => (
+                        <button
+                          key={p.key} onClick={() => setPoStatusFilter(p.key)}
+                          className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${poStatusFilter === p.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+                        >
+                          {p.label} ({poStatusCounts[p.key] ?? 0})
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  }
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* Read-only view modal (eye icon) */}
+        {viewPo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setViewPo(null)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+                <div>
+                  <h3 className="text-base font-semibold text-gray-800">View — {viewPo.header.VoucherNo}</h3>
+                  <p className="text-xs text-gray-500">{viewPo.header.LedgerName} · {fmtDate(viewPo.header.VoucherDate)}</p>
+                </div>
+                <button onClick={() => setViewPo(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      {["Item Code", "Item Name", "Qty", "Unit", "Rate", "Amount"].map((h, i) => (
+                        <th key={i} className={`px-4 py-2.5 font-semibold text-gray-500 uppercase tracking-wider ${i >= 2 ? "text-right" : "text-left"}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {viewPo.rows.map((r, i) => (
+                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-mono text-blue-700">{r.ItemCode}</td>
+                        <td className="px-4 py-2.5 text-gray-800">{r.ItemName}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800">{toNum(r.PurchaseQuantity).toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-gray-600">{r.PurchaseUnit}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">₹{fmtAmt(toNum(r.PurchaseRate))}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-blue-700">₹{fmtAmt(toNum(r.NetAmount))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1377,161 +1586,66 @@ export default function PurchaseOrderPage() {
   // FORM VIEW
   // ══════════════════════════════════════════════════════════════════════════
 
-  const tabs = [
-    { key: "basic" as const, label: "Basic" },
-    { key: "items" as const, label: `Items (${lines.length})` },
-    { key: "terms" as const, label: "Tax & Terms" },
-    { key: "summary" as const, label: "Summary" },
-  ];
-
   return (
-    <div className="w-full pb-10">
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editTxnID ? `Edit Purchase Order — ${editVoucherNo}` : "Purchase Order Creation"}
+      size="2xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
 
-      {/* Header ribbon */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div>
-          <p className="text-xs text-gray-400 font-medium tracking-wide uppercase">Purchase Order</p>
-          <h2 className="text-xl font-bold text-gray-800">{editTxnID ? `Edit — ${editVoucherNo}` : "New Purchase Order"}</h2>
-          {poNo && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 mt-1">
-              {poNo}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setView("list")}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <List size={16} /> Back to List
-          </button>
-
-          {editTxnID ? (
-            <>
-              <button
-                onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("update"); }}
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60"
-              >
-                <Check size={16} /> {saving ? "Saving…" : "Update PO"}
-              </button>
-              <button
-                onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("delete"); }}
-                disabled={deleting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-white border border-red-200 rounded-lg hover:bg-red-50 hover:border-red-400 transition-colors disabled:opacity-60"
-              >
-                <Trash2 size={16} /> {deleting ? "Deleting…" : "Delete"}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={doSave}
-              disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60"
-            >
-              <Check size={16} /> {saving ? "Saving…" : "Save PO"}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {formLoading && (
-        <div className="text-center py-8 text-gray-400 text-sm bg-white rounded-xl border border-gray-200 mb-4">
-          Loading Purchase Order data…
-        </div>
-      )}
-
-      {/* Tab content */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-
-        {/* Tab bar */}
-        <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-          <div className="flex gap-8">
-            {tabs.map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => tab.key === "terms" ? handleEnterTermsTab() : setActiveTab(tab.key)}
-                className={`pb-3 text-sm font-medium transition-colors border-b-2 ${
-                  activeTab === tab.key ? "text-blue-600 border-blue-600" : "text-gray-500 border-transparent hover:text-gray-700"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+        {formLoading && (
+          <div className="text-center py-8 text-gray-400 text-sm border-b border-gray-100">
+            Loading Purchase Order data…
           </div>
-        </div>
+        )}
 
-        <div className="p-8">
+        <div className="p-6 space-y-6">
 
-          {/* ── BASIC TAB ── */}
-          {activeTab === "basic" && (
-            <div className="space-y-8">
-              <div>
-                <SectionTitle title="Order Details" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Input label="PO No." readOnly value={poNo} />
-                  <Input label="PO Date" required type="date" value={poDate} onChange={e => setPoDate(e.target.value)} />
-                  <Select label="Currency" value={currency} onChange={e => setCurrency(e.target.value)}
-                    options={CURRENCIES.map(c => ({ value: c, label: c }))} />
-                </div>
+          {/* ── ORDER DETAILS + SUPPLIER & CONTACT ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              <Input label="PO No." readOnly value={poNo} />
+              <Input label="PO Date" required type="date" value={poDate} onChange={e => setPoDate(e.target.value)} />
+              <div className="md:col-span-2">
+                <Select label="Supplier *" value={String(supplierID || "")}
+                  onChange={e => handleSupplierChange(Number(e.target.value))}
+                  options={[{ value: "", label: "Select Supplier…" }, ...suppliers.map(s => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
               </div>
-
-              <div>
-                <SectionTitle title="Supplier & Contact" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2">
-                    <Select label="Supplier" value={String(supplierID || "")}
-                      onChange={e => handleSupplierChange(Number(e.target.value))}
-                      options={[{ value: "", label: "Select Supplier…" }, ...suppliers.map(s => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
-                    {selectedSupplier && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        State: {selectedSupplier.SupState} —{" "}
-                        {sameState
-                          ? <span className="text-green-600 font-semibold">CGST + SGST applicable</span>
-                          : <span className="text-orange-600 font-semibold">IGST applicable</span>}
-                      </p>
-                    )}
-                  </div>
-
-                  <Select label="Contact Person" value={String(contactPersonID || "")}
-                    onChange={e => setContactPersonID(Number(e.target.value))}
-                    disabled={!contacts.length}
-                    options={[{ value: "", label: "Select Contact…" }, ...contacts.map(c => ({ value: String(c.ConcernPersonID), label: c.Name }))]} />
-
-                  <div className="md:col-span-3">
-                    <Textarea label="Narration"
-                      value={narration}
-                      onChange={e => setNarration(e.target.value)}
-                      rows={2}
-                      placeholder="Optional notes…"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("items")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                  Items <ChevronRight size={15} />
-                </button>
-              </div>
+              <Select label="Contact Person" value={String(contactPersonID || "")}
+                onChange={e => setContactPersonID(Number(e.target.value))}
+                disabled={!contacts.length}
+                options={[{ value: "", label: "Select Contact…" }, ...contacts.map(c => ({ value: String(c.ConcernPersonID), label: c.Name }))]} />
+              <Select label="Currency" value={currency} onChange={e => setCurrency(e.target.value)}
+                options={CURRENCIES.map(c => ({ value: c, label: c }))} />
             </div>
-          )}
 
-          {/* ── ITEMS TAB ── */}
-          {activeTab === "items" && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <SectionTitle title="Purchase Order Lines" />
-                <button
-                  onClick={() => { setShowPicker(true); setPickerSearch(""); setPickerGroup("All"); setPickerSel(new Set()); }}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Plus size={13} /> Add Item
-                </button>
+            {selectedSupplier && (
+              <div className="mt-4 px-4 py-2.5 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between flex-wrap gap-3 text-sm">
+                <span className="text-green-800 font-medium">{selectedSupplier.SupState}</span>
+                <span className={sameState ? "text-green-700 font-semibold" : "text-orange-700 font-semibold"}>
+                  {sameState ? "CGST + SGST applicable" : "IGST applicable"}
+                </span>
+                {selectedSupplier.GSTNo && <span className="text-gray-500 font-mono">GST: {selectedSupplier.GSTNo}</span>}
               </div>
+            )}
+          </div>
+
+          {/* ── ITEMS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <SectionTitle title={`Purchase Order Items (${lines.length})`} />
+              <button
+                onClick={() => { setShowPicker(true); setPickerGroup("All"); setPickerSel(new Set()); }}
+                className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={14} /> Add Item
+              </button>
+            </div>
 
               <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs border-collapse" style={{ minWidth: 2100 }}>
+                <table className="w-full text-sm border-collapse" style={{ minWidth: 2300 }}>
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       {[
@@ -1541,7 +1655,7 @@ export default function PurchaseOrderPage() {
                         "Gross\nAmt", "Disc\n%", "After\nDisc", "CGST\nAmt", "SGST\nAmt", "IGST\nAmt",
                         "Taxable\nAmt", "Net\nAmt", "",
                       ].map((col, i) => (
-                        <th key={i} className={`px-2 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 last:border-r-0 whitespace-pre-line leading-tight ${i >= 3 && i <= 23 ? "text-right" : "text-left"}`} style={{ fontSize: 10 }}>
+                        <th key={i} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider border-r border-gray-200 last:border-r-0 whitespace-pre-line leading-tight ${i >= 3 && i <= 23 ? "text-right" : "text-left"}`}>
                           {col}
                         </th>
                       ))}
@@ -1661,285 +1775,240 @@ export default function PurchaseOrderPage() {
                 </table>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("basic")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Basic</button>
-                <button onClick={handleEnterTermsTab} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Tax & Terms <ChevronRight size={15} /></button>
+            </div>
+
+          {/* ── PAYMENT TERMS · TAX & CHARGES · AMOUNT SUMMARY ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            {/* Payment Terms */}
+            <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+              <SectionTitle title="Payment Terms" />
+              <Select
+                value={termsOfPayment}
+                onChange={e => setTermsOfPayment(e.target.value)}
+                options={[
+                  { value: "", label: "Select payment terms…" },
+                  ...PAYMENT_TERMS_OPTIONS.map(t => ({ value: t, label: t })),
+                  ...(termsOfPayment && !PAYMENT_TERMS_OPTIONS.includes(termsOfPayment)
+                    ? [{ value: termsOfPayment, label: termsOfPayment }] : []),
+                ]}
+              />
+              <div className="flex gap-2 flex-wrap mt-4">
+                {PAYMENT_TERMS_OPTIONS.map(t => (
+                  <button
+                    key={t} onClick={() => setTermsOfPayment(t)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${termsOfPayment === t ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
             </div>
-          )}
 
-          {/* ── TERMS TAB ── */}
-          {activeTab === "terms" && (
-            <div className="space-y-8">
-              <div>
-                <SectionTitle title="Delivery & Payment" />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <Select label="Mode of Transport" value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)}
-                    options={[{ value: "", label: "Select…" }, ...TRANSPORT_MODES.map(m => ({ value: m, label: m }))]} />
-                  <Input label="Delivery Address" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Delivery location" />
-                  <Input label="Payment Terms" value={termsOfPayment} onChange={e => setTermsOfPayment(e.target.value)} placeholder="e.g. Net 30 days" />
-                </div>
-              </div>
-
-              {/* Tax & Charge Ledgers */}
-              <div>
-                <div className="flex items-center justify-between mb-4">
-                  <SectionTitle title="Tax & Additional Charges" />
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowChargeMenu(p => !p)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
-                    >
-                      <Plus size={13} /> Add Charge
-                    </button>
-                    {showChargeMenu && (
-                      <div className="absolute right-0 top-10 z-30 bg-white border border-gray-200 rounded-lg shadow-xl w-64 py-1 max-h-72 overflow-y-auto">
-                        {chargeLedgers.length === 0 ? (
-                          <p className="px-4 py-3 text-xs text-gray-400">Loading…</p>
-                        ) : chargeLedgers.map(cl => (
-                          <button key={cl.LedgerID} onClick={() => addCharge(cl)}
-                            className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700">
-                            {cl.LedgerName}
-                            {cl.TaxType && <span className="ml-1 text-gray-400">({cl.TaxType})</span>}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-gray-200 overflow-x-auto">
-                  <table className="w-full text-xs" style={{ minWidth: 800 }}>
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        {["Ledger", "Tax %", "Calc. On", "GST Applicable", "In Amount", "Amount", ""].map(h => (
-                          <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {charges.length === 0 ? (
-                        <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm italic">No charges added</td></tr>
-                      ) : charges.map((c, idx) => (
-                        <tr key={c.chargeKey} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-3 py-1.5 font-medium text-gray-800 whitespace-nowrap">{c.LedgerName}</td>
-                          <td className="px-2 py-1">
-                            <Input type="number" min={0} value={c.TaxPercentage || ""} placeholder="0"
-                              onChange={e => updateCharge(c.chargeKey, { TaxPercentage: Number(e.target.value) })}
-                              className="w-16 text-right" />
-                          </td>
-                          <td className="px-2 py-1">
-                            <Select value={c.CalcOn} onChange={e => updateCharge(c.chargeKey, { CalcOn: e.target.value })}
-                              options={CALCU_ON.map(t => ({ value: t, label: t }))}
-                              className="w-24" />
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            <input type="checkbox" checked={c.GSTApplicable}
-                              onChange={e => updateCharge(c.chargeKey, { GSTApplicable: e.target.checked })}
-                              className="w-4 h-4 text-blue-600 rounded border-gray-300" />
-                          </td>
-                          <td className="px-3 py-1.5 text-center">
-                            <input type="checkbox" checked={c.InAmount}
-                              onChange={e => updateCharge(c.chargeKey, { InAmount: e.target.checked })}
-                              className="w-4 h-4 text-blue-600 rounded border-gray-300" />
-                          </td>
-                          <td className="px-2 py-1">
-                            <Input type="number" min={0} step={0.01} value={c.Amount || ""} placeholder="0.00"
-                              onChange={e => updateCharge(c.chargeKey, { Amount: Number(e.target.value), TotalAmount: Number(e.target.value) })}
-                              className="w-28 text-right" />
-                          </td>
-                          <td className="px-2 py-1.5 text-center">
-                            <button onClick={() => removeCharge(c.chargeKey)} className="text-red-400 hover:text-red-600">
-                              <Trash2 size={13} />
-                            </button>
-                          </td>
-                        </tr>
+            {/* Tax & Charge Ledgers */}
+            <div className="lg:col-span-6 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+              <div className="flex items-center justify-between mb-4">
+                <SectionTitle title="Tax & Additional Charges" />
+                <div className="relative">
+                  <button
+                    onClick={() => setShowChargeMenu(p => !p)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50"
+                  >
+                    <Plus size={14} /> Add Charge
+                  </button>
+                  {showChargeMenu && (
+                    <div className="absolute right-0 top-10 z-30 bg-white border border-gray-200 rounded-lg shadow-xl w-64 py-1 max-h-72 overflow-y-auto">
+                      {chargeLedgers.length === 0 ? (
+                        <p className="px-4 py-3 text-xs text-gray-400">Loading…</p>
+                      ) : chargeLedgers.map(cl => (
+                        <button key={cl.LedgerID} onClick={() => addCharge(cl)}
+                          className="w-full text-left px-4 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700">
+                          {cl.LedgerName}
+                          {cl.TaxType && <span className="ml-1 text-gray-400">({cl.TaxType})</span>}
+                        </button>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("items")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Items</button>
-                <button onClick={() => setActiveTab("summary")} className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Summary <ChevronRight size={15} /></button>
-              </div>
-            </div>
-          )}
-
-          {/* ── SUMMARY TAB ── */}
-          {activeTab === "summary" && (
-            <div className="space-y-8">
-              <SectionTitle title="Order Summary" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 space-y-3">
-                  {[
-                    { label: "Gross Amount (before disc)", value: lines.reduce((s, l) => s + l.GrossAmount, 0), cls: "text-gray-700" },
-                    { label: "Discount Amount", value: totalDisc, cls: "text-red-600" },
-                    { label: "Basic Amount (after disc)", value: totalBasic, cls: "text-gray-800 font-bold" },
-                    { label: "CGST", value: totalCGST, cls: "text-blue-600" },
-                    { label: "SGST", value: totalSGST, cls: "text-blue-600" },
-                    { label: "IGST", value: totalIGST, cls: "text-orange-600" },
-                    { label: "Additional Charges", value: totalCharges, cls: "text-gray-700" },
-                  ].map(row => (
-                    <div key={row.label} className="flex justify-between py-1 border-b border-gray-100 last:border-0">
-                      <span className="text-sm text-gray-500">{row.label}</span>
-                      <span className={`text-sm font-semibold font-mono ${row.cls}`}>₹{fmtAmt(row.value)}</span>
                     </div>
-                  ))}
-                  <div className="pt-3 flex justify-between border-t-2 border-blue-200">
-                    <span className="text-base font-bold text-blue-800">Net Amount</span>
-                    <span className="text-base font-bold text-blue-800 font-mono">₹{fmtAmt(netAmount)}</span>
-                  </div>
-                </div>
-
-                <div className="bg-blue-50 rounded-xl border border-blue-100 p-5 space-y-2">
-                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-3">Order Info</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    {[
-                      ["PO Number", poNo],
-                      ["PO Date", fmtDate(poDate)],
-                      ["Supplier", selectedSupplier?.LedgerName ?? "—"],
-                      ["Currency", currency],
-                      ["GST Type", sameState ? "CGST + SGST" : "IGST"],
-                      ["Line Items", String(lines.length)],
-                      ["Mode", modeOfTransport || "—"],
-                      ["Delivery To", deliveryAddress || "—"],
-                    ].map(([k, v]) => (
-                      <React.Fragment key={k}>
-                        <span className="text-gray-500">{k}</span>
-                        <span className="text-gray-800 font-medium">{v}</span>
-                      </React.Fragment>
-                    ))}
-                  </div>
+                  )}
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <button onClick={() => setActiveTab("terms")} className="px-5 py-2 text-sm font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">← Terms</button>
-                {editTxnID ? (
-                  <button onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("update"); }} disabled={saving}
-                    className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                    <Check size={16} /> {saving ? "Updating…" : "Update PO"}
-                  </button>
-                ) : (
-                  <button onClick={doSave} disabled={saving}
-                    className="flex items-center gap-2 px-6 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                    <Check size={16} /> {saving ? "Saving…" : "Save Purchase Order"}
-                  </button>
-                )}
+              <div className="rounded-lg border border-gray-200 overflow-x-auto">
+                <table className="w-full text-sm" style={{ minWidth: 580 }}>
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      {["Ledger", "Tax %", "Calc. On", "GST", "In Amt", "Amount", ""].map(h => (
+                        <th key={h} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {charges.length === 0 ? (
+                      <tr><td colSpan={7} className="text-center py-8 text-gray-400 text-sm italic">No charges added</td></tr>
+                    ) : charges.map((c, idx) => (
+                      <tr key={c.chargeKey} className={`border-b border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                        <td className="px-3 py-2 font-medium text-gray-800 whitespace-nowrap">{c.LedgerName}</td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} value={c.TaxPercentage || ""} placeholder="0"
+                            onChange={e => updateCharge(c.chargeKey, { TaxPercentage: Number(e.target.value) })}
+                            className="w-14 text-right" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Select value={c.CalcOn} onChange={e => updateCharge(c.chargeKey, { CalcOn: e.target.value })}
+                            options={CALCU_ON.map(t => ({ value: t, label: t }))}
+                            className="w-20" />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="checkbox" checked={c.GSTApplicable}
+                            onChange={e => updateCharge(c.chargeKey, { GSTApplicable: e.target.checked })}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                        </td>
+                        <td className="px-3 py-2 text-center">
+                          <input type="checkbox" checked={c.InAmount}
+                            onChange={e => updateCharge(c.chargeKey, { InAmount: e.target.checked })}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <Input type="number" min={0} step={0.01} value={c.Amount || ""} placeholder="0.00"
+                            onChange={e => updateCharge(c.chargeKey, { Amount: Number(e.target.value), TotalAmount: Number(e.target.value) })}
+                            className="w-24 text-right" />
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <button onClick={() => removeCharge(c.chargeKey)} className="text-red-400 hover:text-red-600">
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
+
+            {/* Amount Summary */}
+            <div className="lg:col-span-3 bg-blue-50 rounded-xl border border-blue-100 p-5 space-y-2">
+              <SectionTitle title="Amount Summary" />
+              {[
+                { label: "Gross Amount (before disc)", value: lines.reduce((s, l) => s + l.GrossAmount, 0), cls: "text-gray-700" },
+                { label: "Discount Amount", value: totalDisc, cls: "text-red-600" },
+                { label: "Basic Amount (after disc)", value: totalBasic, cls: "text-gray-800 font-bold" },
+                { label: "CGST", value: totalCGST, cls: "text-blue-600" },
+                { label: "SGST", value: totalSGST, cls: "text-blue-600" },
+                { label: "IGST", value: totalIGST, cls: "text-orange-600" },
+                { label: "Additional Charges", value: totalCharges, cls: "text-gray-700" },
+              ].map(row => (
+                <div key={row.label} className="flex justify-between py-1 border-b border-blue-100/70 last:border-0">
+                  <span className="text-sm text-gray-500">{row.label}</span>
+                  <span className={`text-sm font-semibold font-mono ${row.cls}`}>₹{fmtAmt(row.value)}</span>
+                </div>
+              ))}
+              <div className="pt-3 flex justify-between border-t-2 border-blue-200">
+                <span className="text-base font-bold text-blue-800">Net Amount</span>
+                <span className="text-base font-bold text-blue-800 font-mono">₹{fmtAmt(netAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── DELIVERY & REMARK ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Delivery & Remark" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-6">
+                <Select label="Mode of Transport *" value={modeOfTransport} onChange={e => setModeOfTransport(e.target.value)}
+                  options={[{ value: "", label: "Select…" }, ...TRANSPORT_MODES.map(m => ({ value: m, label: m }))]} />
+                <Input label="Delivery Address" value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)} placeholder="Delivery location" />
+              </div>
+              <Textarea label="Purchase Remark"
+                value={narration}
+                onChange={e => setNarration(e.target.value)}
+                rows={5}
+                placeholder="Optional notes…"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editTxnID != null && (
+            <Button
+              variant="secondary" size="sm" icon={<Printer size={14} />}
+              onClick={() => { const h = pos.find(p => p.TransactionID === editTxnID); if (h) printPo(h); }}
+            >
+              Print
+            </Button>
+          )}
+          {editTxnID != null && (
+            <Button variant="action-cancel" size="sm" loading={deleting}
+              onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("delete"); }}
+            >
+              Delete
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={resetForm}>
+            Clear
+          </Button>
+          {editTxnID ? (
+            <Button variant="action-save" size="sm" loading={saving}
+              onClick={() => { setPwInput(""); setPwRemark(""); setPwModal("update"); }}
+            >
+              Update
+            </Button>
+          ) : (
+            <Button variant="action-save" size="sm" loading={saving} onClick={doSave}>
+              Save
+            </Button>
           )}
         </div>
       </div>
 
       {/* ── ITEM PICKER MODAL ── */}
-      {showPicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1300px] max-h-[88vh] flex flex-col overflow-hidden">
-            <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
-              <h3 className="font-semibold text-sm">Select Item</h3>
-              <button onClick={() => setShowPicker(false)} className="text-blue-200 hover:text-white"><X size={18} /></button>
-            </div>
-            <div className="px-5 py-3 border-b border-gray-100 space-y-2.5 shrink-0">
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <Input autoFocus value={pickerSearch} onChange={e => setPickerSearch(e.target.value)}
-                  placeholder="Search by item code or name…"
-                  className="w-full pl-9" />
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {pickerGroups.map(g => (
-                  <button key={g} onClick={() => setPickerGroup(g)}
-                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pickerGroup === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}>
-                    {g}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-3 py-2 text-center w-10">
-                      <input
-                        type="checkbox"
-                        checked={allPickerSelected}
-                        onChange={toggleAllPicker}
-                        disabled={pickerAddableIds.length === 0}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300"
-                        title="Select all"
-                      />
-                    </th>
-                    {["Code", "Item Name", "Group", "P.Unit", "Purchase Rate", "GST%", "Stock"].map(h => (
-                      <th key={h} className="px-4 py-2 text-left font-semibold text-gray-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPickerItems.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center py-12 text-gray-400">No items found</td></tr>
-                  ) : filteredPickerItems.map(item => {
-                    const added = lines.some(l => l.ItemID === item.ItemID);
-                    const selected = pickerSel.has(item._uid);
-                    return (
-                      <tr
-                        key={item._uid}
-                        onClick={() => !added && togglePickerSel(item._uid)}
-                        className={`border-b border-gray-50 transition-colors ${added ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-blue-50"} ${selected ? "bg-blue-50" : ""}`}
-                      >
-                        <td className="px-3 py-2.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={added || selected}
-                            disabled={added}
-                            readOnly
-                            className="w-4 h-4 text-blue-600 rounded border-gray-300 pointer-events-none"
-                          />
-                        </td>
-                        <td className="px-4 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">
-                          {item.ItemCode}
-                          {item.ItemDescription && <span className="block text-gray-400 font-normal text-xs">{item.ItemDescription}</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-800 font-medium">
-                          {item.ItemName}
-                          {added && <span className="ml-2 text-[10px] font-semibold text-gray-400 uppercase">Added</span>}
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-600">{item.ItemGroupName}</td>
-                        <td className="px-4 py-2.5 text-gray-600">{item.PurchaseUnit}</td>
-                        <td className="px-4 py-2.5 text-right font-semibold text-gray-800">₹{toNum(item.PurchaseRate).toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.GSTTaxPercentage)}%</td>
-                        <td className="px-4 py-2.5 text-right text-gray-700">{toNum(item.PhysicalStock).toLocaleString()} {item.StockUnit}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between gap-3 shrink-0">
-              <p className="text-xs text-gray-400">
-                {pickerSel.size > 0 ? `${pickerSel.size} item${pickerSel.size > 1 ? "s" : ""} selected` : "Select items to add"}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowPicker(false)}
-                  className="px-4 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={addSelectedFromPicker}
-                  disabled={pickerSel.size === 0}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
-                >
-                  <Plus size={13} /> Add{pickerSel.size > 0 ? ` (${pickerSel.size})` : ""}
-                </button>
-              </div>
+      <Modal open={showPicker} onClose={() => setShowPicker(false)} title="Select Item" size="xl">
+        <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+          <div className="p-4">
+            <DataTable
+              data={filteredPickerItems}
+              columns={pickerColumns}
+              getRowId={item => String(item._uid)}
+              enableRowSelection={false}
+              toolbar={
+                <div className="flex items-center gap-2 flex-wrap">
+                  {pickerGroups.map(g => (
+                    <button key={g} onClick={() => setPickerGroup(g)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${pickerGroup === g ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-200 hover:bg-blue-50"}`}>
+                      {g}
+                    </button>
+                  ))}
+                  {pickerAddableIds.length > 0 && (
+                    <button onClick={toggleAllPicker} className="text-xs text-blue-600 hover:text-blue-800 underline ml-1">
+                      {allPickerSelected ? "Deselect all" : "Select all"}
+                    </button>
+                  )}
+                </div>
+              }
+            />
+          </div>
+          <div className="px-6 py-3 border-t border-gray-100 flex items-center justify-between gap-3 sticky bottom-0 bg-white">
+            <p className="text-xs text-gray-400">
+              {pickerSel.size > 0 ? `${pickerSel.size} item${pickerSel.size > 1 ? "s" : ""} selected` : "Select items to add"}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setShowPicker(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="action-save" size="sm" icon={<Plus size={14} />}
+                onClick={addSelectedFromPicker}
+                disabled={pickerSel.size === 0}
+              >
+                Add{pickerSel.size > 0 ? ` (${pickerSel.size})` : ""}
+              </Button>
             </div>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* ── PASSWORD CONFIRMATION MODAL ── */}
       {pwModal && (
@@ -1973,6 +2042,6 @@ export default function PurchaseOrderPage() {
 
       {/* Close charge menu on outside click */}
       {showChargeMenu && <div className="fixed inset-0 z-20" onClick={() => setShowChargeMenu(false)} />}
-    </div>
+    </Modal>
   );
 }

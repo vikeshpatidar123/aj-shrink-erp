@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Loader2, List, RefreshCw, Trash2, CheckCircle2, X,
+  Loader2, Clock, RefreshCw, Trash2, CheckCircle2, Eye, CalendarClock, Search, X,
 } from "lucide-react";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
+import { DatePicker } from "@/components/forms/date-picker";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
 
@@ -182,6 +183,7 @@ interface MachineLoad {
 interface ReleasedJob {
   ScheduleID: number;
   JobBookingJobCardContentsID: number;
+  JobBookingID: number;
   JobCardContentNo: string;
   PlanContName: string;
   JobName: string;
@@ -193,6 +195,10 @@ interface ReleasedJob {
   IsScheduled: boolean;
   JobPriority: string;
   PONo: string;
+  OrderQuantity: number;
+  RequiredRunningMeter: number;
+  TotalRequiredRunningMeter: number;
+  PlanningMachine: string;
 }
 
 interface ReleasedDetail {
@@ -216,6 +222,9 @@ export default function JobScheduleReleasePage() {
   const initSearch = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("search") ?? "";
   const { showToast } = useToast();
 
+  // ── List tab (Unreleased / Released) ────────────────────────────────────────
+  const [listTab, setListTab] = useState<"unreleased" | "released">("unreleased");
+
   // ── Job List State ─────────────────────────────────────────────────────────
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -229,18 +238,21 @@ export default function JobScheduleReleasePage() {
 
   // ── Schedule Release Modal State ───────────────────────────────────────────
   const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  // When true, the modal shows an already-released schedule read-only
+  // (opened from the Released tab's View action) instead of the create flow.
+  const [viewMode, setViewMode] = useState(false);
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [contentDetails, setContentDetails] = useState<ContentDetail[]>([]);
   const [selectedContent, setSelectedContent] = useState<ContentDetail | null>(null);
   const [processRows, setProcessRows] = useState<ProcessRow[]>([]);
+  const [processSearch, setProcessSearch] = useState("");
   const [machines, setMachines] = useState<Machine[]>([]);
   const [machineLoads, setMachineLoads] = useState<MachineLoad[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
   const [loadingProcess, setLoadingProcess] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // ── Show List Modal State ──────────────────────────────────────────────────
-  const [showListOpen, setShowListOpen] = useState(false);
+  // ── Released Tab State ──────────────────────────────────────────────────────
   const [releasedJobs, setReleasedJobs] = useState<ReleasedJob[]>([]);
   const [releasedDetail, setReleasedDetail] = useState<ReleasedDetail[]>([]);
   const [selectedReleased, setSelectedReleased] = useState<ReleasedJob | null>(null);
@@ -251,9 +263,6 @@ export default function JobScheduleReleasePage() {
   const [deleting, setDeleting] = useState(false);
 
   // ── Break Qty Modal State ──────────────────────────────────────────────────
-  const [breakModalOpen, setBreakModalOpen] = useState(false);
-  const [breakRowIndex, setBreakRowIndex] = useState(-1);
-  const [breakQtys, setBreakQtys] = useState<string[]>(["", "", "", "", ""]);
 
   // ── Load Machines Once ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -328,11 +337,14 @@ export default function JobScheduleReleasePage() {
   // OLD flow: modal opens → content table loads → user clicks content row → process grid loads
   // Process grid is intentionally left empty until the user selects a content row
   const openScheduleModal = useCallback(async (job: Job) => {
+    setViewMode(false);
     setSelectedJob(job);
     setContentDetails([]);
     setSelectedContent(null);
     setProcessRows([]);
+    setProcessSearch("");
     setMachineLoads([]);
+    setReleasedDetail([]);
     setScheduleModalOpen(true);
     setLoadingContent(true);
 
@@ -485,28 +497,93 @@ export default function JobScheduleReleasePage() {
     setShowListLoading(false);
   }, [releaseDateFrom, releaseDateTo, checkRelease]);
 
-  const openShowList = () => {
-    setShowListOpen(true);
-    loadReleasedList();
-  };
+  useEffect(() => { if (listTab === "released") loadReleasedList(); }, [listTab, loadReleasedList]);
 
-  const selectReleasedRow = async (row: ReleasedJob) => {
+  // ── Open the Schedule Release modal in read-only view mode for an
+  //    already-released schedule (Released tab → Eye icon). ─────────────────
+  const openViewReleased = useCallback(async (row: ReleasedJob) => {
+    setViewMode(true);
     setSelectedReleased(row);
+    setSelectedJob({
+      JobBookingJobCardContentsID: row.JobBookingJobCardContentsID,
+      JobBookingID: row.JobBookingID,
+      JobCardContentNo: row.JobCardContentNo,
+      PlanContName: row.PlanContName,
+      JobBookingNo: row.JobBookingNo,
+      LedgerName: row.LedgerName,
+      SalesOrderNO: "",
+      PONO: row.PONo,
+      CategoryName: "",
+      JobBookingDate: "",
+      JobName: row.JobName,
+      OrderQuantity: row.OrderQuantity,
+      DeliveryDate: row.DeliveryDate,
+      ProductCode: "",
+      JobPriority: row.JobPriority,
+      BookingNo: "",
+      ProductMasterCode: "",
+      ReceiptStockQuantity: 0,
+    });
+    // scheduleplanner/{jobBookingId} only returns content that is NOT YET released
+    // (backend filters WHERE IsRelease<>1), so it always comes back empty for an
+    // already-released schedule. Build the single content row straight from the
+    // showlist row we already have instead of calling an endpoint that can't return it.
+    setContentDetails([{
+      JobBookingJobCardContentsID: row.JobBookingJobCardContentsID,
+      JobBookingID: row.JobBookingID,
+      JobCardContentNo: row.JobCardContentNo,
+      PlanContName: row.PlanContName,
+      JobName: row.JobName,
+      LedgerName: row.LedgerName,
+      OrderQuantity: row.OrderQuantity,
+      DeliveryDate: row.DeliveryDate,
+      ProductCode: "",
+      JobType: "",
+      ItemCode: "",
+      ItemType: "",
+      ItemName: "",
+      FullSheets: 0,
+      ActualSheets: 0,
+      TotalRequiredRunningMeter: row.TotalRequiredRunningMeter,
+      RequiredRunningMeter: row.RequiredRunningMeter,
+      TotalPaperWeightInKg: 0,
+      PlanningMachine: row.PlanningMachine,
+      PlanType: "",
+      CutL: 0,
+      CylinderCircumferenceMM: 0,
+      FeedValue: 0,
+      UpsL: 0,
+      UpsW: 0,
+      SizeW: 0,
+      GSM: 0,
+      MachineID: 0,
+    }]);
+    setSelectedContent(null);
+    setProcessRows([]);
+    setProcessSearch("");
+    setMachineLoads([]);
+    setReleasedDetail([]);
+    setScheduleModalOpen(true);
+    setLoadingContent(true);
     try {
       const detail = await apiFetch<ReleasedDetail[]>(`${API}/releaseddetail/${row.ScheduleID}`);
       setReleasedDetail(Array.isArray(detail) ? detail : []);
-    } catch { }
-  };
+    } catch {
+      showToast("error", "Error", "Failed to load released schedule");
+    }
+    setLoadingContent(false);
+  }, []);
 
-  const deleteReleasedSchedule = async () => {
-    if (!selectedReleased) { showToast("warning", "Select a schedule to delete"); return; }
-    if (!confirm(`Delete schedule for "${selectedReleased.JobName}"? This cannot be undone.`)) return;
+  const deleteReleasedSchedule = async (rowOverride?: ReleasedJob) => {
+    const target = rowOverride ?? selectedReleased;
+    if (!target) { showToast("warning", "Select a schedule to delete"); return; }
+    if (!confirm(`Delete schedule for "${target.JobName}"? This cannot be undone.`)) return;
 
     setDeleting(true);
     try {
       const result = await apiPost<string>(`${API}/delete`, {
-        JobScheduleID: selectedReleased.ScheduleID,
-        JobContentsID: selectedReleased.JobBookingJobCardContentsID,
+        JobScheduleID: target.ScheduleID,
+        JobContentsID: target.JobBookingJobCardContentsID,
       });
       if (String(result).toLowerCase().startsWith("error")) {
         showToast("error", "Delete Failed", String(result));
@@ -523,41 +600,6 @@ export default function JobScheduleReleasePage() {
     setDeleting(false);
   };
 
-  // ── Break Qty Logic ────────────────────────────────────────────────────────
-  const openBreakModal = (rowIndex: number) => {
-    const row = processRows[rowIndex];
-    if (!row) return;
-    setBreakRowIndex(rowIndex);
-    setBreakQtys([String(row.ToBeProduceQty), "", "", "", ""]);
-    setBreakModalOpen(true);
-  };
-
-  const breakTotalQty = breakQtys.reduce((acc, q) => acc + (parseFloat(q) || 0), 0);
-
-  const applyBreak = () => {
-    const quantities = breakQtys.map(q => parseFloat(q) || 0).filter(q => q > 0);
-    if (quantities.length === 0) { setBreakModalOpen(false); return; }
-
-    const totalQty = quantities.reduce((a, b) => a + b, 0);
-    const originalRow = processRows[breakRowIndex];
-    const newRows = quantities.map((qty, i) => ({
-      ...originalRow,
-      ScheduleQty: qty,
-      ToBeProduceQty: qty,
-      TotalProduceQty: totalQty,
-      ScheduleQtyRMT: 0,
-      Processed: true,
-      SequenceNo: originalRow.SequenceNo + i,
-    }));
-
-    setProcessRows(prev => {
-      const copy = [...prev];
-      copy.splice(breakRowIndex, 1, ...newRows);
-      return copy;
-    });
-    setBreakModalOpen(false);
-  };
-
   // ── Machines filtered by ProcessID ────────────────────────────────────────
   function machinesForProcess(processId: number): Machine[] {
     return machines.filter(m => m.ProcessID === processId);
@@ -565,12 +607,12 @@ export default function JobScheduleReleasePage() {
 
   // ── Job List Columns ───────────────────────────────────────────────────────
   const jobColumns = useMemo((): Column<Job>[] => [
-    { key: "JobCardContentNo", header: "Content No", sortable: true },
+    { key: "LedgerName", header: "Client Name", sortable: true },
+    { key: "JobBookingNo", header: "PWO No.", sortable: true },
+    { key: "JobBookingDate", header: "PWO Date", sortable: true },
+    { key: "SalesOrderNO", header: "SO No.", sortable: true },
     { key: "JobName", header: "Job Name", sortable: true },
     { key: "PlanContName", header: "Content Name", sortable: true },
-    { key: "LedgerName", header: "Client", sortable: true },
-    { key: "JobBookingNo", header: "JC No", sortable: true },
-    { key: "JobBookingDate", header: "JC Date", sortable: true },
     { key: "OrderQuantity", header: "JC Qty", sortable: true },
     { key: "DeliveryDate", header: "Delivery Date", sortable: true },
     { key: "JobPriority", header: "Priority", sortable: true },
@@ -582,11 +624,11 @@ export default function JobScheduleReleasePage() {
 
   // ── Released Jobs Columns ─────────────────────────────────────────────────
   const releasedCols = useMemo((): Column<ReleasedJob>[] => [
-    { key: "JobCardContentNo", header: "Content No" },
+    { key: "ReleasedDate", header: "Released Date" },
+    { key: "LedgerName", header: "Client Name" },
+    { key: "JobBookingNo", header: "PWO No." },
     { key: "JobName", header: "Job Name" },
     { key: "PlanContName", header: "Content" },
-    { key: "LedgerName", header: "Client" },
-    { key: "ReleasedDate", header: "Released On" },
     { key: "ReleasedBy", header: "Released By" },
     { key: "DeliveryDate", header: "Delivery Date" },
     {
@@ -597,79 +639,194 @@ export default function JobScheduleReleasePage() {
     },
   ], []);
 
+  // Single source of truth for picking a content row — used by both the row click
+  // and the radio indicator, guarded so re-clicking the same row is a no-op (no refetch).
+  const selectContent = useCallback((c: ContentDetail) => {
+    if (viewMode) return;
+    if (selectedContent?.JobBookingJobCardContentsID === c.JobBookingJobCardContentsID) return;
+    setSelectedContent(c);
+    setProcessRows([]);
+    setMachineLoads([]);
+    loadProcessRows(c, c.JobBookingJobCardContentsID);
+  }, [viewMode, selectedContent, loadProcessRows]);
+
+  // ── Content Details ("BOM Details") Columns — used inside the modal ───────
+  const contentColumns = useMemo((): Column<ContentDetail>[] => [
+    {
+      key: "sel", header: "", width: "w-10", sortable: false,
+      render: c => (
+        <input
+          type="radio"
+          checked={selectedContent?.JobBookingJobCardContentsID === c.JobBookingJobCardContentsID}
+          disabled={viewMode}
+          readOnly
+          className="w-4 h-4 pointer-events-none"
+        />
+      ),
+    },
+    { key: "JobCardContentNo", header: "PWO No.", render: () => selectedJob?.JobBookingNo ?? "—" },
+    { key: "LedgerName", header: "Client Name", render: () => selectedJob?.LedgerName ?? "—" },
+    { key: "SalesOrderNO", header: "SO No.", render: () => selectedJob?.SalesOrderNO ?? "—" },
+    { key: "JobName", header: "Job Name", render: () => selectedJob?.JobName ?? "—" },
+    { key: "PlanContName", header: "Content Name" },
+    { key: "OrderQuantity", header: "Order Qty", render: () => selectedJob?.OrderQuantity ?? "—" },
+    { key: "RequiredRunningMeter", header: "RMT" },
+    { key: "TotalRequiredRunningMeter", header: "Total RMT" },
+    { key: "PlanningMachine", header: "Machine" },
+  ], [selectedContent, viewMode, selectedJob]);
+
+  // ── Released Detail (read-only Process-wise Schedule for view mode) ───────
+  const releasedDetailColumns = useMemo((): Column<ReleasedDetail>[] => [
+    { key: "SequenceNo", header: "#" },
+    { key: "ProcessName", header: "Process Name" },
+    { key: "RateFactor", header: "Rate Factor" },
+    { key: "JobCardFormNo", header: "Ref Form No" },
+    { key: "MachineName", header: "Machine" },
+    { key: "MachineSpeed", header: "Machine Speed" },
+    { key: "ScheduleQty", header: "Schedule Qty", render: d => <span className="font-semibold text-blue-700">{d.ScheduleQty}</span> },
+    { key: "ScheduleQtyRMT", header: "Schedule Qty(RMT)" },
+    { key: "DryingTime", header: "Curing Time(min)" },
+  ], []);
+
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  // Shared range-picker change handler — updates the two string date states
+  // (and an optional "enabled" checkbox flag the backend expects) from a DateRange.
+  const handleRangeChange = (
+    setFrom: (v: string) => void, setTo: (v: string) => void, setCheck?: (v: boolean) => void
+  ) => (range: unknown) => {
+    if (range && typeof range === "object" && "from" in range) {
+      const r = range as { from?: Date; to?: Date };
+      setFrom(r.from ? r.from.toISOString().split("T")[0] : "");
+      setTo(r.to ? r.to.toISOString().split("T")[0] : "");
+      setCheck?.(!!(r.from || r.to));
+    }
+  };
+  const asDateRange = (from: string, to: string) => ({
+    from: from ? new Date(from) : undefined,
+    to: to ? new Date(to) : undefined,
+  });
 
   return (
     <div className="max-w-[1400px] mx-auto space-y-4">
 
       {/* ── Page Header ── */}
-      <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4">
-        <div>
-          <h2 className="text-xl font-bold text-gray-800">Job Schedule Release</h2>
-          <p className="text-sm text-gray-500">{jobs.length} pending jobs</p>
-        </div>
-        <Button variant="secondary" size="sm" icon={<List size={15} />} onClick={openShowList}>
-          Show List
-        </Button>
+      <div className="text-center pt-1">
+        <h2 className="text-xl font-bold text-gray-800">Schedule Release</h2>
       </div>
 
-      {/* ── Date Filters ── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3">
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Booking Date filter */}
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="chkB" checked={checkB} onChange={e => setCheckB(e.target.checked)}
-              className="w-4 h-4 accent-blue-600" />
-            <label htmlFor="chkB" className="text-xs font-semibold text-gray-600">Booking Date</label>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">From</label>
-            <Input type="date" value={jcDateFrom} onChange={e => setJcDateFrom(e.target.value)} disabled={!checkB} />
-            <label className="text-xs text-gray-500">To</label>
-            <Input type="date" value={jcDateTo} onChange={e => setJcDateTo(e.target.value)} disabled={!checkB} />
-          </div>
-
-          <div className="w-px h-6 bg-gray-200" />
-
-          {/* Delivery Date filter */}
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="chkD" checked={checkD} onChange={e => setCheckD(e.target.checked)}
-              className="w-4 h-4 accent-blue-600" />
-            <label htmlFor="chkD" className="text-xs font-semibold text-gray-600">Delivery Date</label>
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">From</label>
-            <Input type="date" value={delDateFrom} onChange={e => setDelDateFrom(e.target.value)} disabled={!checkD} />
-            <label className="text-xs text-gray-500">To</label>
-            <Input type="date" value={delDateTo} onChange={e => setDelDateTo(e.target.value)} disabled={!checkD} />
-          </div>
-
-          <Button variant="primary" size="sm" icon={<RefreshCw size={14} />} onClick={loadJobs} loading={jobsLoading}>
-            Refresh
-          </Button>
+      {/* ── Tabs + Refresh ── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-1 p-1 bg-gray-100 border border-gray-200 rounded-full">
+          {([
+            { id: "unreleased" as const, label: "Unreleased", icon: <Clock size={14} /> },
+            { id: "released" as const, label: "Released", icon: <CheckCircle2 size={14} /> },
+          ]).map(t => (
+            <button key={t.id} onClick={() => setListTab(t.id)}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${listTab === t.id ? "bg-blue-600 text-white shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
         </div>
+        <Button
+          variant="secondary" size="sm" icon={<RefreshCw size={14} />}
+          onClick={listTab === "unreleased" ? loadJobs : loadReleasedList}
+          loading={listTab === "unreleased" ? jobsLoading : showListLoading}
+        />
       </div>
 
-      {/* ── Job List Grid ── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
-        {jobsLoading ? (
-          <div className="flex items-center justify-center py-16 text-blue-600">
-            <Loader2 size={24} className="animate-spin mr-2" /> Loading jobs...
+      {listTab === "unreleased" ? (
+        <>
+          {/* ── Date Filters ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3">
+            <div className="flex flex-wrap items-center gap-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">PWO Date</label>
+                <DatePicker mode="range" value={asDateRange(jcDateFrom, jcDateTo)}
+                  onChange={handleRangeChange(setJcDateFrom, setJcDateTo, setCheckB)}
+                  placeholder="Start Date → End Date" />
+              </div>
+              <div className="w-px h-10 bg-gray-200" />
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Delivery Date</label>
+                <DatePicker mode="range" value={asDateRange(delDateFrom, delDateTo)}
+                  onChange={handleRangeChange(setDelDateFrom, setDelDateTo, setCheckD)}
+                  placeholder="Start Date → End Date" />
+              </div>
+            </div>
           </div>
-        ) : (
-          <DataTable
-            data={jobs.map(j => ({ ...j, id: String(j.JobBookingJobCardContentsID) }))}
-            columns={jobColumns}
-            searchKeys={["JobName", "LedgerName", "JobBookingNo", "JobCardContentNo", "PlanContName"]}
-            initialSearch={initSearch}
-            actions={(row) => (
-              <Button variant="primary" size="sm" onClick={() => openScheduleModal(row as unknown as Job)}>
-                Schedule Release
-              </Button>
+
+          {/* ── Job List Grid ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            {jobsLoading ? (
+              <div className="flex items-center justify-center py-16 text-blue-600">
+                <Loader2 size={24} className="animate-spin mr-2" /> Loading jobs...
+              </div>
+            ) : (
+              <DataTable
+                data={jobs.map(j => ({ ...j, id: String(j.JobBookingJobCardContentsID) }))}
+                columns={jobColumns}
+                searchKeys={["JobName", "LedgerName", "JobBookingNo", "JobCardContentNo", "PlanContName"]}
+                initialSearch={initSearch}
+                actions={(row) => (
+                  <button
+                    onClick={() => openScheduleModal(row as unknown as Job)}
+                    title="Schedule Release"
+                    className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
+                  >
+                    <CalendarClock size={16} />
+                  </button>
+                )}
+              />
             )}
-          />
-        )}
-      </div>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* ── Release Date Filter ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Released Date</label>
+              <DatePicker mode="range" value={asDateRange(releaseDateFrom, releaseDateTo)}
+                onChange={handleRangeChange(setReleaseDateFrom, setReleaseDateTo, setCheckRelease)}
+                placeholder="Start Date → End Date" />
+            </div>
+          </div>
+
+          {/* ── Released List Grid ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+            {showListLoading ? (
+              <div className="flex items-center justify-center py-16 text-blue-600">
+                <Loader2 size={24} className="animate-spin mr-2" /> Loading...
+              </div>
+            ) : (
+              <DataTable
+                data={releasedJobs.map(r => ({ ...r, id: String(r.ScheduleID) }))}
+                columns={releasedCols}
+                searchKeys={["JobName", "LedgerName", "JobBookingNo", "JobCardContentNo", "PlanContName"]}
+                actions={(row) => (
+                  <div className="flex items-center gap-1 justify-center">
+                    <button onClick={() => openViewReleased(row as unknown as ReleasedJob)}
+                      title="View schedule"
+                      className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
+                      <Eye size={16} />
+                    </button>
+                    <button
+                      onClick={() => deleteReleasedSchedule(row as unknown as ReleasedJob)}
+                      title="Delete schedule"
+                      disabled={deleting}
+                      className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              />
+            )}
+          </div>
+
+        </>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {/* ── Schedule Release Modal ── */}
@@ -677,38 +834,17 @@ export default function JobScheduleReleasePage() {
       <Modal
         open={scheduleModalOpen}
         onClose={() => setScheduleModalOpen(false)}
-        title={selectedJob ? `Schedule Release — ${selectedJob.JobName}` : "Schedule Release"}
-        size="xl"
+        title={selectedJob ? `Release Scheduled Quantity — ${selectedJob.JobName}` : "Release Scheduled Quantity"}
+        size="2xl"
       >
         <div className="space-y-4">
 
-          {/* Job Info Summary */}
-          {selectedJob && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-              {[
-                ["Client", selectedJob.LedgerName],
-                ["JC No", selectedJob.JobBookingNo],
-                ["JC Date", selectedJob.JobBookingDate],
-                ["Delivery", selectedJob.DeliveryDate],
-                ["Order Qty", selectedJob.OrderQuantity],
-                ["Priority", selectedJob.JobPriority],
-                ["SalesOrder", selectedJob.SalesOrderNO],
-                ["PO No", selectedJob.PONO],
-              ].map(([label, value]) => (
-                <div key={label as string}>
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase">{label}</p>
-                  <p className="text-xs font-semibold text-gray-700">{value || "—"}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Content Details Table (gridScheduleList) — user must click a row to load process grid */}
+          {/* Content Details ("BOM Details") Grid — carries the job-level fields too, single unified grid */}
           <div>
             <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">
-              Content Details
+              Job Card Details
               <span className="ml-2 text-gray-400 font-normal normal-case tracking-normal">
-                {!selectedContent && !loadingContent && contentDetails.length > 0 && "← Click a row to load processes"}
+                {!viewMode && !selectedContent && !loadingContent && contentDetails.length > 0 && "← Select a row to load processes"}
               </span>
             </h3>
             {loadingContent ? (
@@ -716,71 +852,79 @@ export default function JobScheduleReleasePage() {
                 <Loader2 size={18} className="animate-spin mr-2" /> Loading content details...
               </div>
             ) : contentDetails.length > 0 ? (
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-[#42909A] text-white">
-                      {["Content No", "Content Name", "Item Code", "Item Type", "Item Name", "Full Sheets", "Actual Sheets", "RMT", "Total RMT", "Machine"].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {contentDetails.map((c, i) => (
-                      <tr
-                        key={i}
-                        onClick={() => {
-                          setSelectedContent(c);
-                          setProcessRows([]);
-                          setMachineLoads([]);
-                          loadProcessRows(c, c.JobBookingJobCardContentsID);
-                        }}
-                        className={`cursor-pointer border-b border-gray-100 hover:bg-blue-50 transition-colors ${selectedContent?.JobBookingJobCardContentsID === c.JobBookingJobCardContentsID ? "bg-blue-100 font-semibold" : ""}`}
-                      >
-                        <td className="px-3 py-1.5 font-medium text-blue-700">{c.JobCardContentNo}</td>
-                        <td className="px-3 py-1.5">{c.PlanContName}</td>
-                        <td className="px-3 py-1.5">{c.ItemCode}</td>
-                        <td className="px-3 py-1.5">{c.ItemType}</td>
-                        <td className="px-3 py-1.5">{c.ItemName}</td>
-                        <td className="px-3 py-1.5 text-right">{c.FullSheets}</td>
-                        <td className="px-3 py-1.5 text-right">{c.ActualSheets}</td>
-                        <td className="px-3 py-1.5 text-right">{c.RequiredRunningMeter}</td>
-                        <td className="px-3 py-1.5 text-right">{c.TotalRequiredRunningMeter}</td>
-                        <td className="px-3 py-1.5">{c.PlanningMachine}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable
+                data={contentDetails.map((c, i) => ({ ...c, id: String(c.JobBookingJobCardContentsID || i) }))}
+                columns={contentColumns}
+                getRowId={c => String(c.JobBookingJobCardContentsID)}
+                enableRowSelection={false}
+                enableRowClickSelection={false}
+                onRowClick={selectContent}
+              />
             ) : null}
           </div>
 
           {/* Process Grid + Machine Loads — side by side (matches old layout) */}
-          <div className="flex gap-3 items-start">
+          <div className="flex gap-3 items-stretch">
 
-            {/* Left: gridFormWiseDetail (~70%) */}
-            <div className="flex-1 min-w-0">
+            {/* Left: gridFormWiseDetail (~60%) */}
+            <div className="flex-[3] min-w-0 flex flex-col">
               <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Process-wise Schedule</h3>
-              {loadingProcess ? (
-                <div className="flex items-center justify-center py-10 text-blue-600 border border-dashed border-gray-200 rounded-lg">
+
+              <div className="flex-1 flex flex-col min-h-0">
+              {viewMode ? (
+                // ── Read-only released schedule (no MachineID/ProcessID available to edit) ──
+                releasedDetail.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
+                    {loadingContent ? "Loading…" : "No scheduled processes found."}
+                  </div>
+                ) : (
+                  <DataTable
+                    data={releasedDetail.map((d, i) => ({ ...d, id: String(d.SequenceNo ?? i) }))}
+                    columns={releasedDetailColumns}
+                    getRowId={d => String(d.SequenceNo)}
+                    enableRowSelection={false}
+                    stickyHeader
+                  />
+                )
+              ) : loadingProcess ? (
+                <div className="flex-1 flex items-center justify-center text-blue-600 border border-dashed border-gray-200 rounded-lg">
                   <Loader2 size={20} className="animate-spin mr-2" /> Loading process details...
                 </div>
               ) : processRows.length === 0 ? (
-                <div className="py-10 text-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
+                <div className="flex-1 flex items-center justify-center text-gray-400 text-sm border border-dashed border-gray-200 rounded-lg">
                   {selectedContent ? "No processes found for this content." : "Select a content row above."}
                 </div>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-[#42909A] text-white">
-                        {["#", "Process Name", "Rate Factor", "Ref Form No", "To Be Produce Qty", "Schedule Qty", "Schedule Qty(RMT)", "Machine", "Machine Speed", "Break", "Is Online Process", "Curing Time(min)", "Ttl Time"].map(h => (
-                          <th key={h} className="px-2 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {processRows.map((row, i) => {
+                <>
+                  {/* Search toolbar */}
+                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 mb-2 shadow-sm">
+                    <Search size={14} className="text-gray-400 flex-shrink-0" />
+                    <input
+                      value={processSearch}
+                      onChange={e => setProcessSearch(e.target.value)}
+                      placeholder="Search process name…"
+                      className="bg-transparent text-xs text-gray-700 outline-none w-full border-none"
+                    />
+                    {processSearch && (
+                      <button onClick={() => setProcessSearch("")} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex-1 overflow-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-[color-mix(in_srgb,rgb(var(--color-primary))_10%,white)] border-b border-gray-200">
+                          {["#", "Process Name", "Schedule Qty", "Machine", "Machine Speed", "Online", "Ttl Time"].map(h => (
+                            <th key={h} className="px-2 py-2 text-left font-semibold whitespace-nowrap text-gray-600 text-[11px] uppercase tracking-wide">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                      {processRows
+                        .map((row, i) => ({ row, i }))
+                        .filter(({ row }) => !processSearch || row.ProcessName.toLowerCase().includes(processSearch.toLowerCase()))
+                        .map(({ row, i }) => {
                         const processMachines = machinesForProcess(row.ProcessID);
                         return (
                           <tr
@@ -790,24 +934,12 @@ export default function JobScheduleReleasePage() {
                           >
                             <td className="px-2 py-1.5 text-gray-400 text-center">{i + 1}</td>
                             <td className="px-2 py-1.5 font-medium text-gray-700 whitespace-nowrap">{row.ProcessName}</td>
-                            <td className="px-2 py-1.5 text-gray-600 text-center">{row.RateFactor}</td>
-                            <td className="px-2 py-1.5 text-gray-600 whitespace-nowrap">{row.JobCardFormNo}</td>
-                            <td className="px-2 py-1.5 font-semibold text-blue-700 text-right">{row.ToBeProduceQty}</td>
 
                             <td className="px-1 py-1 min-w-[80px]" onClick={e => e.stopPropagation()}>
                               <Input
                                 type="number"
                                 value={row.ScheduleQty}
                                 onChange={e => updateProcessRow(i, "ScheduleQty", parseFloat(e.target.value) || 0)}
-                                min={0}
-                              />
-                            </td>
-
-                            <td className="px-1 py-1 min-w-[80px]" onClick={e => e.stopPropagation()}>
-                              <Input
-                                type="number"
-                                value={row.ScheduleQtyRMT}
-                                onChange={e => updateProcessRow(i, "ScheduleQtyRMT", parseFloat(e.target.value) || 0)}
                                 min={0}
                               />
                             </td>
@@ -830,27 +962,9 @@ export default function JobScheduleReleasePage() {
                             </td>
 
                             <td className="px-2 py-1.5 text-center">
-                              <button
-                                onClick={e => { e.stopPropagation(); if (!row.Processed) openBreakModal(i); }}
-                                className={`px-2 py-0.5 text-[10px] font-semibold rounded transition-colors ${row.Processed ? "bg-red-100 text-red-500 cursor-default" : "bg-amber-100 text-amber-700 hover:bg-amber-200"}`}
-                              >
-                                {row.Processed ? "Split" : "Break"}
-                              </button>
-                            </td>
-
-                            <td className="px-2 py-1.5 text-center">
                               {row.IsOnlineProcess
                                 ? <CheckCircle2 size={14} className="text-green-500 mx-auto" />
                                 : <span className="text-gray-300">—</span>}
-                            </td>
-
-                            <td className="px-1 py-1 min-w-[70px]" onClick={e => e.stopPropagation()}>
-                              <Input
-                                type="number"
-                                value={row.DryingTime || 0}
-                                onChange={e => updateProcessRow(i, "DryingTime", parseFloat(e.target.value) || 0)}
-                                min={0}
-                              />
                             </td>
 
                             <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
@@ -861,213 +975,69 @@ export default function JobScheduleReleasePage() {
                       })}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                </>
               )}
-            </div>
-
-            {/* Right: Machine Loads (~30%) — always visible, matches old chart area */}
-            <div className="w-64 flex-shrink-0">
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Machine Loads (HH:MM)</h3>
-              <div className="border border-gray-200 rounded-lg min-h-[180px] bg-gray-50 p-2">
-                {machineLoads.length === 0 ? (
-                  <div className="flex items-center justify-center h-36 text-gray-300 text-xs">
-                    Click a process row
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    {machineLoads.map(ml => (
-                      <div key={ml.MachineID} className="text-xs">
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-gray-600 truncate pr-1" title={ml.MachineName}>{ml.MachineName}</span>
-                          <span className="text-[10px] font-bold text-gray-700 whitespace-nowrap">{ml.MachineLoadInHr}</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5">
-                          <div
-                            className="bg-teal-500 h-1.5 rounded-full"
-                            style={{ width: `${Math.min(100, (ml.MachineLoad / (Math.max(...machineLoads.map(m => m.MachineLoad)) || 1)) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
 
-          </div>
-
-          {/* Save Button */}
-          <div className="flex justify-end gap-3 pt-3 border-t border-gray-200">
-            <Button variant="secondary" size="md" onClick={() => setScheduleModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="primary" size="md" loading={saving} onClick={saveSchedule}>
-              {saving ? "Saving..." : "Save Schedule"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── Show List Modal (Released Schedules) ── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        open={showListOpen}
-        onClose={() => setShowListOpen(false)}
-        title="Released Scheduled Quantity"
-        size="xl"
-      >
-        <div className="space-y-4">
-          {/* Release date filter */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="chkRelease" checked={checkRelease} onChange={e => setCheckRelease(e.target.checked)}
-                className="w-4 h-4 accent-blue-600" />
-              <label htmlFor="chkRelease" className="text-xs font-semibold text-gray-600">Release Date</label>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500">From</label>
-              <Input type="date" value={releaseDateFrom} onChange={e => setReleaseDateFrom(e.target.value)} disabled={!checkRelease} />
-              <label className="text-xs text-gray-500">To</label>
-              <Input type="date" value={releaseDateTo} onChange={e => setReleaseDateTo(e.target.value)} disabled={!checkRelease} />
-            </div>
-            <Button variant="ghost" size="sm" icon={<RefreshCw size={13} />} onClick={loadReleasedList} loading={showListLoading}>
-              Refresh
-            </Button>
-          </div>
-
-          {/* Released Jobs Grid */}
-          {showListLoading ? (
-            <div className="flex items-center justify-center py-10 text-blue-600">
-              <Loader2 size={20} className="animate-spin mr-2" /> Loading...
-            </div>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-[#42909A] text-white">
-                    {["Content No", "Job Name", "Content", "Client", "Released On", "Released By", "Delivery Date", "Scheduled"].map(h => (
-                      <th key={h} className="px-3 py-2 text-left font-semibold whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {releasedJobs.length === 0 ? (
-                    <tr><td colSpan={8} className="text-center py-8 text-gray-400">No released schedules found</td></tr>
-                  ) : releasedJobs.map((r, i) => (
-                    <tr
-                      key={i}
-                      onClick={() => selectReleasedRow(r)}
-                      className={`cursor-pointer border-b border-gray-100 hover:bg-blue-50 transition-colors ${selectedReleased?.ScheduleID === r.ScheduleID ? "bg-blue-100" : ""}`}
-                    >
-                      <td className="px-3 py-1.5 font-medium text-blue-700">{r.JobCardContentNo}</td>
-                      <td className="px-3 py-1.5">{r.JobName}</td>
-                      <td className="px-3 py-1.5">{r.PlanContName}</td>
-                      <td className="px-3 py-1.5">{r.LedgerName}</td>
-                      <td className="px-3 py-1.5">{r.ReleasedDate}</td>
-                      <td className="px-3 py-1.5">{r.ReleasedBy}</td>
-                      <td className="px-3 py-1.5">{r.DeliveryDate}</td>
-                      <td className="px-3 py-1.5 text-center">
-                        {r.IsScheduled ? <CheckCircle2 size={14} className="text-green-500 mx-auto" /> : <span className="text-gray-300">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Scheduled Qty Detail */}
-          {releasedDetail.length > 0 && (
-            <div>
-              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Scheduled Quantity Breakdown</h3>
-              <div className="overflow-x-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      {["#", "Process", "Rate Factor", "Form No", "Machine", "Speed", "Schedule Qty", "RMT", "Curing (min)"].map(h => (
-                        <th key={h} className="px-3 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {releasedDetail.map((d, i) => (
-                      <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
-                        <td className="px-3 py-1.5 text-gray-500">{d.SequenceNo}</td>
-                        <td className="px-3 py-1.5 font-medium text-gray-700">{d.ProcessName}</td>
-                        <td className="px-3 py-1.5">{d.RateFactor}</td>
-                        <td className="px-3 py-1.5">{d.JobCardFormNo}</td>
-                        <td className="px-3 py-1.5">{d.MachineName}</td>
-                        <td className="px-3 py-1.5 text-right">{d.MachineSpeed}</td>
-                        <td className="px-3 py-1.5 text-right font-semibold text-blue-700">{d.ScheduleQty}</td>
-                        <td className="px-3 py-1.5 text-right">{d.ScheduleQtyRMT}</td>
-                        <td className="px-3 py-1.5 text-right">{d.DryingTime}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Right: Machine Loads (~40%) — hidden in view mode (no ProcessID to load loads for) */}
+            {!viewMode && (
+              <div className="flex-[2] min-w-[280px] flex flex-col">
+                <h3 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2">Machine Loads (HH:MM)</h3>
+                <div className="border border-gray-200 rounded-lg min-h-[180px] bg-gray-50 p-2 flex-1">
+                  {machineLoads.length === 0 ? (
+                    <div className="flex items-center justify-center h-36 text-gray-300 text-xs">
+                      Click a process row
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {machineLoads.map(ml => {
+                        const maxLoad = Math.max(...machineLoads.map(m => m.MachineLoad)) || 1;
+                        const pct = Math.max(8, Math.min(100, (ml.MachineLoad / maxLoad) * 100));
+                        return (
+                          <div key={ml.MachineID} className="text-xs">
+                            <p className="text-gray-600 truncate mb-1" title={ml.MachineName}>{ml.MachineName}</p>
+                            <div className="relative w-full bg-gray-200 rounded-full h-5">
+                              <div
+                                className="absolute inset-y-0 left-0 bg-teal-400 rounded-full"
+                                style={{ width: `${pct}%` }}
+                              />
+                              <span className="absolute right-1 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded-full bg-rose-200 text-rose-800 text-[10px] font-bold whitespace-nowrap">
+                                {ml.MachineLoadInHr}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Footer actions */}
-          <div className="flex justify-between items-center pt-3 border-t border-gray-200">
-            <Button
-              variant="danger"
-              size="sm"
-              icon={<Trash2 size={14} />}
-              loading={deleting}
-              onClick={deleteReleasedSchedule}
-              disabled={!selectedReleased}
-            >
-              Delete
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => setShowListOpen(false)}>
-              Close
-            </Button>
           </div>
-        </div>
-      </Modal>
 
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* ── Break Qty Modal ── */}
-      {/* ══════════════════════════════════════════════════════════════════════ */}
-      <Modal
-        open={breakModalOpen}
-        onClose={() => setBreakModalOpen(false)}
-        title="Break QTY"
-        size="sm"
-      >
-        <div className="space-y-3 px-1">
-          <Input
-            label="Qty To Be Produce"
-            type="text"
-            value={processRows[breakRowIndex]?.ToBeProduceQty ?? ""}
-            readOnly
-          />
-
-          {["Qty BreakUp 1", "Qty BreakUp 2", "Qty BreakUp 3", "Qty BreakUp 4", "Qty BreakUp 5"].map((breakLabel, idx) => (
-            <Input
-              key={idx}
-              label={breakLabel}
-              type="number"
-              value={breakQtys[idx]}
-              onChange={e => setBreakQtys(prev => { const c = [...prev]; c[idx] = e.target.value; return c; })}
-              min={0}
-              placeholder="0"
-            />
-          ))}
-
-          <Input
-            label="Total Qty"
-            type="text"
-            value={breakTotalQty || ""}
-            readOnly
-          />
-
-          <div className="flex justify-end gap-3 pt-2">
-            <Button variant="secondary" size="sm" onClick={() => setBreakModalOpen(false)}>Cancel</Button>
-            <Button variant="danger" size="sm" onClick={applyBreak}>Apply</Button>
+          {/* Footer */}
+          <div className="flex justify-between items-center gap-3 pt-3 border-t border-gray-200">
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="md" onClick={() => showToast("info", "Booked Detail", "Coming soon")}>
+                Booked Detail
+              </Button>
+              <Button variant="secondary" size="md" onClick={() => showToast("info", "Delivery Detail", "Coming soon")}>
+                Delivery Detail
+              </Button>
+            </div>
+            <div className="flex items-center gap-3">
+              {!viewMode && (
+                <Button variant="primary" size="md" loading={saving} onClick={saveSchedule}>
+                  {saving ? "Saving..." : "Save Schedule"}
+                </Button>
+              )}
+              <Button variant="secondary" size="md" onClick={() => setScheduleModalOpen(false)}>
+                Close
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>

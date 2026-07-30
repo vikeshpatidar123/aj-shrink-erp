@@ -3,13 +3,14 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import {
   Plus, X, Scan, Printer, CheckCircle2,
   Camera, Keyboard, Trash2, QrCode, Pencil,
-  Layers, Package, ArrowLeft, FileText, ChevronRight, RefreshCw,
+  Layers, Package, FileText, RefreshCw, History,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import QRCode from "qrcode";
 import jsQR from "jsqr";
 import { authHeaders, getSession } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Config ──────────────────────────────────────────────────
@@ -102,6 +103,10 @@ interface GRNLine {
   expiryDate: string;
   purchaseRate: number;
 }
+
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
+);
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
@@ -574,7 +579,6 @@ function PwModal({
 }
 
 // ─── Main Page ───────────────────────────────────────────────
-type TabId = "basic" | "po" | "receiving" | "documents";
 
 export default function PurchaseGRNPage() {
   // ── Master data ─────────────────────────────────────────────
@@ -584,11 +588,8 @@ export default function PurchaseGRNPage() {
 
   // ── GRN list ────────────────────────────────────────────────
   const [grnList, setGrnList]       = useState<GRNListRow[]>([]);
-  const [fromDate, setFromDate]     = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 1);
-    return d.toISOString().split("T")[0];
-  });
-  const [toDate, setToDate] = useState(todayISO);
+  const [fromDate, setFromDate]     = useState("");
+  const [toDate, setToDate]         = useState("");
   const [listLoading, setListLoading] = useState(false);
 
   // ── Pending POs ─────────────────────────────────────────────
@@ -601,7 +602,6 @@ export default function PurchaseGRNPage() {
   // ── View ────────────────────────────────────────────────────
   const [view, setView]         = useState<"list" | "form">("list");
   const [editTxnId, setEditTxnId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("basic");
 
   // ── Form state ──────────────────────────────────────────────
   const [grnNo, setGrnNo]           = useState("");
@@ -677,17 +677,30 @@ export default function PurchaseGRNPage() {
       .then((d) => Array.isArray(d) && !d[0]?.ErrMsg && setReceivers(d));
   }, []);
 
-  // ── Fetch GRN list ──────────────────────────────────────────
+  // ── Fetch GRN list — always loads the full history; the grid's own
+  //    date-filter (below) narrows it down client-side. ────────────
   const fetchGrnList = useCallback(async () => {
     setListLoading(true);
     try {
-      const d = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptNoteList?fromDateValue=${fromDate}&toDateValue=${toDate}`);
+      const d = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptNoteList?fromDateValue=1900-01-01&toDateValue=2099-12-31`);
       if (Array.isArray(d) && !d[0]?.ErrMsg) setGrnList(d);
       else setGrnList([]);
     } finally { setListLoading(false); }
-  }, [fromDate, toDate]);
+  }, []);
 
   useEffect(() => { fetchGrnList(); }, [fetchGrnList]);
+
+  // Client-side date filter applied on top of the fully-loaded list
+  const filteredGrnList = useMemo(() => {
+    if (!fromDate && !toDate) return grnList;
+    return grnList.filter(g => {
+      if (!g.ReceiptVoucherDate) return true;
+      const d = new Date(g.ReceiptVoucherDate).toISOString().split("T")[0];
+      if (fromDate && d < fromDate) return false;
+      if (toDate && d > toDate) return false;
+      return true;
+    });
+  }, [grnList, fromDate, toDate]);
 
   // ── Fetch pending POs when supplier changes ─────────────────
   useEffect(() => {
@@ -722,7 +735,6 @@ export default function PurchaseGRNPage() {
     setGateEntryNo(""); setGateEntryDate(todayISO()); setLrVehicleNo("");
     setTransporter(""); setRemark(""); setLines([]); setLineBins({});
     await fetchGrnNo();
-    setActiveTab("basic");
     setView("form");
   }, [fetchGrnNo]);
 
@@ -793,7 +805,6 @@ export default function PurchaseGRNPage() {
       setLines([]);
     }
 
-    setActiveTab("basic");
     setView("form");
   }, [fetchBins]);
 
@@ -824,7 +835,6 @@ export default function PurchaseGRNPage() {
       expiryDate: "",
       purchaseRate: item.PurchaseRate || 0,
     }]);
-    setActiveTab("receiving");
   }, [lines]);
 
   const addBulkLines = useCallback((newLines: GRNLine[], wh: string, whBins: BinRow[]) => {
@@ -833,7 +843,6 @@ export default function PurchaseGRNPage() {
       setLineBins((prev) => ({ ...prev, [wh]: whBins }));
     }
     setBulkTarget(null);
-    setActiveTab("receiving");
   }, []);
 
   const updateLine = useCallback((lineId: string, field: keyof GRNLine, val: any) =>
@@ -937,10 +946,10 @@ export default function PurchaseGRNPage() {
 
   // ── Save ────────────────────────────────────────────────────
   const doSave = useCallback(async () => {
-    if (!supplierId) { alert("Please select a supplier."); setActiveTab("basic"); return; }
-    if (!lines.length) { alert("Add at least one receiving line."); setActiveTab("po"); return; }
-    if (lines.some((l) => !l.challanQty)) { alert("All lines must have a quantity."); setActiveTab("receiving"); return; }
-    if (lines.some((l) => !l.warehouseId)) { alert("All lines must have a Warehouse and Bin."); setActiveTab("receiving"); return; }
+    if (!supplierId) { alert("Please select a supplier."); return; }
+    if (!lines.length) { alert("Add at least one receiving line."); return; }
+    if (lines.some((l) => !l.challanQty)) { alert("All lines must have a quantity."); return; }
+    if (lines.some((l) => !l.warehouseId)) { alert("All lines must have a Warehouse and Bin."); return; }
 
     // Validate total qty per item against pending qty + tolerance (create mode only)
     if (!editTxnId) {
@@ -957,7 +966,6 @@ export default function PurchaseGRNPage() {
         const maxAllowed = poItem.PendingQty + poItem.PurchaseOrderQuantity * (poItem.PurchaseTolerance / 100);
         if (total > maxAllowed) {
           alert(`${line.itemName}: Total qty (${total}) exceeds pending qty + tolerance (${maxAllowed.toFixed(3)} ${line.stockUnit}). Please reduce.`);
-          setActiveTab("receiving");
           return;
         }
       }
@@ -1070,40 +1078,41 @@ export default function PurchaseGRNPage() {
       <div className="w-full space-y-4">
 
         {/* Page heading */}
-        <div className="text-center pt-1">
-          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase GRN</h2>
-          <p className="text-sm text-[rgb(var(--fg-muted))]">Goods Receipt Note · {grnList.length} records</p>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="w-[124px] flex-shrink-0" />
+          <div className="text-center flex-1">
+            <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase GRN</h2>
+            <p className="text-sm text-[rgb(var(--fg-muted))]">Goods Receipt Note · {filteredGrnList.length} records</p>
+          </div>
+          <div className="w-[124px] flex-shrink-0 flex justify-end">
+            <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => alert("Audit Trail — coming soon")}>
+              Audit Trail
+            </Button>
+          </div>
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Date range filter */}
-          <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-            <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">Date Range</span>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} />} onClick={fetchGrnList} />
-            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New GRN</Button>
-          </div>
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} />} onClick={fetchGrnList} />
+          <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New GRN</Button>
         </div>
 
         <div className="bg-[rgb(var(--bg-surface))] rounded-xl border border-[rgb(var(--bd-default))] shadow-sm overflow-hidden">
           {listLoading ? (
             <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">Loading…</div>
-          ) : grnList.length === 0 ? (
+          ) : filteredGrnList.length === 0 ? (
             <div className="text-center py-14 text-[rgb(var(--fg-subtle))] text-sm">No GRN records found</div>
           ) : (
             <div className="p-4">
               <DataTable
-                data={grnList}
+                data={filteredGrnList}
                 columns={grnColumns}
                 getRowId={g => String(g.TransactionID)}
                 loading={listLoading}
+                dateFrom={fromDate ? new Date(fromDate) : null}
+                dateTo={toDate ? new Date(toDate) : null}
+                onDateFromChange={d => setFromDate(d ? d.toISOString().split("T")[0] : "")}
+                onDateToChange={d => setToDate(d ? d.toISOString().split("T")[0] : "")}
                 actions={g => (
                   <div className="flex items-center gap-1.5 justify-center">
                     <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(g)}>
@@ -1142,108 +1151,37 @@ export default function PurchaseGRNPage() {
   const totalQty = lines.reduce((s, l) => s + l.challanQty, 0);
 
   return (
-    <div className="w-full pb-10">
-      {/* Header ribbon */}
-      <div className="flex items-center justify-between mb-5 bg-white px-5 py-3.5 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setView("list")}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-blue-600 transition-colors">
-            <ArrowLeft size={15} /> List
-          </button>
-          <div className="w-px h-5 bg-gray-200" />
-          <div>
-            <div className="flex items-center gap-2.5 mt-0.5">
-              <h2 className="text-base font-bold text-gray-800">Purchase GRN</h2>
-              <span className="px-2.5 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-xs font-bold text-blue-700 font-mono">
-                {grnNo || "…"}
-              </span>
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editTxnId ? `Edit GRN — ${grnNo}` : "Purchase GRN Creation"}
+      size="2xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+        <div className="p-6 space-y-6">
+
+          {/* ── GRN DETAILS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="GRN Details" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+              <Input label="GRN No." readOnly value={grnNo || "…"} />
+              <Input label="GRN Date *" type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} />
+              <Select label="Supplier *" value={String(supplierId)}
+                onChange={(e) => { setSupplierId(Number(e.target.value)); setLines([]); }}
+                disabled={!!editTxnId}
+                options={[{ value: "0", label: "Select supplier…" }, ...suppliers.map((s) => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
+              <Select label="Received By" value={String(receivedById)} onChange={(e) => setReceivedById(Number(e.target.value))}
+                options={[{ value: "0", label: "Select…" }, ...receivers.map((r) => ({ value: String(r.LedgerID), label: r.LedgerName }))]} />
             </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {editTxnId ? (
-            <>
-              <button onClick={() => setPwModal("delete")} disabled={deleting}
-                className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-                <Trash2 size={14} /> Delete
-              </button>
-              <button onClick={() => setPwModal("update")} disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm">
-                <CheckCircle2 size={15} /> {saving ? "Saving…" : "Update GRN"}
-              </button>
-            </>
-          ) : (
-            <button onClick={doSave} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-60">
-              <CheckCircle2 size={15} /> {saving ? "Saving…" : "Save GRN"}
-            </button>
-          )}
-        </div>
-      </div>
 
-      {/* Tab card */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Tab header */}
-        <div className="flex border-b border-gray-200 bg-gray-50/40">
-          {([
-            { id: "basic", label: "GRN Details", desc: supplierId ? supplierName : "Date & Supplier" },
-            { id: "po", label: "Purchase Orders", desc: poLoading ? "Loading…" : groupedPOs.length > 0 ? `${pendingItems.length} pending items` : "Select Items" },
-            { id: "receiving", label: "Receiving Lines", desc: lines.length > 0 ? `${lines.length} line${lines.length !== 1 ? "s" : ""} · ${totalQty.toFixed(3)} qty` : "Qty & Storage" },
-            { id: "documents", label: "Documents", desc: "Invoice & Transport" },
-          ] as { id: TabId; label: string; desc: string }[]).map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 px-4 py-3.5 text-left transition-colors border-b-2 ${activeTab === tab.id ? "border-blue-600 bg-white" : "border-transparent hover:bg-gray-50"}`}>
-              <p className={`text-xs font-bold ${activeTab === tab.id ? "text-blue-700" : "text-gray-500"}`}>{tab.label}</p>
-              <p className={`text-[10px] mt-0.5 ${activeTab === tab.id ? "text-blue-500" : "text-gray-400"}`}>{tab.desc}</p>
-            </button>
-          ))}
-        </div>
-
-        {/* ── TAB 1: BASIC ───────────────────────────────────── */}
-        {activeTab === "basic" && (
-          <div className="p-6 space-y-5">
-            <div className="grid grid-cols-3 gap-5">
-              <div>
-                <Input label="GRN No." readOnly value={grnNo || "…"} />
-              </div>
-              <div>
-                <Input label="GRN Date *" type="date" value={grnDate} onChange={(e) => setGrnDate(e.target.value)} />
-              </div>
-              <div>
-                <Select label="Supplier *" value={String(supplierId)}
-                  onChange={(e) => { setSupplierId(Number(e.target.value)); setLines([]); }}
-                  disabled={!!editTxnId}
-                  options={[{ value: "0", label: "Select supplier…" }, ...suppliers.map((s) => ({ value: String(s.LedgerID), label: s.LedgerName }))]} />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-5">
-              <div>
-                <Select label="Received By" value={String(receivedById)} onChange={(e) => setReceivedById(Number(e.target.value))}
-                  options={[{ value: "0", label: "Select…" }, ...receivers.map((r) => ({ value: String(r.LedgerID), label: r.LedgerName }))]} />
-              </div>
-            </div>
-            {supplierId > 0 && (
-              <div className="flex justify-end">
-                <button onClick={() => setActiveTab("po")}
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                  View Purchase Orders <ChevronRight size={15} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── TAB 2: PURCHASE ORDERS ─────────────────────────── */}
-        {activeTab === "po" && (
-          <div className="p-6 space-y-5">
+          {/* ── PURCHASE ORDERS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Purchase Orders" />
             {!supplierId ? (
               <div className="text-center py-16">
                 <Package size={36} className="mx-auto mb-3 text-gray-300" />
-                <p className="text-sm text-gray-500">Select a supplier on the <strong>GRN Details</strong> tab first</p>
-                <button onClick={() => setActiveTab("basic")}
-                  className="mt-3 px-4 py-2 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
-                  ← Go to GRN Details
-                </button>
+                <p className="text-sm text-gray-500">Select a supplier above to see its pending Purchase Orders</p>
               </div>
             ) : poLoading ? (
               <div className="text-center py-16 text-gray-400">Loading pending orders…</div>
@@ -1325,43 +1263,25 @@ export default function PurchaseGRNPage() {
                     </div>
                   ))}
                 </div>
-                {lines.length > 0 && (
-                  <div className="flex justify-end">
-                    <button onClick={() => setActiveTab("receiving")}
-                      className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                      View Receiving Lines ({lines.length}) <ChevronRight size={15} />
-                    </button>
-                  </div>
-                )}
               </>
             )}
           </div>
-        )}
 
-        {/* ── TAB 3: RECEIVING LINES ─────────────────────────── */}
-        {activeTab === "receiving" && (
-          <div className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
+          {/* ── RECEIVING LINES ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Receiving Lines</p>
+                <SectionTitle title="Receiving Lines" />
                 {lines.length > 0 && (
-                  <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">{lines.length}</span>
+                  <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold mb-4">{lines.length}</span>
                 )}
               </div>
-              <button onClick={() => setActiveTab("po")}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                + Add More Items
-              </button>
             </div>
 
             {lines.length === 0 ? (
               <div className="border border-dashed border-gray-300 rounded-xl text-center py-14">
                 <Package size={32} className="mx-auto mb-3 text-gray-300" />
-                <p className="text-sm text-gray-400">No items added yet</p>
-                <button onClick={() => setActiveTab("po")}
-                  className="mt-3 px-4 py-2 text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100">
-                  ← Go to Purchase Orders
-                </button>
+                <p className="text-sm text-gray-400">No items added yet — add items from Purchase Orders above</p>
               </div>
             ) : (
               <div className="overflow-x-auto border border-gray-200 rounded-xl">
@@ -1466,25 +1386,12 @@ export default function PurchaseGRNPage() {
                 </table>
               </div>
             )}
-            {lines.length > 0 && (
-              <div className="flex justify-end">
-                <button onClick={() => setActiveTab("documents")}
-                  className="flex items-center gap-2 px-5 py-2 text-sm font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors">
-                  Go to Documents <ChevronRight size={15} />
-                </button>
-              </div>
-            )}
           </div>
-        )}
 
-        {/* ── TAB 4: DOCUMENTS ───────────────────────────────── */}
-        {activeTab === "documents" && (
-          <div className="p-6">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-5 flex items-center gap-2">
-              <FileText size={13} className="text-gray-400" /> Invoice &amp; Transport Details
-              <span className="text-[10px] font-normal text-gray-400 normal-case ml-1">(optional)</span>
-            </p>
-            <div className="grid grid-cols-2 gap-5">
+          {/* ── DOCUMENTS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Invoice & Transport Details (optional)" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               {[
                 { label: "Invoice No. (Delivery Note No.)", value: invoiceNo, set: setInvoiceNo, type: "text", ph: "INV/DN-..." },
                 { label: "Invoice Date", value: invoiceDate, set: setInvoiceDate, type: "date", ph: "" },
@@ -1500,21 +1407,29 @@ export default function PurchaseGRNPage() {
                   onChange={(e) => f.set(e.target.value)} placeholder={f.ph} />
               ))}
             </div>
-            <div className="mt-6 flex justify-end">
-              {editTxnId ? (
-                <button onClick={() => setPwModal("update")} disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                  <CheckCircle2 size={16} /> {saving ? "Saving…" : "Update GRN"}
-                </button>
-              ) : (
-                <button onClick={doSave} disabled={saving}
-                  className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60 shadow-sm">
-                  <CheckCircle2 size={16} /> {saving ? "Saving…" : "Save GRN"}
-                </button>
-              )}
-            </div>
           </div>
-        )}
+        </div>
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editTxnId != null && (
+            <Button variant="action-cancel" size="sm" loading={deleting} onClick={() => setPwModal("delete")}>
+              Delete
+            </Button>
+          )}
+          {editTxnId ? (
+            <Button variant="action-save" size="sm" loading={saving} onClick={() => setPwModal("update")}>
+              Update
+            </Button>
+          ) : (
+            <Button variant="action-save" size="sm" loading={saving} onClick={doSave}>
+              Save
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── Modals ───────────────────────────────────────────── */}
@@ -1549,6 +1464,6 @@ export default function PurchaseGRNPage() {
           busy={deleting}
         />
       )}
-    </div>
+    </Modal>
   );
 }

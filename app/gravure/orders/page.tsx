@@ -241,6 +241,16 @@ export default function GravureOrdersPage() {
   const [apiConsignees, setApiConsignees] = useState<{ id: string; name: string }[]>([]);
   const [apiTransporters, setApiTransporters] = useState<{ id: string; name: string }[]>([]);
   const [apiHsnList, setApiHsnList] = useState<{ id: string; hsnCode: string; description: string; gstRate: number; cgstPct: number; sgstPct: number; igstPct: number }[]>([]);
+  // Dedupe by hsnCode — master data can have multiple rows sharing the same HSN code,
+  // and selection is already matched by hsnCode (not id), so duplicates render as
+  // identical, React-key-colliding options otherwise. Keep first occurrence to match
+  // the `.find(h => h.hsnCode === val)` lookup used on change.
+  const hsnSelectOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return apiHsnList
+      .filter(h => { if (seen.has(h.hsnCode)) return false; seen.add(h.hsnCode); return true; })
+      .map(h => ({ value: h.hsnCode, label: `${h.hsnCode} — ${h.description}` }));
+  }, [apiHsnList]);
   const [saving, setSaving] = useState(false);
   const [companyStateTinNo, setCompanyStateTinNo] = useState<number>(0);
   const [orderImage, setOrderImage] = useState<{ name: string; url: string; mimeType: string; size: number; fileObj?: File } | null>(null);
@@ -1279,7 +1289,7 @@ export default function GravureOrdersPage() {
                               const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
                               updateLine(idx, { ...l, hsnGroup: val, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
                             }}
-                            options={apiHsnList.map(h => ({ value: h.hsnCode, label: `${h.hsnCode} — ${h.description}` }))}
+                            options={hsnSelectOptions}
                             placeholder="-- HSN --"
                             className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px]"
                           />

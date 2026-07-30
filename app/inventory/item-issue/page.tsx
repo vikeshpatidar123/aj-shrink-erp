@@ -3,12 +3,13 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   FileText, X, Scan, QrCode, CheckCircle2, Pencil,
-  Trash2, Plus, Camera, Keyboard, Search, PackageMinus, List,
-  Users, RefreshCw, AlertCircle, ChevronRight,
+  Trash2, Plus, Camera, Keyboard, Search, PackageMinus,
+  Users, RefreshCw, AlertCircle, ChevronRight, History,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
 
 // ─── Config ──────────────────────────────────────────────────
@@ -26,6 +27,10 @@ function unwrap(raw: any): string {
   if (t.startsWith('"') && t.endsWith('"')) { try { return JSON.parse(t); } catch { } }
   return t;
 }
+
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
+);
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
@@ -751,12 +756,8 @@ function BatchConfirmModal({
 export default function ItemIssuePage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [editingID, setEditingID] = useState<number | null>(null);
-  const [listSearch, setListSearch] = useState("");
-  const [fromDate, setFromDate] = useState(() => {
-    const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0];
-  });
-  const [toDate, setToDate] = useState(todayISO());
-  const [activeTab, setActiveTab] = useState<"basic" | "scan" | "items">("basic");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   // List
   const [listData, setListData] = useState<IssueRecord[]>([]);
@@ -808,13 +809,14 @@ export default function ItemIssuePage() {
     setCurrentVoucherNo(unwrap(raw) || "IS-NEW");
   }, []);
 
-  // ── Load list ─────────────────────────────────────────────
+  // ── Load list — always loads the full history; the grid's own
+  //    date-filter (below) narrows it down client-side. ───────
   const loadList = useCallback(async () => {
     setLoadingList(true);
     setListError("");
     try {
       const d = await apiFetch(
-        `${BASE_URL}/api/ItemIssueDirectAJ/Showlist?FromDate=${fromDate}&ToDate=${toDate}&isBatchWiseChecked=false`
+        `${BASE_URL}/api/ItemIssueDirectAJ/Showlist?FromDate=1900-01-01&ToDate=2099-12-31&isBatchWiseChecked=false`
       );
       if (Array.isArray(d)) {
         // Aggregate: one entry per voucher, summing qty across all items
@@ -842,7 +844,7 @@ export default function ItemIssuePage() {
       setListError("Network error loading list");
     }
     setLoadingList(false);
-  }, [fromDate, toDate]);
+  }, []);
 
   useEffect(() => { if (view === "list") loadList(); }, [view, loadList]);
 
@@ -878,7 +880,6 @@ export default function ItemIssuePage() {
           picklistTransactionID: item.PicklistTransactionID || 0,
           picklistReleaseTransactionID: item.PicklistReleaseTransactionID || 0,
         })));
-        setActiveTab("scan");
       } else {
         setJobItems([]);
         alert("No pending items found for this Job Card.");
@@ -1012,7 +1013,7 @@ export default function ItemIssuePage() {
   // ── Save ──────────────────────────────────────────────────
   const save = async () => {
     if (lines.length === 0) { alert("No batch scans to issue."); return; }
-    if (!departmentID) { alert("Please select a department."); setActiveTab("basic"); return; }
+    if (!departmentID) { alert("Please select a department."); return; }
 
     // Warn if any job item has zero scans
     if (issueMode === "Job-wise" && jobItems.length > 0) {
@@ -1219,7 +1220,6 @@ export default function ItemIssuePage() {
         };
       }));
     }
-    setActiveTab("items");
     setView("form");
   };
 
@@ -1240,16 +1240,17 @@ export default function ItemIssuePage() {
   const resetForm = () => {
     setVoucherDate(todayISO()); setIssueMode("Job-wise"); setDepartmentID(0); setReceivedById(0);
     setSelectedJobCard(null); setJobItems([]); setLines([]); setRemark(""); setRecentScans([]);
-    setActiveTab("basic"); setSaveError("");
+    setSaveError("");
   };
 
+  // Client-side date filter applied on top of the fully-loaded list
+  // (text search is handled by the grid's own built-in search box).
   const filteredList = listData.filter((r) => {
-    if (!listSearch) return true;
-    const s = listSearch.toLowerCase();
-    return (r.VoucherNo?.toLowerCase().includes(s) ||
-      r.JobCardNo?.toLowerCase().includes(s) ||
-      r.DepartmentName?.toLowerCase().includes(s) ||
-      r.ItemName?.toLowerCase().includes(s));
+    if (!r.VoucherDate) return true;
+    const d = new Date(r.VoucherDate).toISOString().split("T")[0];
+    if (fromDate && d < fromDate) return false;
+    if (toDate && d > toDate) return false;
+    return true;
   });
 
   const totalScans = lines.length;
@@ -1278,34 +1279,23 @@ export default function ItemIssuePage() {
       <div className="w-full space-y-4">
 
         {/* Page heading */}
-        <div className="text-center pt-1">
-          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Item Issue</h2>
-          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} issue vouchers</p>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="w-[124px] flex-shrink-0" />
+          <div className="text-center flex-1">
+            <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Item Issue</h2>
+            <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} issue vouchers</p>
+          </div>
+          <div className="w-[124px] flex-shrink-0 flex justify-end">
+            <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => alert("Audit Trail — coming soon")}>
+              Audit Trail
+            </Button>
+          </div>
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Left: date range + search */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">From</span>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-              <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
-              <input type="text" placeholder="Search voucher, job card, department, item…" value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
-            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Issue</Button>
-          </div>
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
+          <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Issue</Button>
         </div>
 
         {listError && (
@@ -1326,6 +1316,10 @@ export default function ItemIssuePage() {
                 columns={issueColumns}
                 getRowId={iss => String(iss.TransactionID)}
                 loading={loadingList}
+                dateFrom={fromDate ? new Date(fromDate) : null}
+                dateTo={toDate ? new Date(toDate) : null}
+                onDateFromChange={d => setFromDate(d ? d.toISOString().split("T")[0] : "")}
+                onDateToChange={d => setToDate(d ? d.toISOString().split("T")[0] : "")}
                 actions={iss => (
                   <div className="flex items-center gap-1.5 justify-center">
                     <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(iss)}>Edit</Button>
@@ -1346,81 +1340,24 @@ export default function ItemIssuePage() {
   const showScanTab = jobItems.length > 0;
 
   return (
-    <div className="w-full pb-10">
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editingID ? `Edit Issue — ${currentVoucherNo}` : "Item Issue Creation"}
+      size="2xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+        <div className="p-6 space-y-6">
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Inventory</p>
-            <h2 className="text-lg font-bold text-gray-800 leading-tight">Item Issue</h2>
-          </div>
-          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-semibold border border-blue-100">
-            {currentVoucherNo}
-          </span>
-          {editingID && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-              Editing #{editingID}
-            </span>
+          {saveError && (
+            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <AlertCircle size={15} /> {saveError}
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setView("list")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <List size={13} /> List
-          </button>
-          <button onClick={save}
-            disabled={lines.length === 0 || saving}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-40">
-            {saving ? <RefreshCw size={13} className="animate-spin" /> : <PackageMinus size={13} />}
-            {saving ? "Saving…" : `Issue${lines.length > 0 ? ` (${lines.length})` : ""}`}
-          </button>
-          {editingID && (
-            <button onClick={() => handleDelete(editingID)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-              <Trash2 size={13} /> Delete
-            </button>
-          )}
-        </div>
-      </div>
 
-      {saveError && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={15} /> {saveError}
-        </div>
-      )}
-
-      {/* Content Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-
-        {/* Tabs */}
-        <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-          <div className="flex gap-1">
-            {([
-              { id: "basic" as const, label: "Basic", show: true },
-              { id: "scan" as const, label: `Scan Details${showScanTab ? ` (${jobItems.length})` : ""}`, show: showScanTab },
-              { id: "items" as const, label: `Items${totalScans > 0 ? ` (${totalScans})` : ""}`, show: true },
-            ] as const)
-              .filter((t) => t.show)
-              .map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${activeTab === tab.id
-                    ? "bg-white text-blue-700 border-blue-600"
-                    : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white/60"
-                  }`}>
-                  {tab.label}
-                </button>
-              ))}
-          </div>
-        </div>
-
-        <div className="p-6">
-
-          {/* ── BASIC TAB ── */}
-          {activeTab === "basic" && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Issue Details</p>
+          {/* ── ISSUE DETAILS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+              <SectionTitle title="Issue Details" />
                 <div className="grid grid-cols-4 gap-3">
                   <div>
                     <Input label="Voucher No." readOnly value={currentVoucherNo} />
@@ -1442,7 +1379,6 @@ export default function ItemIssuePage() {
                             setSelectedJobCard(null);
                             setJobItems([]);
                             setLines([]);
-                            if (m === "Item-wise") setActiveTab("items");
                           }}
                           className={`flex-1 px-4 py-2 text-sm font-semibold transition-colors ${issueMode === m ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
                           {m}
@@ -1459,10 +1395,10 @@ export default function ItemIssuePage() {
                 </div>
               </div>
 
-              {/* Job Card selector (Job-wise only) */}
-              {issueMode === "Job-wise" && (
-                <div>
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Job Card</p>
+          {/* Job Card selector (Job-wise only) */}
+          {issueMode === "Job-wise" && (
+                <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+                  <SectionTitle title="Job Card" />
                   <div className="flex items-end gap-3">
                     <div className="w-56">
                       <Input label="Job Card Content No." readOnly value={selectedJobCard?.JobCardContentNo ?? ""} placeholder="Scan or pick a job card…" />
@@ -1488,26 +1424,21 @@ export default function ItemIssuePage() {
                         <span className="text-gray-400 mx-2">·</span>
                         <span className="text-gray-600">{selectedJobCard.PlanContName}</span>
                       </div>
-                      {loadingItems && <span className="text-xs text-blue-600 animate-pulse">Loading items…</span>}
+                      {loadingItems && <span className="text-xs text-blue-600 animate-pulse ml-auto">Loading items…</span>}
                       {jobItems.length > 0 && (
-                        <button onClick={() => setActiveTab("scan")}
-                          className="ml-auto flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
-                          View {jobItems.length} items <ChevronRight size={12} />
-                        </button>
+                        <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-green-700">
+                          <CheckCircle2 size={12} /> {jobItems.length} items loaded below
+                        </span>
                       )}
                     </div>
                   )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── SCAN TAB (Job-wise: shows job items with multi-scan per item) ── */}
-          {activeTab === "scan" && showScanTab && (
-            <div className="space-y-5">
-              <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2">
-                Job Card Items — Scan Batches
-              </p>
+          {/* ── SCAN DETAILS (Job-wise: shows job items with multi-scan per item) ── */}
+          {showScanTab && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
+              <SectionTitle title={`Job Card Items — Scan Batches (${jobItems.length})`} />
 
               <div className="overflow-x-auto rounded-xl border border-gray-200">
                 <table className="w-full text-sm">
@@ -1632,15 +1563,14 @@ export default function ItemIssuePage() {
             </div>
           )}
 
-          {/* ── ITEMS TAB ── */}
-          {activeTab === "items" && (
-            <div className="space-y-5">
+          {/* ── SCANNED BATCHES / ITEMS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
               <div>
-                <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-4">
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">Scanned Batches</p>
+                <div className="flex items-center justify-between mb-4">
+                  <SectionTitle title={`Scanned Batches${totalScans > 0 ? ` (${totalScans})` : ""}`} />
                   {/* Allow adding item-wise scans in any mode */}
                   <button onClick={() => setShowItemScanner({ jobItemId: "item-wise", itemCode: undefined, remainingQty: 0 })}
-                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors mb-4">
                     <Scan size={14} /> Scan Item Batch
                   </button>
                 </div>
@@ -1673,12 +1603,9 @@ export default function ItemIssuePage() {
                         <tr>
                           <td colSpan={16} className="text-center py-20 text-gray-400">
                             {issueMode === "Job-wise" && jobItems.length === 0 && !editingID
-                              ? "Load a Job Card on the Basic tab, then scan batches on the Scan Details tab."
+                              ? "Load a Job Card above, then scan batches in the Scan Batches section."
                               : issueMode === "Job-wise" && jobItems.length > 0
-                              ? <button onClick={() => setActiveTab("scan")}
-                                  className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors">
-                                  <Scan size={14} /> Go to Scan Details
-                                </button>
+                              ? "Scan batches in the section above to add items here."
                               : (
                                 <div className="space-y-4 flex flex-col items-center">
                                   <QrCode size={36} className="text-gray-300" />
@@ -1741,13 +1668,6 @@ export default function ItemIssuePage() {
                 </div>
               </div>
 
-              {/* Remark */}
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark</p>
-                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" />
-              </div>
-
               {/* Summary */}
               {lines.length > 0 && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center gap-4">
@@ -1756,8 +1676,34 @@ export default function ItemIssuePage() {
                   <span>Total issued: <span className="font-semibold text-gray-800">{lines.reduce((s, l) => s + l.issueQty, 0).toLocaleString()}</span></span>
                 </div>
               )}
-            </div>
+          </div>
+
+          {/* ── REMARK ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Remark" />
+            <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+              placeholder="Optional notes…" />
+          </div>
+        </div>
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editingID != null && (
+            <Button variant="action-cancel" size="sm" onClick={() => handleDelete(editingID)}>
+              Delete
+            </Button>
           )}
+          <Button
+            variant="action-save" size="sm" loading={saving}
+            icon={<PackageMinus size={14} />}
+            disabled={lines.length === 0}
+            onClick={save}
+          >
+            {editingID ? "Update" : "Issue"}{lines.length > 0 ? ` (${lines.length})` : ""}
+          </Button>
         </div>
       </div>
 
@@ -1794,6 +1740,6 @@ export default function ItemIssuePage() {
           onClose={() => setPendingBatch(null)}
         />
       )}
-    </div>
+    </Modal>
   );
 }

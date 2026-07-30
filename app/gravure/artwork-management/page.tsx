@@ -417,6 +417,9 @@ export default function ArtworkManagementPage() {
   const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
   const [masterAttOpen, setMasterAttOpen] = useState<string | null>(null);
   const [masterAttLoading, setMasterAttLoading] = useState<string | null>(null);
+  const [sgAttMap, setSgAttMap] = useState<Record<string, AttachmentItem[]>>({});
+  const [sgAttOpen, setSgAttOpen] = useState<string | null>(null);
+  const [sgAttLoading, setSgAttLoading] = useState<string | null>(null);
 
   // ─── FieldMaster dropdown options ────────────────────────────────────────
   const [fmOptions, setFmOptions] = useState<{
@@ -675,11 +678,11 @@ export default function ArtworkManagementPage() {
 
   // Close dropdowns on outside click (openStageRow is managed by StageDropdown itself)
   useEffect(() => {
-    if (!colFilterOpen && !masterAttOpen) return;
-    const handler = () => { setColFilterOpen(null); setMasterAttOpen(null); };
+    if (!colFilterOpen && !masterAttOpen && !sgAttOpen) return;
+    const handler = () => { setColFilterOpen(null); setMasterAttOpen(null); setSgAttOpen(null); };
     document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
-  }, [colFilterOpen, masterAttOpen]);
+  }, [colFilterOpen, masterAttOpen, sgAttOpen]);
 
   // ─── Load list + dropdowns ────────────────────────────────────────────────
   const loadList = useCallback(async () => {
@@ -939,6 +942,37 @@ export default function ArtworkManagementPage() {
       else if (mapped.length === 1) { window.open(mapped[0].url, "_blank"); }
       else { setMasterAttOpen(id); }
     } catch { /* silent */ } finally { setMasterAttLoading(null); }
+  };
+
+  // ─── Eye icon handler (Child Artwork tab) ────────────────────────────────
+  const openSgAttView = async (e: React.MouseEvent, row: BBArtworkRow) => {
+    e.stopPropagation();
+    const id = row.BBArtworkID;
+    if (sgAttOpen === id) { setSgAttOpen(null); return; }
+    if (sgAttMap[id] !== undefined) {
+      const cached = sgAttMap[id];
+      if (cached.length === 1) { window.open(cached[0].url, "_blank"); }
+      else { setSgAttOpen(id); }
+      return;
+    }
+    setSgAttLoading(id);
+    try {
+      const atts = await apiFetch<{ FileID: string; AttachedFileName: string; AttachedFileRemark: string }[]>(
+        `${ART}/bbartwork/attachments/${id}`
+      );
+      const mapped = (Array.isArray(atts) ? atts : []).map(a => ({
+        _id: a.FileID,
+        name: decodeURIComponent(a.AttachedFileName.split("/").pop()?.replace(/^\d+-/, "") ?? a.AttachedFileName),
+        url: a.AttachedFileName,
+        mimeType: a.AttachedFileName.toLowerCase().endsWith(".pdf") ? "application/pdf"
+          : /\.(jpe?g|png|gif|webp|jpeg)$/i.test(a.AttachedFileName) ? "image/jpeg" : "application/octet-stream",
+        remark: a.AttachedFileRemark,
+      }));
+      setSgAttMap(m => ({ ...m, [id]: mapped }));
+      if (mapped.length === 0) { /* no attachments */ }
+      else if (mapped.length === 1) { window.open(mapped[0].url, "_blank"); }
+      else { setSgAttOpen(id); }
+    } catch { /* silent */ } finally { setSgAttLoading(null); }
   };
 
   // ─── Filter ───────────────────────────────────────────────────────────────
@@ -2222,6 +2256,15 @@ export default function ArtworkManagementPage() {
           ]}
           actions={r => (
             <>
+              <button
+                onClick={e => openSgAttView(e, r)}
+                className="p-1.5 rounded-lg hover:bg-indigo-50 text-indigo-500 hover:text-indigo-700 transition-colors"
+                title="View attachments"
+              >
+                {sgAttLoading === r.BBArtworkID
+                  ? <Loader2 size={15} className="animate-spin" />
+                  : <Eye size={15} />}
+              </button>
               {can(MOD, "CanEdit") && <RowAction.Edit onClick={() => openEditSG(r)} />}
               {can(MOD, "CanDelete") && <RowAction.Delete onClick={() => deleteSG(r)} />}
             </>
@@ -2281,6 +2324,16 @@ export default function ArtworkManagementPage() {
                         )}
                       </div>
                       <Input label="Child Artwork Name / Variant Label *" value={sgForm.BBArtworkName} onChange={e => rfSG("BBArtworkName", e.target.value)} placeholder="e.g. 200ml Red Label Variant, Export Pack…" />
+                      <div>
+                        <label className={lCls}>Client</label>
+                        <SearchableSelect
+                          value={sgForm.LedgerID}
+                          onChange={val => rfSG("LedgerID", val)}
+                          options={dropData.clients.map(c => ({ value: c.LedgerID, label: c.LedgerName }))}
+                          placeholder="-- Select Client --"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -2475,6 +2528,40 @@ export default function ArtworkManagementPage() {
                 </a>
               </div>
             )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ═══ Attached Files List Modal (multiple attachments) ═══════════════ */}
+      {(masterAttOpen || sgAttOpen) && (
+        <Modal
+          open
+          onClose={() => { setMasterAttOpen(null); setSgAttOpen(null); }}
+          title="Attached Files"
+          size="sm"
+        >
+          <div className="space-y-2">
+            {(masterAttOpen ? attMap[masterAttOpen] : sgAttMap[sgAttOpen as string])?.map(a => (
+              <div key={a._id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
+                <div className="flex items-center gap-2 min-w-0">
+                  {a.mimeType?.startsWith("image/") ? <ImgIcon size={14} className="text-gray-400 flex-shrink-0" />
+                    : a.mimeType === "application/pdf" ? <FileText size={14} className="text-red-400 flex-shrink-0" />
+                    : <Paperclip size={14} className="text-gray-400 flex-shrink-0" />}
+                  <span className="text-sm text-gray-700 truncate" title={a.name}>{a.name}</span>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => { setPreview(a); setMasterAttOpen(null); setSgAttOpen(null); }}
+                    className="p-1.5 rounded-md text-indigo-600 hover:bg-indigo-50" title="View">
+                    <Eye size={14} />
+                  </button>
+                  <a href={a.url} download={a.name} target="_blank" rel="noreferrer"
+                    className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50" title="Download">
+                    <Download size={14} />
+                  </a>
+                </div>
+              </div>
+            ))}
           </div>
         </Modal>
       )}

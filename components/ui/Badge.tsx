@@ -39,6 +39,8 @@ const STATUS_MAP: Record<string, BadgeVariant> = {
   // Approval / procurement
   submitted:     "blue",
   approved:      "green",
+  "po created":  "blue",
+  proceed:       "blue",
   ordered:       "purple",
   completed:     "green",
   issued:        "green",

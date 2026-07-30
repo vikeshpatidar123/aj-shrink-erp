@@ -29,6 +29,14 @@ interface DataTableProps<T> {
   getRowId?: (row: T) => string;
   rowHeight?: number;
   enableRowSelection?: boolean;
+  /** Fires on single row click. Pair with enableRowClickSelection={false} to skip the built-in select/tint behavior. */
+  onRowClick?: (row: T) => void;
+  enableRowClickSelection?: boolean;
+  /** Controlled values for the grid's built-in date-range filter (replaces a page-level date range control) */
+  dateFrom?: Date | null;
+  dateTo?: Date | null;
+  onDateFromChange?: (date: Date | null) => void;
+  onDateToChange?: (date: Date | null) => void;
 }
 
 // ── DataTable — now powered by DataGrid ──────────────────────────────────────
@@ -44,6 +52,12 @@ export function DataTable<T>({
   getRowId,
   rowHeight,
   enableRowSelection = true,
+  dateFrom,
+  dateTo,
+  onDateFromChange,
+  onDateToChange,
+  onRowClick,
+  enableRowClickSelection,
 }: DataTableProps<T>) {
 
   const gridColumns = useMemo<ColumnDef<T>[]>(() => {
@@ -96,7 +110,13 @@ export function DataTable<T>({
       enableSorting
       enableVisualization
       enableDateFilter
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDateFromChange={onDateFromChange}
+      onDateToChange={onDateToChange}
       enableColumnReordering
+      onRowClick={onRowClick}
+      enableRowClickSelection={enableRowClickSelection}
       paginationPageSize={pageSize}
       headerActions={toolbar}
       enableRowSelection={enableRowSelection}

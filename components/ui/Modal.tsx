@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: "sm" | "md" | "lg" | "xl" | "full";
+  size?: "sm" | "md" | "lg" | "xl" | "2xl" | "full";
   subHeader?: React.ReactNode;
   bodyRef?: React.RefObject<HTMLDivElement | null>;
 }
@@ -17,6 +17,7 @@ const SIZE_CLASS: Record<string, string> = {
   md:   "w-full sm:max-w-lg",
   lg:   "w-full sm:max-w-2xl",
   xl:   "w-[92vw]",
+  "2xl": "w-[97vw] min-h-[88vh]",
   full: "w-full h-full",
 };
 

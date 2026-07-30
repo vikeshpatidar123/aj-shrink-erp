@@ -3,8 +3,8 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
-  Camera, Keyboard, List, ClipboardCheck, TrendingUp, TrendingDown,
-  Minus, PackagePlus, Search,
+  Camera, Keyboard, ClipboardCheck, TrendingUp, TrendingDown,
+  Minus, PackagePlus, History,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import {
@@ -14,7 +14,12 @@ import {
   PhysicalVerification, PhysicalVerificationLine,
 } from "@/data/dummyData";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
+
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
+);
 
 // ─── Helpers ─────────────────────────────────────────────────
 const todayISO = () => new Date().toISOString().split("T")[0];
@@ -326,8 +331,6 @@ export default function PhysicalVerificationPage() {
   const [data, setData] = useState<PhysicalVerification[]>(initData);
   const [editing, setEditing] = useState<PhysicalVerification | null>(null);
   const [filterStatus, setFilterStatus] = useState<"All" | PhysicalVerification["status"]>("All");
-  const [listSearch, setListSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"scan" | "lines">("scan");
 
   // Form state
   const [verificationDate, setVerificationDate] = useState(todayISO());
@@ -348,7 +351,6 @@ export default function PhysicalVerificationPage() {
     setVerificationDate(todayISO());
     setLines([]); setRemark("");
     setScannedBatch(null); setPhysicalQty(0); setScanError("");
-    setActiveTab("scan");
   };
 
   const openNew = () => { setEditing(null); resetForm(); setView("form"); };
@@ -358,7 +360,6 @@ export default function PhysicalVerificationPage() {
     setLines(pv.lines.map((l) => ({ ...l })));
     setRemark(pv.remark);
     setScannedBatch(null); setPhysicalQty(0); setScanError("");
-    setActiveTab("scan");
     setView("form");
   };
   const handleDelete = (id: string) => {
@@ -445,16 +446,7 @@ export default function PhysicalVerificationPage() {
     setView("list");
   };
 
-  const filteredData = (filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus))
-    .filter((r) => {
-      if (!listSearch) return true;
-      const s = listSearch.toLowerCase();
-      return (
-        r.voucherNo.toLowerCase().includes(s) ||
-        r.status.toLowerCase().includes(s) ||
-        r.remark.toLowerCase().includes(s)
-      );
-    });
+  const filteredData = filterStatus === "All" ? data : data.filter((r) => r.status === filterStatus);
 
   // ── Verification list columns (MASTER UI DataTable) ───────
   const pvColumns: Column<PhysicalVerification>[] = useMemo(() => [
@@ -475,33 +467,31 @@ export default function PhysicalVerificationPage() {
       <div className="w-full space-y-4">
 
         {/* Page heading */}
-        <div className="text-center pt-1">
-          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Physical Verification</h2>
-          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredData.length} verification records</p>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="w-[124px] flex-shrink-0" />
+          <div className="text-center flex-1">
+            <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Physical Verification</h2>
+            <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredData.length} verification records</p>
+          </div>
+          <div className="w-[124px] flex-shrink-0 flex justify-end">
+            <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => alert("Audit Trail — coming soon")}>
+              Audit Trail
+            </Button>
+          </div>
         </div>
 
         {/* Controls row */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Left: status filter + search */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">Status</span>
-              {(["All", "Draft", "Completed"] as const).map((s) => (
-                <button key={s} onClick={() => setFilterStatus(s)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-[rgb(var(--color-primary))] text-white shadow-sm" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--fg-muted))] hover:opacity-80"}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
-              <input type="text" placeholder="Search by voucher no, remark…" value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
-            </div>
+          <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
+            <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">Status</span>
+            {(["All", "Draft", "Completed"] as const).map((s) => (
+              <button key={s} onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatus === s ? "bg-[rgb(var(--color-primary))] text-white shadow-sm" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--fg-muted))] hover:opacity-80"}`}>
+                {s}
+              </button>
+            ))}
           </div>
 
-          {/* Actions */}
           <div className="flex items-center gap-2 flex-wrap">
             <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Verification</Button>
           </div>
@@ -536,343 +526,301 @@ export default function PhysicalVerificationPage() {
   // ══════════════════════════════════════════════════════════
 
   return (
-    <div className="w-full pb-10">
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editing ? `Edit Verification — ${currentVoucherNo}` : "Physical Verification Creation"}
+      size="2xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+        <div className="p-6 space-y-6">
 
-      {/* Header Ribbon */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Inventory</p>
-            <h2 className="text-lg font-bold text-gray-800 leading-tight">Physical Verification</h2>
-          </div>
-          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-semibold border border-blue-100">
-            {currentVoucherNo}
-          </span>
-          {editing && (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[editing.status]}`}>
-              {editing.status}
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button onClick={() => setView("list")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <List size={13} /> List
-          </button>
-          <button onClick={openNew}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            <Plus size={13} /> New
-          </button>
-          <button onClick={() => save("Draft")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-            Draft
-          </button>
-          <button onClick={() => save("Completed")} disabled={lines.length === 0}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-40">
-            <ClipboardCheck size={13} /> Complete
-          </button>
-          {editing && (
-            <button onClick={() => handleDelete(editing.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors">
-              <Trash2 size={13} /> Delete
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Date bar */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-3 mb-4 flex items-center gap-6">
-        <div className="flex items-center gap-3">
-          <Input type="date" label="Verification Date" value={verificationDate} onChange={(e) => setVerificationDate(e.target.value)} />
-        </div>
-        <div className="flex items-center gap-3 text-xs text-gray-500 ml-auto">
-          <span>{lines.length} lines</span>
-          {lines.filter((l) => l.difference > 0 && !l.isNewBatch).length > 0 && (
-            <span className="text-green-600 font-semibold">
-              ↑ {lines.filter((l) => l.difference > 0 && !l.isNewBatch).length} increases
-            </span>
-          )}
-          {lines.filter((l) => l.difference < 0).length > 0 && (
-            <span className="text-red-600 font-semibold">
-              ↓ {lines.filter((l) => l.difference < 0).length} decreases
-            </span>
-          )}
-          {lines.filter((l) => l.isNewBatch).length > 0 && (
-            <span className="text-blue-600 font-semibold">
-              + {lines.filter((l) => l.isNewBatch).length} new batches
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Content Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-
-        {/* Tab Header */}
-        <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-          <div className="flex gap-1">
-            {([
-              { id: "scan",  label: "Scan & Verify" },
-              { id: "lines", label: `Verification Lines${lines.length > 0 ? ` (${lines.length})` : ""}` },
-            ] as const).map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${
-                  activeTab === tab.id
-                    ? "bg-white text-blue-700 border-blue-600"
-                    : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white/60"
-                }`}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="p-6">
-
-          {/* ── SCAN TAB ── */}
-          {activeTab === "scan" && (
-            <div className="space-y-4">
-
-              {/* Scan trigger */}
+          {/* ── VERIFICATION DETAILS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-2">
+              <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest">Verification Details</h3>
+              {editing && (
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${STATUS_STYLE[editing.status]}`}>
+                  {editing.status}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-6 flex-wrap">
               <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Scan Item Batch
-                </p>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => { setScanError(""); setShowScanner(true); }}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                    <Scan size={15} /> Scan Batch QR
-                  </button>
-                  <span className="text-xs text-gray-400">Scan a GRN batch QR label to load item details</span>
-                </div>
-                {scanError && (
-                  <div className="mt-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{scanError}</div>
+                <Input type="date" label="Verification Date" value={verificationDate} onChange={(e) => setVerificationDate(e.target.value)} />
+              </div>
+              <div className="flex items-center gap-3 text-xs text-gray-500 ml-auto">
+                <span>{lines.length} lines</span>
+                {lines.filter((l) => l.difference > 0 && !l.isNewBatch).length > 0 && (
+                  <span className="text-green-600 font-semibold">
+                    ↑ {lines.filter((l) => l.difference > 0 && !l.isNewBatch).length} increases
+                  </span>
+                )}
+                {lines.filter((l) => l.difference < 0).length > 0 && (
+                  <span className="text-red-600 font-semibold">
+                    ↓ {lines.filter((l) => l.difference < 0).length} decreases
+                  </span>
+                )}
+                {lines.filter((l) => l.isNewBatch).length > 0 && (
+                  <span className="text-blue-600 font-semibold">
+                    + {lines.filter((l) => l.isNewBatch).length} new batches
+                  </span>
                 )}
               </div>
-
-              {/* Scanned batch card */}
-              {scannedBatch && (
-                <div className="space-y-4">
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2">
-                    Batch Details
-                  </p>
-
-                  {/* Batch info grid */}
-                  <div className="grid grid-cols-3 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-5 text-xs">
-                    <div className="col-span-3 pb-3 border-b border-blue-100">
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1">Internal Batch No.</p>
-                      <p className="font-mono text-blue-700 font-bold text-sm break-all">{scannedBatch.batchNo}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Item</p>
-                      <p className="font-semibold text-gray-800">{scannedBatch.itemName}</p>
-                      <p className="font-mono text-blue-600 mt-0.5">{scannedBatch.itemCode}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Supplier Batch</p>
-                      <p className="font-mono text-gray-700">{scannedBatch.supplierBatchNo || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">GRN / Receipt</p>
-                      <p className="font-mono text-blue-700">{scannedBatch.grnNo}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Item Group</p>
-                      <p className="text-gray-700">{scannedBatch.itemGroup}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Sub Group</p>
-                      <p className="text-gray-700">{scannedBatch.itemSubGroup}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Unit</p>
-                      <p className="text-gray-700">{scannedBatch.stockUnit}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Warehouse</p>
-                      <p className="text-gray-700">{scannedBatch.warehouseName}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Bin Location</p>
-                      <p className="font-mono text-gray-700">{scannedBatch.bin}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">System Stock</p>
-                      <p className="font-bold text-gray-800 text-sm">{scannedBatch.systemQty.toLocaleString()} {scannedBatch.stockUnit}</p>
-                    </div>
-                  </div>
-
-                  {/* Physical qty entry */}
-                  <div className="flex items-end gap-6">
-                    <div className="flex-1 max-w-xs">
-                      <Input
-                        label={`Physical Qty (${scannedBatch.stockUnit}) *`}
-                        type="number" min={0} step={0.01}
-                        value={physicalQty || ""}
-                        onChange={(e) => setPhysicalQty(Number(e.target.value))}
-                        autoFocus
-                      />
-                    </div>
-
-                    {/* Difference indicator */}
-                    <div className="flex-1 max-w-xs">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Difference</label>
-                      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm ${
-                        diff > 0 ? "bg-green-50 border-green-200 text-green-700"
-                        : diff < 0 ? "bg-red-50 border-red-200 text-red-700"
-                        : "bg-gray-50 border-gray-200 text-gray-500"
-                      }`}>
-                        {diff > 0 ? <TrendingUp size={16} /> : diff < 0 ? <TrendingDown size={16} /> : <Minus size={16} />}
-                        {diff > 0 ? "+" : ""}{diff.toLocaleString()} {scannedBatch.stockUnit}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Action buttons */}
-                  <div className="flex items-center gap-3 pt-2">
-                    <button
-                      onClick={addUpdateLine}
-                      disabled={physicalQty === 0 && diff === 0}
-                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40">
-                      <CheckCircle2 size={15} />
-                      {lines.some((l) => l.batchNo === scannedBatch.batchNo) ? "Update Line" : "Add to Verification"}
-                    </button>
-                    <button
-                      onClick={() => setShowNewBatchModal(true)}
-                      className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors">
-                      <PackagePlus size={15} /> New Stock
-                    </button>
-                    <button onClick={() => { setScannedBatch(null); setPhysicalQty(0); setScanError(""); }}
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                      <X size={14} /> Clear
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-          )}
+          </div>
 
-          {/* ── LINES TAB ── */}
-          {activeTab === "lines" && (
-            <div className="space-y-5">
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                  Verification Lines
+          {/* ── SCAN ITEM BATCH ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <SectionTitle title="Scan Item Batch" />
+            <div className="flex items-center gap-3">
+              <button onClick={() => { setScanError(""); setShowScanner(true); }}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                <Scan size={15} /> Scan Batch QR
+              </button>
+              <span className="text-xs text-gray-400">Scan a GRN batch QR label to load item details</span>
+            </div>
+            {scanError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-sm text-red-600">{scanError}</div>
+            )}
+
+            {/* Scanned batch card */}
+            {scannedBatch && (
+              <div className="space-y-4 pt-2">
+                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2">
+                  Batch Details
                 </p>
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1000 }}>
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        {[
-                          "Batch No.", "Item Code", "Item Name", "Group", "Sub Group",
-                          "Warehouse", "Bin", "GRN Ref.",
-                          "System Qty", "Physical Qty", "Difference", "Type", "",
-                        ].map((h, i) => (
-                          <th key={i} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.length === 0 ? (
-                        <tr>
-                          <td colSpan={13} className="text-center py-16 text-gray-400">
-                            Go to the Scan & Verify tab to scan item batches.
-                          </td>
-                        </tr>
-                      ) : lines.map((line, idx) => (
-                        <tr key={line.lineId} className={`border-t border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-3 py-2.5 font-mono text-[10px] text-blue-700 font-semibold max-w-[180px]">
-                            <span className="block truncate" title={line.batchNo}>{line.batchNo}</span>
-                          </td>
-                          <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.itemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800">
-                            <div className="truncate" style={{ maxWidth: 160 }} title={line.itemName}>{line.itemName}</div>
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.itemGroup}</td>
-                          <td className="px-3 py-2.5 text-gray-500">
-                            <div className="truncate" style={{ maxWidth: 120 }} title={line.itemSubGroup}>{line.itemSubGroup}</div>
-                          </td>
-                          <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.warehouseName}</td>
-                          <td className="px-3 py-2.5 font-mono text-gray-700">{line.bin}</td>
-                          <td className="px-3 py-2.5 font-mono text-[10px] text-blue-600">{line.grnNo || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600 font-semibold">
-                            {line.isNewBatch ? "—" : line.systemQty.toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-bold text-gray-800">{line.physicalQty.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-right">
-                            {line.isNewBatch ? (
-                              <span className="text-blue-600 font-semibold">New</span>
-                            ) : (
-                              <span className={`font-bold ${line.difference > 0 ? "text-green-600" : line.difference < 0 ? "text-red-600" : "text-gray-600"}`}>
-                                {line.difference > 0 ? "+" : ""}{line.difference.toLocaleString()}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5">
-                            {line.isNewBatch ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold whitespace-nowrap">
-                                <PackagePlus size={9} /> New Batch
-                              </span>
-                            ) : line.difference > 0 ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
-                                <TrendingUp size={9} /> Increase
-                              </span>
-                            ) : line.difference < 0 ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
-                                <TrendingDown size={9} /> Decrease
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-semibold">
-                                Match
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500">
-                              <X size={14} />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
 
-              {/* Remark */}
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark</p>
-                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" />
-              </div>
-
-              {/* Summary */}
-              {lines.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-5 py-3 grid grid-cols-4 gap-3 text-xs">
-                  <div className="text-center">
-                    <p className="text-gray-500 uppercase tracking-wider mb-0.5">Total Lines</p>
-                    <p className="font-bold text-gray-800 text-base">{lines.length}</p>
+                {/* Batch info grid */}
+                <div className="grid grid-cols-3 gap-3 bg-blue-50 border border-blue-100 rounded-xl p-5 text-xs">
+                  <div className="col-span-3 pb-3 border-b border-blue-100">
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1">Internal Batch No.</p>
+                    <p className="font-mono text-blue-700 font-bold text-sm break-all">{scannedBatch.batchNo}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-gray-500 uppercase tracking-wider mb-0.5">Increases</p>
-                    <p className="font-bold text-green-600 text-base">{lines.filter((l) => l.difference > 0 && !l.isNewBatch).length}</p>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Item</p>
+                    <p className="font-semibold text-gray-800">{scannedBatch.itemName}</p>
+                    <p className="font-mono text-blue-600 mt-0.5">{scannedBatch.itemCode}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-gray-500 uppercase tracking-wider mb-0.5">Decreases</p>
-                    <p className="font-bold text-red-600 text-base">{lines.filter((l) => l.difference < 0).length}</p>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Supplier Batch</p>
+                    <p className="font-mono text-gray-700">{scannedBatch.supplierBatchNo || "—"}</p>
                   </div>
-                  <div className="text-center">
-                    <p className="text-gray-500 uppercase tracking-wider mb-0.5">New Batches</p>
-                    <p className="font-bold text-blue-600 text-base">{lines.filter((l) => l.isNewBatch).length}</p>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">GRN / Receipt</p>
+                    <p className="font-mono text-blue-700">{scannedBatch.grnNo}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Item Group</p>
+                    <p className="text-gray-700">{scannedBatch.itemGroup}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Sub Group</p>
+                    <p className="text-gray-700">{scannedBatch.itemSubGroup}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Unit</p>
+                    <p className="text-gray-700">{scannedBatch.stockUnit}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Warehouse</p>
+                    <p className="text-gray-700">{scannedBatch.warehouseName}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">Bin Location</p>
+                    <p className="font-mono text-gray-700">{scannedBatch.bin}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 font-semibold uppercase tracking-wider mb-0.5">System Stock</p>
+                    <p className="font-bold text-gray-800 text-sm">{scannedBatch.systemQty.toLocaleString()} {scannedBatch.stockUnit}</p>
                   </div>
                 </div>
-              )}
+
+                {/* Physical qty entry */}
+                <div className="flex items-end gap-6">
+                  <div className="flex-1 max-w-xs">
+                    <Input
+                      label={`Physical Qty (${scannedBatch.stockUnit}) *`}
+                      type="number" min={0} step={0.01}
+                      value={physicalQty || ""}
+                      onChange={(e) => setPhysicalQty(Number(e.target.value))}
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Difference indicator */}
+                  <div className="flex-1 max-w-xs">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Difference</label>
+                    <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border font-bold text-sm ${
+                      diff > 0 ? "bg-green-50 border-green-200 text-green-700"
+                      : diff < 0 ? "bg-red-50 border-red-200 text-red-700"
+                      : "bg-gray-50 border-gray-200 text-gray-500"
+                    }`}>
+                      {diff > 0 ? <TrendingUp size={16} /> : diff < 0 ? <TrendingDown size={16} /> : <Minus size={16} />}
+                      {diff > 0 ? "+" : ""}{diff.toLocaleString()} {scannedBatch.stockUnit}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={addUpdateLine}
+                    disabled={physicalQty === 0 && diff === 0}
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40">
+                    <CheckCircle2 size={15} />
+                    {lines.some((l) => l.batchNo === scannedBatch.batchNo) ? "Update Line" : "Add to Verification"}
+                  </button>
+                  <button
+                    onClick={() => setShowNewBatchModal(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 transition-colors">
+                    <PackagePlus size={15} /> New Stock
+                  </button>
+                  <button onClick={() => { setScannedBatch(null); setPhysicalQty(0); setScanError(""); }}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                    <X size={14} /> Clear
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── VERIFICATION LINES ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
+            <SectionTitle title={`Verification Lines${lines.length > 0 ? ` (${lines.length})` : ""}`} />
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-xs" style={{ minWidth: 1000 }}>
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {[
+                      "Batch No.", "Item Code", "Item Name", "Group", "Sub Group",
+                      "Warehouse", "Bin", "GRN Ref.",
+                      "System Qty", "Physical Qty", "Difference", "Type", "",
+                    ].map((h, i) => (
+                      <th key={i} className="px-3 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.length === 0 ? (
+                    <tr>
+                      <td colSpan={13} className="text-center py-16 text-gray-400">
+                        Scan an item batch above to add verification lines.
+                      </td>
+                    </tr>
+                  ) : lines.map((line, idx) => (
+                    <tr key={line.lineId} className={`border-t border-gray-100 hover:bg-gray-50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                      <td className="px-3 py-2.5 font-mono text-[10px] text-blue-700 font-semibold max-w-[180px]">
+                        <span className="block truncate" title={line.batchNo}>{line.batchNo}</span>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.itemCode}</td>
+                      <td className="px-3 py-2.5 text-gray-800">
+                        <div className="truncate" style={{ maxWidth: 160 }} title={line.itemName}>{line.itemName}</div>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.itemGroup}</td>
+                      <td className="px-3 py-2.5 text-gray-500">
+                        <div className="truncate" style={{ maxWidth: 120 }} title={line.itemSubGroup}>{line.itemSubGroup}</div>
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{line.warehouseName}</td>
+                      <td className="px-3 py-2.5 font-mono text-gray-700">{line.bin}</td>
+                      <td className="px-3 py-2.5 font-mono text-[10px] text-blue-600">{line.grnNo || "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 font-semibold">
+                        {line.isNewBatch ? "—" : line.systemQty.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2.5 text-right font-bold text-gray-800">{line.physicalQty.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right">
+                        {line.isNewBatch ? (
+                          <span className="text-blue-600 font-semibold">New</span>
+                        ) : (
+                          <span className={`font-bold ${line.difference > 0 ? "text-green-600" : line.difference < 0 ? "text-red-600" : "text-gray-600"}`}>
+                            {line.difference > 0 ? "+" : ""}{line.difference.toLocaleString()}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {line.isNewBatch ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-semibold whitespace-nowrap">
+                            <PackagePlus size={9} /> New Batch
+                          </span>
+                        ) : line.difference > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
+                            <TrendingUp size={9} /> Increase
+                          </span>
+                        ) : line.difference < 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-semibold">
+                            <TrendingDown size={9} /> Decrease
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-[10px] font-semibold">
+                            Match
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button onClick={() => removeLine(line.lineId)} className="text-gray-300 hover:text-red-500">
+                          <X size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
 
+            {/* Summary */}
+            {lines.length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-5 py-3 grid grid-cols-4 gap-3 text-xs">
+                <div className="text-center">
+                  <p className="text-gray-500 uppercase tracking-wider mb-0.5">Total Lines</p>
+                  <p className="font-bold text-gray-800 text-base">{lines.length}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 uppercase tracking-wider mb-0.5">Increases</p>
+                  <p className="font-bold text-green-600 text-base">{lines.filter((l) => l.difference > 0 && !l.isNewBatch).length}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 uppercase tracking-wider mb-0.5">Decreases</p>
+                  <p className="font-bold text-red-600 text-base">{lines.filter((l) => l.difference < 0).length}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 uppercase tracking-wider mb-0.5">New Batches</p>
+                  <p className="font-bold text-blue-600 text-base">{lines.filter((l) => l.isNewBatch).length}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── REMARK ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Remark" />
+            <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+              placeholder="Optional notes…" />
+          </div>
+        </div>
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editing && (
+            <Button variant="action-cancel" size="sm" onClick={() => handleDelete(editing.id)}>
+              Delete
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" onClick={() => save("Draft")}>
+            Save as Draft
+          </Button>
+          <Button
+            variant="action-save" size="sm"
+            icon={<ClipboardCheck size={14} />}
+            disabled={lines.length === 0}
+            onClick={() => save("Completed")}
+          >
+            Complete
+          </Button>
         </div>
       </div>
 
@@ -891,6 +839,6 @@ export default function PhysicalVerificationPage() {
           }}
           onClose={() => setShowNewBatchModal(false)} />
       )}
-    </div>
+    </Modal>
   );
 }

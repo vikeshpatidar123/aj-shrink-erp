@@ -1301,7 +1301,14 @@ export function DataGrid<TData>({
 
   // Row click handler for selection
   const handleRowClick = useCallback((row: Row<TData>, rowIndex: number, event: React.MouseEvent) => {
-    if (!enableRowClickSelection) return
+    if (!enableRowClickSelection) {
+      // Row-click-selection is off (no checkbox/tint) — treat a single click as a
+      // plain "open/select this row" signal instead of silently doing nothing.
+      const target = event.target as HTMLElement
+      if (target.closest('button') || target.closest('a') || target.closest('input')) return
+      onRowClick?.(row.original)
+      return
+    }
 
     // Prevent selection if clicking on a button or input (but allow checkbox clicks)
     const target = event.target as HTMLElement
@@ -1350,7 +1357,7 @@ export function DataGrid<TData>({
         setLastClickedRowIndex(rowIndex)
       }
     }
-  }, [enableRowClickSelection, viewMode, rowSelectionMode, enableShiftClickRange, enableCtrlClickMultiSelect, lastClickedRowIndex, table])
+  }, [enableRowClickSelection, viewMode, rowSelectionMode, enableShiftClickRange, enableCtrlClickMultiSelect, lastClickedRowIndex, table, onRowClick])
 
   // Keyboard handler for Space key selection
   useEffect(() => {

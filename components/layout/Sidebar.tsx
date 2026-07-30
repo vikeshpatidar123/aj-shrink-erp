@@ -54,6 +54,7 @@ export const navItems: NavItem[] = [
     label: "Production", icon: PlayCircle, badge: "GRV" as NavBadge,
     children: [
       { label: "Job Production",          href: "/gravure/production/job-production",          icon: PlayCircle },
+      { label: "Machine Wise Schedule",   href: "/gravure/production/machine-wise-schedule",   icon: Calendar },
       { label: "QC & Packing",            href: "/gravure/production/qc-packing",              icon: ShieldCheck },
       { label: "Job Status Modification", href: "/gravure/production/job-status-modification", icon: ListChecks },
     ],

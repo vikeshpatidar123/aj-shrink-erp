@@ -3,13 +3,18 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import jsQR from "jsqr";
 import {
   X, Scan, QrCode, CheckCircle2, Pencil, Trash2, Plus,
-  Camera, Keyboard, Search, RotateCcw, List, RefreshCw, AlertCircle,
-  ArrowLeftRight, Package,
+  Camera, Keyboard, Search, RotateCcw, RefreshCw, AlertCircle,
+  History,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { authHeaders } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
+import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
+
+const SectionTitle = ({ title }: { title: string }) => (
+  <h3 className="text-xs font-bold text-blue-700 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">{title}</h3>
+);
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -256,7 +261,7 @@ function JobCardPickerModal({ onSelect, onClose }: {
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[900px] max-h-[80vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-[95vw] max-w-[1300px] max-h-[85vh] flex flex-col overflow-hidden">
         <div className="bg-blue-600 text-white px-6 py-3.5 flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-sm">Select Job Card</h3>
           <button onClick={onClose} className="text-blue-200 hover:text-white"><X size={18} /></button>
@@ -414,12 +419,10 @@ function ReturnConfirmModal({ item, warehouses, onConfirm, onClose }: {
 export default function ReturnToStockPage() {
   const [view, setView] = useState<"list" | "form">("list");
   const [editingID, setEditingID] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"basic" | "picklist" | "items">("basic");
 
-  // List
-  const [fromDate, setFromDate] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().split("T")[0]; });
-  const [toDate, setToDate] = useState(todayISO());
-  const [listSearch, setListSearch] = useState("");
+  // List — date filter handled entirely by the grid's own built-in date-filter icon
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [listData, setListData] = useState<RTSRecord[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [listError, setListError] = useState("");
@@ -454,11 +457,12 @@ export default function ReturnToStockPage() {
   const [showBatchScanner, setShowBatchScanner] = useState(false);
   const [pendingReturn, setPendingReturn] = useState<FloorStockItem | null>(null);
 
-  // ── Load List ──────────────────────────────────────────────
+  // ── Load list — always loads the full history; the grid's own
+  //    date-filter (below) narrows it down client-side. ───────
   const loadList = useCallback(async () => {
     setLoadingList(true); setListError("");
     try {
-      const d = await apiFetch(`${BASE_URL}/api/ReturntoStockAJ/Showlist?fromDateValue=${fromDate}&ToDateValue=${toDate}`);
+      const d = await apiFetch(`${BASE_URL}/api/ReturntoStockAJ/Showlist?fromDateValue=1900-01-01&ToDateValue=2099-12-31`);
       if (Array.isArray(d)) {
         const map = new Map<number, { row: RTSRecord; totalQty: number; count: number }>();
         d.forEach((r: RTSRecord) => {
@@ -472,7 +476,7 @@ export default function ReturnToStockPage() {
       }
     } catch { setListError("Network error"); }
     setLoadingList(false);
-  }, [fromDate, toDate]);
+  }, []);
 
   useEffect(() => { if (view === "list") loadList(); }, [view, loadList]);
 
@@ -532,8 +536,7 @@ export default function ReturnToStockPage() {
           .map(parseFloorItem)
           .filter((it) => it.JobCardNo === jc.JobCardContentNo && it.FloorStock > 0);
         setFloorItems(filtered);
-        if (filtered.length > 0) setActiveTab("picklist");
-        else alert("No items with available floor stock found for this Job Card.");
+        if (filtered.length === 0) alert("No items with available floor stock found for this Job Card.");
       }
     } catch { alert("Error loading floor stock items."); }
     setLoadingFloor(false);
@@ -630,7 +633,6 @@ export default function ReturnToStockPage() {
       JobCardNo: item.JobCardNo,
     };
     setLines((prev) => [...prev, newLine]);
-    setActiveTab("items");
   };
 
   const removeLine = (lineId: string) => setLines((prev) => prev.filter((l) => l.lineId !== lineId));
@@ -829,7 +831,6 @@ export default function ReturnToStockPage() {
         JobCardNo: row.JobCardNo || "",
       })));
     }
-    setActiveTab("items");
     setView("form");
   };
 
@@ -845,17 +846,17 @@ export default function ReturnToStockPage() {
     setManualJobCardNo("");
     setLines([]);
     setRemark("");
-    setActiveTab("basic");
     setSaveError("");
   };
 
+  // Client-side date filter applied on top of the fully-loaded list
+  // (text search is handled by the grid's own built-in search box).
   const filteredList = listData.filter((r) => {
-    if (!listSearch) return true;
-    const s = listSearch.toLowerCase();
-    return r.VoucherNo?.toLowerCase().includes(s) ||
-      r.JobCardNo?.toLowerCase().includes(s) ||
-      r.ItemName?.toLowerCase().includes(s) ||
-      r.DepartmentName?.toLowerCase().includes(s);
+    if (!r.VoucherDate) return true;
+    const d = new Date(r.VoucherDate).toISOString().split("T")[0];
+    if (fromDate && d < fromDate) return false;
+    if (toDate && d > toDate) return false;
+    return true;
   });
 
   const showPicklistTab = returnMode === "Job-wise" && floorItems.length > 0;
@@ -886,34 +887,23 @@ export default function ReturnToStockPage() {
       <div className="w-full space-y-4">
 
         {/* Page heading */}
-        <div className="text-center pt-1">
-          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Return to Stock</h2>
-          <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} return vouchers</p>
+        <div className="flex items-center justify-between gap-3 pt-1">
+          <div className="w-[124px] flex-shrink-0" />
+          <div className="text-center flex-1">
+            <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Return to Stock</h2>
+            <p className="text-sm text-[rgb(var(--fg-muted))]">{filteredList.length} return vouchers</p>
+          </div>
+          <div className="w-[124px] flex-shrink-0 flex justify-end">
+            <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => alert("Audit Trail — coming soon")}>
+              Audit Trail
+            </Button>
+          </div>
         </div>
 
         {/* Controls row */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          {/* Left: date range + search */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <span className="text-xs font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider">From</span>
-              <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-              <span className="text-[rgb(var(--fg-subtle))] text-xs">to</span>
-              <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-            <div className="flex items-center gap-2 bg-[rgb(var(--bg-surface))] border border-[rgb(var(--bd-default))] rounded-lg px-3 py-2 shadow-sm">
-              <Search size={14} className="text-[rgb(var(--fg-muted))] shrink-0" />
-              <input type="text" placeholder="Search voucher, job card, department, item…" value={listSearch}
-                onChange={(e) => setListSearch(e.target.value)}
-                className="bg-transparent text-xs text-[rgb(var(--fg-default))] outline-none w-48 sm:w-64 border-none" />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
-            <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Return</Button>
-          </div>
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} className={loadingList ? "animate-spin" : ""} />} onClick={loadList} />
+          <Button variant="action-create" size="sm" icon={<Plus size={15} />} onClick={openNew}>New Return</Button>
         </div>
 
         {listError && (
@@ -934,6 +924,10 @@ export default function ReturnToStockPage() {
                 columns={returnColumns}
                 getRowId={rec => String(rec.TransactionID)}
                 loading={loadingList}
+                dateFrom={fromDate ? new Date(fromDate) : null}
+                dateTo={toDate ? new Date(toDate) : null}
+                onDateFromChange={d => setFromDate(d ? d.toISOString().split("T")[0] : "")}
+                onDateToChange={d => setToDate(d ? d.toISOString().split("T")[0] : "")}
                 actions={rec => (
                   <div className="flex items-center gap-1.5 justify-center">
                     <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(rec)}>Edit</Button>
@@ -952,372 +946,167 @@ export default function ReturnToStockPage() {
   // FORM VIEW
   // ══════════════════════════════════════════════════════════
   return (
-    <div className="w-full pb-10">
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editingID ? `Edit Return — ${currentVoucherNo}` : "Return to Stock Creation"}
+      size="2xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+        <div className="p-6 space-y-6">
 
-      {/* Header ribbon */}
-      <div className="flex items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div>
-            <p className="text-xs text-gray-400 font-medium">Inventory</p>
-            <h2 className="text-lg font-bold text-gray-800 leading-tight">Return to Stock</h2>
-          </div>
-          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 font-mono text-xs font-semibold border border-blue-100">
-            {currentVoucherNo}
-          </span>
-          {editingID && (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-              Editing #{editingID}
-            </span>
+          {saveError && (
+            <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+              <AlertCircle size={15} /> {saveError}
+            </div>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setView("list")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50">
-            <List size={13} /> List
-          </button>
-          <button onClick={save} disabled={lines.length === 0 || saving}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 shadow-sm">
-            {saving ? <RefreshCw size={13} className="animate-spin" /> : <RotateCcw size={13} />}
-            {saving ? "Saving…" : `Save${lines.length > 0 ? ` (${lines.length})` : ""}`}
-          </button>
-          {editingID && (
-            <button onClick={() => handleDelete(editingID)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-600 border border-red-200 rounded-lg hover:bg-red-50">
-              <Trash2 size={13} /> Delete
-            </button>
-          )}
-        </div>
-      </div>
 
-      {saveError && (
-        <div className="mb-4 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-          <AlertCircle size={15} /> {saveError}
-        </div>
-      )}
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* Tabs */}
-        <div className="px-6 pt-5 border-b border-gray-200 bg-gray-50/30">
-          <div className="flex gap-1">
-            {([
-              { id: "basic" as const, label: "Basic", show: true },
-              { id: "picklist" as const, label: `Picklist${floorItems.length > 0 ? ` (${floorItems.length})` : ""}`, show: showPicklistTab },
-              { id: "items" as const, label: `Return Lines${lines.length > 0 ? ` (${lines.length})` : ""}`, show: true },
-            ] as const).filter((t) => t.show).map((tab) => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${activeTab === tab.id
-                  ? "bg-white text-blue-700 border-blue-600"
-                  : "text-gray-500 border-transparent hover:text-gray-700 hover:bg-white/60"
-                }`}>
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="p-6">
-
-          {/* ── BASIC TAB ── */}
-          {activeTab === "basic" && (
-            <div className="space-y-6">
-
-              {/* Voucher details */}
+          {/* ── RETURN DETAILS ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+            <SectionTitle title="Return Details" />
+            <div className="grid grid-cols-3 gap-4">
               <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Return Details</p>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Input label="Voucher No." readOnly value={currentVoucherNo} />
+                <Input label="Voucher No." readOnly value={currentVoucherNo} />
+              </div>
+              <div>
+                <Input label="Return Date" type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Return Mode</label>
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                  {(["Job-wise", "Item-wise"] as const).map((m) => (
+                    <button key={m} onClick={() => {
+                      setReturnMode(m);
+                      setSelectedJobCard(null);
+                      setFloorItems([]);
+                      setLines([]);
+                      setManualJobCardNo("");
+                      setBatchResults([]);
+                      setBatchSearch("");
+                      if (m === "Item-wise") loadAllForItemWise();
+                    }}
+                      className={`flex-1 px-4 py-2 text-sm font-semibold transition-colors ${returnMode === m ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Job-wise: job card selection */}
+          {returnMode === "Job-wise" && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <SectionTitle title="Job Card Selection" />
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="min-w-[240px] flex-1 max-w-sm">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Job Card Content No.</label>
+                  <div className="flex gap-2">
+                    <Input type="text" value={manualJobCardNo}
+                      onChange={(e) => setManualJobCardNo(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && manualJobCardNo.trim()) handleJobCardScan(manualJobCardNo); }}
+                      placeholder="Enter job card no…"
+                      className="flex-1 font-mono" />
+                    <button onClick={() => handleJobCardScan(manualJobCardNo)}
+                      disabled={!manualJobCardNo.trim()}
+                      className="flex-shrink-0 flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 h-[38px]">
+                      <Search size={13} /> Find
+                    </button>
                   </div>
-                  <div>
-                    <Input label="Return Date" type="date" value={voucherDate} onChange={(e) => setVoucherDate(e.target.value)} />
+                </div>
+                <button onClick={() => setShowJobScanner(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 whitespace-nowrap">
+                  <Scan size={15} /> Scan QR
+                </button>
+                <button onClick={() => setShowJobPicker(true)}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                  <Search size={15} /> Pick from List
+                </button>
+              </div>
+
+              {loadingFloor && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                  <RefreshCw size={14} className="animate-spin" /> Loading floor stock…
+                </div>
+              )}
+
+              {selectedJobCard && (
+                <div className="mt-4 flex items-center gap-6 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-green-500" />
+                    <span className="font-mono font-bold text-blue-700 text-sm">{selectedJobCard.JobCardContentNo}</span>
                   </div>
-                  <div>
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Return Mode</label>
-                    <div className="flex rounded-lg border border-gray-300 overflow-hidden">
-                      {(["Job-wise", "Item-wise"] as const).map((m) => (
-                        <button key={m} onClick={() => {
-                          setReturnMode(m);
-                          setSelectedJobCard(null);
-                          setFloorItems([]);
-                          setLines([]);
-                          setManualJobCardNo("");
-                          setBatchResults([]);
-                          setBatchSearch("");
-                          setActiveTab("basic");
-                          if (m === "Item-wise") loadAllForItemWise();
-                        }}
-                          className={`flex-1 px-4 py-2 text-sm font-semibold transition-colors ${returnMode === m ? "bg-blue-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
-                          {m}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="text-sm">
+                    <span className="font-semibold text-gray-700">{selectedJobCard.JobName}</span>
+                    {selectedJobCard.PlanContName && <span className="text-gray-500 ml-2 text-xs">· {selectedJobCard.PlanContName}</span>}
+                  </div>
+                  <div className="ml-auto text-xs text-gray-500">
+                    <span className="font-semibold text-blue-700">{floorItems.length}</span> items with floor stock
+                    {lines.length > 0 && <span className="ml-2 text-blue-700 font-semibold">· {lines.length} in return list</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Item-wise: batch search */}
+          {returnMode === "Item-wise" && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+              <SectionTitle title="Batch / Item Search" />
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="min-w-[280px] flex-1 max-w-md">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Batch No. / Item Code / Name</label>
+                  <div className="flex gap-2">
+                    <Input type="text" value={batchSearch}
+                      onChange={(e) => { setBatchSearch(e.target.value); searchBatch(e.target.value); }}
+                      placeholder="Search batch no, item code or name…"
+                      className="flex-1 font-mono" />
+                    <button onClick={() => setShowBatchScanner(true)}
+                      className="flex-shrink-0 flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 h-[38px]">
+                      <Scan size={15} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Job-wise: job card selection */}
-              {returnMode === "Job-wise" && (
-                <div>
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Job Card Selection</p>
-                  <div className="flex items-end gap-3 flex-wrap">
-                    <div className="min-w-[240px] flex-1 max-w-sm">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Job Card Content No.</label>
-                      <div className="flex gap-2">
-                        <Input type="text" value={manualJobCardNo}
-                          onChange={(e) => setManualJobCardNo(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter" && manualJobCardNo.trim()) handleJobCardScan(manualJobCardNo); }}
-                          placeholder="Enter job card no…"
-                          className="flex-1 font-mono" />
-                        <button onClick={() => handleJobCardScan(manualJobCardNo)}
-                          disabled={!manualJobCardNo.trim()}
-                          className="flex-shrink-0 flex items-center gap-1 px-3 py-2 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 h-[38px]">
-                          <Search size={13} /> Find
-                        </button>
-                      </div>
-                    </div>
-                    <button onClick={() => setShowJobScanner(true)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 whitespace-nowrap">
-                      <Scan size={15} /> Scan QR
-                    </button>
-                    <button onClick={() => setShowJobPicker(true)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap">
-                      <Search size={15} /> Pick from List
-                    </button>
-                  </div>
-
-                  {loadingFloor && (
-                    <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                      <RefreshCw size={14} className="animate-spin" /> Loading floor stock…
-                    </div>
-                  )}
-
-                  {selectedJobCard && (
-                    <div className="mt-4 flex items-center gap-6 bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex-wrap">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 size={14} className="text-green-500" />
-                        <span className="font-mono font-bold text-blue-700 text-sm">{selectedJobCard.JobCardContentNo}</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="font-semibold text-gray-700">{selectedJobCard.JobName}</span>
-                        {selectedJobCard.PlanContName && <span className="text-gray-500 ml-2 text-xs">· {selectedJobCard.PlanContName}</span>}
-                      </div>
-                      <div className="ml-auto text-xs text-gray-500">
-                        <span className="font-semibold text-blue-700">{floorItems.length}</span> items with floor stock
-                        {lines.length > 0 && <span className="ml-2 text-blue-700 font-semibold">· {lines.length} in return list</span>}
-                      </div>
-                    </div>
-                  )}
+              {loadingAll && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
+                  <RefreshCw size={14} className="animate-spin" /> Loading available stock…
                 </div>
               )}
 
-              {/* Item-wise: batch search */}
-              {returnMode === "Item-wise" && (
-                <div>
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Batch / Item Search</p>
-                  <div className="flex items-end gap-3 flex-wrap">
-                    <div className="min-w-[280px] flex-1 max-w-md">
-                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1.5">Batch No. / Item Code / Name</label>
-                      <div className="flex gap-2">
-                        <Input type="text" value={batchSearch}
-                          onChange={(e) => { setBatchSearch(e.target.value); searchBatch(e.target.value); }}
-                          placeholder="Search batch no, item code or name…"
-                          className="flex-1 font-mono" />
-                        <button onClick={() => setShowBatchScanner(true)}
-                          className="flex-shrink-0 flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 h-[38px]">
-                          <Scan size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {loadingAll && (
-                    <div className="mt-4 flex items-center gap-2 text-sm text-gray-500">
-                      <RefreshCw size={14} className="animate-spin" /> Loading available stock…
-                    </div>
-                  )}
-
-                  {batchSearch && batchResults.length === 0 && !loadingAll && (
-                    <div className="mt-4 text-sm text-gray-400">No items found matching &ldquo;{batchSearch}&rdquo;</div>
-                  )}
-
-                  {batchResults.length > 0 && (
-                    <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-gray-50 border-b border-gray-200">
-                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch No.</th>
-                            <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
-                            <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Floor Stock</th>
-                            <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {batchResults.map((it) => (
-                            <tr key={it.rowId} className="border-t border-gray-100 hover:bg-gray-50">
-                              <td className="px-4 py-2.5">
-                                <p className="font-semibold text-gray-800 text-sm">{it.ItemName}</p>
-                                <p className="font-mono text-xs text-blue-600">{it.ItemCode}</p>
-                              </td>
-                              <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{it.BatchNo || "—"}</td>
-                              <td className="px-4 py-2.5 text-xs text-gray-600">{it.VoucherNo || "—"}</td>
-                              <td className="px-4 py-2.5 text-right text-xs font-bold text-blue-700">
-                                {it.FloorStock.toLocaleString()} {it.StockUnit}
-                              </td>
-                              <td className="px-4 py-2.5 text-center">
-                                <button onClick={() => setPendingReturn(it)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 mx-auto">
-                                  <RotateCcw size={12} /> Return
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
+              {batchSearch && batchResults.length === 0 && !loadingAll && (
+                <div className="mt-4 text-sm text-gray-400">No items found matching &ldquo;{batchSearch}&rdquo;</div>
               )}
 
-            </div>
-          )}
-
-          {/* ── PICKLIST TAB (Job-wise) ── */}
-          {activeTab === "picklist" && returnMode === "Job-wise" && (
-            <div className="space-y-4">
-              <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">
-                Floor Stock for Job Card — {selectedJobCard?.JobCardContentNo}
-              </p>
-              {floorItems.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 text-sm">No items with available floor stock.</div>
-              ) : (
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
+              {batchResults.length > 0 && (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-gray-50 border-b border-gray-200">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch No.</th>
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Consumed</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Floor Stock</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Returning</th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch No.</th>
+                        <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
+                        <th className="px-4 py-2.5 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Floor Stock</th>
+                        <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {floorItems.map((item, idx) => {
-                        const returning = lines
-                          .filter((l) => l.ItemID === item.ItemID && l.BatchID === item.BatchID)
-                          .reduce((s, l) => s + l.ReturnQuantity, 0);
-                        const done = returning >= item.FloorStock;
-                        return (
-                          <tr key={item.rowId}
-                            className={`border-t border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                            <td className="px-4 py-3">
-                              <p className="font-semibold text-gray-800 text-sm">{item.ItemName}</p>
-                              <p className="font-mono text-xs text-blue-600">{item.ItemCode}</p>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.BatchNo || "—"}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{item.VoucherNo || "—"}</td>
-                            <td className="px-4 py-3 text-right text-xs text-gray-600">
-                              {item.IssueQuantity > 0 ? `${item.IssueQuantity.toLocaleString()} ${item.StockUnit}` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs text-orange-600 font-semibold">
-                              {item.ConsumeQuantity > 0 ? `${item.ConsumeQuantity.toLocaleString()} ${item.StockUnit}` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs font-bold text-blue-700">
-                              {item.FloorStock.toLocaleString()} {item.StockUnit}
-                            </td>
-                            <td className="px-4 py-3 text-right text-xs font-bold text-blue-700">
-                              {returning > 0 ? `${returning.toLocaleString()} ${item.StockUnit}` : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              {done ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-                                  <CheckCircle2 size={10} /> Done
-                                </span>
-                              ) : (
-                                <button onClick={() => setPendingReturn(item)}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 mx-auto">
-                                  <RotateCcw size={12} /> Return
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ── RETURN LINES TAB ── */}
-          {activeTab === "items" && (
-            <div className="space-y-5">
-              <div>
-                <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-4">
-                  <p className="text-xs font-bold text-blue-700 uppercase tracking-widest">Return Lines</p>
-                  {returnMode === "Item-wise" && (
-                    <button onClick={() => setActiveTab("basic")}
-                      className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50">
-                      <Package size={14} /> Add More Items
-                    </button>
-                  )}
-                  {returnMode === "Job-wise" && showPicklistTab && (
-                    <button onClick={() => setActiveTab("picklist")}
-                      className="flex items-center gap-2 px-4 py-1.5 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50">
-                      <ArrowLeftRight size={14} /> Back to Picklist
-                    </button>
-                  )}
-                </div>
-
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
-                  <table className="w-full text-xs" style={{ minWidth: 1200 }}>
-                    <thead>
-                      <tr className="bg-gray-50 border-b border-gray-200">
-                        {["Item Code", "Item Name", "Batch No.", "Sup. Batch", "Issue Voucher", "Floor Stk", "Return Qty", "Unit", "Dest. Warehouse", "Dest. Bin", ""].map((l, i) => (
-                          <th key={i} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${["Floor Stk", "Return Qty"].includes(l) ? "text-right" : "text-left"}`}>
-                            {l}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lines.length === 0 ? (
-                        <tr>
-                          <td colSpan={11} className="text-center py-16 text-gray-400">
-                            <div className="space-y-3 flex flex-col items-center">
-                              <RotateCcw size={36} className="text-gray-300" />
-                              <p className="text-sm font-medium text-gray-500">No return lines yet.</p>
-                              <button onClick={() => setActiveTab(returnMode === "Job-wise" ? (showPicklistTab ? "picklist" : "basic") : "basic")}
-                                className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-                                <Package size={14} /> {returnMode === "Job-wise" ? "Select Job Card" : "Search Items"}
-                              </button>
-                            </div>
+                      {batchResults.map((it) => (
+                        <tr key={it.rowId} className="border-t border-gray-100 hover:bg-gray-50">
+                          <td className="px-4 py-2.5">
+                            <p className="font-semibold text-gray-800 text-sm">{it.ItemName}</p>
+                            <p className="font-mono text-xs text-blue-600">{it.ItemCode}</p>
                           </td>
-                        </tr>
-                      ) : lines.map((line, idx) => (
-                        <tr key={line.lineId}
-                          className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
-                          <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
-                          <td className="px-3 py-2.5 text-gray-800">
-                            <div className="truncate" style={{ maxWidth: 180 }} title={line.ItemName}>{line.ItemName}</div>
+                          <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{it.BatchNo || "—"}</td>
+                          <td className="px-4 py-2.5 text-xs text-gray-600">{it.VoucherNo || "—"}</td>
+                          <td className="px-4 py-2.5 text-right text-xs font-bold text-blue-700">
+                            {it.FloorStock.toLocaleString()} {it.StockUnit}
                           </td>
-                          <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.BatchNo || "—"}</td>
-                          <td className="px-3 py-2.5 font-mono text-gray-600">{line.SupplierBatchNo || "—"}</td>
-                          <td className="px-3 py-2.5 font-mono text-gray-600">{line.IssueVoucherNo || "—"}</td>
-                          <td className="px-3 py-2.5 text-right text-gray-600 whitespace-nowrap">{line.FloorStock > 0 ? line.FloorStock.toLocaleString() : "—"}</td>
-                          <td className="px-3 py-2.5 text-right font-bold text-blue-700 whitespace-nowrap">{line.ReturnQuantity.toLocaleString()}</td>
-                          <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
-                          <td className="px-3 py-2.5 text-gray-700">{line.DestWarehouseName || "—"}</td>
-                          <td className="px-3 py-2.5 text-gray-600">{line.DestBinName || "—"}</td>
-                          <td className="px-3 py-2.5 text-center">
-                            <button onClick={() => removeLine(line.lineId)}
-                              className="text-gray-300 hover:text-red-500 transition-colors">
-                              <X size={14} />
+                          <td className="px-4 py-2.5 text-center">
+                            <button onClick={() => setPendingReturn(it)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 mx-auto">
+                              <RotateCcw size={12} /> Return
                             </button>
                           </td>
                         </tr>
@@ -1325,25 +1114,167 @@ export default function ReturnToStockPage() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              {/* Remark */}
-              <div>
-                <p className="text-xs font-bold text-blue-700 uppercase tracking-widest border-b border-gray-100 pb-2 mb-4">Remark / Narration</p>
-                <Input value={remark} onChange={(e) => setRemark(e.target.value)}
-                  placeholder="Optional notes…" />
-              </div>
-
-              {lines.length > 0 && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center gap-4 flex-wrap">
-                  <span>{lines.length} item{lines.length !== 1 ? "s" : ""}</span>
-                  <span>·</span>
-                  <span className="font-semibold text-blue-700">Total return: {totalReturnQty.toLocaleString()}</span>
-                </div>
               )}
             </div>
           )}
 
+          {/* ── PICKLIST (Job-wise, once floor stock is loaded) ── */}
+          {showPicklistTab && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-4">
+              <SectionTitle title={`Floor Stock for Job Card — ${selectedJobCard?.JobCardContentNo} (${floorItems.length})`} />
+              <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50 border-b border-gray-200">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Batch No.</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Issue Voucher</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Issued</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Consumed</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Floor Stock</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wide">Returning</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {floorItems.map((item, idx) => {
+                      const returning = lines
+                        .filter((l) => l.ItemID === item.ItemID && l.BatchID === item.BatchID)
+                        .reduce((s, l) => s + l.ReturnQuantity, 0);
+                      const done = returning >= item.FloorStock;
+                      return (
+                        <tr key={item.rowId}
+                          className={`border-t border-gray-100 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-gray-800 text-sm">{item.ItemName}</p>
+                            <p className="font-mono text-xs text-blue-600">{item.ItemCode}</p>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-gray-600">{item.BatchNo || "—"}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{item.VoucherNo || "—"}</td>
+                          <td className="px-4 py-3 text-right text-xs text-gray-600">
+                            {item.IssueQuantity > 0 ? `${item.IssueQuantity.toLocaleString()} ${item.StockUnit}` : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs text-orange-600 font-semibold">
+                            {item.ConsumeQuantity > 0 ? `${item.ConsumeQuantity.toLocaleString()} ${item.StockUnit}` : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-bold text-blue-700">
+                            {item.FloorStock.toLocaleString()} {item.StockUnit}
+                          </td>
+                          <td className="px-4 py-3 text-right text-xs font-bold text-blue-700">
+                            {returning > 0 ? `${returning.toLocaleString()} ${item.StockUnit}` : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {done ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
+                                <CheckCircle2 size={10} /> Done
+                              </span>
+                            ) : (
+                              <button onClick={() => setPendingReturn(item)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 mx-auto">
+                                <RotateCcw size={12} /> Return
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ── RETURN LINES ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
+            <SectionTitle title={`Return Lines${lines.length > 0 ? ` (${lines.length})` : ""}`} />
+
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-xs" style={{ minWidth: 1200 }}>
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {["Item Code", "Item Name", "Batch No.", "Sup. Batch", "Issue Voucher", "Floor Stk", "Return Qty", "Unit", "Dest. Warehouse", "Dest. Bin", ""].map((l, i) => (
+                      <th key={i} className={`px-3 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide ${["Floor Stk", "Return Qty"].includes(l) ? "text-right" : "text-left"}`}>
+                        {l}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="text-center py-16 text-gray-400">
+                        <div className="space-y-2 flex flex-col items-center">
+                          <RotateCcw size={36} className="text-gray-300" />
+                          <p className="text-sm font-medium text-gray-500">
+                            {returnMode === "Job-wise"
+                              ? (showPicklistTab ? "Return items from the picklist above." : "Load a Job Card above, then return items from its floor stock.")
+                              : "Search a batch or item above, then return it."}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : lines.map((line, idx) => (
+                    <tr key={line.lineId}
+                      className={`border-t border-gray-100 hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                      <td className="px-3 py-2.5 font-mono text-blue-700 font-semibold whitespace-nowrap">{line.ItemCode}</td>
+                      <td className="px-3 py-2.5 text-gray-800">
+                        <div className="truncate" style={{ maxWidth: 180 }} title={line.ItemName}>{line.ItemName}</div>
+                      </td>
+                      <td className="px-3 py-2.5 font-mono text-blue-600 text-[10px] whitespace-nowrap">{line.BatchNo || "—"}</td>
+                      <td className="px-3 py-2.5 font-mono text-gray-600">{line.SupplierBatchNo || "—"}</td>
+                      <td className="px-3 py-2.5 font-mono text-gray-600">{line.IssueVoucherNo || "—"}</td>
+                      <td className="px-3 py-2.5 text-right text-gray-600 whitespace-nowrap">{line.FloorStock > 0 ? line.FloorStock.toLocaleString() : "—"}</td>
+                      <td className="px-3 py-2.5 text-right font-bold text-blue-700 whitespace-nowrap">{line.ReturnQuantity.toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-gray-700">{line.StockUnit}</td>
+                      <td className="px-3 py-2.5 text-gray-700">{line.DestWarehouseName || "—"}</td>
+                      <td className="px-3 py-2.5 text-gray-600">{line.DestBinName || "—"}</td>
+                      <td className="px-3 py-2.5 text-center">
+                        <button onClick={() => removeLine(line.lineId)}
+                          className="text-gray-300 hover:text-red-500 transition-colors">
+                          <X size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {lines.length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs text-gray-500 flex items-center gap-4 flex-wrap">
+                <span>{lines.length} item{lines.length !== 1 ? "s" : ""}</span>
+                <span>·</span>
+                <span className="font-semibold text-blue-700">Total return: {totalReturnQty.toLocaleString()}</span>
+              </div>
+            )}
+          </div>
+
+          {/* ── REMARK ── */}
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <SectionTitle title="Remark / Narration" />
+            <Input value={remark} onChange={(e) => setRemark(e.target.value)}
+              placeholder="Optional notes…" />
+          </div>
+        </div>
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editingID != null && (
+            <Button variant="action-cancel" size="sm" onClick={() => handleDelete(editingID)}>
+              Delete
+            </Button>
+          )}
+          <Button
+            variant="action-save" size="sm" loading={saving}
+            icon={<RotateCcw size={14} />}
+            disabled={lines.length === 0}
+            onClick={save}
+          >
+            {editingID ? "Update" : "Save"}{lines.length > 0 ? ` (${lines.length})` : ""}
+          </Button>
         </div>
       </div>
 
@@ -1367,6 +1298,6 @@ export default function ReturnToStockPage() {
           onClose={() => setPendingReturn(null)}
         />
       )}
-    </div>
+    </Modal>
   );
 }

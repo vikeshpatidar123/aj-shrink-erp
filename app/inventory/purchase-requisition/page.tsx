@@ -1,12 +1,12 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Plus, X, Search, List, RefreshCw, Boxes, Download } from "lucide-react";
+import { Plus, X, Search, List, RefreshCw, Boxes, Download, FileText, History, Printer } from "lucide-react";
 import { authHeaders } from "@/lib/auth";
-import { getCompanyName } from "@/lib/useCompanyName";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import Button from "@/components/ui/Button";
 import Modal from "@/components/ui/Modal";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
+import { statusBadge } from "@/components/ui/Badge";
 import { Textarea } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
 
@@ -52,6 +52,26 @@ interface ReqHeader {
   Narration: string | null;
   FYear: string | null;
   NoOfItems: number;
+}
+
+type ReqLineStatus = "Pending" | "Approved" | "PO Created" | "Closed";
+
+interface ReqLine {
+  TransactionDetailID: number;
+  TransactionID: number;
+  VoucherNo: string | null;
+  VoucherDate: string | null;
+  ItemGroupID: number;
+  ItemGroupName: string | null;
+  ItemSubGroupName: string | null;
+  ItemCode: string | null;
+  ItemName: string | null;
+  GSM: number;
+  SizeW: number;
+  RequiredQuantity: number;
+  IsVoucherItemApproved: number;
+  IsCancelled: number;
+  Status: ReqLineStatus;
 }
 
 interface PRLine {
@@ -161,6 +181,9 @@ const unwrap = async (res: Response): Promise<any> => {
 
 const toNum = (v: any) => Number(v ?? 0);
 
+const escapeHtml = (v: any) =>
+  String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function PurchaseRequisitionPage() {
@@ -179,8 +202,16 @@ export default function PurchaseRequisitionPage() {
   // list data
   const [indentLines, setIndentLines] = useState<IndentLine[]>([]);
   const [reqHeaders, setReqHeaders] = useState<ReqHeader[]>([]);
+  const [reqLines, setReqLines] = useState<ReqLine[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [listErr, setListErr] = useState("");
+
+  // Created Requisitions — status filter tab
+  const [reqStatus, setReqStatus] = useState<"All" | ReqLineStatus>("All");
+
+  // read-only view modal (eye icon)
+  const [viewReq, setViewReq] = useState<{ header: ReqHeader; rows: any[] } | null>(null);
+  const [viewLoading, setViewLoading] = useState(false);
 
   // indent selection (by TransactionDetailID)
   const [selKeys, setSelKeys] = useState<Set<number>>(new Set());
@@ -217,12 +248,14 @@ export default function PurchaseRequisitionPage() {
   const fetchLists = useCallback(async () => {
     setListLoading(true); setListErr("");
     try {
-      const [ir, gr] = await Promise.all([
+      const [ir, gr, rl] = await Promise.all([
         fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/GetList?radioValue=Indent+List`, { headers: authHeaders() }),
         fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/GroupList`, { headers: authHeaders() }),
+        fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/RequisitionLines`, { headers: authHeaders() }),
       ]);
       setIndentLines(await unwrap(ir));
       setReqHeaders(await unwrap(gr));
+      setReqLines(await unwrap(rl));
     } catch (e: any) {
       setListErr(e.message || "Failed to load");
     } finally { setListLoading(false); }
@@ -289,6 +322,77 @@ export default function PurchaseRequisitionPage() {
       setSelKeys(prev => { const n = new Set(prev); n.delete(row.TransactionDetailID); return n; });
       await fetchLists();
     } catch (e: any) { showToast("error", "Close failed", e.message); }
+  };
+
+  // Cancel a single requisition line — sets it to "Closed" without touching the rest of the voucher.
+  const cancelLine = async (line: ReqLine) => {
+    if (!window.confirm(`Cancel line "${line.ItemName || line.ItemCode}"?\nThis will mark it Closed and it can no longer be purchased against.`)) return;
+    try {
+      const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/CancelLine`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ transactionDetailId: line.TransactionDetailID }),
+      });
+      const result = await unwrap(res);
+      if (result === "TransactionUsed") {
+        showToast("warning", "Cannot cancel", "A Purchase Order has already been raised against this line.");
+        return;
+      }
+      if (typeof result === "string" && result.startsWith("Error")) {
+        showToast("error", "Cancel failed", result);
+        return;
+      }
+      showToast("success", "Line cancelled");
+      await fetchLists();
+    } catch (e: any) { showToast("error", "Cancel failed", e.message); }
+  };
+
+  const fetchReqDetailRows = async (transactionId: number) => {
+    const res = await fetch(`${BASE_URL}/api/PurchaseRequisitionAJ/RetrieveData?transactionId=${transactionId}`, { headers: authHeaders() });
+    return unwrap(res);
+  };
+
+  const openView = async (h: ReqHeader) => {
+    setViewLoading(true);
+    try {
+      const rows = await fetchReqDetailRows(h.TransactionID);
+      setViewReq({ header: h, rows: Array.isArray(rows) ? rows : [] });
+    } catch (e: any) { showToast("error", "Failed to load", e.message); }
+    finally { setViewLoading(false); }
+  };
+
+  const printReq = async (h: ReqHeader) => {
+    try {
+      const rows = await fetchReqDetailRows(h.TransactionID);
+      const win = window.open("", "_blank", "width=900,height=700");
+      if (!win) { showToast("warning", "Popup blocked", "Allow popups to print."); return; }
+      const rowsHtml = (Array.isArray(rows) ? rows : []).map((r: any) => `
+        <tr>
+          <td>${escapeHtml(r.ItemCode)}</td>
+          <td>${escapeHtml(r.ItemName)}</td>
+          <td style="text-align:right">${toNum(r.RequiredQuantity).toLocaleString()}</td>
+          <td>${escapeHtml(r.StockUnit)}</td>
+          <td>${escapeHtml(r.ItemNarration)}</td>
+        </tr>`).join("");
+      win.document.write(`<!doctype html><html><head><title>${escapeHtml(h.VoucherNo)}</title>
+        <style>
+          body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
+          h2{margin:0 0 4px}
+          p{margin:0 0 16px;color:#555;font-size:13px}
+          table{width:100%;border-collapse:collapse;font-size:12px}
+          th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+          th{background:#f3f4f6}
+        </style>
+        </head><body>
+        <h2>Purchase Requisition — ${escapeHtml(h.VoucherNo)}</h2>
+        <p>Date: ${escapeHtml(fmtDate(h.VoucherDate))}${h.Narration ? ` &nbsp;|&nbsp; Narration: ${escapeHtml(h.Narration)}` : ""}</p>
+        <table><thead><tr><th>Item Code</th><th>Item Name</th><th>Qty</th><th>Unit</th><th>Remark</th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table>
+        </body></html>`);
+      win.document.close();
+      win.focus();
+      setTimeout(() => win.print(), 300);
+    } catch (e: any) { showToast("error", "Print failed", e.message); }
   };
 
   // ── Navigation ──────────────────────────────────────────────────────────────
@@ -606,16 +710,19 @@ export default function PurchaseRequisitionPage() {
   // ── Export CSV ───────────────────────────────────────────────────────────────
 
   const exportCSV = () => {
-    if (!filteredReqs.length) { showToast("info", "No records to export"); return; }
-    const header = ["Voucher No", "Date", "No. of Items", "Total Qty", "Created By", "Narration", "FYear"];
-    const rows = filteredReqs.map(r => [
+    if (!filteredReqLines.length) { showToast("info", "No records to export"); return; }
+    const header = ["Req.No", "Req.Date", "Item Code", "Item Group", "Sub Group", "Item Name", "Face GSM", "Width (mm)", "Qty", "Status"];
+    const rows = filteredReqLines.map(r => [
       r.VoucherNo ?? "",
       r.VoucherDate ?? "",
-      r.NoOfItems,
-      r.TotalQuantity,
-      r.CreatedBy ?? "",
-      `"${(r.Narration ?? "").replace(/"/g, '""')}"`,
-      r.FYear ?? "",
+      r.ItemCode ?? "",
+      r.ItemGroupName ?? "",
+      r.ItemSubGroupName ?? "",
+      `"${(r.ItemName ?? "").replace(/"/g, '""')}"`,
+      r.GSM,
+      r.SizeW,
+      r.RequiredQuantity,
+      r.Status,
     ].join(","));
     const csv = "﻿" + [header.join(","), ...rows].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -651,12 +758,20 @@ export default function PurchaseRequisitionPage() {
     );
   }, [augmentedIndent, indentSource, search]);
 
-  const filteredReqs = useMemo(() => {
+  const reqStatusCounts = useMemo(() => {
+    const c: Record<"All" | ReqLineStatus, number> = { All: reqLines.length, Pending: 0, Approved: 0, "PO Created": 0, Closed: 0 };
+    reqLines.forEach(l => { c[l.Status] = (c[l.Status] ?? 0) + 1; });
+    return c;
+  }, [reqLines]);
+
+  const filteredReqLines = useMemo(() => {
     const s = search.trim().toLowerCase();
-    if (!s) return reqHeaders;
-    return reqHeaders.filter(r =>
-      [r.VoucherNo, r.Narration, r.CreatedBy].some(v => (v ?? "").toLowerCase().includes(s)));
-  }, [reqHeaders, search]);
+    return reqLines.filter(l =>
+      (reqStatus === "All" || l.Status === reqStatus) &&
+      (!s || [l.VoucherNo, l.ItemCode, l.ItemName, l.ItemGroupName, l.ItemSubGroupName]
+        .some(v => (v ?? "").toLowerCase().includes(s)))
+    );
+  }, [reqLines, reqStatus, search]);
 
   const toggleSel = (id: number) => {
     setSelKeys(prev => {
@@ -709,13 +824,16 @@ export default function PurchaseRequisitionPage() {
     },
   ], [selKeys]);
 
-  const reqColumns: Column<ReqHeader>[] = useMemo(() => [
-    { key: "VoucherNo", header: "Voucher No.", render: r => <span className="font-mono text-[rgb(var(--color-primary))] font-semibold">{r.VoucherNo ?? "—"}</span> },
-    { key: "VoucherDate", header: "Date", render: r => fmtDate(r.VoucherDate) },
-    { key: "NoOfItems", header: "Items", render: r => r.NoOfItems },
-    { key: "TotalQuantity", header: "Total Qty", render: r => toNum(r.TotalQuantity).toLocaleString() },
-    { key: "CreatedBy", header: "Created By", render: r => r.CreatedBy ?? "—" },
-    { key: "Narration", header: "Narration", render: r => <span className="max-w-[200px] truncate block">{r.Narration ?? "—"}</span> },
+  const reqLineColumns: Column<ReqLine>[] = useMemo(() => [
+    { key: "VoucherNo", header: "Req.No.", render: r => <span className="font-mono text-[rgb(var(--color-primary))] font-semibold">{r.VoucherNo ?? "—"}</span> },
+    { key: "VoucherDate", header: "Req.Date", render: r => fmtDate(r.VoucherDate) },
+    { key: "ItemCode", header: "Item Code", render: r => <span className="font-mono text-[rgb(var(--color-primary))]">{r.ItemCode ?? "—"}</span> },
+    { key: "ItemGroupName", header: "Item Group", render: r => r.ItemGroupName ?? "—" },
+    { key: "ItemSubGroupName", header: "Sub Group", render: r => r.ItemSubGroupName ?? "—" },
+    { key: "ItemName", header: "Item Name", render: r => r.ItemName ?? "—" },
+    { key: "GSM", header: "Face GSM", render: r => r.GSM || "—" },
+    { key: "SizeW", header: "Width (mm)", render: r => r.SizeW || "—" },
+    { key: "Status", header: "Status", render: r => statusBadge(r.Status) },
   ], []);
 
   const pickerGroups = useMemo(() =>
@@ -743,36 +861,17 @@ export default function PurchaseRequisitionPage() {
   // FORM VIEW
   // ════════════════════════════════════════════════════════════════════════════
 
-  if (view === "form") {
-    return (
-      <div className="w-full pb-10">
-
-        {/* Header ribbon */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 bg-[rgb(var(--bg-surface))] p-4 rounded-xl border border-[rgb(var(--bd-default))] shadow-sm">
-          <div>
-            <p className="text-xs text-[rgb(var(--fg-muted))] font-medium tracking-wide uppercase">{getCompanyName("Company")}</p>
-            <div className="flex flex-wrap items-center gap-2 mt-0.5">
-              <h2 className="text-lg font-bold text-[rgb(var(--fg-default))]">Purchase Requisition</h2>
-              {editTxnID && (
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]">Editing</span>
-              )}
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold text-[rgb(var(--color-primary))] bg-[rgb(var(--color-primary-subtle))] border border-[rgb(var(--bd-default))]">
-                {voucherNo}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="action-back" size="sm" icon={<List size={15} />} onClick={() => setView("list")}>
-              List ({reqHeaders.length})
-            </Button>
-            <Button variant="action-save" size="sm" loading={saving} onClick={save}>
-              Save
-            </Button>
-          </div>
-        </div>
+  const creationModal = (
+    <Modal
+      open={view === "form"}
+      onClose={() => setView("list")}
+      title={editTxnID ? `Edit Purchase Requisition — ${voucherNo}` : "Purchase Requisition Creation"}
+      size="xl"
+    >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
 
         {/* Content card */}
-        <div className="bg-[rgb(var(--bg-surface))] rounded-xl shadow-sm border border-[rgb(var(--bd-default))] overflow-hidden">
+        <div className="bg-[rgb(var(--bg-surface))] overflow-hidden">
 
           {/* Info bar */}
           <div className="px-6 py-3 border-b border-[rgb(var(--bd-default))] bg-[rgb(var(--bg-subtle))] flex flex-wrap items-center gap-5">
@@ -1020,6 +1119,31 @@ export default function PurchaseRequisitionPage() {
           </div>
         </div>
 
+        {/* Footer actions */}
+        <div className="sticky bottom-0 bg-[rgb(var(--bg-surface))] border-t border-[rgb(var(--bd-default))] px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
+            Close
+          </Button>
+          {editTxnID != null && (
+            <Button
+              variant="secondary" size="sm" icon={<Printer size={14} />}
+              onClick={() => { const h = reqHeaders.find(x => x.TransactionID === editTxnID); if (h) printReq(h); }}
+            >
+              Print
+            </Button>
+          )}
+          {editTxnID != null && (
+            <Button variant="action-cancel" size="sm" loading={deleting}
+              onClick={() => { const h = reqHeaders.find(x => x.TransactionID === editTxnID); if (h) deleteReq(h); }}
+            >
+              Delete
+            </Button>
+          )}
+          <Button variant="action-save" size="sm" loading={saving} onClick={save}>
+            {editTxnID ? "Update" : "Save"}
+          </Button>
+        </div>
+
         {/* Item picker modal */}
         <Modal
           open={showPicker}
@@ -1129,8 +1253,8 @@ export default function PurchaseRequisitionPage() {
           </div>
         </Modal>
       </div>
-    );
-  }
+    </Modal>
+  );
 
   // ════════════════════════════════════════════════════════════════════════════
   // LIST VIEW
@@ -1140,32 +1264,36 @@ export default function PurchaseRequisitionPage() {
     <div className="w-full space-y-4">
 
       {/* Page heading */}
-      <div className="text-center pt-1">
-        <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Requisition</h2>
-        <p className="text-sm text-[rgb(var(--fg-muted))]">
-          {tab === "indent" ? `${filteredIndent.length} indent lines` : `${filteredReqs.length} requisitions`}
-        </p>
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <div className="w-[124px] flex-shrink-0" />
+        <div className="text-center flex-1">
+          <h2 className="text-xl font-bold text-[rgb(var(--fg-default))]">Purchase Requisition</h2>
+          <p className="text-sm text-[rgb(var(--fg-muted))]">
+            {tab === "indent" ? `${filteredIndent.length} indent lines` : `${filteredReqLines.length} requisition lines`}
+          </p>
+        </div>
+        <div className="w-[124px] flex-shrink-0 flex justify-end">
+          <Button variant="secondary" size="sm" icon={<History size={14} />} onClick={() => showToast("info", "Audit Trail", "Coming soon")}>
+            Audit Trail
+          </Button>
+        </div>
       </div>
 
       {/* Controls row */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
 
-        {/* Tab pills */}
-        <div className="flex items-center gap-2">
+        {/* Tab pills — segmented control */}
+        <div className="flex items-center gap-1 p-1 bg-[rgb(var(--bg-subtle))] border border-[rgb(var(--bd-default))] rounded-full">
           {([
-            { key: "indent" as const, label: "Indent List", count: indentLines.length, amber: true },
-            { key: "reqs" as const, label: "Requisitions", count: reqHeaders.length, amber: false },
+            { key: "indent" as const, label: "Indent List", icon: <List size={14} /> },
+            { key: "reqs" as const, label: "Created Requisitions", icon: <FileText size={14} /> },
           ]).map(t => (
             <button
               key={t.key} onClick={() => setTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border transition-colors ${tab === t.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))] shadow-sm" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${tab === t.key ? "bg-[rgb(var(--color-primary))] text-white shadow-sm" : "text-[rgb(var(--fg-muted))] hover:text-[rgb(var(--fg-default))]"}`}
             >
+              {t.icon}
               {t.label}
-              {t.count > 0 && (
-                <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${tab === t.key ? "bg-white/20 text-white" : t.amber ? "bg-amber-100 text-amber-700" : "bg-[rgb(var(--color-primary-subtle))] text-[rgb(var(--color-primary))]"}`}>
-                  {t.count}
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -1186,7 +1314,7 @@ export default function PurchaseRequisitionPage() {
             )}
           </div>
           <Button variant="action-refresh" size="sm" icon={<RefreshCw size={14} />} onClick={fetchLists} />
-          {tab === "reqs" && filteredReqs.length > 0 && (
+          {tab === "reqs" && filteredReqLines.length > 0 && (
             <Button variant="action-download" size="sm" icon={<Download size={14} />} onClick={exportCSV}>
               Export
             </Button>
@@ -1257,22 +1385,93 @@ export default function PurchaseRequisitionPage() {
 
         ) : (
 
-          /* ── REQUISITION RECORDS ──────────────────────────── */
+          /* ── CREATED REQUISITIONS (item-level) ────────────── */
           <div className="p-4">
             <DataTable
-              data={filteredReqs}
-              columns={reqColumns}
-              getRowId={r => String(r.TransactionID)}
-              actions={r => (
-                <RowActions>
-                  <RowAction.Edit onClick={() => openEdit(r)} disabled={formLoading || deleting} />
-                  <RowAction.Delete onClick={() => deleteReq(r)} disabled={deleting || formLoading} />
-                </RowActions>
-              )}
+              data={filteredReqLines}
+              columns={reqLineColumns}
+              getRowId={r => String(r.TransactionDetailID)}
+              enableRowSelection={false}
+              actions={line => {
+                const header = reqHeaders.find(h => h.TransactionID === line.TransactionID);
+                return (
+                  <RowActions>
+                    <RowAction.Print onClick={() => header && printReq(header)} disabled={!header} />
+                    <RowAction.View onClick={() => header && openView(header)} disabled={!header || viewLoading} />
+                    <RowAction.Edit onClick={() => header && openEdit(header)} disabled={!header || formLoading || deleting} />
+                    <RowAction.Reject
+                      tooltip="Cancel line"
+                      onClick={() => cancelLine(line)}
+                      disabled={line.Status === "Closed"}
+                    />
+                    <RowAction.Delete onClick={() => header && deleteReq(header)} disabled={!header || deleting || formLoading} />
+                  </RowActions>
+                );
+              }}
+              toolbar={
+                <div className="flex items-center gap-2 flex-wrap">
+                  {([
+                    { key: "All" as const, label: "All" },
+                    { key: "Pending" as const, label: "Pending" },
+                    { key: "Approved" as const, label: "Approved" },
+                    { key: "PO Created" as const, label: "Proceed" },
+                    { key: "Closed" as const, label: "Closed" },
+                  ]).map(p => (
+                    <button
+                      key={p.key} onClick={() => setReqStatus(p.key)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${reqStatus === p.key ? "bg-[rgb(var(--color-primary))] text-white border-[rgb(var(--color-primary))]" : "bg-[rgb(var(--bg-surface))] text-[rgb(var(--fg-muted))] border-[rgb(var(--bd-default))] hover:border-[rgb(var(--color-primary))] hover:text-[rgb(var(--color-primary))]"}`}
+                    >
+                      {p.label} ({reqStatusCounts[p.key] ?? 0})
+                    </button>
+                  ))}
+                </div>
+              }
             />
           </div>
         )}
       </div>
+
+      {creationModal}
+
+      {/* Read-only view modal (eye icon) */}
+      <Modal
+        open={!!viewReq}
+        onClose={() => setViewReq(null)}
+        title={viewReq ? `View — ${viewReq.header.VoucherNo}` : "View Requisition"}
+        size="lg"
+        subHeader={viewReq && (
+          <p className="text-xs text-[rgb(var(--fg-muted))] pb-2">
+            {fmtDate(viewReq.header.VoucherDate)}{viewReq.header.Narration ? ` · ${viewReq.header.Narration}` : ""}
+          </p>
+        )}
+      >
+        {!viewReq || viewReq.rows.length === 0 ? (
+          <div className="text-center py-12 text-[rgb(var(--fg-subtle))] text-sm">No items found</div>
+        ) : (
+          <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-[rgb(var(--bg-subtle))] border-b border-[rgb(var(--bd-default))]">
+                <tr>
+                  {["Item Code", "Item Name", "Qty", "Unit", "Remark"].map((h, i) => (
+                    <th key={i} className={`px-4 py-2.5 font-semibold text-[rgb(var(--fg-muted))] uppercase tracking-wider ${i === 2 ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {viewReq.rows.map((r: any, i: number) => (
+                  <tr key={i} className="border-b border-[rgb(var(--bd-default))] hover:bg-[rgb(var(--bg-hover))] transition-colors">
+                    <td className="px-4 py-2.5 font-mono text-[rgb(var(--color-primary))]">{r.ItemCode}</td>
+                    <td className="px-4 py-2.5 text-[rgb(var(--fg-default))]">{r.ItemName}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-[rgb(var(--fg-default))]">{toNum(r.RequiredQuantity).toLocaleString()}</td>
+                    <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{r.StockUnit}</td>
+                    <td className="px-4 py-2.5 text-[rgb(var(--fg-muted))]">{r.ItemNarration || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
 
       {/* Stock quick-view modal */}
       <Modal
