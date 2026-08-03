@@ -14,6 +14,7 @@ import Button from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { FieldMasterSelectField } from "@/components/ui/FieldMasterSelectField";
 import { DataTable } from "@/components/tables/DataTable";
 import { usePermissions } from "@/context/PermissionsContext";
 
@@ -86,6 +87,11 @@ type ArtworkRow = {
   AddressType: string;
   ArtworkName: string;
   SpecialSpecs: string;
+  AddressInsideArtwork: string;
+  ArtworkFileApprovalDateFromBrand: string;
+  EngravingApprovalDateFromBrand: string;
+  ArtworkApprovalToCylinderManufacturer: string;
+  CylinderReceivedDate: string;
   LedgerID: string;
   ClientName: string;
   MobileNo: string;
@@ -177,6 +183,11 @@ type FormState = {
   ArtworkName: string;
   SpecialSpecs: string;
   AttachmentFilesName: string;
+  AddressInsideArtwork: string;
+  ArtworkFileApprovalDateFromBrand: string;
+  EngravingApprovalDateFromBrand: string;
+  ArtworkApprovalToCylinderManufacturer: string;
+  CylinderReceivedDate: string;
 };
 
 const blankForm = (): FormState => ({
@@ -189,6 +200,11 @@ const blankForm = (): FormState => ({
   TypeOfProduct: "", Content: "", PackSize: "", BrandName: "", ProductType: "",
   SkuType: "", BottleType: "", AddressType: "", ArtworkName: "", SpecialSpecs: "",
   AttachmentFilesName: "",
+  AddressInsideArtwork: "",
+  ArtworkFileApprovalDateFromBrand: "",
+  EngravingApprovalDateFromBrand: "",
+  ArtworkApprovalToCylinderManufacturer: "",
+  CylinderReceivedDate: "",
 });
 
 // ─── Artwork stages & colors (module-level so portal component can use them) ──
@@ -211,6 +227,13 @@ const STAGE_COLORS: Record<string, { dot: string; bg: string; text: string; bord
   "On Hold":                { dot: "#dc2626", bg: "bg-red-100",    text: "text-red-800",    border: "border-red-300"   },
 };
 
+// Display-only rename — the stored ArtworkStage value (used for all comparisons, filters,
+// and the updatestage API call) stays "Pending Mail to MB"; only what the user sees is relabeled.
+const STAGE_DISPLAY_NAMES: Record<string, string> = {
+  "Pending Mail to MB": "Pending Mail to Party",
+};
+const displayStage = (s: string) => STAGE_DISPLAY_NAMES[s] ?? s;
+
 // ─── Portal-based stage dropdown (escapes DataGrid overflow clipping) ─────────
 function StageDropdown({
   artworkId, stage, onSelect, openId, setOpenId,
@@ -222,7 +245,7 @@ function StageDropdown({
   setOpenId: (id: string | null) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; maxHeight: number } | null>(null);
   const [mounted, setMounted] = useState(false);
   const isOpen = openId === artworkId;
   const c = STAGE_COLORS[stage] ?? { dot: "#9ca3af", bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-300" };
@@ -230,10 +253,18 @@ function StageDropdown({
   useEffect(() => { setMounted(true); }, []);
 
   // Compute dropdown position after isOpen becomes true (handles remount after parent re-render)
+  // Flips upward + caps height with scroll when there isn't enough room below the trigger.
   useEffect(() => {
     if (isOpen && btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      const margin = 8;
+      const spaceBelow = window.innerHeight - r.bottom - margin;
+      const spaceAbove = r.top - margin;
+      if (spaceBelow >= 200 || spaceBelow >= spaceAbove) {
+        setPos({ top: r.bottom + 4, left: r.left, maxHeight: Math.max(spaceBelow, 120) });
+      } else {
+        setPos({ bottom: window.innerHeight - r.top + 4, left: r.left, maxHeight: Math.max(spaceAbove, 120) });
+      }
     } else {
       setPos(null);
     }
@@ -264,15 +295,22 @@ function StageDropdown({
         className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-semibold whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}
       >
         <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.dot }} />
-        {stage}
+        {displayStage(stage)}
         <ChevronDown size={10} className="opacity-60" />
       </button>
 
       {isOpen && pos && mounted && createPortal(
         <div
           id="__stage-drop-portal__"
-          style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 99999 }}
-          className="w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-hidden"
+          style={{
+            position: "fixed",
+            top: pos.top,
+            bottom: pos.bottom,
+            left: pos.left,
+            maxHeight: pos.maxHeight,
+            zIndex: 99999,
+          }}
+          className="w-52 bg-white border border-gray-200 rounded-xl shadow-2xl py-1 overflow-y-auto"
         >
           {ARTWORK_STAGES.map(s => {
             const sc = STAGE_COLORS[s] ?? { dot: "#9ca3af", bg: "bg-gray-50", text: "text-gray-700", border: "" };
@@ -284,7 +322,7 @@ function StageDropdown({
                   ${isCur ? `${sc.bg} ${sc.text} font-bold` : "hover:bg-gray-50 text-gray-700"}`}
               >
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: sc.dot }} />
-                {s}
+                {displayStage(s)}
                 {isCur && <Check size={11} className="ml-auto" />}
               </button>
             );
@@ -433,12 +471,17 @@ export default function ArtworkManagementPage() {
     ArtworkID: string; WoNo: string; CreatedDate: string; OrderNo: string;
     Customer: string; JobName: string; Brand: string; PackSize: string;
     TypeOfProduct: string; ArtworkNo: string; CategoryName: string;
-    ProductCode: string; Substrate: string; StructureType: string;
+    ProductCode: string; Substrate: string; StructureType: string; BottleType: string; SpecialSpecs: string;
     NoOfColors: string; RepeatMM: string; WidthMM: string; HeightMM: string;
     Machine: string; ColorName: string;
     CylType: string; CircumMM: string; CylLength: string; CylPrintWidth: string;
     CylVendor: string; CylStatus: string; ArtworkStage: string;
     AttachmentFilesName: string;
+    AddressInsideArtwork: string;
+    ArtworkFileApprovalDateFromBrand: string;
+    EngravingApprovalDateFromBrand: string;
+    ArtworkApprovalToCylinderManufacturer: string;
+    CylinderReceivedDate: string;
   };
 
   // ARTWORK_STAGES & STAGE_COLORS are now module-level constants above
@@ -476,6 +519,11 @@ export default function ArtworkManagementPage() {
     SkuType: string; BottleType: string; AddressType: string;
     ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
     AttachmentFilesName: string; CreatedDate: string;
+    AddressInsideArtwork: string;
+    ArtworkFileApprovalDateFromBrand: string;
+    EngravingApprovalDateFromBrand: string;
+    ArtworkApprovalToCylinderManufacturer: string;
+    CylinderReceivedDate: string;
   };
   type BBArtworkForm = {
     BBArtworkID: string; ArtworkID: string; BBArtworkName: string;
@@ -489,6 +537,11 @@ export default function ArtworkManagementPage() {
     SkuType: string; BottleType: string; AddressType: string;
     ArtworkName: string; SpecialSpecs: string; ArtworkStage: string; Remarks: string;
     AttachmentFilesName: string;
+    AddressInsideArtwork: string;
+    ArtworkFileApprovalDateFromBrand: string;
+    EngravingApprovalDateFromBrand: string;
+    ArtworkApprovalToCylinderManufacturer: string;
+    CylinderReceivedDate: string;
   };
   const blankSGForm = (): BBArtworkForm => ({
     BBArtworkID: "", ArtworkID: "", BBArtworkName: "",
@@ -502,6 +555,11 @@ export default function ArtworkManagementPage() {
     SkuType: "", BottleType: "", AddressType: "",
     ArtworkName: "", SpecialSpecs: "", ArtworkStage: "", Remarks: "",
     AttachmentFilesName: "",
+    AddressInsideArtwork: "",
+    ArtworkFileApprovalDateFromBrand: "",
+    EngravingApprovalDateFromBrand: "",
+    ArtworkApprovalToCylinderManufacturer: "",
+    CylinderReceivedDate: "",
   });
 
   const [sgList,        setSgList]        = useState<BBArtworkRow[]>([]);
@@ -547,6 +605,11 @@ export default function ArtworkManagementPage() {
       SpecialSpecs: r.SpecialSpecs || "", ArtworkStage: r.ArtworkStage || "",
       Remarks: r.Remarks || "",
       AttachmentFilesName: (r as any).AttachmentFilesName || "",
+      AddressInsideArtwork: r.AddressInsideArtwork || "",
+      ArtworkFileApprovalDateFromBrand: r.ArtworkFileApprovalDateFromBrand || "",
+      EngravingApprovalDateFromBrand: r.EngravingApprovalDateFromBrand || "",
+      ArtworkApprovalToCylinderManufacturer: r.ArtworkApprovalToCylinderManufacturer || "",
+      CylinderReceivedDate: r.CylinderReceivedDate || "",
     });
     setSgEditMode(true); setSgError(""); setShowSgModal(true);
     // Load existing attachments
@@ -605,6 +668,11 @@ export default function ArtworkManagementPage() {
       ArtworkName: parent.ArtworkName || "",
       SpecialSpecs: parent.SpecialSpecs || "",
       AttachmentFilesName: (parent as any).AttachmentFilesName || "",
+      AddressInsideArtwork: parent.AddressInsideArtwork || "",
+      ArtworkFileApprovalDateFromBrand: parent.ArtworkFileApprovalDateFromBrand ? parent.ArtworkFileApprovalDateFromBrand.slice(0, 10) : "",
+      EngravingApprovalDateFromBrand: parent.EngravingApprovalDateFromBrand ? parent.EngravingApprovalDateFromBrand.slice(0, 10) : "",
+      ArtworkApprovalToCylinderManufacturer: parent.ArtworkApprovalToCylinderManufacturer ? parent.ArtworkApprovalToCylinderManufacturer.slice(0, 10) : "",
+      CylinderReceivedDate: parent.CylinderReceivedDate ? parent.CylinderReceivedDate.slice(0, 10) : "",
     }));
     // Load master artwork attachments into child form
     try {
@@ -703,8 +771,8 @@ export default function ArtworkManagementPage() {
 
   useEffect(() => { loadList(); }, [loadList]);
 
-  // ─── Load FieldMaster options once ───────────────────────────────────────
-  useEffect(() => {
+  // ─── Load FieldMaster options (mount + manual refresh) ────────────────────
+  const refreshFmOptions = useCallback(async () => {
     const FM = (process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in").replace(/\/$/, "");
     const load = async (fieldName: string): Promise<string[]> => {
       try {
@@ -714,7 +782,7 @@ export default function ArtworkManagementPage() {
         return Array.isArray(raw) ? raw.map(r => r.FieldValue).filter(Boolean) : [];
       } catch { return []; }
     };
-    Promise.all([
+    const [typeOfProducts, packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes] = await Promise.all([
       load("Type of Product"),
       load("Standard Pack Sizes"),
       load("Brand Names"),
@@ -722,10 +790,10 @@ export default function ArtworkManagementPage() {
       load("SKU Types"),
       load("Bottle Type"),
       load("Product Address Type"),
-    ]).then(([typeOfProducts, packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes]) => {
-      setFmOptions({ typeOfProducts, packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes });
-    });
+    ]);
+    setFmOptions({ typeOfProducts, packSizes, brandNames, productTypes, skuTypes, bottleTypes, addressTypes });
   }, []);
+  useEffect(() => { refreshFmOptions(); }, [refreshFmOptions]);
 
   // ─── Load Artwork Library (lazy) ─────────────────────────────────────────
   const loadLibrary = async () => {
@@ -789,6 +857,11 @@ export default function ArtworkManagementPage() {
       ArtworkName: row.ArtworkName ?? "",
       SpecialSpecs: row.SpecialSpecs ?? "",
       AttachmentFilesName: (row as any).AttachmentFilesName ?? "",
+      AddressInsideArtwork: row.AddressInsideArtwork ?? "",
+      ArtworkFileApprovalDateFromBrand: row.ArtworkFileApprovalDateFromBrand ?? "",
+      EngravingApprovalDateFromBrand: row.EngravingApprovalDateFromBrand ?? "",
+      ArtworkApprovalToCylinderManufacturer: row.ArtworkApprovalToCylinderManufacturer ?? "",
+      CylinderReceivedDate: row.CylinderReceivedDate ?? "",
     });
 
     // Load attachments for this artwork
@@ -1044,6 +1117,7 @@ export default function ArtworkManagementPage() {
               key: "ArtworkNo",
               header: "Artwork No.",
               wrap: true,
+              size: 130,
               render: r => <span className="font-semibold text-indigo-700">{r.ArtworkNo}</span>,
             },
             {
@@ -1070,14 +1144,16 @@ export default function ArtworkManagementPage() {
             },
             {
               key: "Content",
-              header: "Sub Type (Content)",
+              header: "Product Type",
+              size: 150,
               render: r => r.Content ? (
                 <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-semibold rounded-full">{r.Content}</span>
               ) : <span className="text-gray-400">—</span>,
             },
             {
               key: "ProductMasterID",
-              header: "Catalog",
+              header: "Product Catalog",
+              size: 120,
               render: r => (r.ProductMasterID && String(r.ProductMasterID) !== "0") ? (
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded-full">Linked</span>
               ) : (
@@ -1137,13 +1213,13 @@ export default function ArtworkManagementPage() {
                     <div>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Sub Type</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Product Type</p>
                       {row.Content ? (
                         <span className="px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">{row.Content}</span>
                       ) : <span className="text-xs text-gray-400">—</span>}
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Catalog Link</p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">Product Catalog Link</p>
                       {String(row.ProductMasterID || 0) !== "0" ? (
                         <span className="flex items-center gap-1 text-xs text-green-700 font-semibold">
                           <Link2 size={11} /> Product Catalog Linked
@@ -1176,7 +1252,7 @@ export default function ArtworkManagementPage() {
                               ["Client Artwork No.", detail?.ClientArtWorkNo || "—"],
                               ["Description", detail?.ArtWorkDescription || "—"],
                               ["Cost", detail?.ArtWorkCost ? `₹ ${detail.ArtWorkCost}` : "—"],
-                              ["Received Date", detail?.ReceivedDate || "—"],
+                              ["Artwork Received Date", detail?.ReceivedDate || "—"],
                               ["Expected Date", detail?.ExpectedCompletionDate || "—"],
                               ["Document Type", detail?.DocumentType || "—"],
                               ["Document No.", detail?.DocumentNo || "—"],
@@ -1186,17 +1262,22 @@ export default function ArtworkManagementPage() {
                               ["Machine", detail?.MachineName || "—"],
                               ["Design Side", detail?.DesignSide || "—"],
                               ["Type of Product", detail?.TypeOfProduct || "—"],
-                              ["Sub Type (Content)", detail?.Content || "—"],
-                              ["Pack Size", detail?.PackSize || "—"],
+                              ["Product Type", detail?.Content || "—"],
+                              ["SKU Size", detail?.PackSize || "—"],
                               ["Brand Name", detail?.BrandName || "—"],
                               ["Product Type", detail?.ProductType || "—"],
-                              ["SKU Type", detail?.SkuType || "—"],
-                              ["Bottle Type", detail?.BottleType || "—"],
+                              ["Special Specification", detail?.SkuType || "—"],
+                              ["Material Type", detail?.BottleType || "—"],
                               ["Address Type", detail?.AddressType || "—"],
                               ["Artwork Name", detail?.ArtworkName || "—"],
-                              ["Special Specs", detail?.SpecialSpecs || "—"],
-                            ].map(([k, v]) => (
-                              <div key={k} className="flex justify-between gap-3">
+                              ["Design Type", detail?.SpecialSpecs || "—"],
+                              ["Address Inside the Artwork", detail?.AddressInsideArtwork || "—"],
+                              ["Artwork File Approval Date from Brand", detail?.ArtworkFileApprovalDateFromBrand || "—"],
+                              ["LSD Shade Approval Date from Brand", detail?.EngravingApprovalDateFromBrand || "—"],
+                              ["Artwork Approval Given to Cylinder Manufacturer", detail?.ArtworkApprovalToCylinderManufacturer || "—"],
+                              ["Cylinder Received Date", detail?.CylinderReceivedDate || "—"],
+                            ].map(([k, v], i) => (
+                              <div key={`${k}-${i}`} className="flex justify-between gap-3">
                                 <dt className="text-gray-500 text-xs flex-shrink-0">{k}</dt>
                                 <dd className="text-gray-800 text-xs font-medium text-right">{v}</dd>
                               </div>
@@ -1210,13 +1291,13 @@ export default function ArtworkManagementPage() {
                           {hasPC ? (
                             <dl className="space-y-2 text-sm">
                               {[
-                                ["Catalog Code", detail!.CatalogCode],
+                                ["Product Catalog Code", detail!.CatalogCode],
                                 ["Structure Type", detail!.StructureType],
-                                ["Pack Size", detail!.CatalogPackSize],
+                                ["SKU Size", detail!.CatalogPackSize],
                                 ["Brand Name", detail!.CatalogBrandName],
                                 ["Product Type", detail!.CatalogProductType],
-                                ["SKU Type", detail!.CatalogSkuType],
-                                ["Bottle Type", detail!.CatalogBottleType],
+                                ["Special Specification", detail!.CatalogSkuType],
+                                ["Material Type", detail!.CatalogBottleType],
                                 ["Address Type", detail!.CatalogAddressType],
                                 ["Print Type", detail!.PrintType],
                                 ["Substrate", detail!.Substrate],
@@ -1227,7 +1308,7 @@ export default function ArtworkManagementPage() {
                                 ["Repeat Length (mm)", detail!.RepeatLength],
                                 ["Final Roll OD (mm)", detail!.FinalRollOD],
                                 ["Artwork Name", detail!.CatalogArtworkName],
-                                ["Special Specs", detail!.CatalogSpecialSpecs],
+                                ["Design Type", detail!.CatalogSpecialSpecs],
                               ].map(([k, v]) => (
                                 <div key={k} className="flex justify-between gap-3">
                                   <dt className="text-gray-500 text-xs flex-shrink-0">{k}</dt>
@@ -1280,7 +1361,7 @@ export default function ArtworkManagementPage() {
         const uPackSizes = uniq("PackSize");
         const uCategories = uniq("CategoryName");
         const uSubstrates = uniq("Substrate");
-        const uTypes = uniq("TypeOfProduct");
+        const uTypes = uniq("SpecialSpecs");
         const uColors = uniq("NoOfColors");
         const uColorNames = [...new Set(
           libRows.flatMap(r => (r.ColorName || "").split(",").map(c => c.trim()).filter(Boolean))
@@ -1312,7 +1393,7 @@ export default function ArtworkManagementPage() {
             && (!lf.packSize || inc(r.PackSize, lf.packSize))
             && (!lf.category || inc(r.CategoryName, lf.category))
             && (!lf.substrate || inc(r.Substrate, lf.substrate))
-            && (!lf.designType || inc(r.TypeOfProduct, lf.designType))
+            && (!lf.designType || inc(r.SpecialSpecs, lf.designType))
             && (!lf.noOfColors || inc(r.NoOfColors, lf.noOfColors))
             && (!lf.colorName || r.ColorName?.split(",").some(c => c.trim().toLowerCase().includes(lf.colorName.toLowerCase())))
             && (!lf.machine || inc(r.Machine, lf.machine))
@@ -1334,7 +1415,7 @@ export default function ArtworkManagementPage() {
               if (kpiFilter === "ENGRAVING") return s === "Engraving";
               if (kpiFilter === "BRAND APPROVED") return s === "Brand Approved";
               if (kpiFilter === "UNDER PROCESS") return s === "Under Process";
-              if (kpiFilter === "PENDING MAIL TO MB") return s === "Pending Mail to MB";
+              if (kpiFilter === "PENDING MAIL TO PARTY") return s === "Pending Mail to MB";
               if (kpiFilter === "ON HOLD") return s === "On Hold";
               return true;
             })());
@@ -1344,8 +1425,8 @@ export default function ArtworkManagementPage() {
         const COL_KEY: Record<string, (r: LibRow) => string> = {
           "JOB NAME": r => r.JobName || "",
           "SKU SIZE": r => r.PackSize || "",
-          "MATERIAL": r => r.StructureType || "",
-          "DESIGN TYPE": r => r.TypeOfProduct || "",
+          "MATERIAL": r => r.BottleType || r.StructureType || "",
+          "DESIGN TYPE": r => r.SpecialSpecs || "",
           "CURRENT STATUS": r => r.ArtworkStage || "",
           "CUSTOMER / PARTY": r => r.Customer || "",
           "CYL. MAKER": r => r.CylVendor || "",
@@ -1367,7 +1448,7 @@ export default function ArtworkManagementPage() {
         const COL_FILTER: Record<string, CFEntry> = {
           "JOB NAME": { key: "jobName", getVal: r => r.JobName || "" },
           "SKU SIZE": { key: "packSize", getVal: r => r.PackSize || "" },
-          "DESIGN TYPE": { key: "designType", getVal: r => r.TypeOfProduct || "" },
+          "DESIGN TYPE": { key: "designType", getVal: r => r.SpecialSpecs || "" },
           "CURRENT STATUS": { key: "artworkStage", getVal: r => r.ArtworkStage || "Artwork Pending" },
           "CUSTOMER / PARTY": { key: "customer", getVal: r => r.Customer || "" },
           "CYL. MAKER": { key: "cylVendor", getVal: r => r.CylVendor || "" },
@@ -1375,7 +1456,7 @@ export default function ArtworkManagementPage() {
           "BRAND / PRODUCT": { key: "brand", getVal: r => r.Brand || "" },
           "SUBSTRATE": { key: "substrate", getVal: r => r.Substrate || "" },
           "CYLINDER STATUS": { key: "cylStatus", getVal: r => r.CylStatus || "" },
-          "MATERIAL": { key: "category", getVal: r => r.StructureType || "" },
+          "MATERIAL": { key: "category", getVal: r => r.BottleType || r.StructureType || "" },
         };
 
         // ── summary counts ────────────────────────────────────────────────
@@ -1436,7 +1517,7 @@ export default function ArtworkManagementPage() {
           { label: "ENGRAVING", filLabel: "ENGRAVING", overall: engravingAll, fil: fEngraving, border: "border-t-indigo-600", num: "text-indigo-700", clickable: true },
           { label: "BRAND APPROVED", filLabel: "BRAND APPROVED", overall: brandApprAll, fil: fBrandAppr, border: "border-t-purple-500", num: "text-purple-700", clickable: true },
           { label: "UNDER PROCESS", filLabel: "UNDER PROCESS", overall: underProcAll, fil: fUnderProc, border: "border-t-teal-500", num: "text-teal-700", clickable: true },
-          { label: "PENDING MAIL TO MB", filLabel: "PENDING MAIL TO MB", overall: pendMailAll, fil: fPendMail, border: "border-t-amber-500", num: "text-amber-600", clickable: true },
+          { label: "PENDING MAIL TO PARTY", filLabel: "PENDING MAIL TO PARTY", overall: pendMailAll, fil: fPendMail, border: "border-t-amber-500", num: "text-amber-600", clickable: true },
           { label: "ON HOLD", filLabel: "ON HOLD", overall: onHoldAll, fil: fOnHold, border: "border-t-red-500", num: "text-red-600", clickable: true },
         ];
 
@@ -1745,7 +1826,7 @@ export default function ArtworkManagementPage() {
                     <SearchableSelect
                       value={lf.artworkStage}
                       onChange={val => setLF("artworkStage", val)}
-                      options={ARTWORK_STAGES.map(v => ({ value: v, label: v }))}
+                      options={ARTWORK_STAGES.map(v => ({ value: v, label: displayStage(v) }))}
                       placeholder="All statuses"
                       className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
                     />
@@ -1877,6 +1958,7 @@ export default function ArtworkManagementPage() {
               loading={libLoading}
               getRowId={r => String(r.ArtworkID)}
               rowHeight={52}
+              maxHeight="70vh"
               columns={[
                 {
                   key: "JobName", header: "Job Name", wrap: true, size: 240,
@@ -1893,14 +1975,14 @@ export default function ArtworkManagementPage() {
                   render: r => <span className="font-medium text-gray-700">{r.PackSize || "—"}</span>,
                 },
                 {
-                  key: "StructureType", header: "Material", size: 150,
-                  render: r => r.StructureType
-                    ? <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.StructureType}</span>
+                  key: "BottleType", header: "Material", size: 150,
+                  render: r => (r.BottleType || r.StructureType)
+                    ? <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-bold border border-slate-200">{r.BottleType || r.StructureType}</span>
                     : <span className="text-gray-400">—</span>,
                 },
                 {
-                  key: "TypeOfProduct", header: "Design Type", wrap: true, size: 160,
-                  render: r => <span className="text-gray-700 leading-snug">{r.TypeOfProduct || "—"}</span>,
+                  key: "SpecialSpecs", header: "Design Type", wrap: true, size: 160,
+                  render: r => <span className="text-gray-700 leading-snug">{r.SpecialSpecs || "—"}</span>,
                 },
                 {
                   key: "ArtworkStage", header: "Current Status", size: 180,
@@ -1917,12 +1999,19 @@ export default function ArtworkManagementPage() {
                       if (stage === "LSD Shade Approved") return "bg-purple-100 text-purple-800 border border-purple-200";
                       return "bg-gray-100 text-gray-600 border border-gray-200";
                     })();
-                    return <span className={`inline-block px-2 py-1 rounded text-[10px] font-semibold leading-tight ${cls}`}>{stage}</span>;
+                    return <span className={`inline-block px-2 py-1 rounded text-[10px] font-semibold leading-tight ${cls}`}>{displayStage(stage)}</span>;
                   },
                 },
                 {
                   key: "Customer", header: "Customer / Party", wrap: true, size: 160,
-                  render: r => <span className="text-gray-700 text-[11px] leading-snug">{r.Customer || "—"}</span>,
+                  render: r => (
+                    <div className="leading-snug">
+                      <span className="text-gray-700 text-[11px] block">{r.Customer || "—"}</span>
+                      {r.AddressInsideArtwork && (
+                        <span className="text-gray-400 text-[10px] block mt-0.5" title={r.AddressInsideArtwork}>{r.AddressInsideArtwork}</span>
+                      )}
+                    </div>
+                  ),
                 },
                 {
                   key: "CylVendor", header: "Cyl. Maker", wrap: true, size: 150,
@@ -1954,6 +2043,22 @@ export default function ArtworkManagementPage() {
                 {
                   key: "CreatedDate", header: "Artwork Recd.", size: 130,
                   render: r => <span className="text-gray-600 text-[11px]">{r.CreatedDate || "—"}</span>,
+                },
+                {
+                  key: "ArtworkFileApprovalDateFromBrand", header: "Artwork File Approval Date from Brand", size: 150,
+                  render: r => <span className="text-gray-600 text-[11px]">{r.ArtworkFileApprovalDateFromBrand || "—"}</span>,
+                },
+                {
+                  key: "EngravingApprovalDateFromBrand", header: "LSD Shade Approval Date from Brand", size: 150,
+                  render: r => <span className="text-gray-600 text-[11px]">{r.EngravingApprovalDateFromBrand || "—"}</span>,
+                },
+                {
+                  key: "ArtworkApprovalToCylinderManufacturer", header: "Artwork Approval Given to Cylinder Manufacturer", size: 160,
+                  render: r => <span className="text-gray-600 text-[11px]">{r.ArtworkApprovalToCylinderManufacturer || "—"}</span>,
+                },
+                {
+                  key: "CylinderReceivedDate", header: "Cylinder Received Date", size: 140,
+                  render: r => <span className="text-gray-600 text-[11px]">{r.CylinderReceivedDate || "—"}</span>,
                 },
               ]}
               actions={r => {
@@ -2039,43 +2144,50 @@ export default function ArtworkManagementPage() {
                     </div>
                     <Input label="File Name" value={form.AttachmentFilesName} onChange={e => rf("AttachmentFilesName", e.target.value)} placeholder="Enter file name…" />
                     <div>
-                      <label className={lCls}>Brand Name</label>
-                      <SearchableSelect value={form.BrandName} onChange={val => rf("BrandName", val)}
-                        options={fmOptions.brandNames.map(v => ({ value: v, label: v }))} placeholder="-- Select Brand --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="Brand Name"
+                        value={form.BrandName}
+                        options={[{ value: "", label: "-- Select Brand --" }, ...[...fmOptions.brandNames, ...(form.BrandName && !fmOptions.brandNames.includes(form.BrandName) ? [form.BrandName] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => rf("BrandName", e.target.value)}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div>
-                      <label className={lCls}>Pack Size</label>
-                      <SearchableSelect value={form.PackSize} onChange={val => { rf("PackSize", val); rf("ArtworkName", [form.JobName, val, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
-                        options={fmOptions.packSizes.map(v => ({ value: v, label: v }))} placeholder="-- Select Pack Size --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="SKU Size"
+                        value={form.PackSize}
+                        options={[{ value: "", label: "-- Select SKU Size --" }, ...[...fmOptions.packSizes, ...(form.PackSize && !fmOptions.packSizes.includes(form.PackSize) ? [form.PackSize] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => { rf("PackSize", e.target.value); rf("ArtworkName", [form.JobName, e.target.value, form.BottleType, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div>
-                      <label className={lCls}>Product Type</label>
-                      <SearchableSelect value={form.ProductType} onChange={val => rf("ProductType", val)}
-                        options={fmOptions.productTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Product Type --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="Product Type"
+                        value={form.ProductType}
+                        options={[{ value: "", label: "-- Select Product Type --" }, ...[...fmOptions.productTypes, ...(form.ProductType && !fmOptions.productTypes.includes(form.ProductType) ? [form.ProductType] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => rf("ProductType", e.target.value)}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div>
-                      <label className={lCls}>SKU Type</label>
-                      <SearchableSelect value={form.SkuType} onChange={val => { rf("SkuType", val); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, form.AddressType, val].filter(Boolean).join("-")); }}
-                        options={fmOptions.skuTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select SKU Type --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="Special Specification"
+                        value={form.SkuType}
+                        options={[{ value: "", label: "-- Select Special Specification --" }, ...[...fmOptions.skuTypes, ...(form.SkuType && !fmOptions.skuTypes.includes(form.SkuType) ? [form.SkuType] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => { rf("SkuType", e.target.value); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, form.AddressType, e.target.value].filter(Boolean).join("-")); }}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div>
-                      <label className={lCls}>Bottle Type</label>
-                      <SearchableSelect value={form.BottleType} onChange={val => { rf("BottleType", val); rf("ArtworkName", [form.JobName, form.PackSize, val, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
-                        options={fmOptions.bottleTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Bottle Type --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="Material Type"
+                        value={form.BottleType}
+                        options={[{ value: "", label: "-- Select Material Type --" }, ...[...fmOptions.bottleTypes, ...(form.BottleType && !fmOptions.bottleTypes.includes(form.BottleType) ? [form.BottleType] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => { rf("BottleType", e.target.value); rf("ArtworkName", [form.JobName, form.PackSize, e.target.value, form.AddressType, form.SkuType].filter(Boolean).join("-")); }}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div>
-                      <label className={lCls}>Address Type</label>
-                      <SearchableSelect value={form.AddressType} onChange={val => { rf("AddressType", val); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, val, form.SkuType].filter(Boolean).join("-")); }}
-                        options={fmOptions.addressTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Address Type --"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
+                      <FieldMasterSelectField label="Address Type"
+                        value={form.AddressType}
+                        options={[{ value: "", label: "-- Select Address Type --" }, ...[...fmOptions.addressTypes, ...(form.AddressType && !fmOptions.addressTypes.includes(form.AddressType) ? [form.AddressType] : [])].map(v => ({ value: v, label: v }))]}
+                        onChange={e => { rf("AddressType", e.target.value); rf("ArtworkName", [form.JobName, form.PackSize, form.BottleType, e.target.value, form.SkuType].filter(Boolean).join("-")); }}
+                        onRefresh={refreshFmOptions} />
                     </div>
                     <div className="col-span-2"><Input label="Artwork Name (auto-generated)" value={form.ArtworkName} readOnly /></div>
-                    <div className="col-span-2"><Textarea label="Special Specifications" value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
+                    <div className="col-span-2"><Textarea label="Design Type" value={form.SpecialSpecs} onChange={e => rf("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
+                    <div className="col-span-2"><Textarea label="Address Inside the Artwork" value={form.AddressInsideArtwork} onChange={e => rf("AddressInsideArtwork", e.target.value)} rows={2} placeholder="Address text printed inside the artwork…" /></div>
                   </div>
                 </div>
 
@@ -2085,8 +2197,12 @@ export default function ArtworkManagementPage() {
                   <div>
                     <SH label="Dates" />
                     <div className="grid grid-cols-2 gap-3">
-                      <Input label="Received Date" type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} />
+                      <Input label="Artwork Date" type="date" value={form.ReceivedDate} onChange={e => rf("ReceivedDate", e.target.value)} />
+                      <Input label="Artwork File Approval Date from Brand" type="date" value={form.ArtworkFileApprovalDateFromBrand} onChange={e => rf("ArtworkFileApprovalDateFromBrand", e.target.value)} />
+                      <Input label="LSD Shade Approval Date from Brand" type="date" value={form.EngravingApprovalDateFromBrand} onChange={e => rf("EngravingApprovalDateFromBrand", e.target.value)} />
+                      <Input label="Artwork Approval Given to Cylinder Manufacturer" type="date" value={form.ArtworkApprovalToCylinderManufacturer} onChange={e => rf("ArtworkApprovalToCylinderManufacturer", e.target.value)} />
                       <Input label="Expected Completion Date" type="date" value={form.ExpectedCompletionDate} onChange={e => rf("ExpectedCompletionDate", e.target.value)} />
+                      <Input label="Cylinder Received Date" type="date" value={form.CylinderReceivedDate} onChange={e => rf("CylinderReceivedDate", e.target.value)} />
                     </div>
                   </div>
 
@@ -2112,12 +2228,12 @@ export default function ArtworkManagementPage() {
                         const apiBase = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:57214").replace(/\/$/, "");
                         return (
                           <div>
-                            <label className={lCls}>Sub Type (Content)</label>
+                            <label className={lCls}>Product Type</label>
                             <button type="button" onClick={() => setContentPickerOpen(true)}
                               className="w-full flex items-center justify-between px-3 py-2 text-sm border border-gray-300 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:border-indigo-300 transition-colors outline-none focus:ring-2 focus:ring-indigo-400">
                               {form.Content
                                 ? <span className="text-gray-800 font-medium truncate">{form.Content}</span>
-                                : <span className="text-gray-400">Select Sub Type</span>}
+                                : <span className="text-gray-400">Select Product Type</span>}
                               <span className="ml-2 flex items-center gap-1 text-indigo-600 font-bold shrink-0">
                                 <Plus size={13} /> Select
                               </span>
@@ -2132,7 +2248,7 @@ export default function ArtworkManagementPage() {
                             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
                               <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                                 <div>
-                                  <h3 className="text-base font-bold text-gray-800">Select Sub Type</h3>
+                                  <h3 className="text-base font-bold text-gray-800">Select Product Type</h3>
                                   <p className="text-xs text-gray-400 mt-0.5">{selCat?.name}</p>
                                 </div>
                                 <button onClick={() => setContentPickerOpen(false)} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500"><X size={18} /></button>
@@ -2223,7 +2339,7 @@ export default function ArtworkManagementPage() {
           }
           columns={[
             {
-              key: "BBArtworkNo", header: "Child Artwork No.",
+              key: "BBArtworkNo", header: "Child Artwork No.", size: 150,
               render: r => <span className="font-semibold text-indigo-700">{r.BBArtworkNo}</span>,
             },
             {
@@ -2375,9 +2491,9 @@ export default function ArtworkManagementPage() {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div>
-                        <label className={lCls}>Pack Size</label>
+                        <label className={lCls}>SKU Size</label>
                         <SearchableSelect value={sgForm.PackSize} onChange={val => { rfSG("PackSize", val); rfSG("ArtworkName", [sgForm.JobName, val, sgForm.BottleType, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-")); }}
-                          options={fmOptions.packSizes.map(v => ({ value: v, label: v }))} placeholder="-- Select Pack Size --"
+                          options={fmOptions.packSizes.map(v => ({ value: v, label: v }))} placeholder="-- Select SKU Size --"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div>
@@ -2387,15 +2503,15 @@ export default function ArtworkManagementPage() {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div>
-                        <label className={lCls}>SKU Type</label>
+                        <label className={lCls}>Special Specification</label>
                         <SearchableSelect value={sgForm.SkuType} onChange={val => { rfSG("SkuType", val); rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, sgForm.BottleType, sgForm.AddressType, val].filter(Boolean).join("-")); }}
-                          options={fmOptions.skuTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select SKU Type --"
+                          options={fmOptions.skuTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Special Specification --"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div>
-                        <label className={lCls}>Bottle Type</label>
+                        <label className={lCls}>Material Type</label>
                         <SearchableSelect value={sgForm.BottleType} onChange={val => { rfSG("BottleType", val); rfSG("ArtworkName", [sgForm.JobName, sgForm.PackSize, val, sgForm.AddressType, sgForm.SkuType].filter(Boolean).join("-")); }}
-                          options={fmOptions.bottleTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Bottle Type --"
+                          options={fmOptions.bottleTypes.map(v => ({ value: v, label: v }))} placeholder="-- Select Material Type --"
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div>
@@ -2405,7 +2521,8 @@ export default function ArtworkManagementPage() {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none" />
                       </div>
                       <div className="col-span-2"><Input label="Artwork Name (auto-generated)" value={sgForm.ArtworkName} readOnly placeholder="Auto-generated from fields above" /></div>
-                      <div className="col-span-2"><Textarea label="Special Specifications" value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
+                      <div className="col-span-2"><Textarea label="Design Type" value={sgForm.SpecialSpecs} onChange={e => rfSG("SpecialSpecs", e.target.value)} rows={2} placeholder="Any special requirements or notes…" /></div>
+                      <div className="col-span-2"><Textarea label="Address Inside the Artwork" value={sgForm.AddressInsideArtwork} onChange={e => rfSG("AddressInsideArtwork", e.target.value)} rows={2} placeholder="Address text printed inside the artwork…" /></div>
                     </div>
                   </div>
                 </div>
@@ -2416,8 +2533,12 @@ export default function ArtworkManagementPage() {
                   <div>
                     <SH label="Dates" />
                     <div className="grid grid-cols-2 gap-3">
-                      <Input label="Received Date" type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} />
+                      <Input label="Artwork Date" type="date" value={sgForm.ReceivedDate} onChange={e => rfSG("ReceivedDate", e.target.value)} />
+                      <Input label="Artwork File Approval Date from Brand" type="date" value={sgForm.ArtworkFileApprovalDateFromBrand} onChange={e => rfSG("ArtworkFileApprovalDateFromBrand", e.target.value)} />
+                      <Input label="LSD Shade Approval Date from Brand" type="date" value={sgForm.EngravingApprovalDateFromBrand} onChange={e => rfSG("EngravingApprovalDateFromBrand", e.target.value)} />
+                      <Input label="Artwork Approval Given to Cylinder Manufacturer" type="date" value={sgForm.ArtworkApprovalToCylinderManufacturer} onChange={e => rfSG("ArtworkApprovalToCylinderManufacturer", e.target.value)} />
                       <Input label="Expected Completion Date" type="date" value={sgForm.ExpectedCompletionDate} onChange={e => rfSG("ExpectedCompletionDate", e.target.value)} />
+                      <Input label="Cylinder Received Date" type="date" value={sgForm.CylinderReceivedDate} onChange={e => rfSG("CylinderReceivedDate", e.target.value)} />
                     </div>
                   </div>
 
@@ -2435,7 +2556,7 @@ export default function ArtworkManagementPage() {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 outline-none"
                         />
                       </div>
-                      <Input label="Sub Type (Content)" value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} placeholder="e.g. Pouch, Sachet…" />
+                      <Input label="Product Type" value={sgForm.Content} onChange={e => rfSG("Content", e.target.value)} placeholder="e.g. Pouch, Sachet…" />
                       <div className="col-span-2"><Textarea label="Artwork Description" value={sgForm.ArtWorkDescription} onChange={e => rfSG("ArtWorkDescription", e.target.value)} rows={3} placeholder="Describe the artwork…" /></div>
                       <div className="col-span-2"><Textarea label="Remarks" value={sgForm.Remarks} onChange={e => rfSG("Remarks", e.target.value)} rows={3} placeholder="Internal notes…" /></div>
                     </div>
@@ -2547,7 +2668,12 @@ export default function ArtworkManagementPage() {
                   {a.mimeType?.startsWith("image/") ? <ImgIcon size={14} className="text-gray-400 flex-shrink-0" />
                     : a.mimeType === "application/pdf" ? <FileText size={14} className="text-red-400 flex-shrink-0" />
                     : <Paperclip size={14} className="text-gray-400 flex-shrink-0" />}
-                  <span className="text-sm text-gray-700 truncate" title={a.name}>{a.name}</span>
+                  <div className="min-w-0">
+                    <span className="text-sm text-gray-700 truncate block" title={a.name}>{a.name}</span>
+                    {a.remark && (
+                      <span className="text-[11px] text-indigo-600 font-medium truncate block" title={a.remark}>{a.remark}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button

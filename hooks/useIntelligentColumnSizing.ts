@@ -290,6 +290,12 @@ export function useIntelligentColumnSizing<TData>(
       const columnId = column.id || (column as any).accessorKey
       if (!columnId) return column
 
+      // Respect an author-specified size — content-based guessing is only a fallback for
+      // columns that didn't declare one. Without this, the computed size silently clobbers
+      // explicit column widths (and can be wrong anyway when a custom `cell` renderer displays
+      // a different field than the column's own accessor, which this analysis reads from).
+      if (column.size !== undefined) return column
+
       const constraints = columnAnalysis.get(columnId)
       if (!constraints) return column
 

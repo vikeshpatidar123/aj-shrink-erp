@@ -9,6 +9,8 @@ import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { statusBadge } from "@/components/ui/Badge";
 import { Textarea } from "@/components/ui/Input";
 import { useToast } from "@/components/ui/Toast";
+import { getCompanyName } from "@/lib/useCompanyName";
+import { PRINT_DOC_CSS, printHeaderHtml, sectionHtml, signOffHtml, footerNoteHtml, openPrintWindow, writeAndPrint, fmtQty } from "@/lib/printDoc";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 
@@ -361,38 +363,76 @@ export default function PurchaseRequisitionPage() {
     finally { setViewLoading(false); }
   };
 
-  const printReq = async (h: ReqHeader) => {
-    try {
-      const rows = await fetchReqDetailRows(h.TransactionID);
-      const win = window.open("", "_blank", "width=900,height=700");
-      if (!win) { showToast("warning", "Popup blocked", "Allow popups to print."); return; }
-      const rowsHtml = (Array.isArray(rows) ? rows : []).map((r: any) => `
-        <tr>
-          <td>${escapeHtml(r.ItemCode)}</td>
-          <td>${escapeHtml(r.ItemName)}</td>
-          <td style="text-align:right">${toNum(r.RequiredQuantity).toLocaleString()}</td>
-          <td>${escapeHtml(r.StockUnit)}</td>
-          <td>${escapeHtml(r.ItemNarration)}</td>
-        </tr>`).join("");
-      win.document.write(`<!doctype html><html><head><title>${escapeHtml(h.VoucherNo)}</title>
-        <style>
-          body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
-          h2{margin:0 0 4px}
-          p{margin:0 0 16px;color:#555;font-size:13px}
-          table{width:100%;border-collapse:collapse;font-size:12px}
-          th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
-          th{background:#f3f4f6}
-        </style>
-        </head><body>
-        <h2>Purchase Requisition — ${escapeHtml(h.VoucherNo)}</h2>
-        <p>Date: ${escapeHtml(fmtDate(h.VoucherDate))}${h.Narration ? ` &nbsp;|&nbsp; Narration: ${escapeHtml(h.Narration)}` : ""}</p>
-        <table><thead><tr><th>Item Code</th><th>Item Name</th><th>Qty</th><th>Unit</th><th>Remark</th></tr></thead>
-        <tbody>${rowsHtml}</tbody></table>
-        </body></html>`);
-      win.document.close();
-      win.focus();
-      setTimeout(() => win.print(), 300);
-    } catch (e: any) { showToast("error", "Print failed", e.message); }
+  const printReq = (h: ReqHeader) => {
+    // Open synchronously (before the async fetch below) so the browser doesn't
+    // treat it as a blocked pop-up — it isn't a direct response to the click otherwise.
+    const win = openPrintWindow();
+    if (!win) { showToast("warning", "Popup blocked", "Allow popups to print."); return; }
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(h.VoucherNo)}</title><style>${PRINT_DOC_CSS}</style></head><body><p style="padding:20px;color:#666">Loading…</p></body></html>`);
+
+    (async () => {
+      try {
+        const rows = await fetchReqDetailRows(h.TransactionID);
+        const list: any[] = Array.isArray(rows) ? rows : [];
+        const companyName = getCompanyName();
+        const totalQty = list.reduce((s, r) => s + toNum(r.RequiredQuantity), 0);
+
+        const rowsHtml = list.map((r, i) => `
+          <tr style="background:${i % 2 === 0 ? "#fff" : "#f7f7f7"}">
+            <td class="c">${i + 1}</td>
+            <td style="font-weight:700">${escapeHtml(r.ItemCode)}</td>
+            <td>${escapeHtml(r.ItemName)}</td>
+            <td>${escapeHtml(r.ItemGroupName ?? "")}${r.ItemSubGroupName ? " / " + escapeHtml(r.ItemSubGroupName) : ""}</td>
+            <td class="r" style="font-weight:700">${fmtQty(toNum(r.RequiredQuantity))}</td>
+            <td>${escapeHtml(r.StockUnit)}</td>
+            <td>${escapeHtml(r.RefJobCardContentNo ?? "—")}</td>
+            <td>${r.ExpectedDeliveryDate ? escapeHtml(fmtDate(r.ExpectedDeliveryDate)) : "—"}</td>
+            <td>${escapeHtml(r.ItemNarration ?? "")}</td>
+          </tr>`).join("");
+
+        const body = `
+          ${printHeaderHtml({
+            companyName,
+            companyTag: "FLEXIBLE PACKAGING · GRAVURE PRINTING",
+            docTitle: "Purchase Requisition",
+            docSubtitle: "Material Indent / Requisition Note",
+            meta: [
+              ["Requisition No", h.VoucherNo ?? "—"],
+              ["Requisition Date", fmtDate(h.VoucherDate)],
+              ["Total Items", String(list.length)],
+              ["Total Qty", fmtQty(totalQty)],
+              ["Prepared By", h.CreatedBy ?? "—"],
+            ],
+          })}
+
+          ${sectionHtml("A", "Items Required")}
+          <table class="doc-table">
+            <thead><tr>
+              <th class="c" style="width:4%">#</th>
+              <th style="width:11%">Item Code</th>
+              <th style="width:20%">Item Name</th>
+              <th style="width:14%">Group / Sub Group</th>
+              <th class="r" style="width:8%">Qty</th>
+              <th style="width:6%">Unit</th>
+              <th style="width:11%">Job Card Ref.</th>
+              <th style="width:10%">Exp. Delivery</th>
+              <th>Remark</th>
+            </tr></thead>
+            <tbody>${rowsHtml || `<tr><td colspan="9" class="c" style="padding:12px;color:#999">No items</td></tr>`}</tbody>
+          </table>
+
+          ${h.Narration ? `${sectionHtml("B", "Narration")}<div style="border:1px solid #999;padding:5px 8px;margin-bottom:3px;font-size:8pt">${escapeHtml(h.Narration)}</div>` : ""}
+
+          ${signOffHtml(["Requested By", "Approved By", "Store Keeper", "Purchase Dept."])}
+          ${footerNoteHtml("Purchase Requisition", companyName)}
+        `;
+
+        writeAndPrint(win, `${h.VoucherNo ?? "Requisition"}`, body);
+      } catch (e: any) {
+        try { win.document.body.innerHTML = `<p style="padding:20px;color:#c00">Failed to load: ${escapeHtml(e.message)}</p>`; } catch { /* window may be closed */ }
+        showToast("error", "Print failed", e.message);
+      }
+    })();
   };
 
   // ── Navigation ──────────────────────────────────────────────────────────────

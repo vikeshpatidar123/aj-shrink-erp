@@ -1,13 +1,15 @@
 "use client";
 
-import { RowAction, RowActions } from "@/components/ui/RowAction";
+import { RowAction } from "@/components/ui/RowAction";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, RefreshCw, Plus, Pencil, Trash2, Printer, Search, X } from "lucide-react";
+import { Loader2, Plus, Search } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
+import { DataTable } from "@/components/tables/DataTable";
+import { downloadCoa, type CoaReportHeader } from "@/lib/coaReport";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const API = "api/certificateOfAnalysisShrink";
@@ -26,19 +28,35 @@ async function apiPost<T = unknown>(path: string, body: unknown): Promise<T> {
   return unwrap(await res.text()) as T;
 }
 function today() { return new Date().toISOString().split("T")[0]; }
-function daysAgo(n: number) { return new Date(Date.now() - n * 86400000).toISOString().split("T")[0]; }
 function arr<T>(v: unknown): T[] { return Array.isArray(v) ? (v as T[]) : []; }
-function normParams(v: unknown): ParamRow[] {
-  return arr<Record<string, unknown>>(v).map(p => ({
-    ParameterID: Number(p.ParameterID ?? 0),
-    TestParaMeterName: String(p.TestParaMeterName ?? ""),
-    Specification: String(p.Specification ?? ""),
-    SpecificationFieldDataFromTable: String(p.SpecificationFieldDataFromTable ?? ""),
-    SpecificationFieldValue: String(p.SpecificationFieldValue ?? ""),
-    SpecificationFieldUnit: String(p.SpecificationFieldUnit ?? ""),
-    ResultDataFieldType: String(p.ResultDataFieldType ?? ""),
-    Defaults: String(p.Defaults ?? ""),
-  }));
+
+// Resolve a category parameter row (from LoadCOAParameters, or a saved COA detail) into the
+// UI shape. Two type axes drive the render:
+//   Specification         = 'Data Field' (std-spec auto-resolved) | 'Text/Combo Field' (static)
+//   ResultDataFieldType   = 'Combo Field' (OK|Not OK dropdown)    | 'Text Field' (free text)
+function normParams(v: unknown, isEdit: boolean): ParamRow[] {
+  return arr<Record<string, unknown>>(v).map(p => {
+    const Specification = String(p.Specification ?? "");
+    const SpecificationFieldValue = String(p.SpecificationFieldValue ?? "");
+    const SpecificationFieldUnit = String(p.SpecificationFieldUnit ?? "");
+    const ResultDataFieldType = String(p.ResultDataFieldType ?? "");
+    const rawDefaults = String(p.Defaults ?? "");
+    const isData = Specification === "Data Field";
+    const isCombo = ResultDataFieldType === "Combo Field";
+    // Standard spec: data-field → the live-resolved value; else → the static unit text.
+    const stdSpec = isData ? (SpecificationFieldValue || SpecificationFieldUnit) : SpecificationFieldUnit;
+    // Result options: pipe-list from Defaults (OK|Not OK); fall back to the common pair.
+    const resultOptions = isCombo ? (rawDefaults.includes("|") ? rawDefaults.split("|").map(s => s.trim()).filter(Boolean) : ["OK", "Not OK"]) : [];
+    // Result value: on edit Defaults holds the saved result; on create it holds options (combo) or
+    // the resolved spec (data-field) → start blank for the operator.
+    const result = isEdit ? rawDefaults : (rawDefaults.includes("|") || isData ? "" : rawDefaults);
+    return {
+      ParameterID: Number(p.ParameterID ?? 0), TestParaMeterName: String(p.TestParaMeterName ?? ""),
+      Specification, SpecificationFieldDataFromTable: String(p.SpecificationFieldDataFromTable ?? ""),
+      SpecificationFieldValue, SpecificationFieldUnit, ResultDataFieldType,
+      isData, isCombo, stdSpec, result, resultOptions,
+    };
+  });
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -48,7 +66,7 @@ interface CoaListRow {
   ClientName: string; CategoryID: number; CategoryName: string; ProductCode: string;
   PONo: string; PODate: string; DNNO: string; DNDate: string; InvoiceNo: string;
   InvoiceDate: string; InvoiceTransactionID: number; FGTransactionID: number;
-  Quantity: number; PackingDetails: string; Remark: string;
+  Quantity: number; OrderQuantity: number; PackingDetails: string; Remark: string;
   ExpiryDate: string; MfgDate: string; RefInvoiceNo: string; RefInvoiceDate: string; SpecificationNo: string;
 }
 interface JobRow {
@@ -59,7 +77,8 @@ interface JobRow {
 interface ParamRow {
   ParameterID: number; TestParaMeterName: string; Specification: string;
   SpecificationFieldDataFromTable: string; SpecificationFieldValue: string;
-  SpecificationFieldUnit: string; ResultDataFieldType: string; Defaults: string;
+  SpecificationFieldUnit: string; ResultDataFieldType: string;
+  isData: boolean; isCombo: boolean; stdSpec: string; result: string; resultOptions: string[];
 }
 interface DNRow { FGTransactionID: number; DNNO: string; InvoiceTransactionID: number; }
 interface InvRow { InvoiceTransactionID: number; InvoiceNo: string; Quantity: number; }
@@ -73,14 +92,13 @@ const blankForm = () => ({
   packingDetails: "", batchNo: "", expiryDate: "", specificationNo: "", remark: "",
 });
 
-const inputCls = "w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white";
-const roCls = inputCls + " bg-gray-50 text-gray-600";
-const lbl = "text-[11px] font-semibold text-gray-500 uppercase tracking-wider";
+const fld = "w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white";
 
 export default function CoaTab() {
   const { showToast } = useToast();
-  const [fromDate, setFromDate] = useState(daysAgo(30));
-  const [toDate, setToDate] = useState(today());
+  // Wide range → load all; DataTable's search + pagination handle filtering.
+  const fromDate = "2000-01-01";
+  const toDate = "2100-12-31";
   const [list, setList] = useState<CoaListRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -104,20 +122,17 @@ export default function CoaTab() {
   // ── List ───────────────────────────────────────────────────────────────────
   const loadList = useCallback(async () => {
     setLoading(true);
-    try {
-      const data = await apiGet(`${API}/coalist?fromDate=${fromDate}&toDate=${toDate}`);
-      setList(arr<CoaListRow>(data));
-    } catch { showToast("error", "Failed to load COA list"); }
+    try { setList(arr<CoaListRow>(await apiGet(`${API}/coalist?fromDate=${fromDate}&toDate=${toDate}`))); }
+    catch { showToast("error", "Failed to load COA list"); }
     setLoading(false);
-  }, [fromDate, toDate, showToast]);
+  }, [showToast]);
   useEffect(() => { loadList(); }, [loadList]);
 
   // ── Create ─────────────────────────────────────────────────────────────────
   const openCreate = async () => {
     setEditMode(false); setEditId(0);
     setForm(blankForm()); setParams([]); setDnList([]); setInvList([]);
-    setModalOpen(true);
-    setJobs([]); setJobSearch("");
+    setModalOpen(true); setJobs([]); setJobSearch("");
     await openJobPicker();
   };
 
@@ -137,19 +152,15 @@ export default function CoaTab() {
       productCode: j.ProductCode ?? "", poNo: j.PONo ?? "", poDate: parseDate(j.PODate),
       batchNo: j.JobBookingNo ?? "",
     }));
-    // Load parameters template + cascading dropdowns
     try {
       const [pm, dn, inv] = await Promise.all([
         apiGet(`${API}/parameters/${j.JobBookingID}/${j.CategoryID}`),
         apiGet(`${API}/deliverynotes/${j.JobBookingID}`),
         apiGet(`${API}/invoices/${j.JobBookingID}`),
       ]);
-      const np = normParams(pm);
-      setParams(np);
-      setDnList(arr<DNRow>(dn));
-      setInvList(arr<InvRow>(inv));
-      if (np.length === 0)
-        showToast("info", "No COA parameters configured for this category");
+      const np = normParams(pm, false);
+      setParams(np); setDnList(arr<DNRow>(dn)); setInvList(arr<InvRow>(inv));
+      if (np.length === 0) showToast("info", "No COA parameters configured for this category");
     } catch { showToast("error", "Failed to load job COA data"); }
   };
 
@@ -174,9 +185,7 @@ export default function CoaTab() {
         apiGet(`${API}/deliverynotes/${row.JobBookingID}`),
         apiGet(`${API}/invoicesall/${row.JobBookingID}`),
       ]);
-      setParams(normParams(det));
-      setDnList(arr<DNRow>(dn));
-      setInvList(arr<InvRow>(inv));
+      setParams(normParams(det, true)); setDnList(arr<DNRow>(dn)); setInvList(arr<InvRow>(inv));
     } catch { showToast("error", "Failed to load COA detail"); }
   };
 
@@ -184,6 +193,7 @@ export default function CoaTab() {
   const save = async () => {
     if (!form.jobBookingID) { showToast("error", "Select a job first"); return; }
     if (params.length === 0) { showToast("error", "No analysis parameters to save"); return; }
+    if (params.some(p => !String(p.result).trim())) { showToast("error", "Enter a result for every parameter"); return; }
     setSaving(true);
     try {
       const payload = {
@@ -196,11 +206,13 @@ export default function CoaTab() {
           ExpiryDate: form.expiryDate, MfgDate: form.mfgDate, SpecificationNo: form.specificationNo,
           RefInvoiceNo: form.refInvoiceNo, RefInvoiceDate: form.refInvoiceDate, Remark: form.remark,
         },
+        // SpecificationFieldUnit = the standard specification shown (so the print reads it back);
+        // Defaults = the operator's result.
         Details: params.map(p => ({
           ParameterID: String(p.ParameterID ?? ""), TestParaMeterName: p.TestParaMeterName ?? "",
           Specification: p.Specification ?? "", SpecificationFieldDataFromTable: p.SpecificationFieldDataFromTable ?? "",
-          SpecificationFieldValue: p.SpecificationFieldValue ?? "", SpecificationFieldUnit: p.SpecificationFieldUnit ?? "",
-          ResultDataFieldType: p.ResultDataFieldType ?? "", Defaults: p.Defaults ?? "",
+          SpecificationFieldValue: p.SpecificationFieldValue ?? "", SpecificationFieldUnit: p.stdSpec ?? "",
+          ResultDataFieldType: p.ResultDataFieldType ?? "", Defaults: p.result ?? "",
         })),
       };
       const res = await apiPost<string>(`${API}/save`, payload);
@@ -224,27 +236,27 @@ export default function CoaTab() {
     } catch (e) { showToast("error", "Error: " + (e as Error).message); }
   };
 
-  // ── Print (client-side) ──────────────────────────────────────────────────────
-  const printCoa = (row: CoaListRow) => {
-    apiGet<unknown>(`${API}/coadetail/${row.CoaTransactionID}`).then(d => {
-      const det = arr<ParamRow>(d);
-      const w = window.open("", "_blank", "width=900,height=700");
-      if (!w) return;
-      const rows = det.map(p => `<tr><td>${esc(p.TestParaMeterName)}</td><td>${esc(p.SpecificationFieldUnit)}</td><td>${esc(p.Defaults)}</td></tr>`).join("");
-      w.document.write(`<html><head><title>COA ${esc(row.CoaNo)}</title>
-        <style>body{font-family:Arial;padding:24px;color:#222}h2{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:12px}
-        th,td{border:1px solid #888;padding:6px 8px;font-size:13px;text-align:left}th{background:#eef}.g{display:grid;grid-template-columns:1fr 1fr;gap:4px 24px;font-size:13px;margin-top:8px}</style></head>
-        <body><h2>Certificate of Analysis</h2><div><b>${esc(row.CoaNo)}</b> &nbsp; ${esc(row.CoaDate)}</div>
-        <div class="g"><div><b>Client:</b> ${esc(row.ClientName)}</div><div><b>Job:</b> ${esc(row.JobBookingNo)} — ${esc(row.JobName)}</div>
-        <div><b>Product:</b> ${esc(row.ProductCode)}</div><div><b>Category:</b> ${esc(row.CategoryName)}</div>
-        <div><b>Batch No:</b> ${esc(row.JobBookingNo)}</div><div><b>Invoice:</b> ${esc(row.InvoiceNo)}</div>
-        <div><b>Mfg Date:</b> ${esc(row.MfgDate)}</div><div><b>Expiry:</b> ${esc(row.ExpiryDate)}</div></div>
-        <table><thead><tr><th>Test Parameter</th><th>Standard Specification Result</th><th>Result Status</th></tr></thead><tbody>${rows}</tbody></table>
-        <p style="margin-top:14px;font-size:13px"><b>Remark:</b> ${esc(row.Remark)}</p>
-        <script>window.onload=function(){window.print()}</script></body></html>`);
-      w.document.close();
-    });
+  // ── Print (PDF) ──────────────────────────────────────────────────────────────
+  const printCoa = async (row: CoaListRow) => {
+    try {
+      const det = arr<Record<string, unknown>>(await apiGet(`${API}/coadetail/${row.CoaTransactionID}`));
+      const header: CoaReportHeader = {
+        CoaNo: row.CoaNo, CoaDate: row.CoaDate, ClientName: row.ClientName, JobBookingNo: row.JobBookingNo,
+        JobName: row.JobName, CategoryName: row.CategoryName, ProductCode: row.ProductCode, PONo: row.PONo,
+        DNNO: row.DNNO, DNDate: row.DNDate, InvoiceNo: row.InvoiceNo, InvoiceDate: row.InvoiceDate,
+        OrderQuantity: row.OrderQuantity, Quantity: row.Quantity, PackingDetails: row.PackingDetails,
+        MfgDate: row.MfgDate, ExpiryDate: row.ExpiryDate, SpecificationNo: row.SpecificationNo,
+        BatchNo: row.JobBookingNo, Remark: row.Remark,
+      };
+      downloadCoa(header, det.map(p => ({
+        TestParaMeterName: String(p.TestParaMeterName ?? ""),
+        SpecificationFieldUnit: String(p.SpecificationFieldUnit ?? ""),
+        Defaults: String(p.Defaults ?? ""),
+      })));
+    } catch (e) { showToast("error", (e as Error).message); }
   };
+
+  const setParam = (i: number, patch: Partial<ParamRow>) => setParams(prev => prev.map((x, j) => j === i ? { ...x, ...patch } : x));
 
   const jobsFiltered = jobs.filter(j => {
     const q = jobSearch.toLowerCase();
@@ -254,55 +266,37 @@ export default function CoaTab() {
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {/* toolbar */}
-      <div className="flex flex-wrap items-end gap-3 justify-between">
-        <div className="flex items-end gap-3">
-          <Input label="From" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
-          <Input label="To" type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
-          <Button variant="secondary" size="md" icon={<RefreshCw size={14} />} onClick={loadList}>Refresh</Button>
-        </div>
+      <div className="flex items-center justify-end">
         <Button variant="primary" size="md" icon={<Plus size={16} />} onClick={openCreate}>Create COA</Button>
       </div>
 
-      {/* list */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-100">
-          <thead className="bg-gray-50">
-            <tr>{["COA No", "Date", "Job No", "Client", "Job Name", "Category", "DN No", "Invoice No", "Qty", ""].map(h =>
-              <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase tracking-wider">{h}</th>)}</tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400"><Loader2 className="animate-spin inline" size={18} /> Loading…</td></tr>
-            ) : list.length === 0 ? (
-              <tr><td colSpan={10} className="px-3 py-10 text-center text-gray-400">No COA records in the selected date range</td></tr>
-            ) : list.map(r => (
-              <tr key={r.CoaTransactionID} className="hover:bg-gray-50">
-                <td className="px-3 py-2 text-sm font-semibold text-blue-700">{r.CoaNo}</td>
-                <td className="px-3 py-2 text-sm">{r.CoaDate}</td>
-                <td className="px-3 py-2 text-sm">{r.JobBookingNo}</td>
-                <td className="px-3 py-2 text-sm">{r.ClientName}</td>
-                <td className="px-3 py-2 text-sm">{r.JobName}</td>
-                <td className="px-3 py-2 text-sm">{r.CategoryName}</td>
-                <td className="px-3 py-2 text-sm">{r.DNNO}</td>
-                <td className="px-3 py-2 text-sm">{r.InvoiceNo}</td>
-                <td className="px-3 py-2 text-sm text-right">{r.Quantity}</td>
-                <td className="px-3 py-2 text-right whitespace-nowrap">
-                  <div className="flex items-center gap-1 justify-end">
-                    <RowAction.Edit onClick={() => openEdit(r)} />
-                    <RowAction.Print onClick={() => printCoa(r)} />
-                    <RowAction.Delete onClick={() => del(r)} />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable<CoaListRow>
+        data={list}
+        loading={loading}
+        getRowId={r => String(r.CoaTransactionID)}
+        columns={[
+          { key: "CoaNo", header: "COA No", render: r => <span className="font-medium text-blue-700">{r.CoaNo}</span> },
+          { key: "CoaDate", header: "Date" },
+          { key: "JobBookingNo", header: "Job No" },
+          { key: "ClientName", header: "Client" },
+          { key: "JobName", header: "Job Name" },
+          { key: "CategoryName", header: "Category" },
+          { key: "DNNO", header: "DN No" },
+          { key: "InvoiceNo", header: "Invoice No" },
+          { key: "Quantity", header: "Qty", render: r => <span>{Number(r.Quantity || 0).toLocaleString()}</span> },
+        ]}
+        actions={r => (
+          <div className="flex items-center gap-1 justify-end">
+            <RowAction.Edit onClick={() => openEdit(r)} />
+            <RowAction.Print onClick={() => printCoa(r)} />
+            <RowAction.Delete onClick={() => del(r)} />
+          </div>
+        )}
+      />
 
       {/* create / edit modal */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}
-        title={editMode ? `Edit COA — ${form.coaNo}` : "New Certificate of Analysis"} size="lg">
+        title={editMode ? `Edit COA — ${form.coaNo}` : "New Certificate of Analysis"} size="xl">
         <div className="space-y-4">
           {!editMode && (
             <Button variant="secondary" size="sm" icon={<Search size={13} />} onClick={openJobPicker}>Select Job</Button>
@@ -313,8 +307,8 @@ export default function CoaTab() {
             <Input label="PWO No" value={form.batchNo} readOnly />
             <Input label="Product Code" value={form.productCode} readOnly />
 
-            <Select label="Delivery Note No" value={form.dnFGID} onChange={e => f("dnFGID", e.target.value)} options={[{value:"",label:"— Select —"}, ...dnList.map(d=>({value:String(d.FGTransactionID),label:d.DNNO}))]} />
-            <Select label="Invoice No" value={form.invoiceTransactionID} onChange={e => f("invoiceTransactionID", e.target.value)} options={[{value:"",label:"— Select —"}, ...invList.map(i=>({value:String(i.InvoiceTransactionID),label:i.InvoiceNo}))]} />
+            <Select label="Delivery Note No" value={form.dnFGID} onChange={e => f("dnFGID", e.target.value)} options={[{ value: "", label: "— Select —" }, ...dnList.map(d => ({ value: String(d.FGTransactionID), label: d.DNNO }))]} />
+            <Select label="Invoice No" value={form.invoiceTransactionID} onChange={e => f("invoiceTransactionID", e.target.value)} options={[{ value: "", label: "— Select —" }, ...invList.map(i => ({ value: String(i.InvoiceTransactionID), label: i.InvoiceNo }))]} />
             <Input label="Ref. Invoice No" value={form.refInvoiceNo} onChange={e => f("refInvoiceNo", e.target.value)} />
             <Input label="Ref. Invoice Date" type="date" value={form.refInvoiceDate} onChange={e => f("refInvoiceDate", e.target.value)} />
 
@@ -335,22 +329,40 @@ export default function CoaTab() {
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 text-xs font-bold text-blue-700 uppercase tracking-wider">Analysis Parameters</div>
             <div className="overflow-x-auto max-h-72 overflow-y-auto">
-              <table className="min-w-full text-sm">
+              <table className="min-w-full text-sm border-collapse">
                 <thead className="bg-gray-50 sticky top-0">
-                  <tr>{["Test Parameter Name", "Standard Specification Result", "Result Status"].map(h =>
-                    <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase">{h}</th>)}</tr>
+                  <tr>{["Test Parameter", "Standard Specification", "Result"].map(h =>
+                    <th key={h} className="px-3 py-2 text-left text-[11px] font-semibold text-gray-500 uppercase border border-gray-200">{h}</th>)}</tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody>
                   {params.length === 0 ? (
-                    <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400">No parameters — configure COA parameters for this category in Masters.</td></tr>
+                    <tr><td colSpan={3} className="px-3 py-6 text-center text-gray-400 border border-gray-200">No parameters — configure COA parameters for this category in Masters → Categories.</td></tr>
                   ) : params.map((p, i) => (
                     <tr key={i}>
-                      <td className="px-3 py-1.5 text-gray-800">{p.TestParaMeterName}</td>
-                      <td className="px-3 py-1.5">
-                        <Input value={p.SpecificationFieldUnit ?? ""} onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, SpecificationFieldUnit: e.target.value } : x))} />
+                      <td className="px-3 py-1.5 text-gray-800 border border-gray-200">
+                        {p.TestParaMeterName}
+                        {p.isData && <span className="ml-1 text-[10px] text-gray-400">(auto)</span>}
                       </td>
-                      <td className="px-3 py-1.5">
-                        <Input value={p.Defaults ?? ""} onChange={e => setParams(prev => prev.map((x, j) => j === i ? { ...x, Defaults: e.target.value } : x))} />
+                      <td className="px-3 py-1.5 border border-gray-200">
+                        {p.isData ? (
+                          <span className="text-gray-600">{p.stdSpec || "—"}</span>
+                        ) : p.stdSpec.includes("|") ? (
+                          <select className={fld} value={p.stdSpec} onChange={e => setParam(i, { stdSpec: e.target.value })}>
+                            {p.stdSpec.split("|").map(o => o.trim()).filter(Boolean).map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input className={fld} value={p.stdSpec} onChange={e => setParam(i, { stdSpec: e.target.value })} />
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 border border-gray-200">
+                        {p.isCombo && p.resultOptions.length ? (
+                          <select className={fld} value={p.result} onChange={e => setParam(i, { result: e.target.value })}>
+                            <option value="">— Select —</option>
+                            {p.resultOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <input className={fld} value={p.result} onChange={e => setParam(i, { result: e.target.value })} />
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -407,7 +419,6 @@ export default function CoaTab() {
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────────
-function esc(s: unknown) { return String(s ?? "").replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] || c)); }
 function parseDate(d: string): string {
   if (!d) return "";
   const months: Record<string, string> = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };

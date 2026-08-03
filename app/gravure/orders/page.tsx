@@ -7,7 +7,7 @@ import {
   Plus, Eye, Pencil, Trash2, ShoppingCart, Calculator, BookMarked,
   X, Save, FileText, Truck, Search, ChevronDown, ChevronUp,
   Check, Layers, Printer, List, Paperclip, PauseCircle, AlertTriangle,
-  ClipboardList, Download,
+  ClipboardList, Download, Receipt,
 } from "lucide-react";
 import {
   GravureOrder, GravureOrderLine,
@@ -78,6 +78,23 @@ type DeliveryRow = {
   consignee: string;
   transporterId: string;
   transporter: string;
+};
+
+type OneTimeChargeRow = {
+  id: string;
+  chargeName: string;
+  chargeAmount: number;
+};
+
+type BatchDetailRow = {
+  id: string;
+  batchNo: string;
+  quantity: string;
+  jobName: string;
+  mfgDate: string;
+  expDate: string;
+  mrp: number;
+  pkd: string;
 };
 
 // ─── Constants ────────────────────────────────────────────────
@@ -154,9 +171,22 @@ const blankDelivery = (): DeliveryRow => ({
   transporterId: "", transporter: "",
 });
 
+const blankCharge = (): OneTimeChargeRow => ({
+  id: Math.random().toString(36).slice(2),
+  chargeName: "", chargeAmount: 0,
+});
+
+const blankBatch = (): BatchDetailRow => ({
+  id: Math.random().toString(36).slice(2),
+  batchNo: "", quantity: "", jobName: "",
+  mfgDate: "", expDate: "", mrp: 0, pkd: "",
+});
+
 type FormState = Omit<GravureOrder, "id" | "orderNo"> & {
   obLines: OBLine[];
   deliverySchedule: DeliveryRow[];
+  oneTimeCharges: OneTimeChargeRow[];
+  batchDetails: BatchDetailRow[];
   orderPrefix: string;
   attachments: AttachmentMeta[];
   salesPersonId: string;
@@ -172,8 +202,10 @@ const blankForm = (): FormState => ({
   poNo: "", poDate: "",
   directDispatch: false,
   orderLines: [],
-  obLines: [blankLine()],
+  obLines: [],
   deliverySchedule: [],
+  oneTimeCharges: [],
+  batchDetails: [],
   totalAmount: 0, advancePaid: 0,
   remarks: "", status: "Confirmed",
   orderPrefix: "",
@@ -187,19 +219,24 @@ const blankForm = (): FormState => ({
 });
 
 // ─── Small cell input ─────────────────────────────────────────
+// Wrapped in a `display:contents` div marked data-editable-cell="true" —
+// DataGrid's row-click handler explicitly exempts this marker from hijacking
+// clicks/focus, which is what lets these stay usable inside a DataTable cell.
 function CI({ value, onChange, type = "text", placeholder = "", min, step, readOnly, cls = "" }: {
   value: string | number; onChange?: (v: string) => void;
   type?: string; placeholder?: string; min?: number; step?: number;
   readOnly?: boolean; cls?: string;
 }) {
   return (
-    <input
-      type={type} value={value} readOnly={readOnly}
-      min={min} step={step}
-      placeholder={placeholder}
-      onChange={e => onChange?.(e.target.value)}
-      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white ${readOnly ? "bg-gray-50 text-gray-500" : ""} ${cls}`}
-    />
+    <div data-editable-cell="true" className="contents">
+      <input
+        type={type} value={value} readOnly={readOnly}
+        min={min} step={step}
+        placeholder={placeholder}
+        onChange={e => onChange?.(e.target.value)}
+        className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400 bg-white ${readOnly ? "bg-gray-50 text-gray-500" : ""} ${cls}`}
+      />
+    </div>
   );
 }
 
@@ -208,13 +245,15 @@ function CS({ value, onChange, options, cls = "" }: {
   options: { value: string; label: string }[]; cls?: string;
 }) {
   return (
-    <SearchableSelect
-      value={value}
-      onChange={onChange}
-      options={options}
-      allowEmpty={false}
-      className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded bg-white ${cls}`}
-    />
+    <div data-editable-cell="true" className="contents">
+      <SearchableSelect
+        value={value}
+        onChange={onChange}
+        options={options}
+        allowEmpty={false}
+        className={`w-full min-w-[80px] px-1.5 py-1 text-xs border border-gray-200 rounded bg-white ${cls}`}
+      />
+    </div>
   );
 }
 
@@ -368,6 +407,8 @@ export default function GravureOrdersPage() {
         machineId: "", machineName: "", secondaryLayers: [], processes: [],
         overheadPct: 0, profitPct: 0, attachments: [],
         deliveryJSON: r.deliveryJSON ?? "[]",
+        oneTimeChargesJSON: r.oneTimeChargesJSON ?? "[]",
+        batchDetailsJSON: r.batchDetailsJSON ?? "[]",
         salesEmployeeId: String(r.SalesEmployeeID ?? ""),
         salesLedgerId: String(r.SalesLedgerID ?? ""),
         referenceImageDataUrl: String(r.referenceImageDataUrl ?? ""),
@@ -548,10 +589,29 @@ export default function GravureOrdersPage() {
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [viewRefRow, setViewRefRow] = useState<any | null>(null);
   const [apiEstimationsList, setApiEstimationsList] = useState<any[]>([]);
+  const [showItemPicker, setShowItemPicker] = useState(false);
+  const [pickerTab, setPickerTab] = useState<"available" | "direct">("available");
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [showChargesModal, setShowChargesModal] = useState(false);
+  const [showBatchModal, setShowBatchModal] = useState(false);
 
   // Hold modal state
   const [holdTarget, setHoldTarget] = useState<GravureOrder | null>(null);
   const [holdReasonInput, setHoldReasonInput] = useState("");
+
+  // Persist a status change (Hold/Unhold) to the server — optimistic local update,
+  // rolled back if the save fails.
+  const updateOrderStatus = async (orderId: string, status: GravureOrder["status"], holdReason?: string) => {
+    const prev = data.find(r => r.id === orderId);
+    setData(d => d.map(r => r.id === orderId ? { ...r, status, holdReason } : r));
+    try {
+      const res = await apiPost<any>("api/gravureOrderBookingShrink/updatestatus", { OrderBookingID: orderId, Status: status });
+      if (res?.Success === false || res?.success === false) throw new Error(res?.Message || res?.message || "Update failed");
+    } catch (e: any) {
+      if (prev) setData(d => d.map(r => r.id === orderId ? prev : r));
+      alert("Failed to update status: " + (e?.message || "Unknown error"));
+    }
+  };
 
   // Delivery schedule input state
   const [dlvInput, setDlvInput] = useState<DeliveryRow>(blankDelivery());
@@ -651,15 +711,153 @@ export default function GravureOrdersPage() {
   const totalAmount = useMemo(() => form.obLines.reduce((s, l) => s + l.amount, 0), [form.obLines]);
   const netAmount = useMemo(() => form.obLines.reduce((s, l) => s + l.netAmount, 0), [form.obLines]);
 
-  // ── Line helpers ────────────────────────────────────────────
-  const updateLine = (idx: number, line: OBLine) =>
-    f("obLines", form.obLines.map((l, i) => i === idx ? computeLine(line) : l));
+  // ── Line helpers — keyed by line id (not array index) so the grid can be
+  //    freely reordered/filtered/paginated by DataTable without corrupting edits ──
+  const updateLine = (id: string, line: OBLine) =>
+    f("obLines", form.obLines.map(l => l.id === id ? computeLine(line) : l));
 
-  const removeLine = (idx: number) =>
-    f("obLines", form.obLines.filter((_, i) => i !== idx));
+  const removeLine = (id: string) =>
+    f("obLines", form.obLines.filter(l => l.id !== id));
 
   const addLine = () =>
     f("obLines", [...form.obLines, { ...blankLine(), lineNo: form.obLines.length + 1 }]);
+
+  // ── Product Lines grid columns (MASTER UI DataTable) ──────────
+  const productLineColumns = useMemo((): Column<OBLine>[] => [
+    {
+      key: "id", header: "#", width: "w-10", sortable: false,
+      render: l => <span className="font-bold text-gray-400">{form.obLines.findIndex(x => x.id === l.id) + 1}</span>,
+    },
+    {
+      key: "productCode", header: "Product Code",
+      render: l => l.productCode
+        ? <span className="text-[10px] font-mono text-gray-600 bg-gray-100 border border-gray-200 px-2 py-1 rounded whitespace-nowrap">{l.productCode}</span>
+        : <span className="text-[10px] text-gray-300">—</span>,
+    },
+    {
+      key: "productName", header: "Product Name",
+      render: l => <CI value={l.productName} onChange={v => updateLine(l.id, { ...l, productName: v })} placeholder="Product name" cls="min-w-[145px]" />,
+    },
+    {
+      key: "categoryName", header: "Category",
+      render: l => <CI value={l.categoryName} onChange={v => updateLine(l.id, { ...l, categoryName: v })} placeholder="Category" />,
+    },
+    {
+      key: "hsnGroup", header: "HSN Group",
+      render: l => (
+        <div data-editable-cell="true" className="contents">
+          <SearchableSelect
+            value={l.hsnGroup}
+            onChange={val => {
+              const hsn = apiHsnList.find(h => h.hsnCode === val);
+              const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+              const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
+              const gstRate = (hsn && (hsn.gstRate ?? 0) > 0) ? hsn.gstRate : l.gstPct;
+              const cgst = isSameState ? (hsn && (hsn.cgstPct ?? 0) > 0 ? hsn.cgstPct : gstRate / 2) : 0;
+              const sgst = isSameState ? (hsn && (hsn.sgstPct ?? 0) > 0 ? hsn.sgstPct : gstRate / 2) : 0;
+              const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
+              updateLine(l.id, { ...l, hsnGroup: val, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
+            }}
+            options={hsnSelectOptions}
+            placeholder="-- HSN --"
+            className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px]"
+          />
+        </div>
+      ),
+    },
+    {
+      key: "orderQty", header: "Order Qty",
+      render: l => <CI value={l.orderQty || ""} type="number" min={0}
+        onChange={v => updateLine(l.id, { ...l, orderQty: Number(v) })}
+        cls="text-right font-semibold text-teal-700 border-teal-300" />,
+    },
+    {
+      key: "unit", header: "Unit",
+      render: l => <CS value={l.unit} onChange={v => updateLine(l.id, { ...l, unit: v })}
+        options={["Meter", "Kg", "Pcs", "Nos"].map(u => ({ value: u, label: u }))} />,
+    },
+    {
+      key: "rateType", header: "Rate Type",
+      render: l => <CS value={l.rateType} onChange={v => updateLine(l.id, { ...l, rateType: v })}
+        options={RATE_TYPES.map(r => ({ value: r, label: r }))} />,
+    },
+    {
+      key: "approvedCost", header: "Appr. Cost",
+      render: l => <CI value={l.approvedCost || ""} type="number" min={0} step={0.01}
+        onChange={v => updateLine(l.id, { ...l, approvedCost: Number(v) })} cls="text-right" />,
+    },
+    {
+      key: "rate", header: "Rate",
+      render: l => <CI value={l.rate || ""} type="number" min={0} step={0.01}
+        onChange={v => updateLine(l.id, { ...l, rate: Number(v) })}
+        cls="text-right font-semibold text-blue-700 border-blue-300" />,
+    },
+    {
+      key: "currency", header: "Currency",
+      render: l => <CS value={l.currency} onChange={v => updateLine(l.id, { ...l, currency: v })}
+        options={CURRENCIES.map(c => ({ value: c, label: c }))} />,
+    },
+    {
+      key: "discPct", header: "Disc.%",
+      render: l => <CI value={l.discPct || ""} type="number" min={0} step={0.5}
+        onChange={v => updateLine(l.id, { ...l, discPct: Number(v) })} cls="text-right" />,
+    },
+    { key: "discAmt", header: "Dis Amt", render: l => <CI value={l.discAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "amount", header: "Total Amt", render: l => <CI value={l.amount} readOnly cls="text-right font-bold text-teal-700 bg-teal-50" /> },
+    {
+      key: "gstPct", header: "GST%",
+      render: l => <CI value={l.gstPct} type="number" min={0}
+        onChange={v => {
+          const g = Number(v);
+          const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
+          const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
+          updateLine(l.id, { ...l, gstPct: g, cgstPct: isSameState ? g / 2 : 0, sgstPct: isSameState ? g / 2 : 0, igstPct: !isSameState ? g : 0 });
+        }} cls="text-right" />,
+    },
+    { key: "cgstPct", header: "CGST%", render: l => <CI value={l.cgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "sgstPct", header: "SGST%", render: l => <CI value={l.sgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "igstPct", header: "IGST%", render: l => <CI value={l.igstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "cgstAmt", header: "CGST", render: l => <CI value={l.cgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "sgstAmt", header: "SGST", render: l => <CI value={l.sgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "igstAmt", header: "IGST", render: l => <CI value={l.igstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /> },
+    { key: "netAmount", header: "Net Amount", render: l => <CI value={l.netAmount} readOnly cls="text-right font-bold text-purple-700 bg-purple-50" /> },
+    {
+      key: "expectedDeliveryDate", header: "Exp. Del. Date",
+      render: l => <CI value={l.expectedDeliveryDate} type="date" onChange={v => updateLine(l.id, { ...l, expectedDeliveryDate: v })} />,
+    },
+    {
+      key: "finalDeliveryDate", header: "Final Del. Date",
+      render: l => <CI value={l.finalDeliveryDate} type="date" onChange={v => updateLine(l.id, { ...l, finalDeliveryDate: v })} />,
+    },
+    {
+      key: "jobType", header: "Job Type",
+      render: l => <CS value={l.jobType} onChange={v => updateLine(l.id, { ...l, jobType: v })}
+        options={JOB_TYPES.map(j => ({ value: j, label: j }))} />,
+    },
+    {
+      key: "jobReference", header: "Job Reference",
+      render: l => <CS value={l.jobReference} onChange={v => updateLine(l.id, { ...l, jobReference: v })}
+        options={REFERENCES.map(r => ({ value: r, label: r }))} />,
+    },
+    {
+      key: "jobPriority", header: "Priority",
+      render: l => <CS value={l.jobPriority} onChange={v => updateLine(l.id, { ...l, jobPriority: v })}
+        options={PRIORITIES.map(p => ({ value: p, label: p }))} />,
+    },
+    {
+      key: "division", header: "Division",
+      render: l => <CS value={l.division} onChange={v => updateLine(l.id, { ...l, division: v })}
+        options={DIVISIONS.map(d => ({ value: d, label: d }))} />,
+    },
+    {
+      key: "prePressRemark", header: "Pre Press Remark",
+      render: l => <CI value={l.prePressRemark} onChange={v => updateLine(l.id, { ...l, prePressRemark: v })} placeholder="Pre press…" />,
+    },
+    {
+      key: "productRemark", header: "Product Remark",
+      render: l => <CI value={l.productRemark} onChange={v => updateLine(l.id, { ...l, productRemark: v })} placeholder="Product note…" />,
+    },
+  ], [form.obLines, form.customerId, apiCustomers, companyStateTinNo, apiHsnList, hsnSelectOptions]);
 
   // ── Add from enquiry ────────────────────────────────────────
   const addFromEnquiry = (row: typeof enquiryRows[0]) => {
@@ -828,6 +1026,29 @@ export default function GravureOrdersPage() {
           transporter: String(d.transporter ?? d.TransporterName ?? ""),
         } as DeliveryRow));
       })(),
+      oneTimeCharges: (() => {
+        const raw = (row as any).oneTimeChargesJSON || [];
+        let arr: any[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
+        return arr.map((c: any) => ({
+          id: String(c.id ?? Math.random().toString(36).slice(2)),
+          chargeName: String(c.chargeName ?? c.Headname ?? ""),
+          chargeAmount: Number(c.chargeAmount ?? c.Amount ?? 0),
+        } as OneTimeChargeRow));
+      })(),
+      batchDetails: (() => {
+        const raw = (row as any).batchDetailsJSON || [];
+        let arr: any[] = Array.isArray(raw) ? raw : (() => { try { return JSON.parse(raw || "[]"); } catch { return []; } })();
+        return arr.map((b: any) => ({
+          id: String(b.id ?? Math.random().toString(36).slice(2)),
+          batchNo: String(b.batchNo ?? b.Batchno ?? ""),
+          quantity: String(b.quantity ?? b.Quantity ?? ""),
+          jobName: String(b.jobName ?? b.JobName ?? ""),
+          mfgDate: String(b.mfgDate ?? b.Mfgdate ?? ""),
+          expDate: String(b.expDate ?? b.Expdate ?? ""),
+          mrp: Number(b.mrp ?? b.MRP ?? 0),
+          pkd: String(b.pkd ?? b.PKD ?? ""),
+        } as BatchDetailRow));
+      })(),
       attachments: row.attachments || [],
       // legacy
       orderLines: row.orderLines || [],
@@ -917,6 +1138,17 @@ export default function GravureOrdersPage() {
       transporter: d.transporter || "",
     }));
 
+    const oneTimeCharges = form.oneTimeCharges
+      .filter(c => c.chargeName.trim())
+      .map(c => ({ chargeName: c.chargeName, chargeAmount: c.chargeAmount || 0 }));
+
+    const batchDetails = form.batchDetails
+      .filter(b => b.batchNo.trim())
+      .map(b => ({
+        batchNo: b.batchNo, quantity: b.quantity || "", jobName: b.jobName || "",
+        mfgDate: b.mfgDate || "", expDate: b.expDate || "", mrp: b.mrp || 0, pkd: b.pkd || "",
+      }));
+
     // Resolve image: upload to S3 if new file; existing URL → use as-is; old base64 → pass through
     let imageDataUrl = "";
     if (orderImage?.fileObj) {
@@ -948,8 +1180,8 @@ export default function GravureOrdersPage() {
       },
       Lines: lines,
       DeliverySchedule: delivery,
-      OneTimeCharges: [],
-      BatchDetails: [],
+      OneTimeCharges: oneTimeCharges,
+      BatchDetails: batchDetails,
     };
 
     setSaving(true);
@@ -1004,24 +1236,14 @@ export default function GravureOrdersPage() {
   // ════════════════════════════════════════════════════════════
   if (formOpen) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        {/* ── Top bar ── */}
-        <div className="bg-teal-800 text-white px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <ShoppingCart size={16} />
-            <span className="font-bold text-sm tracking-wide">
-              {editing ? `Edit Order — ${editing.orderNo}` : "New Gravure Order Booking"}
-            </span>
-            <span className="text-xs px-2 py-0.5 rounded font-bold bg-purple-500">GRV</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={closeForm} className="flex items-center gap-1 text-teal-200 hover:text-white text-xs px-3 py-1 rounded hover:bg-teal-700 transition-colors">
-              <X size={13} />Back
-            </button>
-          </div>
-        </div>
-
-        <div className="p-4 space-y-4 max-w-[1600px] mx-auto">
+      <Modal
+        open={formOpen}
+        onClose={closeForm}
+        title={editing ? `Edit Order — ${editing.orderNo}` : "New Gravure Order Booking"}
+        size="2xl"
+      >
+      <div className="-mx-4 -mt-4 sm:-mx-6 sm:-mt-5 flex flex-col">
+        <div className="p-6 space-y-6">
 
           {/* ── SECTION 1: Header fields ── */}
           <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -1118,303 +1340,71 @@ export default function GravureOrdersPage() {
             </div>
           </div>
 
-          {/* ── PRODUCT REFERENCE — Estimation & Catalog records for client ── */}
-          {form.customerId && enquiryRows.length > 0 && (
-            <div className="bg-white border-2 border-amber-300 rounded-xl overflow-hidden shadow-sm">
-              <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
-                <div className="flex items-center gap-2">
-                  <Layers size={15} className="text-amber-600" />
-                  <span className="text-sm font-bold text-amber-800">
-                    Product Reference — {form.customerName}
-                  </span>
-                  <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-semibold">
-                    {enquiryRows.length} available
-                  </span>
-                </div>
-                <div className="relative">
-                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input value={enquirySearch} onChange={e => setEnquirySearch(e.target.value)}
-                    placeholder="Search…"
-                    className="pl-7 pr-3 py-1 text-xs border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 w-48 bg-white" />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide">
-                    <tr>
-                      <th className="px-3 py-2 text-left">Type</th>
-                      <th className="px-3 py-2 text-left">Job Name</th>
-                      <th className="px-3 py-2 text-left">Artwork Name</th>
-                      <th className="px-3 py-2 text-left">Product Code</th>
-                      <th className="px-3 py-2 text-left">Category</th>
-                      <th className="px-3 py-2 text-left">Division</th>
-                      <th className="px-3 py-2 text-left">Quote No</th>
-                      <th className="px-3 py-2 text-center w-32">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {enquiryRows.map((row, i) => {
-                      const isAdded = addedIds.has(row.id);
-                      return (
-                        <tr key={row.id}
-                          className={`border-t border-amber-100 transition-colors ${isAdded ? "bg-green-50" : i % 2 === 0 ? "bg-white hover:bg-amber-50/60" : "bg-amber-50/30 hover:bg-amber-50/60"
-                            }`}>
-                          <td className="px-3 py-2">
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${row.type === "Estimation" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
-                              {row.type === "Estimation" ? <Calculator size={9} /> : <BookMarked size={9} />}
-                              {row.type}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 font-semibold text-gray-800 max-w-[180px] truncate" title={row.jobName}>{row.jobName}</td>
-                          <td className="px-3 py-2 text-gray-700 max-w-[160px] truncate" title={(row as any).artworkName || "—"}>{(row as any).artworkName || "—"}</td>
-                          <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.productCode}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.category}</td>
-                          <td className="px-3 py-2 text-gray-600">{row.division}</td>
-                          <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.quoteNo}</td>
-                          <td className="px-3 py-2 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {(row as any)._catalogRef && (
-                                <button onClick={() => setViewRefRow((row as any)._catalogRef)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-semibold transition-colors">
-                                  <Eye size={11} />View
-                                </button>
-                              )}
-                              {row.type === "Estimation" && bookedEstIds.has(row.id) ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 border border-green-300 rounded-lg text-[11px] font-semibold">
-                                  <Check size={11} />Order Booked
-                                </span>
-                              ) : isAdded ? (
-                                <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
-                                  <Check size={11} />Added
-                                </span>
-                              ) : (
-                                <button onClick={() => addFromEnquiry(row)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
-                                  <Plus size={11} />Add
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           {/* ── SECTION 2: Product Lines Table ── */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-teal-700 text-white">
               <span className="text-xs font-bold uppercase tracking-wide">Product Lines</span>
               <div className="flex items-center gap-3">
                 <span className="text-teal-200 text-xs">{form.obLines.length} line{form.obLines.length !== 1 ? "s" : ""}</span>
-                <button onClick={addLine}
-                  className="flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-500 rounded text-xs font-semibold transition-colors">
-                  <Plus size={12} />Add Row
+                <button onClick={() => { setPickerTab("available"); setShowItemPicker(true); }}
+                  disabled={!form.customerId}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-teal-600 hover:bg-teal-500 disabled:opacity-40 disabled:cursor-not-allowed rounded text-xs font-semibold transition-colors">
+                  <Plus size={12} />Add Order Item
                 </button>
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="text-xs border-separate border-spacing-0 w-auto min-w-full">
-                <thead className="bg-teal-800 text-white text-[10px] uppercase tracking-wide">
-                  <tr>
-                    <th className="px-2 py-2 text-left sticky left-0 z-10 bg-teal-800 min-w-[30px]">#</th>
-                    <th className="px-2 py-2 text-left min-w-[90px]">Product Code</th>
-                    <th className="px-2 py-2 text-left min-w-[150px]">Product Name</th>
-                    <th className="px-2 py-2 text-left min-w-[100px]">Category</th>
-                    <th className="px-2 py-2 text-left min-w-[80px]">HSN Group</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">Order Qty</th>
-                    <th className="px-2 py-2 text-left min-w-[70px]">Unit</th>
-                    <th className="px-2 py-2 text-left min-w-[80px]">Rate Type</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">Appr. Cost</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">Rate</th>
-                    <th className="px-2 py-2 text-left min-w-[70px]">Currency</th>
-                    <th className="px-2 py-2 text-right min-w-[60px]">Disc.%</th>
-                    <th className="px-2 py-2 text-right min-w-[80px]">Dis Amt</th>
-                    <th className="px-2 py-2 text-right min-w-[90px]">Total Amt</th>
-                    <th className="px-2 py-2 text-right min-w-[55px]">GST%</th>
-                    <th className="px-2 py-2 text-right min-w-[55px]">CGST%</th>
-                    <th className="px-2 py-2 text-right min-w-[55px]">SGST%</th>
-                    <th className="px-2 py-2 text-right min-w-[55px]">IGST%</th>
-                    <th className="px-2 py-2 text-right min-w-[70px]">CGST</th>
-                    <th className="px-2 py-2 text-right min-w-[70px]">SGST</th>
-                    <th className="px-2 py-2 text-right min-w-[70px]">IGST</th>
-                    <th className="px-2 py-2 text-right min-w-[90px]">Net Amount</th>
-                    <th className="px-2 py-2 text-left min-w-[110px]">Exp. Del. Date</th>
-                    <th className="px-2 py-2 text-left min-w-[110px]">Final Del. Date</th>
-                    <th className="px-2 py-2 text-left min-w-[80px]">Job Type</th>
-                    <th className="px-2 py-2 text-left min-w-[120px]">Job Reference</th>
-                    <th className="px-2 py-2 text-left min-w-[80px]">Priority</th>
-                    <th className="px-2 py-2 text-left min-w-[80px]">Division</th>
-                    <th className="px-2 py-2 text-left min-w-[100px]">Pre Press Remark</th>
-                    <th className="px-2 py-2 text-left min-w-[100px]">Product Remark</th>
-                    <th className="px-2 py-2 text-center min-w-[36px]"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {form.obLines.map((l, idx) => {
-                    const odd = idx % 2 === 0;
-                    const srcCls = l.sourceType === "Estimation" ? "border-l-4 border-l-blue-400"
-                      : l.sourceType === "Catalog" ? "border-l-4 border-l-purple-400"
-                        : "";
-                    return (
-                      <tr key={l.id} className={`${odd ? "bg-white" : "bg-gray-50/60"} hover:bg-teal-50/30 ${srcCls}`}>
-                        <td className={`px-2 py-1 sticky left-0 z-10 font-bold text-gray-400 ${odd ? "bg-white" : "bg-gray-50"}`}>{idx + 1}</td>
-                        {/* Product Code - read only, auto-filled */}
-                        <td className="px-2 py-1">
-                          {l.productCode
-                            ? <span className="text-[10px] font-mono text-gray-600 bg-gray-100 border border-gray-200 px-2 py-1 rounded whitespace-nowrap">{l.productCode}</span>
-                            : <span className="text-[10px] text-gray-300">—</span>}
-                        </td>
-                        {/* Product Name */}
-                        <td className="px-1 py-0.5"><CI value={l.productName} onChange={v => updateLine(idx, { ...l, productName: v })} placeholder="Product name" cls="min-w-[145px]" /></td>
-                        {/* Category */}
-                        <td className="px-1 py-0.5"><CI value={l.categoryName} onChange={v => updateLine(idx, { ...l, categoryName: v })} placeholder="Category" /></td>
-                        {/* HSN */}
-                        <td className="px-1 py-0.5">
-                          <SearchableSelect
-                            value={l.hsnGroup}
-                            onChange={val => {
-                              const hsn = apiHsnList.find(h => h.hsnCode === val);
-                              const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
-                              const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
-                              // Preserve existing gstPct if HSN has no GST rate configured (gstRate=0/undefined)
-                              const gstRate = (hsn && (hsn.gstRate ?? 0) > 0) ? hsn.gstRate : l.gstPct;
-                              const cgst = isSameState ? (hsn && (hsn.cgstPct ?? 0) > 0 ? hsn.cgstPct : gstRate / 2) : 0;
-                              const sgst = isSameState ? (hsn && (hsn.sgstPct ?? 0) > 0 ? hsn.sgstPct : gstRate / 2) : 0;
-                              const igst = !isSameState ? (hsn && (hsn.igstPct ?? 0) > 0 ? hsn.igstPct : gstRate) : 0;
-                              updateLine(idx, { ...l, hsnGroup: val, hsnId: hsn?.id ?? "", gstPct: gstRate, cgstPct: cgst, sgstPct: sgst, igstPct: igst });
-                            }}
-                            options={hsnSelectOptions}
-                            placeholder="-- HSN --"
-                            className="text-xs border border-gray-200 rounded px-1 py-1 bg-white min-w-[110px]"
-                          />
-                        </td>
-                        {/* Order Qty */}
-                        <td className="px-1 py-0.5">
-                          <CI value={l.orderQty || ""} type="number" min={0}
-                            onChange={v => updateLine(idx, { ...l, orderQty: Number(v) })}
-                            cls="text-right font-semibold text-teal-700 border-teal-300" />
-                        </td>
-                        {/* Unit */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.unit} onChange={v => updateLine(idx, { ...l, unit: v })}
-                            options={["Meter", "Kg", "Pcs", "Nos"].map(u => ({ value: u, label: u }))} />
-                        </td>
-                        {/* Rate Type */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.rateType} onChange={v => updateLine(idx, { ...l, rateType: v })}
-                            options={RATE_TYPES.map(r => ({ value: r, label: r }))} />
-                        </td>
-                        {/* Appr Cost */}
-                        <td className="px-1 py-0.5"><CI value={l.approvedCost || ""} type="number" min={0} step={0.01}
-                          onChange={v => updateLine(idx, { ...l, approvedCost: Number(v) })} cls="text-right" /></td>
-                        {/* Rate */}
-                        <td className="px-1 py-0.5">
-                          <CI value={l.rate || ""} type="number" min={0} step={0.01}
-                            onChange={v => updateLine(idx, { ...l, rate: Number(v) })}
-                            cls="text-right font-semibold text-blue-700 border-blue-300" />
-                        </td>
-                        {/* Currency */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.currency} onChange={v => updateLine(idx, { ...l, currency: v })}
-                            options={CURRENCIES.map(c => ({ value: c, label: c }))} />
-                        </td>
-                        {/* Disc% */}
-                        <td className="px-1 py-0.5"><CI value={l.discPct || ""} type="number" min={0} step={0.5}
-                          onChange={v => updateLine(idx, { ...l, discPct: Number(v) })} cls="text-right" /></td>
-                        {/* Dis Amt (readonly) */}
-                        <td className="px-1 py-0.5"><CI value={l.discAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* Total Amt (readonly) */}
-                        <td className="px-1 py-0.5"><CI value={l.amount} readOnly cls="text-right font-bold text-teal-700 bg-teal-50" /></td>
-                        {/* GST% */}
-                        <td className="px-1 py-0.5"><CI value={l.gstPct} type="number" min={0}
-                          onChange={v => {
-                            const g = Number(v);
-                            const custTin = apiCustomers.find(c => c.id === form.customerId)?.stateTinNo ?? 0;
-                            const isSameState = companyStateTinNo > 0 && custTin > 0 && companyStateTinNo === custTin;
-                            updateLine(idx, { ...l, gstPct: g, cgstPct: isSameState ? g / 2 : 0, sgstPct: isSameState ? g / 2 : 0, igstPct: !isSameState ? g : 0 });
-                          }} cls="text-right" /></td>
-                        {/* CGST% */}
-                        <td className="px-1 py-0.5"><CI value={l.cgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* SGST% */}
-                        <td className="px-1 py-0.5"><CI value={l.sgstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* IGST% */}
-                        <td className="px-1 py-0.5"><CI value={l.igstPct} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* CGST Amt */}
-                        <td className="px-1 py-0.5"><CI value={l.cgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* SGST Amt */}
-                        <td className="px-1 py-0.5"><CI value={l.sgstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* IGST Amt */}
-                        <td className="px-1 py-0.5"><CI value={l.igstAmt} readOnly cls="text-right bg-gray-50 text-gray-500" /></td>
-                        {/* Net Amount */}
-                        <td className="px-1 py-0.5"><CI value={l.netAmount} readOnly cls="text-right font-bold text-purple-700 bg-purple-50" /></td>
-                        {/* Expected Del */}
-                        <td className="px-1 py-0.5"><CI value={l.expectedDeliveryDate} type="date"
-                          onChange={v => updateLine(idx, { ...l, expectedDeliveryDate: v })} /></td>
-                        {/* Final Del */}
-                        <td className="px-1 py-0.5"><CI value={l.finalDeliveryDate} type="date"
-                          onChange={v => updateLine(idx, { ...l, finalDeliveryDate: v })} /></td>
-                        {/* Job Type */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.jobType} onChange={v => updateLine(idx, { ...l, jobType: v })}
-                            options={JOB_TYPES.map(j => ({ value: j, label: j }))} />
-                        </td>
-                        {/* Job Reference */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.jobReference} onChange={v => updateLine(idx, { ...l, jobReference: v })}
-                            options={REFERENCES.map(r => ({ value: r, label: r }))} />
-                        </td>
-                        {/* Priority */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.jobPriority} onChange={v => updateLine(idx, { ...l, jobPriority: v })}
-                            options={PRIORITIES.map(p => ({ value: p, label: p }))} />
-                        </td>
-                        {/* Division */}
-                        <td className="px-1 py-0.5">
-                          <CS value={l.division} onChange={v => updateLine(idx, { ...l, division: v })}
-                            options={DIVISIONS.map(d => ({ value: d, label: d }))} />
-                        </td>
-                        {/* Pre Press Remark */}
-                        <td className="px-1 py-0.5"><CI value={l.prePressRemark}
-                          onChange={v => updateLine(idx, { ...l, prePressRemark: v })} placeholder="Pre press…" /></td>
-                        {/* Product Remark */}
-                        <td className="px-1 py-0.5"><CI value={l.productRemark}
-                          onChange={v => updateLine(idx, { ...l, productRemark: v })} placeholder="Product note…" /></td>
-                        {/* Delete */}
-                        <td className="px-1 py-0.5 text-center">
-                          <button onClick={() => removeLine(idx)}
-                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
-                            <X size={12} />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {/* Totals row */}
-                  <tr className="bg-gray-100 text-gray-700 font-bold text-xs border-t border-gray-200">
-                    <td colSpan={6} className="px-3 py-2 text-right text-gray-500 text-[10px] uppercase tracking-wide">Totals</td>
-                    <td className="px-2 py-2 text-right">{totalOrderQty.toLocaleString()}</td>
-                    <td colSpan={7}></td>
-                    <td className="px-2 py-2 text-right">₹{totalAmount.toLocaleString()}</td>
-                    <td colSpan={9}></td>
-                    <td className="px-2 py-2 text-right">₹{netAmount.toLocaleString()}</td>
-                    <td colSpan={8}></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            {form.obLines.length === 0 ? (
+              <div className="text-center py-10 text-gray-400 text-sm">
+                No product lines yet. Click &ldquo;Add Order Item&rdquo; above to get started.
+              </div>
+            ) : (
+              <DataTable
+                data={form.obLines}
+                columns={productLineColumns}
+                getRowId={l => l.id}
+                enableRowSelection={false}
+                actions={l => (
+                  <button onClick={() => removeLine(l.id)}
+                    className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors">
+                    <X size={12} />
+                  </button>
+                )}
+              />
+            )}
+
+            {/* Totals bar */}
+            {form.obLines.length > 0 && (
+              <div className="flex items-center justify-end gap-8 px-4 py-2.5 bg-gray-100 border-t border-gray-200 text-xs font-bold text-gray-700">
+                <span>Total Qty: <span className="text-teal-700">{totalOrderQty.toLocaleString()}</span></span>
+                <span>Total Amt: <span className="text-teal-700">₹{totalAmount.toLocaleString()}</span></span>
+                <span>Net Amount: <span className="text-purple-700">₹{netAmount.toLocaleString()}</span></span>
+              </div>
+            )}
           </div>
 
-          {/* ── SECTION 3: Delivery Schedule ── */}
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-            <div className="px-4 py-2.5 bg-gray-700 text-white">
-              <span className="text-xs font-bold uppercase tracking-wide">Delivery Schedule</span>
-            </div>
+          {/* ── SECTION 3: Footer Tabs (One Time Charges / Batch Details / Delivery Schedule) ── */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => setShowChargesModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              <Receipt size={14} />One Time Charges
+              {form.oneTimeCharges.length > 0 && <span className="text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full font-bold">{form.oneTimeCharges.length}</span>}
+            </button>
+            <button onClick={() => setShowBatchModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              <Layers size={14} />Batch Details
+              {form.batchDetails.length > 0 && <span className="text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full font-bold">{form.batchDetails.length}</span>}
+            </button>
+            <button onClick={() => setShowDeliveryModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+              <Truck size={14} />Delivery Schedule
+              {form.deliverySchedule.length > 0 && <span className="text-[10px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded-full font-bold">{form.deliverySchedule.length}</span>}
+            </button>
+          </div>
+
+          {/* ── Delivery Schedule Modal ── */}
+          <Modal open={showDeliveryModal} onClose={() => setShowDeliveryModal(false)} title="Delivery Schedule" size="xl">
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
             {/* Input row */}
             <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 border-b border-gray-100">
               <div>
@@ -1521,7 +1511,132 @@ export default function GravureOrdersPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+            <div className="flex justify-end pt-3">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeliveryModal(false)}>Close</Button>
+            </div>
+          </Modal>
+
+          {/* ── One Time Charges Modal ── */}
+          <Modal open={showChargesModal} onClose={() => setShowChargesModal(false)} title="One Time Charges" size="md">
+            <div className="space-y-3">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-100 text-gray-600 text-[10px] uppercase">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Charge Name</th>
+                      <th className="px-3 py-2 text-right">Amount (₹)</th>
+                      <th className="px-3 py-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.oneTimeCharges.length === 0 ? (
+                      <tr><td colSpan={3} className="px-4 py-6 text-center text-gray-400 text-sm">No charges added.</td></tr>
+                    ) : form.oneTimeCharges.map((c, i) => (
+                      <tr key={c.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="px-2 py-1.5">
+                          <input value={c.chargeName}
+                            onChange={e => f("oneTimeCharges", form.oneTimeCharges.map(x => x.id === c.id ? { ...x, chargeName: e.target.value } : x))}
+                            placeholder="e.g. Freight, Packing, Design"
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" min={0} value={c.chargeAmount || ""}
+                            onChange={e => f("oneTimeCharges", form.oneTimeCharges.map(x => x.id === c.id ? { ...x, chargeAmount: Number(e.target.value) } : x))}
+                            className="w-full px-2 py-1 text-xs text-right border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button onClick={() => f("oneTimeCharges", form.oneTimeCharges.filter(x => x.id !== c.id))}
+                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                            <X size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={() => f("oneTimeCharges", [...form.oneTimeCharges, blankCharge()])}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold transition-colors">
+                <Plus size={12} />Add Charge
+              </button>
+              <div className="flex justify-end pt-2 border-t border-gray-100">
+                <Button variant="secondary" size="sm" onClick={() => setShowChargesModal(false)}>Close</Button>
+              </div>
+            </div>
+          </Modal>
+
+          {/* ── Batch Details Modal ── */}
+          <Modal open={showBatchModal} onClose={() => setShowBatchModal(false)} title="Batch Details" size="xl">
+            <div className="space-y-3">
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-100 text-gray-600 text-[10px] uppercase">
+                    <tr>
+                      <th className="px-3 py-2 text-left">Batch No.</th>
+                      <th className="px-3 py-2 text-left">Quantity</th>
+                      <th className="px-3 py-2 text-left">Job Name</th>
+                      <th className="px-3 py-2 text-left">Mfg Date</th>
+                      <th className="px-3 py-2 text-left">Exp Date</th>
+                      <th className="px-3 py-2 text-right">MRP (₹)</th>
+                      <th className="px-3 py-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.batchDetails.length === 0 ? (
+                      <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400 text-sm">No batches added.</td></tr>
+                    ) : form.batchDetails.map((b, i) => (
+                      <tr key={b.id} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="px-2 py-1.5">
+                          <input value={b.batchNo}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, batchNo: e.target.value } : x))}
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={b.quantity}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, quantity: e.target.value } : x))}
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input value={b.jobName}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, jobName: e.target.value } : x))}
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="date" value={b.mfgDate}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, mfgDate: e.target.value } : x))}
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="date" value={b.expDate}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, expDate: e.target.value } : x))}
+                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5">
+                          <input type="number" min={0} value={b.mrp || ""}
+                            onChange={e => f("batchDetails", form.batchDetails.map(x => x.id === b.id ? { ...x, mrp: Number(e.target.value) } : x))}
+                            className="w-full px-2 py-1 text-xs text-right border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        </td>
+                        <td className="px-2 py-1.5 text-center">
+                          <button onClick={() => f("batchDetails", form.batchDetails.filter(x => x.id !== b.id))}
+                            className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded">
+                            <X size={12} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button onClick={() => f("batchDetails", [...form.batchDetails, blankBatch()])}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 rounded-lg text-xs font-semibold transition-colors">
+                <Plus size={12} />Add Batch
+              </button>
+              <div className="flex justify-end pt-2 border-t border-gray-100">
+                <Button variant="secondary" size="sm" onClick={() => setShowBatchModal(false)}>Close</Button>
+              </div>
+            </div>
+          </Modal>
 
           {/* ── SECTION 4: Reference Image ── */}
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -1653,7 +1768,7 @@ export default function GravureOrdersPage() {
 
           {/* ── Catalog Details Popup ── */}
           {viewRefRow && (
-            <div className="fixed inset-0 z-50 flex items-stretch bg-black/40 backdrop-blur-sm" onClick={() => setViewRefRow(null)}>
+            <div className="fixed inset-0 z-[100] flex items-stretch bg-black/40 backdrop-blur-sm" onClick={() => setViewRefRow(null)}>
               <div className="bg-white w-full h-full overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between px-5 py-3.5 bg-indigo-700 text-white">
                   <div className="flex items-center gap-2">
@@ -1701,32 +1816,155 @@ export default function GravureOrdersPage() {
             </div>
           )}
 
-          {/* ── Action buttons ── */}
-          <div className="flex items-center gap-3 pb-6">
-            <button onClick={save} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors">
-              <Save size={14} />{saving ? "Saving…" : editing ? "Update" : "Save"}
-            </button>
-            {editing && (
-              <button onClick={() => { setDelId(editing.id); closeForm(); }}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg transition-colors">
-                <Trash2 size={14} />Delete
-              </button>
-            )}
-            {editing && (
-              <button onClick={() => setPrintOrder(editing)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold rounded-lg transition-colors">
-                <Printer size={14} />Print
-              </button>
-            )}
-            <button onClick={closeForm}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm font-semibold rounded-lg transition-colors">
-              Back
-            </button>
-          </div>
-        </div>
+          {/* ── Add Order Item Modal ── */}
+          <Modal open={showItemPicker} onClose={() => setShowItemPicker(false)} title="Add Order Item" size="xl">
+            <div className="space-y-4">
+              {/* Tabs */}
+              <div className="flex rounded-lg border border-gray-300 overflow-hidden w-fit">
+                {([
+                  { id: "available" as const, label: "Available Products", icon: Layers },
+                  { id: "direct" as const, label: "Direct Order Booking", icon: ClipboardList },
+                ]).map(t => (
+                  <button key={t.id} onClick={() => setPickerTab(t.id)}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-semibold transition-colors ${pickerTab === t.id ? "bg-teal-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}>
+                    <t.icon size={14} />{t.label}
+                  </button>
+                ))}
+              </div>
 
+              {pickerTab === "available" ? (
+                <div className="bg-white border-2 border-amber-300 rounded-xl overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-amber-50 border-b border-amber-200">
+                    <div className="flex items-center gap-2">
+                      <Layers size={15} className="text-amber-600" />
+                      <span className="text-sm font-bold text-amber-800">
+                        Available Products — {form.customerName}
+                      </span>
+                      <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-semibold">
+                        {enquiryRows.length} available
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input value={enquirySearch} onChange={e => setEnquirySearch(e.target.value)}
+                        placeholder="Search…" autoFocus
+                        className="pl-7 pr-3 py-1 text-xs border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 w-48 bg-white" />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-amber-100 text-amber-900 text-[10px] uppercase tracking-wide sticky top-0">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Type</th>
+                          <th className="px-3 py-2 text-left">Job Name</th>
+                          <th className="px-3 py-2 text-left">Artwork Name</th>
+                          <th className="px-3 py-2 text-left">Product Code</th>
+                          <th className="px-3 py-2 text-left">Category</th>
+                          <th className="px-3 py-2 text-left">Division</th>
+                          <th className="px-3 py-2 text-left">Quote No</th>
+                          <th className="px-3 py-2 text-center w-32">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {enquiryRows.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="text-center py-10 text-gray-400">
+                              {form.customerId ? "No estimation or catalog records found for this customer." : "Select a customer first."}
+                            </td>
+                          </tr>
+                        ) : enquiryRows.map((row, i) => {
+                          const isAdded = addedIds.has(row.id);
+                          return (
+                            <tr key={row.id}
+                              className={`border-t border-amber-100 transition-colors ${isAdded ? "bg-green-50" : i % 2 === 0 ? "bg-white hover:bg-amber-50/60" : "bg-amber-50/30 hover:bg-amber-50/60"
+                                }`}>
+                              <td className="px-3 py-2">
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${row.type === "Estimation" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-purple-50 text-purple-700 border-purple-200"}`}>
+                                  {row.type === "Estimation" ? <Calculator size={9} /> : <BookMarked size={9} />}
+                                  {row.type}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 font-semibold text-gray-800 max-w-[180px] truncate" title={row.jobName}>{row.jobName}</td>
+                              <td className="px-3 py-2 text-gray-700 max-w-[160px] truncate" title={(row as any).artworkName || "—"}>{(row as any).artworkName || "—"}</td>
+                              <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.productCode}</td>
+                              <td className="px-3 py-2 text-gray-600">{row.category}</td>
+                              <td className="px-3 py-2 text-gray-600">{row.division}</td>
+                              <td className="px-3 py-2 font-mono text-gray-500 text-[10px]">{row.quoteNo}</td>
+                              <td className="px-3 py-2 text-center">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  {(row as any)._catalogRef && (
+                                    <button onClick={() => setViewRefRow((row as any)._catalogRef)}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-semibold transition-colors">
+                                      <Eye size={11} />View
+                                    </button>
+                                  )}
+                                  {row.type === "Estimation" && bookedEstIds.has(row.id) ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 border border-green-300 rounded-lg text-[11px] font-semibold">
+                                      <Check size={11} />Order Booked
+                                    </span>
+                                  ) : isAdded ? (
+                                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-lg text-[11px] font-semibold">
+                                      <Check size={11} />Added
+                                    </span>
+                                  ) : (
+                                    <button onClick={() => addFromEnquiry(row)}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-semibold transition-colors">
+                                      <Plus size={11} />Add
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 border-2 border-dashed border-gray-200 rounded-xl">
+                  <ClipboardList size={32} className="text-gray-300 mx-auto mb-3" />
+                  <p className="text-sm text-gray-500 mb-4">
+                    Add a blank product line and fill in its details manually — not linked to an Estimation or Catalog record.
+                  </p>
+                  <button
+                    onClick={() => { addLine(); setShowItemPicker(false); }}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-lg transition-colors">
+                    <Plus size={15} />Add Blank Line
+                  </button>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2 border-t border-gray-100">
+                <Button variant="secondary" size="sm" onClick={() => setShowItemPicker(false)}>Close</Button>
+              </div>
+            </div>
+          </Modal>
+
+        </div>{/* end p-6 space-y-6 */}
+
+        {/* ── FOOTER ACTIONS ── */}
+        <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-3 flex items-center justify-end gap-2">
+          <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={closeForm}>
+            Close
+          </Button>
+          {editing && (
+            <Button variant="action-cancel" size="sm" onClick={() => { setDelId(editing.id); closeForm(); }}>
+              Delete
+            </Button>
+          )}
+          {editing && (
+            <Button variant="secondary" size="sm" icon={<Printer size={14} />} onClick={() => setPrintOrder(editing)}>
+              Print
+            </Button>
+          )}
+          <Button variant="action-save" size="sm" loading={saving} icon={<Save size={14} />} onClick={save}>
+            {editing ? "Update" : "Save"}
+          </Button>
+        </div>
       </div>
+      </Modal>
     );
   }
 
@@ -1776,23 +2014,25 @@ export default function GravureOrdersPage() {
               {row.status !== "Hold" ? (
                 <button
                   onClick={() => { setHoldTarget(row); setHoldReasonInput(""); }}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-orange-300 bg-orange-50 text-orange-700 hover:bg-orange-100 transition-colors"
+                  title="Hold"
+                  className="p-1 rounded transition-colors flex-shrink-0 text-gray-400 hover:text-orange-600 hover:bg-orange-50"
                 >
-                  <PauseCircle size={12} />Hold
+                  <PauseCircle size={15} />
                 </button>
               ) : (
                 <button
-                  onClick={() => setData(d => d.map(r => r.id === row.id ? { ...r, status: "Confirmed", holdReason: undefined } : r))}
-                  className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                  onClick={() => updateOrderStatus(row.id, "Confirmed", undefined)}
+                  title="Unhold"
+                  className="p-1 rounded transition-colors flex-shrink-0 text-gray-400 hover:text-green-600 hover:bg-green-50"
                 >
-                  <Check size={12} />Unhold
+                  <Check size={15} />
                 </button>
               )}
               {(() => {
                 const isPwoCreated = (row.orderLines ?? []).some((l: any) => Number(l.isBooked ?? 0) > 0 || Number(l.bookedJobBookingId ?? 0) > 0);
                 return isPwoCreated ? (
-                  <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-green-300 bg-green-50 text-green-700 cursor-not-allowed">
-                    <Check size={12} />Job Card Created
+                  <span title="Job Card Created" className="p-1 rounded flex-shrink-0 text-green-600 cursor-not-allowed">
+                    <Check size={15} />
                   </span>
                 ) : (
                   <button
@@ -1823,9 +2063,10 @@ export default function GravureOrdersPage() {
                       }));
                       router.push("/gravure/workorder");
                     }}
-                    className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold rounded-lg border border-teal-300 bg-teal-50 text-teal-700 hover:bg-teal-100 transition-colors"
+                    title="Create PWO"
+                    className="p-1 rounded transition-colors flex-shrink-0 text-gray-400 hover:text-teal-600 hover:bg-teal-50"
                   >
-                    <ClipboardList size={12} />Create PWO
+                    <ClipboardList size={15} />
                   </button>
                 );
               })()}
@@ -2015,7 +2256,7 @@ export default function GravureOrdersPage() {
                             <PauseCircle size={11} /> Hold
                           </button>
                         ) : (
-                          <button onClick={() => setData(d => d.map(r => r.id === o.id ? { ...r, status: "Confirmed", holdReason: undefined } : r))}
+                          <button onClick={() => updateOrderStatus(o.id, "Confirmed", undefined)}
                             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 hover:bg-green-100 text-green-700 border border-green-300 text-[11px] font-bold rounded-lg transition">
                             <Check size={11} /> Unhold
                           </button>
@@ -2459,10 +2700,7 @@ export default function GravureOrdersPage() {
                 disabled={!holdReasonInput.trim()}
                 onClick={() => {
                   if (!holdReasonInput.trim()) return;
-                  setData(d => d.map(r => r.id === holdTarget!.id
-                    ? { ...r, status: "Hold" as const, holdReason: holdReasonInput.trim() }
-                    : r
-                  ));
+                  updateOrderStatus(holdTarget!.id, "Hold", holdReasonInput.trim());
                   setHoldTarget(null);
                   setHoldReasonInput("");
                 }}

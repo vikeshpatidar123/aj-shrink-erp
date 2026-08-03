@@ -10,7 +10,7 @@ import {
   Eye as EyeIcon, Printer, ShoppingCart, BookCheck,
 } from "lucide-react";
 import {
-  gravureEstimations as initData, customers, items, machines, processMasters,
+  gravureEstimations as initData, items, machines, processMasters,
   GravureEstimation, GravureEstimationMaterial, GravureEstimationProcess,
   SecondaryLayer, DryWeightRow, PlyConsumableItem,
   CATEGORY_GROUP_SUBGROUP,
@@ -439,6 +439,25 @@ export default function GravureEstimationPage() {
   const { customers: apiCustomers, machines: apiMachines, processes: apiProcesses, filmItems: apiFilmItems, inkItems: apiInkItems, sleeveItems: apiSleeveItems, cylinderMaster: apiCylindersRaw, refresh: refreshMasters } = useMasters();
   const gravureEnqList = allEnquiries.filter(e => e.businessUnit === "Gravure");
   const activeCatalog  = productCatalog.filter(c => c.status === "Active");
+
+  // ── Field Master dropdown options (Pack Size / Brand Name / SKU Type) —
+  //    fetched once on mount, same source as the Product Catalog module ──────
+  const [fmOptions, setFmOptions] = useState<Record<string, string[]>>({
+    packSizes: [], brandNames: [], skuTypes: [],
+  });
+  const refreshFmOptions = async () => {
+    const fetchField = (fieldName: string) =>
+      apiGet<any[]>(`api/FieldMasterAJ/GetFieldValues?fieldName=${encodeURIComponent(fieldName)}`)
+        .then(rows => (Array.isArray(rows) ? rows.map((r: any) => String(r.FieldValue ?? "")).filter(Boolean) : []))
+        .catch(() => [] as string[]);
+    const [packSizes, brandNames, skuTypes] = await Promise.all([
+      fetchField("Standard Pack Sizes"),
+      fetchField("Brand Names"),
+      fetchField("SKU Types"),
+    ]);
+    setFmOptions({ packSizes, brandNames, skuTypes });
+  };
+  useEffect(() => { refreshFmOptions(); }, []);
 
   // ── Live API machines & processes (fall back to static if API not loaded) ──
   const dedupe = <T extends { id: string }>(arr: T[]): T[] => {
@@ -3039,26 +3058,20 @@ export default function GravureEstimationPage() {
                         label="Pack Size"
                         value={(form as any).packSize ?? ""}
                         onChange={e => { const val = e.target.value; f("packSize" as any, val); }}
-                        onRefresh={refreshMasters}
+                        onRefresh={refreshFmOptions}
                         options={[
                           { value: "", label: "-- Select --" },
-                          ...((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).map((ps: string) => ({ value: ps, label: ps })),
-                          ...((form as any).packSize && !((customers.find(c => c.id === form.customerId) as any)?.packSizes ?? []).includes((form as any).packSize)
-                            ? [{ value: (form as any).packSize, label: (form as any).packSize }]
-                            : []),
+                          ...[...fmOptions.packSizes, ...((form as any).packSize && !fmOptions.packSizes.includes((form as any).packSize) ? [(form as any).packSize] : [])].map(v => ({ value: v, label: v })),
                         ]}
                       />
                       <FieldMasterSelectField
                         label="Brand Name"
                         value={(form as any).brandName ?? ""}
                         onChange={e => { const val = e.target.value; f("brandName" as any, val); }}
-                        onRefresh={refreshMasters}
+                        onRefresh={refreshFmOptions}
                         options={[
                           { value: "", label: "-- Select --" },
-                          ...((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).map((bn: string) => ({ value: bn, label: bn })),
-                          ...((form as any).brandName && !((customers.find(c => c.id === form.customerId) as any)?.brandNames ?? []).includes((form as any).brandName)
-                            ? [{ value: (form as any).brandName, label: (form as any).brandName }]
-                            : []),
+                          ...[...fmOptions.brandNames, ...((form as any).brandName && !fmOptions.brandNames.includes((form as any).brandName) ? [(form as any).brandName] : [])].map(v => ({ value: v, label: v })),
                         ]}
                       />
                       <FieldMasterSelectField
@@ -3075,13 +3088,10 @@ export default function GravureEstimationPage() {
                         label="SKU Type"
                         value={(form as any).skuType ?? ""}
                         onChange={e => { const val = e.target.value; f("skuType" as any, val); }}
-                        onRefresh={refreshMasters}
+                        onRefresh={refreshFmOptions}
                         options={[
                           { value: "", label: "-- Select --" },
-                          ...((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).map((sk: string) => ({ value: sk, label: sk })),
-                          ...((form as any).skuType && !((customers.find(c => c.id === form.customerId) as any)?.skuTypes ?? []).includes((form as any).skuType)
-                            ? [{ value: (form as any).skuType, label: (form as any).skuType }]
-                            : []),
+                          ...[...fmOptions.skuTypes, ...((form as any).skuType && !fmOptions.skuTypes.includes((form as any).skuType) ? [(form as any).skuType] : [])].map(v => ({ value: v, label: v })),
                         ]}
                       />
                       <FieldMasterSelectField
@@ -3576,8 +3586,354 @@ export default function GravureEstimationPage() {
                   </div>
                 )}
 
+               </div>
+             </div>
+
+            {/* ── Attachments ── */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">
+                  Attachments {attachments.length > 0 && `(${attachments.length})`}
+                </span>
+                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1 rounded-lg cursor-pointer transition">
+                  <Plus size={11} /> Add Files
+                  <input type="file" multiple accept="*" className="hidden"
+                    onChange={e => addAttachments(e.target.files)} />
+                </label>
+              </div>
+              {attachments.length === 0 && (
+                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-orange-200 rounded-xl py-6 cursor-pointer bg-orange-50/40 hover:bg-orange-50 transition"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); addAttachments(e.dataTransfer.files); }}>
+                  <Archive size={22} className="text-orange-300" />
+                  <span className="text-xs text-orange-400 font-medium">Drag &amp; drop any file — JPG, PDF, AI, PSD, PNG, etc.</span>
+                  <span className="text-[10px] text-orange-300">or click <strong>Add Files</strong> above</span>
+                  <input type="file" multiple accept="*" className="hidden"
+                    onChange={e => addAttachments(e.target.files)} />
+                </label>
+              )}
+              {attachments.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); addAttachments(e.dataTransfer.files); }}>
+                  {attachments.map((att, attIdx) => {
+                    const isImg  = att.mimeType.startsWith("image/");
+                    const ext    = att.name.split(".").pop()?.toUpperCase() ?? "FILE";
+                    const sizeKb = (att.size / 1024).toFixed(0);
+                    const isMaster = attIdx === 0;
+                    const label  = att.label ?? (isMaster ? "Master File" : "");
+                    const badgeColor = isMaster
+                      ? "bg-amber-400 text-white border-amber-500"
+                      : "bg-indigo-100 text-indigo-700 border-indigo-300";
+                    const isEditingLabel = editingAttachLabel === att.id;
+                    return (
+                      <div key={att.id} className={`relative group rounded-xl overflow-hidden bg-white shadow-sm ${isMaster ? "border-2 border-amber-400 ring-1 ring-amber-300" : label ? "border-2 border-indigo-300" : "border border-gray-200"}`}>
+                        {isEditingLabel ? (
+                          <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1">
+                            <input autoFocus
+                              className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border border-indigo-400 bg-white text-indigo-700 outline-none w-28 shadow"
+                              defaultValue={label}
+                              onBlur={e => { const v = e.target.value.trim(); setAttachments(p => p.map(a => a.id === att.id ? { ...a, label: v || undefined } : a)); setEditingAttachLabel(null); }}
+                              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditingAttachLabel(null); }}
+                            />
+                          </div>
+                        ) : label ? (
+                          <button onClick={() => setEditingAttachLabel(att.id)} title="Click to rename"
+                            className={`absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide border shadow hover:opacity-80 transition ${badgeColor}`}>
+                            {isMaster && "★ "}{label}
+                          </button>
+                        ) : (
+                          <button onClick={() => setEditingAttachLabel(att.id)} title="Add label"
+                            className="absolute top-1.5 left-1.5 z-10 opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border border-dashed border-gray-400 text-gray-500 bg-white/90 shadow transition">
+                            + Name
+                          </button>
+                        )}
+                        {isImg ? (
+                          <img src={att.url} alt={att.name} className="w-full h-20 object-cover" />
+                        ) : (
+                          <div className="w-full h-20 flex flex-col items-center justify-center bg-gray-50 gap-1">
+                            <span className="text-2xl font-black text-gray-300">{ext}</span>
+                          </div>
+                        )}
+                        <div className="px-2 py-1.5 border-t border-gray-100">
+                          <p className="text-[10px] font-semibold text-gray-700 truncate" title={att.name}>{att.name}</p>
+                          <p className="text-[9px] text-gray-400">{sizeKb} KB</p>
+                        </div>
+                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => setPreviewAttachment({ name: att.name, url: att.url, mimeType: att.mimeType })}
+                            className="p-1 rounded-md bg-white/90 text-indigo-600 hover:bg-indigo-50 shadow" title="Preview">
+                            <EyeIcon size={11} />
+                          </button>
+                          <a href={att.url} download={att.name} target="_blank" rel="noreferrer"
+                            className="p-1 rounded-md bg-white/90 text-blue-600 hover:bg-blue-50 shadow text-[10px]" title="Download">↓</a>
+                          <button onClick={() => removeAttachment(att.id)}
+                            className="p-1 rounded-md bg-white/90 text-red-500 hover:bg-red-50 shadow" title="Remove">
+                            <X size={10} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <label className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-200 rounded-xl h-full min-h-[80px] cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition">
+                    <Plus size={16} className="text-gray-300" />
+                    <span className="text-[10px] text-gray-300">Add more</span>
+                    <input type="file" multiple accept="*" className="hidden"
+                      onChange={e => addAttachments(e.target.files)} />
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: PRODUCTION PLAN */}
+        {activeTab === 2 && (
+          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+            {/* ── Machine & Cylinder Cost ── */}
+            <div>
+              <SectionHeader label="Machine & Process Selection" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
+                <div className="sm:col-span-3 md:col-span-2">
+                  <Select label="Printing Machine (Machine Master)"
+                    value={form.machineId}
+                    onChange={e => {
+                      const m = PRINT_MACHINES.find(x => x.id === e.target.value);
+                      const baseRate = parseFloat(m?.costPerHour as string) || 1350;
+                      setForm(p => {
+                        const shiftHrs = p.machineShiftHours || 8;
+                        return {
+                          ...p,
+                          machineId: e.target.value,
+                          machineName: m?.name || "",
+                          machineBaseCostPerHour: baseRate,
+                          machineCostPerHour: parseFloat(((baseRate * 8) / shiftHrs).toFixed(2)),
+                        };
+                      });
+                    }}
+                    options={[{ value: "", label: "-- All Machines --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status}) – ₹${m.costPerHour}/hr` }))]}
+                  />
+                  {/* Show catalog machine name when it's not in the static machine list */}
+                  {form.machineId && !PRINT_MACHINES.find(m => m.id === form.machineId) && form.machineName && (
+                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1">
+                      Catalog machine: <strong>{form.machineName}</strong> — select from dropdown to link production plans
+                    </p>
+                  )}
+                </div>
+                {/* Shift Hours selector */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Machine Shift (hrs/day)</label>
+                  <div className="flex gap-1">
+                    {[8, 12, 24].map(h => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => {
+                          const base = form.machineBaseCostPerHour || form.machineCostPerHour || 1350;
+                          const effective = parseFloat(((base * 8) / h).toFixed(2));
+                          setForm(p => ({ ...p, machineShiftHours: h, machineCostPerHour: effective }));
+                        }}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
+                          (form.machineShiftHours || 8) === h
+                            ? "bg-indigo-600 border-indigo-600 text-white shadow"
+                            : "bg-white border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600"
+                        }`}
+                      >
+                        {h}hr
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* Effective machine cost info bar */}
+              <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px]">
+                <span className="font-bold text-indigo-700 uppercase tracking-wider">Machine Cost:</span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
+                  Shift: <strong>{form.machineShiftHours || 8} hrs/day</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
+                  Base Rate (8hr): <strong>₹{(form.machineBaseCostPerHour || form.machineCostPerHour || 0).toLocaleString()}/hr</strong>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white border border-indigo-600 font-bold">
+                  Effective Rate: ₹{form.machineCostPerHour.toLocaleString()}/hr
+                </span>
+                {(form.machineShiftHours || 8) !== 8 && (
+                  <span className="text-indigo-500 text-[10px]">
+                    = ₹{form.machineBaseCostPerHour || form.machineCostPerHour} × 8 ÷ {form.machineShiftHours}
+                  </span>
+                )}
+              </div>
+
+              {/* Machine Specs bar */}
+              {form.machineId && (() => {
+                const selMachine = PRINT_MACHINES.find(m => m.id === form.machineId)
+                  || PRINT_MACHINES.find(m => m.name === form.machineName);
+                if (!selMachine) return null;
+                const minW    = parseFloat((selMachine as any).minWebWidth)    || 0;
+                const maxW    = parseFloat((selMachine as any).maxWebWidth)    || 0;
+                const minCirc = parseFloat((selMachine as any).repeatLengthMin) || 0;
+                const maxCirc = parseFloat((selMachine as any).repeatLengthMax) || 0;
+                const colors  = (selMachine as any).noOfColors || "";
+                const speed   = (selMachine as any).speedMax   || "";
+                return (
+                  <div className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[11px]">
+                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Machine Specs:</span>
+                    <span className="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-blue-800">
+                      {minCirc > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800">Min Circ: <strong>{minCirc} mm</strong></span>}
+                      {maxCirc > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800">Max Circ: <strong>{maxCirc} mm</strong></span>}
+                      {minW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Min Width: <strong>{minW} mm</strong></span>}
+                      {maxW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Max Width: <strong>{maxW} mm</strong></span>}
+                      {colors && <span className="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-300 text-indigo-700">Colors: <strong>{colors}</strong></span>}
+                      {speed  && <span className="px-2 py-0.5 rounded-full bg-green-100 border border-green-300 text-green-700">Speed: <strong>{speed} m/min</strong></span>}
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* Cylinder cost fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                <Input label="Cylinder Rate (₹/sq.inch)" type="number"
+                  value={form.cylinderRatePerSqInch ?? ""}
+                  onChange={e => f("cylinderRatePerSqInch", Number(e.target.value))}
+                  placeholder="e.g. 2.5" />
+              </div>
+
+              {/* Summary badges */}
+              <div className="flex flex-wrap gap-2 mb-3">
+                {(form.cylinderRatePerSqInch ?? 0) > 0 && (
+                  <span className="text-xs px-3 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-semibold">
+                    Cylinder costing: area × ₹{form.cylinderRatePerSqInch}/sq.in × {form.noOfColors} colors — shown per plan row
+                  </span>
+                )}
+                {form.setupTime > 0 && (
+                  <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold">
+                    Other Cost: ₹{((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)} ({form.setupTime} min × ₹{form.machineCostPerHour}/hr)
+                  </span>
+                )}
+              </div>
+
+              {!form.machineId && (
+                <p className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  No machine selected — plans will be shown for all {PRINT_MACHINES.length} gravure machines.
+                </p>
+              )}
+
+            </div>
+
+            {/* ── Process List ── */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-600">Process List (from Process Master)</p>
+                <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
+                  <Plus size={12} /> Add Process
+                </button>
+              </div>
+              {form.processes.length > 0 ? (
+                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        {["Process (Master)", "Machine (Auto)", "Charge Unit", "Rate (₹)", "Setup (₹)", "Amount (₹)", ""].map(h => (
+                          <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {form.processes.map((pr, i) => {
+                        // Match by ID first, then by name (handles static-ID mismatch when API loads after useEffect)
+                        const pm = (ROTO_PROCESSES.find((x: any) => x.id === pr.processId)
+                          || ROTO_PROCESSES.find((x: any) => x.name === pr.processName)) as any;
+                        // Use live machineIds from ROTO_PROCESSES if form doesn't have them (timing: API loaded after useEffect)
+                        const liveMachineIds: string[] = (pr.machineIds && pr.machineIds.length > 0)
+                          ? pr.machineIds
+                          : pm?.machineIds || [];
+                        // Machine lookup: by machineId → by machineName → by process master machineId → by process master machineName
+                        const resolvedMach = PRINT_MACHINES.find((m: any) => m.id === pr.machineId)
+                          || (pr.machineName ? PRINT_MACHINES.find((m: any) => m.name === pr.machineName) : undefined)
+                          || (pm?.machineId ? PRINT_MACHINES.find((m: any) => m.id === pm.machineId) : undefined);
+                        const displayMachineName = resolvedMach?.name
+                          || pr.machineName
+                          || pm?.machineMasterName
+                          || "";
+                        return (
+                        <tr key={i} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 min-w-[220px]">
+                            <SearchableSelect
+                              value={pm ? pm.id : ""}
+                              onChange={val => selectProcess(i, val)}
+                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"
+                              placeholder="-- Select Process --"
+                              options={[
+                                ...(!pm && (pr.processName || pr.processId)
+                                  ? [{ value: pr.processId || pr.processName, label: pr.processName || `Process ${pr.processId}` }]
+                                  : []),
+                                ...ROTO_PROCESSES.map((p: any) => ({ value: p.id, label: p.displayName || p.name })),
+                              ]}
+                            />
+                          </td>
+                          <td className="px-3 py-2 min-w-[170px]">
+                            {liveMachineIds.length > 1 ? (
+                              // Multiple machines allocated — pick one
+                              <SearchableSelect
+                                value={pr.machineId || ""}
+                                onChange={val => updateProcessMachine(i, val)}
+                                className="border border-indigo-300 bg-indigo-50 rounded px-2 py-1 text-[10px] text-indigo-700 w-full"
+                                placeholder="— select machine —"
+                                options={liveMachineIds.map(mid => {
+                                  const m = PRINT_MACHINES.find((x: any) => x.id === mid);
+                                  return { value: mid, label: m?.name || mid };
+                                })}
+                              />
+                            ) : displayMachineName ? (
+                              // Single machine auto-filled — show badge
+                              <span className="px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-[10px] font-medium">{displayMachineName}</span>
+                            ) : (
+                              // No machine in Process Master — allow manual assignment
+                              <SearchableSelect
+                                value={pr.machineId || ""}
+                                onChange={val => updateProcessMachine(i, val)}
+                                className="border border-gray-300 bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-500 w-full"
+                                placeholder="— assign machine —"
+                                options={PRINT_MACHINES.map((m: any) => ({ value: m.id, label: m.name }))}
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
+                          <td className="px-3 py-2 w-24"><input type="number" value={pr.rate} onChange={e => updateProcess(i, { rate: Number(e.target.value) })} className={`${cellInput} text-right`} step={0.01} /></td>
+                          <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
+                          <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">
+                            {(() => {
+                              const { lengthM: lm, areaM2: am, weightKg: wk } = resolveQuantities(form);
+                              const aq2 = autoProcessQty(pr.chargeUnit, lm, am, wk, form.noOfColors);
+                              const lq  = aq2 > 0 ? aq2 : (pr.qty || 0);
+                              const rawAmt = lq * pr.rate + (pr.setupCharge || 0);
+                              const minC   = processMinChargeMap[String(pr.processId)] ?? 0;
+                              return `₹${Math.max(rawAmt, minC).toLocaleString()}`;
+                            })()}
+                          </td>
+                          <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-purple-50 border-t border-blue-200">
+                      <tr>
+                        <td colSpan={6} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Process Cost</td>
+                        <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{costs.processCost.toLocaleString()}</td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl py-5 text-center text-xs text-gray-400">
+                  No processes added yet. Click "+ Add Process" to add.
+                </div>
+              )}
+            </div>
+
             {/* ── Section: Ply Configuration ── */}
-            <div className="mt-4 border-t border-purple-100 pt-4">
+            <div>
               <div className="flex items-center justify-between mb-2">
                 <SectionHeader label={`Ply Configuration (${form.secondaryLayers.length} plys)`} />
                 <div className="flex items-center gap-2">
@@ -4019,351 +4375,6 @@ export default function GravureEstimationPage() {
                   </div>
                 )}
               </div>
-            </div>
-               </div>
-             </div>
-
-            {/* ── Attachments ── */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">
-                  Attachments {attachments.length > 0 && `(${attachments.length})`}
-                </span>
-                <label className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1 rounded-lg cursor-pointer transition">
-                  <Plus size={11} /> Add Files
-                  <input type="file" multiple accept="*" className="hidden"
-                    onChange={e => addAttachments(e.target.files)} />
-                </label>
-              </div>
-              {attachments.length === 0 && (
-                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-orange-200 rounded-xl py-6 cursor-pointer bg-orange-50/40 hover:bg-orange-50 transition"
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); addAttachments(e.dataTransfer.files); }}>
-                  <Archive size={22} className="text-orange-300" />
-                  <span className="text-xs text-orange-400 font-medium">Drag &amp; drop any file — JPG, PDF, AI, PSD, PNG, etc.</span>
-                  <span className="text-[10px] text-orange-300">or click <strong>Add Files</strong> above</span>
-                  <input type="file" multiple accept="*" className="hidden"
-                    onChange={e => addAttachments(e.target.files)} />
-                </label>
-              )}
-              {attachments.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2"
-                  onDragOver={e => e.preventDefault()}
-                  onDrop={e => { e.preventDefault(); addAttachments(e.dataTransfer.files); }}>
-                  {attachments.map((att, attIdx) => {
-                    const isImg  = att.mimeType.startsWith("image/");
-                    const ext    = att.name.split(".").pop()?.toUpperCase() ?? "FILE";
-                    const sizeKb = (att.size / 1024).toFixed(0);
-                    const isMaster = attIdx === 0;
-                    const label  = att.label ?? (isMaster ? "Master File" : "");
-                    const badgeColor = isMaster
-                      ? "bg-amber-400 text-white border-amber-500"
-                      : "bg-indigo-100 text-indigo-700 border-indigo-300";
-                    const isEditingLabel = editingAttachLabel === att.id;
-                    return (
-                      <div key={att.id} className={`relative group rounded-xl overflow-hidden bg-white shadow-sm ${isMaster ? "border-2 border-amber-400 ring-1 ring-amber-300" : label ? "border-2 border-indigo-300" : "border border-gray-200"}`}>
-                        {isEditingLabel ? (
-                          <div className="absolute top-1.5 left-1.5 z-20 flex items-center gap-1">
-                            <input autoFocus
-                              className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border border-indigo-400 bg-white text-indigo-700 outline-none w-28 shadow"
-                              defaultValue={label}
-                              onBlur={e => { const v = e.target.value.trim(); setAttachments(p => p.map(a => a.id === att.id ? { ...a, label: v || undefined } : a)); setEditingAttachLabel(null); }}
-                              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditingAttachLabel(null); }}
-                            />
-                          </div>
-                        ) : label ? (
-                          <button onClick={() => setEditingAttachLabel(att.id)} title="Click to rename"
-                            className={`absolute top-1.5 left-1.5 z-10 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide border shadow hover:opacity-80 transition ${badgeColor}`}>
-                            {isMaster && "★ "}{label}
-                          </button>
-                        ) : (
-                          <button onClick={() => setEditingAttachLabel(att.id)} title="Add label"
-                            className="absolute top-1.5 left-1.5 z-10 opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border border-dashed border-gray-400 text-gray-500 bg-white/90 shadow transition">
-                            + Name
-                          </button>
-                        )}
-                        {isImg ? (
-                          <img src={att.url} alt={att.name} className="w-full h-20 object-cover" />
-                        ) : (
-                          <div className="w-full h-20 flex flex-col items-center justify-center bg-gray-50 gap-1">
-                            <span className="text-2xl font-black text-gray-300">{ext}</span>
-                          </div>
-                        )}
-                        <div className="px-2 py-1.5 border-t border-gray-100">
-                          <p className="text-[10px] font-semibold text-gray-700 truncate" title={att.name}>{att.name}</p>
-                          <p className="text-[9px] text-gray-400">{sizeKb} KB</p>
-                        </div>
-                        <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => setPreviewAttachment({ name: att.name, url: att.url, mimeType: att.mimeType })}
-                            className="p-1 rounded-md bg-white/90 text-indigo-600 hover:bg-indigo-50 shadow" title="Preview">
-                            <EyeIcon size={11} />
-                          </button>
-                          <a href={att.url} download={att.name} target="_blank" rel="noreferrer"
-                            className="p-1 rounded-md bg-white/90 text-blue-600 hover:bg-blue-50 shadow text-[10px]" title="Download">↓</a>
-                          <button onClick={() => removeAttachment(att.id)}
-                            className="p-1 rounded-md bg-white/90 text-red-500 hover:bg-red-50 shadow" title="Remove">
-                            <X size={10} />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <label className="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-gray-200 rounded-xl h-full min-h-[80px] cursor-pointer hover:border-orange-300 hover:bg-orange-50/30 transition">
-                    <Plus size={16} className="text-gray-300" />
-                    <span className="text-[10px] text-gray-300">Add more</span>
-                    <input type="file" multiple accept="*" className="hidden"
-                      onChange={e => addAttachments(e.target.files)} />
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: PRODUCTION PLAN */}
-        {activeTab === 2 && (
-          <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
-
-            {/* ── Machine & Cylinder Cost ── */}
-            <div>
-              <SectionHeader label="Machine & Process Selection" />
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-3">
-                <div className="sm:col-span-3 md:col-span-2">
-                  <Select label="Printing Machine (Machine Master)"
-                    value={form.machineId}
-                    onChange={e => {
-                      const m = PRINT_MACHINES.find(x => x.id === e.target.value);
-                      const baseRate = parseFloat(m?.costPerHour as string) || 1350;
-                      setForm(p => {
-                        const shiftHrs = p.machineShiftHours || 8;
-                        return {
-                          ...p,
-                          machineId: e.target.value,
-                          machineName: m?.name || "",
-                          machineBaseCostPerHour: baseRate,
-                          machineCostPerHour: parseFloat(((baseRate * 8) / shiftHrs).toFixed(2)),
-                        };
-                      });
-                    }}
-                    options={[{ value: "", label: "-- All Machines --" }, ...PRINT_MACHINES.map(m => ({ value: m.id, label: `${m.name} (${m.status}) – ₹${m.costPerHour}/hr` }))]}
-                  />
-                  {/* Show catalog machine name when it's not in the static machine list */}
-                  {form.machineId && !PRINT_MACHINES.find(m => m.id === form.machineId) && form.machineName && (
-                    <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1">
-                      Catalog machine: <strong>{form.machineName}</strong> — select from dropdown to link production plans
-                    </p>
-                  )}
-                </div>
-                {/* Shift Hours selector */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Machine Shift (hrs/day)</label>
-                  <div className="flex gap-1">
-                    {[8, 12, 24].map(h => (
-                      <button
-                        key={h}
-                        type="button"
-                        onClick={() => {
-                          const base = form.machineBaseCostPerHour || form.machineCostPerHour || 1350;
-                          const effective = parseFloat(((base * 8) / h).toFixed(2));
-                          setForm(p => ({ ...p, machineShiftHours: h, machineCostPerHour: effective }));
-                        }}
-                        className={`flex-1 py-2 text-xs font-bold rounded-lg border transition-all ${
-                          (form.machineShiftHours || 8) === h
-                            ? "bg-indigo-600 border-indigo-600 text-white shadow"
-                            : "bg-white border-gray-300 text-gray-600 hover:border-indigo-400 hover:text-indigo-600"
-                        }`}
-                      >
-                        {h}hr
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* Effective machine cost info bar */}
-              <div className="flex flex-wrap items-center gap-3 mb-3 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px]">
-                <span className="font-bold text-indigo-700 uppercase tracking-wider">Machine Cost:</span>
-                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
-                  Shift: <strong>{form.machineShiftHours || 8} hrs/day</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-white border border-indigo-300 text-indigo-800 font-semibold">
-                  Base Rate (8hr): <strong>₹{(form.machineBaseCostPerHour || form.machineCostPerHour || 0).toLocaleString()}/hr</strong>
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white border border-indigo-600 font-bold">
-                  Effective Rate: ₹{form.machineCostPerHour.toLocaleString()}/hr
-                </span>
-                {(form.machineShiftHours || 8) !== 8 && (
-                  <span className="text-indigo-500 text-[10px]">
-                    = ₹{form.machineBaseCostPerHour || form.machineCostPerHour} × 8 ÷ {form.machineShiftHours}
-                  </span>
-                )}
-              </div>
-
-              {/* Machine Specs bar */}
-              {form.machineId && (() => {
-                const selMachine = PRINT_MACHINES.find(m => m.id === form.machineId)
-                  || PRINT_MACHINES.find(m => m.name === form.machineName);
-                if (!selMachine) return null;
-                const minW    = parseFloat((selMachine as any).minWebWidth)    || 0;
-                const maxW    = parseFloat((selMachine as any).maxWebWidth)    || 0;
-                const minCirc = parseFloat((selMachine as any).repeatLengthMin) || 0;
-                const maxCirc = parseFloat((selMachine as any).repeatLengthMax) || 0;
-                const colors  = (selMachine as any).noOfColors || "";
-                const speed   = (selMachine as any).speedMax   || "";
-                return (
-                  <div className="flex flex-wrap items-center gap-2 mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[11px]">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Machine Specs:</span>
-                    <span className="flex flex-wrap items-center gap-1 text-[11px] font-semibold text-blue-800">
-                      {minCirc > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800">Min Circ: <strong>{minCirc} mm</strong></span>}
-                      {maxCirc > 0 && <span className="px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800">Max Circ: <strong>{maxCirc} mm</strong></span>}
-                      {minW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Min Width: <strong>{minW} mm</strong></span>}
-                      {maxW > 0 && <span className="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-300 text-orange-800">Max Width: <strong>{maxW} mm</strong></span>}
-                      {colors && <span className="px-2 py-0.5 rounded-full bg-indigo-100 border border-indigo-300 text-indigo-700">Colors: <strong>{colors}</strong></span>}
-                      {speed  && <span className="px-2 py-0.5 rounded-full bg-green-100 border border-green-300 text-green-700">Speed: <strong>{speed} m/min</strong></span>}
-                    </span>
-                  </div>
-                );
-              })()}
-
-              {/* Cylinder cost fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-                <Input label="Cylinder Rate (₹/sq.inch)" type="number"
-                  value={form.cylinderRatePerSqInch ?? ""}
-                  onChange={e => f("cylinderRatePerSqInch", Number(e.target.value))}
-                  placeholder="e.g. 2.5" />
-              </div>
-
-              {/* Summary badges */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                {(form.cylinderRatePerSqInch ?? 0) > 0 && (
-                  <span className="text-xs px-3 py-1 bg-violet-50 text-violet-700 border border-violet-200 rounded-full font-semibold">
-                    Cylinder costing: area × ₹{form.cylinderRatePerSqInch}/sq.in × {form.noOfColors} colors — shown per plan row
-                  </span>
-                )}
-                {form.setupTime > 0 && (
-                  <span className="text-xs px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full font-semibold">
-                    Other Cost: ₹{((form.setupTime / 60) * form.machineCostPerHour).toFixed(0)} ({form.setupTime} min × ₹{form.machineCostPerHour}/hr)
-                  </span>
-                )}
-              </div>
-
-              {!form.machineId && (
-                <p className="text-[10px] text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                  No machine selected — plans will be shown for all {PRINT_MACHINES.length} gravure machines.
-                </p>
-              )}
-
-            </div>
-
-            {/* ── Process List ── */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-gray-600">Process List (from Process Master)</p>
-                <button onClick={addProcess} className="flex items-center gap-1.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded-lg border border-blue-200 transition">
-                  <Plus size={12} /> Add Process
-                </button>
-              </div>
-              {form.processes.length > 0 ? (
-                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                  <table className="min-w-full text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        {["Process (Master)", "Machine (Auto)", "Charge Unit", "Rate (₹)", "Setup (₹)", "Amount (₹)", ""].map(h => (
-                          <th key={h} className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {form.processes.map((pr, i) => {
-                        // Match by ID first, then by name (handles static-ID mismatch when API loads after useEffect)
-                        const pm = (ROTO_PROCESSES.find((x: any) => x.id === pr.processId)
-                          || ROTO_PROCESSES.find((x: any) => x.name === pr.processName)) as any;
-                        // Use live machineIds from ROTO_PROCESSES if form doesn't have them (timing: API loaded after useEffect)
-                        const liveMachineIds: string[] = (pr.machineIds && pr.machineIds.length > 0)
-                          ? pr.machineIds
-                          : pm?.machineIds || [];
-                        // Machine lookup: by machineId → by machineName → by process master machineId → by process master machineName
-                        const resolvedMach = PRINT_MACHINES.find((m: any) => m.id === pr.machineId)
-                          || (pr.machineName ? PRINT_MACHINES.find((m: any) => m.name === pr.machineName) : undefined)
-                          || (pm?.machineId ? PRINT_MACHINES.find((m: any) => m.id === pm.machineId) : undefined);
-                        const displayMachineName = resolvedMach?.name
-                          || pr.machineName
-                          || pm?.machineMasterName
-                          || "";
-                        return (
-                        <tr key={i} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 min-w-[220px]">
-                            <SearchableSelect
-                              value={pm ? pm.id : ""}
-                              onChange={val => selectProcess(i, val)}
-                              className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 outline-none bg-white"
-                              placeholder="-- Select Process --"
-                              options={[
-                                ...(!pm && (pr.processName || pr.processId)
-                                  ? [{ value: pr.processId || pr.processName, label: pr.processName || `Process ${pr.processId}` }]
-                                  : []),
-                                ...ROTO_PROCESSES.map((p: any) => ({ value: p.id, label: p.displayName || p.name })),
-                              ]}
-                            />
-                          </td>
-                          <td className="px-3 py-2 min-w-[170px]">
-                            {liveMachineIds.length > 1 ? (
-                              // Multiple machines allocated — pick one
-                              <SearchableSelect
-                                value={pr.machineId || ""}
-                                onChange={val => updateProcessMachine(i, val)}
-                                className="border border-indigo-300 bg-indigo-50 rounded px-2 py-1 text-[10px] text-indigo-700 w-full"
-                                placeholder="— select machine —"
-                                options={liveMachineIds.map(mid => {
-                                  const m = PRINT_MACHINES.find((x: any) => x.id === mid);
-                                  return { value: mid, label: m?.name || mid };
-                                })}
-                              />
-                            ) : displayMachineName ? (
-                              // Single machine auto-filled — show badge
-                              <span className="px-2 py-1 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-[10px] font-medium">{displayMachineName}</span>
-                            ) : (
-                              // No machine in Process Master — allow manual assignment
-                              <SearchableSelect
-                                value={pr.machineId || ""}
-                                onChange={val => updateProcessMachine(i, val)}
-                                className="border border-gray-300 bg-gray-50 rounded px-2 py-1 text-[10px] text-gray-500 w-full"
-                                placeholder="— assign machine —"
-                                options={PRINT_MACHINES.map((m: any) => ({ value: m.id, label: m.name }))}
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2"><span className="px-2 py-1 bg-gray-100 rounded-lg text-gray-600 font-mono text-[10px]">{pr.chargeUnit || "—"}</span></td>
-                          <td className="px-3 py-2 w-24"><input type="number" value={pr.rate} onChange={e => updateProcess(i, { rate: Number(e.target.value) })} className={`${cellInput} text-right`} step={0.01} /></td>
-                          <td className="px-3 py-2 w-28"><input type="number" value={pr.setupCharge} onChange={e => updateProcess(i, { setupCharge: Number(e.target.value) })} className={`${cellInput} text-right`} /></td>
-                          <td className="px-3 py-2 w-32 text-right font-semibold text-gray-800">
-                            {(() => {
-                              const { lengthM: lm, areaM2: am, weightKg: wk } = resolveQuantities(form);
-                              const aq2 = autoProcessQty(pr.chargeUnit, lm, am, wk, form.noOfColors);
-                              const lq  = aq2 > 0 ? aq2 : (pr.qty || 0);
-                              const rawAmt = lq * pr.rate + (pr.setupCharge || 0);
-                              const minC   = processMinChargeMap[String(pr.processId)] ?? 0;
-                              return `₹${Math.max(rawAmt, minC).toLocaleString()}`;
-                            })()}
-                          </td>
-                          <td className="px-3 py-2 w-8 text-center"><button onClick={() => removeProcess(i)} className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50"><X size={13} /></button></td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot className="bg-purple-50 border-t border-blue-200">
-                      <tr>
-                        <td colSpan={6} className="px-3 py-2.5 text-xs font-bold text-purple-700 uppercase">Process Cost</td>
-                        <td className="px-3 py-2.5 text-sm font-bold text-purple-800 text-right">₹{costs.processCost.toLocaleString()}</td>
-                        <td />
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-gray-200 rounded-xl py-5 text-center text-xs text-gray-400">
-                  No processes added yet. Click "+ Add Process" to add.
-                </div>
-              )}
             </div>
 
             {/* ── Production Plan Toggle ── */}

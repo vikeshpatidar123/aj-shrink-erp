@@ -12,6 +12,8 @@ import { authHeaders, getSession } from "@/lib/auth";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
+import { getCompanyName } from "@/lib/useCompanyName";
+import { PRINT_DOC_CSS, printHeaderHtml, sectionHtml, signOffHtml, footerNoteHtml, openPrintWindow, writeAndPrint, escapeHtml, toNum, fmtQty, fmtMoney } from "@/lib/printDoc";
 
 // ─── Config ──────────────────────────────────────────────────
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
@@ -897,6 +899,112 @@ export default function PurchaseGRNPage() {
     finally { setQrPrinting(null); }
   }, []);
 
+  // ── Full GRN document print (Goods Receipt Note) ────────────
+  const printGrn = useCallback((row: GRNListRow) => {
+    // Open synchronously (before the async fetch below) so the browser doesn't
+    // treat it as a blocked pop-up — it isn't a direct response to the click otherwise.
+    const win = openPrintWindow();
+    if (!win) { alert("Popup blocked. Allow popups to print."); return; }
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(row.ReceiptVoucherNo)}</title><style>${PRINT_DOC_CSS}</style></head><body><p style="padding:20px;color:#666">Loading…</p></body></html>`);
+
+    (async () => {
+      try {
+        const detail = await apiFetch(`${BASE_URL}/api/PurchaseGrnAJ/GetReceiptVoucherBatchDetail?transactionId=${row.TransactionID}`);
+        const rows: any[] = Array.isArray(detail) && !detail[0]?.ErrMsg ? detail : [];
+        const seenTransIds = new Set<number>();
+        const uniqueRows = rows.filter(d => {
+          const tid = Number(d.TransID);
+          if (seenTransIds.has(tid)) return false;
+          seenTransIds.add(tid);
+          return true;
+        });
+
+        const companyName = getCompanyName();
+        const totalChallanQty = uniqueRows.reduce((s, r) => s + toNum(r.ChallanQuantity), 0);
+        const poRefs = [...new Set(uniqueRows.map(r => r.PurchaseVoucherNo).filter(Boolean))].join(", ");
+
+        const rowsHtml = uniqueRows.map((r, i) => `
+          <tr style="background:${i % 2 === 0 ? "#fff" : "#f7f7f7"}">
+            <td class="c">${i + 1}</td>
+            <td style="font-weight:700">${escapeHtml(r.ItemCode)}</td>
+            <td>${escapeHtml(r.ItemName)}</td>
+            <td class="r">${fmtQty(toNum(r.PurchaseOrderQuantity))}</td>
+            <td class="r" style="font-weight:700">${fmtQty(toNum(r.ChallanQuantity))}</td>
+            <td>${escapeHtml(r.StockUnit)}</td>
+            <td style="font-family:monospace;font-size:6.5pt">${escapeHtml(r.BatchNo ?? "—")}</td>
+            <td style="font-family:monospace">${escapeHtml(r.SupplierBatchNo ?? "—")}</td>
+            <td>${escapeHtml(r.Warehouse ?? "—")}${r.Bin ? " / " + escapeHtml(r.Bin) : ""}</td>
+            <td class="r">${r.PurchaseRate ? fmtMoney(toNum(r.PurchaseRate)) : "—"}</td>
+          </tr>`).join("");
+
+        const body = `
+          ${printHeaderHtml({
+            companyName,
+            companyTag: "FLEXIBLE PACKAGING · GRAVURE PRINTING",
+            docTitle: "Goods Receipt Note",
+            docSubtitle: "Purchase GRN",
+            meta: [
+              ["GRN No", row.ReceiptVoucherNo ?? "—"],
+              ["GRN Date", fmtDate(row.ReceiptVoucherDate)],
+              ["PO Ref.", poRefs || row.PurchaseVoucherNo || "—"],
+              ["Total Received Qty", fmtQty(totalChallanQty)],
+            ],
+          })}
+
+          ${sectionHtml("A", "Receipt Details")}
+          <table class="doc-table">
+            <tbody>
+              <tr>
+                <th style="width:12%">Supplier</th><td style="width:22%;font-weight:800">${escapeHtml(row.LedgerName)}</td>
+                <th style="width:12%">Invoice No.</th><td style="width:16%">${escapeHtml(row.DeliveryNoteNo || "—")}</td>
+                <th style="width:12%">Invoice Date</th><td>${row.DeliveryNoteDate ? escapeHtml(fmtDate(row.DeliveryNoteDate)) : "—"}</td>
+              </tr>
+              <tr>
+                <th>Gate Entry No.</th><td>${escapeHtml(row.GateEntryNo || "—")}</td>
+                <th>Gate Entry Date</th><td>${row.GateEntryDate ? escapeHtml(fmtDate(row.GateEntryDate)) : "—"}</td>
+                <th>Transporter</th><td>${escapeHtml(row.Transporter || "—")}</td>
+              </tr>
+              <tr>
+                <th>E-Way Bill No.</th><td>${escapeHtml(row.EWayBillNumber || "—")}</td>
+                <th>E-Way Bill Date</th><td>${row.EWayBillDate ? escapeHtml(fmtDate(row.EWayBillDate)) : "—"}</td>
+                <th>LR / Vehicle No.</th><td>${escapeHtml(row.LRNoVehicleNo || "—")}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          ${sectionHtml("B", "Items Received")}
+          <table class="doc-table" style="table-layout:fixed">
+            <thead><tr>
+              <th class="c" style="width:3%">#</th>
+              <th style="width:11%">Item Code</th>
+              <th style="width:18%">Item Name</th>
+              <th class="r" style="width:9%">PO Qty</th>
+              <th class="r" style="width:9%">Received Qty</th>
+              <th style="width:6%">Unit</th>
+              <th style="width:15%">Batch No.</th>
+              <th style="width:12%">Supplier Batch</th>
+              <th style="width:12%">Warehouse / Bin</th>
+              <th class="r">Rate</th>
+            </tr></thead>
+            <tbody>${rowsHtml || `<tr><td colspan="10" class="c" style="padding:12px;color:#999">No items</td></tr>`}</tbody>
+            <tfoot>
+              <tr><td colspan="9" class="r">Total Received Qty</td><td class="r">${fmtQty(totalChallanQty)}</td></tr>
+            </tfoot>
+          </table>
+
+          ${row.Narration ? `${sectionHtml("C", "Narration")}<div style="border:1px solid #999;padding:5px 8px;margin-bottom:3px;font-size:8pt">${escapeHtml(row.Narration)}</div>` : ""}
+
+          ${signOffHtml(["Received By", "Checked By", "Store Keeper", "QC Approved"])}
+          ${footerNoteHtml("Goods Receipt Note", companyName)}
+        `;
+
+        writeAndPrint(win, `${row.ReceiptVoucherNo ?? "GRN"}`, body);
+      } catch (e: any) {
+        try { win.document.body.innerHTML = `<p style="padding:20px;color:#c00">Failed to load: ${escapeHtml(e.message)}</p>`; } catch { /* window may be closed */ }
+      }
+    })();
+  }, []);
+
   // ── Build payload ───────────────────────────────────────────
   const buildPayload = useCallback((prefix = "GRN") => {
     const Main = {
@@ -1118,6 +1226,12 @@ export default function PurchaseGRNPage() {
                     <Button variant="action-edit" size="xs" icon={<Pencil size={11} />} onClick={() => openEdit(g)}>
                       Edit
                     </Button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); printGrn(g); }}
+                      title="Print GRN document"
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                      <FileText size={11} /> Print GRN
+                    </button>
                     {/* QR Print — direct buttons (no dropdown, so nothing gets clipped by the grid) */}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleQRPrint(g, "each"); }}
@@ -1415,6 +1529,14 @@ export default function PurchaseGRNPage() {
           <Button variant="secondary" size="sm" icon={<X size={14} />} onClick={() => setView("list")}>
             Close
           </Button>
+          {editTxnId != null && (
+            <Button
+              variant="secondary" size="sm" icon={<FileText size={14} />}
+              onClick={() => { const g = grnList.find(x => x.TransactionID === editTxnId); if (g) printGrn(g); }}
+            >
+              Print
+            </Button>
+          )}
           {editTxnId != null && (
             <Button variant="action-cancel" size="sm" loading={deleting} onClick={() => setPwModal("delete")}>
               Delete

@@ -19,6 +19,16 @@ const SectionTitle = ({ title }: { title: string }) => (
   </h3>
 );
 
+// Display-only renames — the underlying FieldName string (used for all API
+// calls) is unchanged; only what the user sees here is relabeled, to match
+// the renamed labels used in Artwork Management.
+const FIELD_DISPLAY_NAMES: Record<string, string> = {
+  "Standard Pack Sizes": "SKU Size",
+  "SKU Types": "Special Specification",
+  "Bottle Type": "Material Type",
+};
+const displayFieldName = (f: string) => FIELD_DISPLAY_NAMES[f] ?? f;
+
 // Page
 export default function FieldMasterPage() {
   // State
@@ -87,7 +97,7 @@ export default function FieldMasterPage() {
         setSuccessMsg(`"${newValue.trim()}" added successfully.`);
         await loadValues(selectedField);
       } else if (result === "Exist") {
-        setError(`"${newValue.trim()}" already exists in ${selectedField}.`);
+        setError(`"${newValue.trim()}" already exists in ${displayFieldName(selectedField)}.`);
       }
     } catch (e: any) {
       setError("Error: " + e.message);
@@ -98,7 +108,7 @@ export default function FieldMasterPage() {
 
   // Delete value
   const handleDelete = async (row: FieldValueRow) => {
-    if (!confirm(`Delete "${row.FieldValue}" from ${row.FieldName}?`)) return;
+    if (!confirm(`Delete "${row.FieldValue}" from ${displayFieldName(row.FieldName)}?`)) return;
     setError("");
     setSuccessMsg("");
     try {
@@ -135,7 +145,7 @@ export default function FieldMasterPage() {
       header: "Field",
       render: (r) => (
         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-          {r.FieldName}
+          {displayFieldName(r.FieldName)}
         </span>
       ),
     },
@@ -156,7 +166,7 @@ export default function FieldMasterPage() {
           <List size={14} className="text-blue-500" />
           <span className="text-xs font-semibold text-blue-600 uppercase tracking-wide">
             {gridData.length} {gridData.length === 1 ? "value" : "values"}
-            {selectedField ? ` · ${selectedField}` : ""}
+            {selectedField ? ` · ${displayFieldName(selectedField)}` : ""}
           </span>
         </div>
       </div>
@@ -196,7 +206,7 @@ export default function FieldMasterPage() {
                     setError("");
                     setSuccessMsg("");
                   }}
-                  options={[{ value: "", label: "-- Select a Field --" }, ...fields.map(f => ({ value: f, label: f }))]}
+                  options={[{ value: "", label: "-- Select a Field --" }, ...fields.map(f => ({ value: f, label: displayFieldName(f) }))]}
                   error={submitAttempted && !selectedField ? "Required" : undefined} />
               )}
 
@@ -207,7 +217,7 @@ export default function FieldMasterPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleAdd()}
                 placeholder={
                   selectedField
-                    ? `Enter new value for "${selectedField}"...`
+                    ? `Enter new value for "${displayFieldName(selectedField)}"...`
                     : "Select a field first"
                 }
                 disabled={!selectedField}
@@ -230,7 +240,7 @@ export default function FieldMasterPage() {
                 Viewing:
               </span>
               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200">
-                {selectedField}
+                {displayFieldName(selectedField)}
               </span>
               <span className="text-xs text-gray-400">
                 {loadingGrid ? "Loading..." : `${gridData.length} values configured`}

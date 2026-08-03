@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  Loader2, RefreshCw, Plus, Pencil, Trash2, Truck,
+  Loader2, RefreshCw, Plus, Pencil, Trash2, Truck, FileText,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
@@ -10,6 +10,7 @@ import Modal from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { authHeaders } from "@/lib/auth";
 import { DataTable } from "@/components/tables/DataTable";
+import { downloadDeliveryChallan, type ChallanData } from "@/lib/deliveryChallan";
 import CoaTab from "./CoaTab";
 import InvoiceTab from "./InvoiceTab";
 
@@ -294,6 +295,17 @@ export default function DispatchPage() {
       SGSTPercentage: num(r.SGSTTaxPercentage), IGSTPercentage: num(r.IGSTTaxPercentage),
       dispatchCartons: "",
     };
+  };
+
+  // ── Print delivery challan (flexo-format PDF) ────────────────────────────────
+  const printChallan = async (fgId: number) => {
+    try {
+      const data = await apiFetch<ChallanData>(`${API}/challandata/${fgId}`);
+      if (!data || !data.Header) { showToast("error", "No challan data found"); return; }
+      await downloadDeliveryChallan(data, fgId);
+    } catch (e) {
+      showToast("error", e instanceof Error ? e.message : "Failed to generate challan");
+    }
   };
 
   // ── Open EDIT ────────────────────────────────────────────────────────────────
@@ -627,9 +639,14 @@ export default function DispatchPage() {
             },
           ]}
           actions={r => (
-            <Button size="sm" variant="secondary" pill icon={<Pencil size={12} />} onClick={() => openEdit(r)}>
-              Edit
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="secondary" pill icon={<Pencil size={12} />} onClick={() => openEdit(r)}>
+                Edit
+              </Button>
+              <Button size="sm" variant="secondary" pill icon={<FileText size={12} />} onClick={() => printChallan(r.FGTransactionID)}>
+                Print
+              </Button>
+            </div>
           )}
         />
       )}

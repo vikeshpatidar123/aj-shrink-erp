@@ -11,6 +11,8 @@ import Modal from "@/components/ui/Modal";
 import { DataTable, Column } from "@/components/tables/DataTable";
 import { RowAction, RowActions } from "@/components/ui/RowAction";
 import { statusBadge } from "@/components/ui/Badge";
+import { getCompanyName } from "@/lib/useCompanyName";
+import { PRINT_DOC_CSS, printHeaderHtml, sectionHtml, signOffHtml, footerNoteHtml, openPrintWindow, writeAndPrint, fmtQty } from "@/lib/printDoc";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.indusanalytics.co.in";
 const CURRENCIES = ["INR", "USD", "EUR"];
@@ -480,34 +482,146 @@ export default function PurchaseOrderPage() {
   }, [poLines]);
 
   const printPo = useCallback((header: POHeader) => {
-    const rows = poLines.filter(l => l.TransactionID === header.TransactionID);
-    const win = window.open("", "_blank", "width=900,height=700");
+    // Open synchronously (before the async fetch below) so the browser doesn't
+    // treat it as a blocked pop-up — it isn't a direct response to the click otherwise.
+    const win = openPrintWindow();
     if (!win) { alert("Popup blocked. Allow popups to print."); return; }
-    const rowsHtml = rows.map(r => `
-      <tr>
-        <td>${escapeHtml(r.ItemCode)}</td>
-        <td>${escapeHtml(r.ItemName)}</td>
-        <td style="text-align:right">${toNum(r.PurchaseQuantity).toLocaleString()}</td>
-        <td>${escapeHtml(r.PurchaseUnit)}</td>
-        <td style="text-align:right">${fmtAmt(toNum(r.PurchaseRate))}</td>
-        <td style="text-align:right">${fmtAmt(toNum(r.NetAmount))}</td>
-      </tr>`).join("");
-    win.document.write(`<!doctype html><html><head><title>${escapeHtml(header.VoucherNo)}</title>
-      <style>
-        body{font-family:Arial,Helvetica,sans-serif;padding:24px;color:#111}
-        h2{margin:0 0 4px} p{margin:0 0 16px;color:#555;font-size:13px}
-        table{width:100%;border-collapse:collapse;font-size:12px}
-        th,td{border:1px solid #ccc;padding:6px 8px;text-align:left} th{background:#f3f4f6}
-      </style></head><body>
-      <h2>Purchase Order — ${escapeHtml(header.VoucherNo)}</h2>
-      <p>Supplier: ${escapeHtml(header.LedgerName)} &nbsp;|&nbsp; Date: ${escapeHtml(fmtDate(header.VoucherDate))} &nbsp;|&nbsp; Net Amount: ₹${fmtAmt(toNum(header.NetAmount))}</p>
-      <table><thead><tr><th>Item Code</th><th>Item Name</th><th>Qty</th><th>Unit</th><th>Rate</th><th>Amount</th></tr></thead>
-      <tbody>${rowsHtml}</tbody></table>
-      </body></html>`);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 300);
-  }, [poLines]);
+    win.document.write(`<!doctype html><html><head><title>${escapeHtml(header.VoucherNo)}</title><style>${PRINT_DOC_CSS}</style></head><body><p style="padding:20px;color:#666">Loading…</p></body></html>`);
+
+    (async () => {
+      try {
+        const [detailRows, taxRows] = await Promise.all([
+          apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/RetrieveData?transactionId=${header.TransactionID}`),
+          apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/RetrieveTaxCharges?transactionId=${header.TransactionID}`).catch(() => []),
+        ]);
+        const rows: any[] = Array.isArray(detailRows) ? detailRows : [];
+        const chargeRows: any[] = Array.isArray(taxRows) && !taxRows[0]?.ErrMsg ? taxRows : [];
+
+        // Dedupe by TransID in case the backend join fans out.
+        const seen = new Set<number>();
+        const uniqueRows = rows.filter(r => { if (seen.has(r.TransID)) return false; seen.add(r.TransID); return true; });
+
+        const companyName = getCompanyName();
+        const supplier = suppliers.find(s => s.LedgerID === header.LedgerID);
+        let contactName = "";
+        if (header.ContactPersonID) {
+          try {
+            const cps: any[] = await apiFetch(`${BASE_URL}/api/PurchaseOrderAJ/GetContactPerson?ledgerId=${header.LedgerID}`);
+            contactName = (Array.isArray(cps) ? cps : []).find((c: any) => c.ConcernPersonID === header.ContactPersonID)?.Name ?? "";
+          } catch { /* optional */ }
+        }
+
+        let basic = 0, disc = 0, taxable = 0, gstAmt = 0;
+        const rowsHtml = uniqueRows.map((r, i) => {
+          const gross = toNum(r.BasicAmount);
+          const discAmt = toNum(r.DiscountAmount);
+          const taxableAmt = toNum(r.TaxableAmount);
+          const rowGst = toNum(r.CGSTAmt) + toNum(r.SGSTAmt) + toNum(r.IGSTAmt);
+          basic += gross; disc += discAmt; taxable += taxableAmt; gstAmt += rowGst;
+          return `
+          <tr style="background:${i % 2 === 0 ? "#fff" : "#f7f7f7"}">
+            <td class="c">${i + 1}</td>
+            <td style="font-weight:700">${escapeHtml(r.ItemCode)}</td>
+            <td>${escapeHtml(r.ItemName)}</td>
+            <td class="c">${escapeHtml(r.HSNCode ?? "—")}</td>
+            <td class="r">${fmtQty(toNum(r.PurchaseQuantity))}</td>
+            <td>${escapeHtml(r.PurchaseUnit)}</td>
+            <td class="r">${fmtAmt(toNum(r.PurchaseRate))}</td>
+            <td class="r">${discAmt > 0 ? fmtAmt(discAmt) : "—"}</td>
+            <td class="r">${fmtAmt(taxableAmt)}</td>
+            <td class="c">${toNum(r.GSTTaxPercentage) || "—"}%</td>
+            <td class="r">${fmtAmt(rowGst)}</td>
+            <td class="r" style="font-weight:700">${fmtAmt(toNum(r.TotalAmount))}</td>
+          </tr>`;
+        }).join("");
+
+        const chargesTotal = chargeRows.reduce((s, c) => s + toNum(c.TotalAmount), 0);
+        const chargesHtml = chargeRows.length > 0 ? `
+          ${sectionHtml("C", "Other Charges")}
+          <table class="doc-table">
+            <thead><tr><th>Ledger</th><th>Type</th><th class="c">Rate %</th><th class="r">GST Amt</th><th class="r">Total</th></tr></thead>
+            <tbody>${chargeRows.map(c => `
+              <tr>
+                <td>${escapeHtml(c.LedgerName)}</td>
+                <td>${escapeHtml(c.TaxType ?? "—")}</td>
+                <td class="c">${toNum(c.TaxRatePer) || "—"}</td>
+                <td class="r">${fmtAmt(toNum(c.CGSTAmount) + toNum(c.SGSTAmount) + toNum(c.IGSTAmount))}</td>
+                <td class="r" style="font-weight:700">${fmtAmt(toNum(c.TotalAmount))}</td>
+              </tr>`).join("")}</tbody>
+          </table>` : "";
+
+        const netAmount = toNum(header.NetAmount) || (taxable + gstAmt + chargesTotal);
+
+        const body = `
+          ${printHeaderHtml({
+            companyName,
+            companyTag: "FLEXIBLE PACKAGING · GRAVURE PRINTING",
+            docTitle: "Purchase Order",
+            docSubtitle: "Supplier Purchase Order",
+            meta: [
+              ["PO No", header.VoucherNo ?? "—"],
+              ["PO Date", fmtDate(header.VoucherDate)],
+              ["Currency", header.CurrencyCode || "INR"],
+              ["Status", header.IsVoucherItemApproved ? "Approved" : "Pending Approval"],
+            ],
+          })}
+
+          ${sectionHtml("A", "Supplier & Delivery")}
+          <table class="doc-table">
+            <tbody>
+              <tr>
+                <th style="width:12%">Supplier</th><td style="width:26%;font-weight:800">${escapeHtml(header.LedgerName)}</td>
+                <th style="width:12%">GST No.</th><td style="width:22%">${escapeHtml(supplier?.GSTNo || "—")}</td>
+                <th style="width:10%">Contact</th><td>${escapeHtml(contactName || "—")}</td>
+              </tr>
+              <tr>
+                <th>Terms of Payment</th><td>${escapeHtml(header.TermsOfPayment || "—")}</td>
+                <th>Mode of Transport</th><td>${escapeHtml(header.ModeOfTransport || "—")}</td>
+                <th>Delivery Address</th><td>${escapeHtml(header.DeliveryAddress || "—")}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          ${sectionHtml("B", "Items")}
+          <table class="doc-table" style="table-layout:fixed">
+            <thead><tr>
+              <th class="c" style="width:3%">#</th>
+              <th style="width:10%">Item Code</th>
+              <th style="width:16%">Item Name</th>
+              <th class="c" style="width:8%">HSN</th>
+              <th class="r" style="width:7%">Qty</th>
+              <th style="width:6%">Unit</th>
+              <th class="r" style="width:8%">Rate</th>
+              <th class="r" style="width:8%">Disc.</th>
+              <th class="r" style="width:9%">Taxable</th>
+              <th class="c" style="width:6%">GST%</th>
+              <th class="r" style="width:8%">GST Amt</th>
+              <th class="r" style="width:10%">Net Amt</th>
+            </tr></thead>
+            <tbody>${rowsHtml || `<tr><td colspan="12" class="c" style="padding:12px;color:#999">No items</td></tr>`}</tbody>
+            <tfoot>
+              <tr><td colspan="8" class="r">Basic Amount</td><td colspan="4" class="r">₹${fmtAmt(basic - disc)}</td></tr>
+              <tr><td colspan="8" class="r">Taxable Amount</td><td colspan="4" class="r">₹${fmtAmt(taxable)}</td></tr>
+              <tr><td colspan="8" class="r">GST Amount</td><td colspan="4" class="r">₹${fmtAmt(gstAmt)}</td></tr>
+              ${chargesTotal > 0 ? `<tr><td colspan="8" class="r">Other Charges</td><td colspan="4" class="r">₹${fmtAmt(chargesTotal)}</td></tr>` : ""}
+              <tr style="font-size:9pt"><td colspan="8" class="r">Net Amount</td><td colspan="4" class="r">₹${fmtAmt(netAmount)}</td></tr>
+            </tfoot>
+          </table>
+
+          ${chargesHtml}
+
+          ${header.Narration ? `${sectionHtml("D", "Narration / Terms")}<div style="border:1px solid #999;padding:5px 8px;margin-bottom:3px;font-size:8pt">${escapeHtml(header.Narration)}</div>` : ""}
+
+          ${signOffHtml(["Prepared By", "Verified By", "Approved By", "Authorized Signatory"])}
+          ${footerNoteHtml("Purchase Order", companyName)}
+        `;
+
+        writeAndPrint(win, `${header.VoucherNo ?? "Purchase Order"}`, body);
+      } catch (e: any) {
+        try { win.document.body.innerHTML = `<p style="padding:20px;color:#c00">Failed to load: ${escapeHtml(e.message)}</p>`; } catch { /* window may be closed */ }
+      }
+    })();
+  }, [suppliers]);
 
   const fetchContacts = useCallback(async (ledgerId: number) => {
     if (!ledgerId) { setContacts([]); return; }

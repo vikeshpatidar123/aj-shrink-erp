@@ -28,6 +28,8 @@ interface DataTableProps<T> {
   loading?: boolean;
   getRowId?: (row: T) => string;
   rowHeight?: number;
+  /** Overrides the grid's default viewport-relative max-height (e.g. "none" to let it grow to fit all rows). */
+  maxHeight?: number | string;
   enableRowSelection?: boolean;
   /** Fires on single row click. Pair with enableRowClickSelection={false} to skip the built-in select/tint behavior. */
   onRowClick?: (row: T) => void;
@@ -51,6 +53,7 @@ export function DataTable<T>({
   stickyHeader = false,
   getRowId,
   rowHeight,
+  maxHeight,
   enableRowSelection = true,
   dateFrom,
   dateTo,
@@ -68,7 +71,10 @@ export function DataTable<T>({
         header: col.header,
         enableSorting: col.sortable !== false,
         meta: col.wrap ? { wrap: true } : undefined,
-        ...(col.size ? { size: col.size, minSize: Math.min(col.size, 80), maxSize: col.size } : {}),
+        // minSize == size: a column can never render narrower than the width its author gave it —
+        // no maxSize cap, so it can still grow wider (drag-resize, content overflow), just never shrink below this floor.
+        size: col.size ?? 150,
+        minSize: col.size ?? 100,
       };
       if (col.render) {
         colDef.cell = ({ row }) => col.render!(row.original);
@@ -122,7 +128,7 @@ export function DataTable<T>({
       enableRowSelection={enableRowSelection}
       getRowId={getRowId as ((row: T) => string) | undefined ?? ((row: any) => String(row.id ?? row.ID ?? row.ItemID ?? row.LedgerID ?? row.CategoryID ?? row.ProcessID ?? row.ToolID ?? row.GangWorkOrderNo ?? ""))}
       className={stickyHeader ? "flex-1 min-h-0" : undefined}
-      maxHeight={stickyHeader ? "100%" : undefined}
+      maxHeight={stickyHeader ? "100%" : maxHeight}
       rowHeight={rowHeight}
     />
   );

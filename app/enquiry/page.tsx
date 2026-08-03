@@ -338,6 +338,7 @@ export default function EnquiryPage() {
 
   const save = async () => {
     if (!form.customerId) { showToast("error", "Validation", "Please select a Customer."); return; }
+    if (!form.categoryId) { showToast("error", "Validation", "Please select a Category."); return; }
     if (!form.jobName.trim()) { showToast("error", "Validation", "Job Name is required."); return; }
     if (form.quantity <= 0) { showToast("error", "Validation", "Quantity must be greater than 0."); return; }
 
@@ -476,7 +477,7 @@ export default function EnquiryPage() {
               />
               <Input label="Concern Person" value={form.concernPerson} onChange={e => f("concernPerson", e.target.value)} placeholder="Enter concern person" />
               <Select
-                label="Category"
+                label="Category *"
                 value={form.categoryId}
                 onChange={e => { const cat = categories.find(x => x.CategoryID === e.target.value); f("categoryId", e.target.value); f("categoryName", cat?.CategoryName || ""); f("selectedContent", ""); setDimValues({}); fetchContents(e.target.value); }}
                 options={[{ value: "", label: "Select Category" }, ...categories.map(c => ({ value: String(c.CategoryID ?? ""), label: c.CategoryName }))]}

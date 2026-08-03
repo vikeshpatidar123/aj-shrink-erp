@@ -1183,6 +1183,24 @@ export function DataGrid<TData>({
   // Table rows
   const { rows } = table.getRowModel()
 
+  // Export data scoped to exactly the columns currently visible on screen (in that order),
+  // keyed by their header label — so "Export to..." never leaks hidden/internal row fields
+  // that aren't part of the grid the user is actually looking at.
+  const exportRows = useMemo(() => {
+    const exportCols = table.getVisibleFlatColumns().filter(
+      col => col.id !== 'select' && col.id !== 'expand' && col.id !== 'actions'
+    )
+    return table.getFilteredRowModel().rows.map(row => {
+      const obj: Record<string, unknown> = {}
+      exportCols.forEach(col => {
+        const header = typeof col.columnDef.header === 'string' ? col.columnDef.header : col.id
+        obj[header] = row.getValue(col.id)
+      })
+      return obj
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, columnVisibility, columnFilters, globalFilter, sorting, filteredData])
+
   // Virtual scrolling setup
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const headerScrollRef = useRef<HTMLDivElement>(null)
@@ -1728,7 +1746,7 @@ export function DataGrid<TData>({
                                 onViewChange={handleViewChange}
                                 enableExport={enableExport && pageAccess.canExport}
                                 enableImport={enableImport}
-                                data={filteredData}
+                                data={exportRows as unknown as TData[]}
                                 filename="data-export"
                                 onImportComplete={(importedData) => { if (onImport) onImport(importedData) }}
                                 enableColumnVisibility={enableColumnVisibility}
@@ -2047,7 +2065,7 @@ export function DataGrid<TData>({
                           })
                         }}
                       >
-                        <table className="w-full border-collapse" style={{ tableLayout: 'fixed' }}>
+                        <table className="border-collapse" style={{ tableLayout: 'fixed', width: table.getTotalSize() + (isRowReorderingActive ? 30 : 0), minWidth: '100%' }}>
                           <colgroup>
                             {/* Add drag handle column when row reordering is active */}
                             {isRowReorderingActive && (
