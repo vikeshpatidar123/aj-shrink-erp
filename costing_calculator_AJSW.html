@@ -1,0 +1,2656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flexo Costing Calculator</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0c0f;
+  --s1: #111318;
+  --s2: #181b22;
+  --s3: #1f2330;
+  --border: #272b38;
+  --border2: #323748;
+  --acc: #e8ff47;
+  --acc2: #47d4ff;
+  --acc3: #ff8c42;
+  --acc4: #7fff8c;
+  --red: #ff5252;
+  --txt: #d8dce8;
+  --muted: #5a6080;
+  --muted2: #7a829a;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --display: 'Bebas Neue', sans-serif;
+  --highlight: #252a38;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:13px;min-height:100vh}
+
+/* ══ SCROLLBAR ══ */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--s1)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ══ TOPBAR ══ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 28px;border-bottom:1px solid var(--border);
+  background:var(--s1);position:sticky;top:0;z-index:100;
+}
+.topbar-left{display:flex;align-items:center;gap:16px}
+.logo{font-family:var(--display);font-size:22px;letter-spacing:2px;color:var(--acc);line-height:1}
+.logo span{color:var(--txt)}
+.topbar-tags{display:flex;gap:8px}
+.tag{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:3px;letter-spacing:.5px;border:1px solid}
+.tag-g{border-color:var(--acc);color:var(--acc);background:rgba(232,255,71,.06)}
+.tag-b{border-color:var(--acc2);color:var(--acc2);background:rgba(71,212,255,.06)}
+.topbar-right{display:flex;gap:10px;align-items:center}
+.btn{font-family:var(--mono);font-size:11px;padding:7px 16px;border-radius:4px;border:none;cursor:pointer;letter-spacing:.5px;transition:all .15s}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--muted2)}
+.btn-outline:hover{border-color:var(--acc);color:var(--acc)}
+.btn-primary{background:var(--acc);color:#000;font-weight:600}
+.btn-primary:hover{background:#d4eb00}
+
+/* ══ PRODUCT BAR ══ */
+.product-bar{
+  display:grid;grid-template-columns:1fr auto auto;
+  gap:20px;align-items:end;
+  padding:16px 28px;background:var(--s2);border-bottom:1px solid var(--border);
+}
+.field-row{display:flex;flex-direction:column;gap:4px}
+.field-label{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.field-input{
+  background:var(--s3);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--mono);font-size:12px;padding:7px 10px;border-radius:4px;
+  outline:none;transition:border-color .15s;width:100%;
+}
+.field-input:focus{border-color:var(--acc2)}
+.field-input.wide{min-width:280px}
+
+/* ══ MAIN LAYOUT ══ */
+.main{display:grid;grid-template-columns:400px 1fr;min-height:calc(100vh - 120px);align-items:start}
+
+/* ══ INPUT PANEL ══ */
+.input-panel{
+  background:var(--s1);border-right:1px solid var(--border);
+  overflow-y:auto;height:100vh;position:sticky;top:0;
+}
+.section{border-bottom:1px solid var(--border)}
+.section-head{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 20px;cursor:pointer;user-select:none;
+  background:var(--s2);transition:background .15s;
+}
+.section-head:hover{background:var(--s3)}
+.section-head h3{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted2);flex:1}
+.section-icon{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.si-y{background:var(--acc)}
+.si-b{background:var(--acc2)}
+.si-o{background:var(--acc3)}
+.si-g{background:var(--acc4)}
+.chevron{color:var(--muted);font-size:10px;transition:transform .2s}
+.chevron.open{transform:rotate(180deg)}
+.section-body{padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.input-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.input-group{display:flex;flex-direction:column;gap:4px}
+.input-group label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.5px}
+.inp{
+  background:var(--s3);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--mono);font-size:12px;padding:7px 10px;border-radius:4px;
+  outline:none;transition:border-color .15s;width:100%;
+}
+.inp:focus{border-color:var(--acc2)}
+.inp-unit{position:relative}
+.inp-unit .inp{padding-right:36px}
+.inp-unit span{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10px;color:var(--muted);pointer-events:none}
+.computed-display{
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;
+  padding:7px 10px;font-family:var(--mono);font-size:12px;color:var(--acc2);
+}
+.computed-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.5px}
+
+/* ══ INK TABLE (editable) ══ */
+.ink-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+.ink-table th{padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);border-bottom:1px solid var(--border)}
+.ink-table td{padding:4px 4px}
+.ink-table .inp{font-size:11px;padding:5px 7px}
+.ink-table .color-swatch{width:14px;height:14px;border-radius:2px;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0}
+.del-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:4px;transition:color .15s}
+.del-btn:hover{color:var(--red)}
+.add-row-btn{
+  display:flex;align-items:center;gap:6px;
+  background:transparent;border:1px dashed var(--border2);color:var(--muted2);
+  border-radius:4px;padding:6px 12px;cursor:pointer;width:100%;margin-top:8px;
+  font-family:var(--mono);font-size:11px;transition:all .15s;justify-content:center;
+}
+.add-row-btn:hover{border-color:var(--acc);color:var(--acc)}
+
+/* ══ OUTPUT PANEL ══ */
+.output-panel{padding:24px 28px;overflow-y:auto}
+
+/* ══ METRICS GRID ══ */
+.metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px}
+.metric-card{
+  background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  padding:16px 18px;position:relative;overflow:hidden;
+}
+.metric-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+}
+.mc-acc::before{background:var(--acc)}
+.mc-b::before{background:var(--acc2)}
+.mc-o::before{background:var(--acc3)}
+.mc-g::before{background:var(--acc4)}
+.metric-label{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.metric-value{font-family:var(--display);font-size:32px;letter-spacing:1px;line-height:1}
+.mc-acc .metric-value{color:var(--acc)}
+.mc-b .metric-value{color:var(--acc2)}
+.mc-o .metric-value{color:var(--acc3)}
+.mc-g .metric-value{color:var(--acc4)}
+.metric-sub{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:4px}
+
+/* ══ RESULT SECTIONS ══ */
+.res-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.res-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.res-head{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--s2);border-bottom:1px solid var(--border)}
+.res-head h4{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--muted2);flex:1}
+.rtable{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.rtable td{padding:8px 16px;border-bottom:1px solid var(--border)}
+.rtable tr:last-child td{border-bottom:none}
+.rtable td:first-child{color:var(--muted2)}
+.rtable td:last-child{text-align:right;color:var(--txt)}
+.rtable tr.total td{background:rgba(232,255,71,.05);font-weight:600}
+.rtable tr.total td:last-child{color:var(--acc)}
+.rtable tr.highlight td:last-child{color:var(--acc2)}
+.rtable tr.warn td:last-child{color:var(--acc3)}
+
+/* ══ BAR CHART ══ */
+.bar-section{margin-bottom:16px}
+.bar-item{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)}
+.bar-name{font-family:var(--mono);font-size:11px;color:var(--muted2);width:140px;flex-shrink:0}
+.bar-track{flex:1;height:6px;background:var(--s3);border-radius:10px;overflow:hidden}
+.bar-fill{height:100%;border-radius:10px;transition:width .6s ease}
+.bar-val{font-family:var(--mono);font-size:11px;color:var(--txt);min-width:70px;text-align:right}
+
+/* ══ SALES PRICE HERO ══ */
+.sales-hero{
+  background:linear-gradient(135deg,var(--s2) 0%,var(--s3) 100%);
+  border:1px solid var(--acc);border-radius:8px;
+  padding:20px 24px;display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;
+}
+.sales-hero .label{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.sales-hero .price{font-family:var(--display);font-size:56px;color:var(--acc);letter-spacing:2px;line-height:1}
+.sales-hero .sub{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* ══ PROD REPORT ══ */
+.prod-report{background:var(--s1);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+.flow-row{display:flex;align-items:center;padding:14px 20px;gap:0}
+.flow-node{text-align:center;flex:1}
+.flow-node .fn-val{font-family:var(--display);font-size:24px;color:var(--acc2);letter-spacing:1px}
+.flow-node .fn-lab{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.flow-arrow{color:var(--muted);font-size:18px;padding:0 4px;flex-shrink:0}
+.flow-loss{text-align:center;padding:0 8px;flex-shrink:0}
+.flow-loss .fl-val{font-family:var(--mono);font-size:11px;color:var(--red)}
+.flow-loss .fl-lab{font-family:var(--mono);font-size:9px;color:var(--muted)}
+
+/* ══ PRODUCTION INK TABLE ══ */
+.full-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:16px}
+.ink-report-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+.ink-report-table th{padding:8px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);border-bottom:1px solid var(--border);background:var(--s2)}
+.ink-report-table td{padding:8px 14px;border-bottom:1px solid var(--border)}
+.ink-report-table tr:last-child td{border-bottom:none}
+.ink-report-table td.num{text-align:right}
+
+/* ══ SHEET LOADER ══ */
+.sheet-bar{display:flex;align-items:center;gap:12px;padding:10px 28px;background:rgba(71,212,255,.04);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px}
+.sheet-status{display:flex;align-items:center;gap:7px;color:var(--muted2)}
+.sheet-dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0;transition:background .3s}
+.sheet-dot.ok{background:var(--acc4);box-shadow:0 0 6px var(--acc4)}
+.sheet-dot.err{background:var(--red)}
+.sheet-dot.loading{background:var(--acc3);animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.product-select{
+  background:var(--s3);border:1px solid var(--border2);color:var(--txt);
+  font-family:var(--mono);font-size:12px;padding:6px 10px;border-radius:4px;
+  outline:none;min-width:340px;cursor:pointer;
+}
+.product-select:focus{border-color:var(--acc2)}
+.product-select option{background:var(--s2)}
+.sheet-refresh{background:transparent;border:1px solid var(--border2);color:var(--muted2);font-family:var(--mono);font-size:10px;padding:5px 12px;border-radius:4px;cursor:pointer;transition:all .15s}
+.sheet-refresh:hover{border-color:var(--acc2);color:var(--acc2)}
+
+/* ══ FILTER PANEL ══ */
+.filter-panel{background:var(--s1);border-bottom:1px solid var(--border);display:none}
+.filter-panel.open{display:block}
+.filter-toggle{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 14px 4px 10px;cursor:pointer;user-select:none;
+  background:transparent;border:1px solid var(--border2);border-radius:20px;
+  font-family:var(--mono);font-size:10px;color:var(--muted2);
+  text-transform:uppercase;letter-spacing:1.2px;transition:all .15s;
+  width:fit-content;
+}
+.filter-toggle:hover{border-color:var(--acc2);color:var(--acc2)}
+.filter-toggle.active{border-color:var(--acc);color:var(--acc);background:rgba(232,255,71,.06)}
+.filter-toggle .ft-badge{
+  background:var(--acc);color:#000;font-size:9px;font-weight:700;
+  padding:1px 6px;border-radius:10px;display:none;
+}
+.filter-toggle-wrap{padding:8px 20px;background:var(--s1);border-bottom:1px solid var(--border)}
+.filter-grid{display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px}
+.fg{display:flex;flex-direction:column;gap:3px}
+.fg.fw{flex:1;min-width:220px}
+.fg.fn{min-width:140px}
+.fg.fs{min-width:110px}
+.flbl{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:600}
+.fsel{
+  background:var(--s3);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:4px;
+  outline:none;cursor:pointer;
+}
+.fsel:focus{border-color:var(--acc2)}
+.fsel option{background:var(--s2)}
+.finp{
+  background:var(--s3);border:1px solid var(--border);color:var(--txt);
+  font-family:var(--mono);font-size:11px;padding:5px 8px;border-radius:4px;
+  outline:none;width:100%;
+}
+.finp:focus{border-color:var(--acc2)}
+.finp::placeholder{color:var(--muted)}
+.filter-row-label{
+  font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--muted);padding:4px 20px 2px;border-top:1px solid var(--border);margin-top:2px;
+}
+.freset{
+  align-self:flex-end;background:transparent;border:1px solid var(--red);
+  color:var(--red);font-family:var(--mono);font-size:10px;padding:5px 14px;
+  border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.freset:hover{background:var(--red);color:#fff}
+
+/* ══ ARTWORK PANEL ══ */
+.artwork-panel{
+  background:var(--s2);border-bottom:2px solid var(--border);
+  display:none;max-height:320px;overflow-y:auto;
+}
+.artwork-panel.open{display:block}
+.artwork-grid{display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px}
+.artwork-card{
+  background:var(--s1);border:1px solid var(--border);border-radius:6px;
+  padding:10px 14px;cursor:pointer;transition:all .15s;min-width:200px;max-width:260px;flex:1;
+  border-left:3px solid var(--border);
+}
+.artwork-card:hover{border-color:var(--acc2);border-left-color:var(--acc2);background:var(--highlight);transform:translateY(-1px)}
+.artwork-card.selected{border-color:var(--acc);border-left-color:var(--acc);background:rgba(232,255,71,.06)}
+.ac-job{font-family:var(--mono);font-size:11px;color:var(--txt);font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ac-brand{font-size:10px;color:var(--acc2);margin-bottom:3px}
+.ac-meta{font-family:var(--mono);font-size:10px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px}
+.ac-pill{background:var(--s3);border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:9px}
+.ac-status{font-size:9px;padding:2px 7px;border-radius:10px;font-weight:600;align-self:flex-start}
+.ac-stat-ok{background:#1a3a1a;color:var(--acc4)}
+.ac-stat-pend{background:#2a2010;color:var(--acc3)}
+.ac-stat-hold{background:#2a1010;color:var(--red)}
+.artwork-empty{padding:24px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* ══ UNIVERSAL SEARCH ══ */
+.search-wrap{position:relative;flex:1;max-width:600px}
+.search-inp{
+  width:100%;background:var(--s3);border:1px solid var(--border2);color:var(--txt);
+  font-family:var(--mono);font-size:12px;padding:7px 36px 7px 32px;border-radius:4px;
+  outline:none;transition:border-color .15s;
+}
+.search-inp:focus{border-color:var(--acc2)}
+.search-inp::placeholder{color:var(--muted)}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;pointer-events:none}
+.search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:13px;cursor:pointer;background:none;border:none;display:none;line-height:1}
+.search-clear:hover{color:var(--txt)}
+.search-dropdown{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;
+  background:var(--s2);border:1px solid var(--border2);border-radius:6px;
+  max-height:260px;overflow-y:auto;z-index:999;display:none;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+}
+.search-item{
+  padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--border);
+  font-family:var(--mono);font-size:11px;
+  display:flex;flex-direction:column;gap:2px;
+  transition:background .1s;
+}
+.search-item:last-child{border-bottom:none}
+.search-item:hover,.search-item.active{background:var(--highlight)}
+.search-item .si-main{color:var(--txt)}
+.search-item .si-sub{color:var(--muted);font-size:10px}
+.search-item mark{background:transparent;color:var(--acc);font-weight:600}
+.search-count{font-family:var(--mono);font-size:10px;color:var(--muted2);padding:5px 14px;border-bottom:1px solid var(--border);background:var(--s3)}
+
+/* ══ PRODUCT TYPE DROPDOWN ══ */
+.ptype-select{
+  background:var(--s3);border:1px solid var(--border2);color:var(--txt);
+  font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:4px;
+  outline:none;cursor:pointer;min-width:160px;
+}
+.ptype-select:focus{border-color:var(--acc)}
+.ptype-select option{background:var(--s2)}
+.ptype-label{font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px}
+
+/* ══ FILE NAMES PANEL ══ */
+#fileNamesBar{ display:flex !important }
+#fileNamesBar.hidden{ display:none !important }
+.fn-pill{
+  font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:12px;
+  background:var(--s3);border:1px solid var(--border2);color:var(--acc2);
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.fn-pill:hover{ border-color:var(--acc2);background:rgba(71,212,255,.08) }
+.fn-pill.fn-selected{ background:rgba(71,212,255,.15);border-color:var(--acc2);font-weight:600 }
+.fn-pill-empty{ font-family:var(--mono);font-size:10px;color:var(--muted);padding:3px 0 }
+
+/* ══ PRINT STYLES ══ */
+@media print{
+  @page{size:A4 portrait;margin:10mm 10mm 10mm 10mm}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+
+  /* Hide everything not needed */
+  .company-hdr .btn,.sheet-bar,.input-panel,
+  .bar-section,.prod-report,.full-card,
+  .metrics-grid { display:none!important }
+
+  body{background:#fff!important;color:#000!important;font-size:11px}
+  .main{display:block!important}
+  .output-panel{padding:0!important;overflow:visible!important}
+
+  /* Company block */
+  .print-header{display:flex!important}
+
+  /* Sales hero */
+  .sales-hero{
+    background:#f8f8f8!important;border:2px solid #222!important;
+    padding:10px 16px!important;margin-bottom:8px!important;border-radius:6px!important;
+  }
+  .sales-hero .price{font-size:36px!important;color:#185FA5!important}
+  .sales-hero .label{color:#444!important;font-size:10px!important}
+  .sales-hero .sub{color:#666!important;font-size:10px!important}
+
+  /* Metrics */
+  .metrics-grid{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:6px!important;margin-bottom:8px!important}
+  .metric-card{background:#f8f8f8!important;border:1px solid #ccc!important;padding:8px 10px!important;border-radius:4px!important;page-break-inside:avoid}
+  .metric-label{color:#555!important;font-size:9px!important}
+  .metric-value{font-size:20px!important;color:#185FA5!important}
+  .metric-sub{color:#888!important;font-size:8px!important}
+  .mc-acc::before,.mc-b::before,.mc-o::before,.mc-g::before{background:#185FA5!important}
+
+  /* Result cards */
+  .res-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:6px!important;margin-bottom:6px!important}
+  .res-card{background:#f8f8f8!important;border:1px solid #ccc!important;border-radius:4px!important;page-break-inside:avoid}
+  .res-head{background:#efefef!important;padding:6px 10px!important}
+  .res-head h4{color:#333!important;font-size:9px!important}
+  .rtable td{padding:5px 10px!important;font-size:10px!important;border-bottom:1px solid #e0e0e0!important;color:#222!important}
+  .rtable td:first-child{color:#555!important}
+  .rtable tr.total td{background:#e8f4ff!important;color:#185FA5!important}
+  .rtable tr.highlight td:last-child{color:#185FA5!important}
+  .rtable tr.warn td:last-child{color:#b85000!important}
+
+  /* Footer */
+  .print-footer{display:block!important;text-align:center;font-size:9px;color:#999;margin-top:8px;border-top:1px solid #ddd;padding-top:6px}
+}
+
+/* ══ COMPANY HEADER ══ */
+.company-hdr{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 28px;background:var(--s2);border-bottom:1px solid var(--border);
+}
+.company-logo{
+  width:38px;height:38px;border-radius:8px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--acc) 0%,#a8b800 100%);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+}
+.company-name{font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:1.5px;color:var(--txt);line-height:1}
+.company-unit{font-family:var(--mono);font-size:10px;color:var(--acc2);letter-spacing:1px;margin-top:3px}
+.company-addr{font-family:var(--mono);font-size:10px;color:var(--muted);line-height:1.6;margin-left:auto;text-align:right}
+.company-divider{width:1px;height:36px;background:var(--border2);flex-shrink:0}
+
+/* Responsive */
+@media(max-width:1100px){.main{grid-template-columns:1fr}.input-panel{height:auto;position:relative;top:0}}
+@media(max-width:700px){.metrics-grid{grid-template-columns:1fr 1fr}.res-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<!-- COMPANY HEADER -->
+<div class="company-hdr">
+  <div class="company-logo">🎨</div>
+  <div>
+    <div class="company-name">A J Shrink Wrap Private Limited</div>
+    <div class="company-unit">UNIT-II &nbsp;·&nbsp; COSTING CALCULATOR</div>
+  </div>
+  <div class="company-divider"></div>
+  <div>
+    <div class="ptype-label">Product Type</div>
+    <select class="ptype-select" id="productType" onchange="calc()">
+      <option value="shrink_label">Shrink Label</option>
+      <option value="pressure_sensitive">Pressure Sensitive</option>
+      <option value="wrap_around">Wrap Around Label</option>
+      <option value="bopp_label">BOPP Label</option>
+      <option value="pet_label">PET Label</option>
+      <option value="lami_tube">Lami Tube</option>
+      <option value="flexible_pack">Flexible Packaging</option>
+      <option value="other">Other</option>
+    </select>
+  </div>
+  <div class="company-addr">
+    66A Toy City, Ecotech-3, Greater Noida, Gautam Buddha Nagar, UP – 201306<br>
+    GST: 09AAHCA0195J1ZI
+  </div>
+  <div style="display:flex;gap:8px;flex-shrink:0;margin-left:16px">
+    <button class="btn btn-outline" onclick="resetDefaults()">↺ Reset</button>
+    <button class="btn btn-primary" onclick="doPrint()">⎙ Print</button>
+  </div>
+</div>
+
+<!-- SHEET LOADER BAR -->
+<div class="sheet-bar">
+  <div class="sheet-dot" id="sheetDot"></div>
+  <div class="sheet-status" id="sheetStatus">Connecting to Dashboard Sheet…</div>
+
+  <div class="search-wrap" id="searchWrap" style="display:none">
+    <span class="search-icon">🔍</span>
+    <input class="search-inp" id="universalSearch" type="text"
+      placeholder="Search by job name, brand, SKU, customer…"
+      oninput="onSearchInput(this.value)"
+      onkeydown="onSearchKey(event)"
+      autocomplete="off">
+    <button class="search-clear" id="searchClear" onclick="clearSearch()">✕</button>
+    <div class="search-dropdown" id="searchDropdown"></div>
+  </div>
+  <!-- hidden select keeps backward-compat -->
+  <select id="productSelect" style="display:none"></select>
+
+  <button class="sheet-refresh" onclick="fetchSheet()" title="Refresh from sheet">⟳ Refresh</button>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--muted)">
+    Mode:
+    <select id="modeSelect" onchange="onModeChange(this.value)" style="background:var(--s3);border:1px solid var(--border2);color:var(--txt);font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:4px;outline:none;cursor:pointer">
+      <option value="dashboard">📊 Artwork &amp; Cylinder Tracking Dashboard</option>
+      <option value="manual">✏️ Manual Costing</option>
+    </select>
+  </div>
+</div>
+
+<!-- FILTER TOGGLE -->
+<div class="filter-toggle-wrap">
+  <div class="filter-toggle" id="filterToggleBtn" onclick="toggleFilters()">
+    <span>⚙</span> Filters
+    <span class="ft-badge" id="filterBadge">0</span>
+    <span id="filterChevron" style="font-size:9px">▾</span>
+  </div>
+</div>
+
+<!-- FILTER PANEL -->
+<div class="filter-panel" id="filterPanel">
+  <!-- Row 1 -->
+  <div class="filter-grid">
+    <div class="fg fw">
+      <span class="flbl">🔍 Search</span>
+      <input class="finp" id="f-search" placeholder="Job, SKU, brand, customer, file…" oninput="applyFilters()">
+    </div>
+    <div class="fg fn">
+      <span class="flbl">📋 Job Name</span>
+      <select class="fsel" id="f-job" onchange="applyFilters()"><option value="">All jobs</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📦 SKU Size</span>
+      <select class="fsel" id="f-sku" onchange="applyFilters()"><option value="">All SKUs</option></select>
+    </div>
+    <div class="fg fn">
+      <span class="flbl">🏷 Brand</span>
+      <select class="fsel" id="f-brand" onchange="applyFilters()"><option value="">All brands</option></select>
+    </div>
+    <div class="fg fn">
+      <span class="flbl">📦 Product</span>
+      <select class="fsel" id="f-product" onchange="applyFilters()"><option value="">All products</option></select>
+    </div>
+  </div>
+  <div class="filter-row-label">Customer &amp; Status</div>
+  <div class="filter-grid">
+    <div class="fg fw">
+      <span class="flbl">👤 Customer / Party</span>
+      <select class="fsel" id="f-customer" onchange="applyFilters()"><option value="">All customers</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🚦 Status</span>
+      <select class="fsel" id="f-status" onchange="applyFilters()">
+        <option value="">All statuses</option>
+        <option value="cyl_received">Cylinder Received</option>
+        <option value="engraving">Engraving</option>
+        <option value="brand_approved">Brand Approved</option>
+        <option value="under_process">Under Process</option>
+        <option value="pending">Pending Mail</option>
+        <option value="hold">On Hold</option>
+      </select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🏭 Cylinder Maker</span>
+      <select class="fsel" id="f-maker" onchange="applyFilters()"><option value="">All makers</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🎨 Design Type</span>
+      <select class="fsel" id="f-design" onchange="applyFilters()"><option value="">All types</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">♻ Material</span>
+      <select class="fsel" id="f-material" onchange="applyFilters()"><option value="">All materials</option></select>
+    </div>
+    <div class="fg fn">
+      <span class="flbl">🧱 Substrate</span>
+      <select class="fsel" id="f-substrate" onchange="applyFilters()"><option value="">All substrates</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🎨 No. of Colors</span>
+      <select class="fsel" id="f-colors" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🔧 Dev. Status</span>
+      <select class="fsel" id="f-devstatus" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+  </div>
+  <div class="filter-row-label">Cylinder &amp; Dimensions</div>
+  <div class="filter-grid">
+    <div class="fg fs">
+      <span class="flbl">⚙ Cyl. Status</span>
+      <select class="fsel" id="f-cylstatus" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">✅ Brand Approval</span>
+      <select class="fsel" id="f-bappr" onchange="applyFilters()">
+        <option value="">All</option><option value="yes">✓ Approved</option><option value="no">✗ Not yet</option>
+      </select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">✅ LSD Approval</span>
+      <select class="fsel" id="f-lappr" onchange="applyFilters()">
+        <option value="">All</option><option value="yes">✓ Approved</option><option value="no">✗ Not yet</option>
+      </select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📐 Substrate Size (mm)</span>
+      <select class="fsel" id="f-substrateSize" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📐 Coil Width (mm)</span>
+      <select class="fsel" id="f-coilWidth" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📐 Repeat Length (mm)</span>
+      <select class="fsel" id="f-repeatLength" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🔢 Ups in Circum</span>
+      <select class="fsel" id="f-upsCircum" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📐 Cyl. Circum (mm)</span>
+      <select class="fsel" id="f-cylCircum" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">🔢 Ups in Length</span>
+      <select class="fsel" id="f-upsLength" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📐 Cyl. Length (mm)</span>
+      <select class="fsel" id="f-cylLength" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">📍 Address Type</span>
+      <select class="fsel" id="f-address" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div class="fg fs">
+      <span class="flbl">⚙ Application</span>
+      <select class="fsel" id="f-application" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <button class="freset" onclick="resetFilters()">↺ Reset Filters</button>
+  </div>
+</div>
+
+
+<!-- ARTWORK PANEL -->
+<div class="filter-toggle-wrap" id="artworkToggleWrap" style="display:none">
+  <div class="filter-toggle active" id="artworkToggleBtn" onclick="toggleArtwork()" style="border-color:var(--acc2);color:var(--acc2)">
+    <span>🖼</span> Artwork Results
+    <span class="ft-badge" id="artworkCount" style="display:inline;background:var(--acc2)">0</span>
+    <span id="artworkChevron" style="font-size:9px">▾</span>
+  </div>
+</div>
+<div class="artwork-panel" id="artworkPanel" style="display:none">
+  <div class="artwork-grid" id="artworkGrid"></div>
+</div>
+
+<!-- PRODUCT BAR -->
+<div class="product-bar" style="grid-template-columns:1fr 1fr auto auto">
+  <div class="field-row">
+    <div class="field-label">Product / Job Code — From Sheet</div>
+    <select class="field-input wide" id="productName" onchange="onJobSelect(this.value)" style="cursor:pointer">
+      <option value="">— Select file name —</option>
+    </select>
+  </div>
+  <div class="field-row">
+    <div class="field-label">Custom Name / Remarks (Manual)</div>
+    <input class="field-input wide" id="customName" placeholder="Enter custom product name…" oninput="calc()">
+  </div>
+  <div class="field-row">
+    <div class="field-label">Specification</div>
+    <input class="field-input" id="specName" value="38 mic Pearlised BOPP" oninput="calc()" style="min-width:180px">
+  </div>
+  <div class="field-row">
+    <div class="field-label">Order Qty (Kgs)</div>
+    <div class="inp-unit">
+      <input class="inp" id="orderQty" type="number" value="500" oninput="calc()">
+      <span>kg</span>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ══ INPUT PANEL ══ -->
+  <div class="input-panel">
+
+    <!-- 1. Substrate -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-y"></div>
+        <h3>Substrate Specification</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+
+        <!-- Row 1: Micron + SG -->
+        <div class="input-row">
+          <div class="input-group">
+            <label>Micron (µ)</label>
+            <div class="inp-unit"><input class="inp" id="micron" type="number" value="38" oninput="calc()"><span>µ</span></div>
+          </div>
+          <div class="input-group">
+            <label>Specific Gravity (SG)</label>
+            <input class="inp" id="sg" type="number" step="0.01" value="0.55" oninput="calc()">
+          </div>
+        </div>
+
+        <!-- Row 2: Width + Repeat -->
+        <div class="input-row">
+          <div class="input-group">
+            <label>Slitting Width (mm)</label>
+            <div class="inp-unit"><input class="inp" id="width" type="number" value="60" oninput="calc()"><span>mm</span></div>
+          </div>
+          <div class="input-group">
+            <label>Repeat Length (mm)</label>
+            <div class="inp-unit"><input class="inp" id="repeat" type="number" value="250" oninput="calc()"><span>mm</span></div>
+          </div>
+        </div>
+
+        <!-- Row 3: Rate + Wastage -->
+        <div class="input-row">
+          <div class="input-group">
+            <label>Substrate Rate (₹/kg)</label>
+            <div class="inp-unit"><input class="inp" id="subRate" type="number" value="260" oninput="calc()"><span>₹/kg</span></div>
+          </div>
+          <div class="input-group">
+            <label>Wastage % <span style="color:var(--muted);font-size:9px">(override)</span></label>
+            <div style="display:flex;gap:6px;align-items:center">
+              <div class="inp-unit" style="flex:1"><input class="inp" id="wastage" type="number" step="0.01" value="8.6" oninput="calc()"><span>%</span></div>
+              <button class="btn btn-outline" onclick="applyActualWastage()" title="Copy actual wastage from Production Report" style="font-size:10px;padding:5px 8px;white-space:nowrap">↺ Auto</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 4: GSM before + GSM after -->
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">GSM — Before Print</div>
+            <div class="computed-display" id="disp_gsm">20.9</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">GSM — After Print</div>
+            <div class="computed-display" id="disp_gsm_printed" style="color:var(--acc2)">—</div>
+          </div>
+        </div>
+
+        <!-- Row 5: Imp weight + Actual wastage -->
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Imp. Weight (film + ink)</div>
+            <div class="computed-display" id="disp_impwt">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Actual Wastage % (auto)</div>
+            <div class="computed-display" id="disp_actualWastage" style="color:var(--acc3)">—</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 2. Ink -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-b"></div>
+        <h3>Ink Specification</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="input-row">
+          <div class="input-group">
+            <label>Ink GSM (Solid on Film)</label>
+            <div class="inp-unit"><input class="inp" id="inkGSM" type="number" step="0.01" value="1.17" oninput="calc()"><span>g/m²</span></div>
+          </div>
+        </div>
+
+        <!-- Ink colors table -->
+        <div style="margin-top:4px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:.8px">Ink Consumption by Color</div>
+          <table class="ink-table">
+            <thead>
+              <tr>
+                <th style="width:100px">Color</th>
+                <th>Consume (kg)</th>
+                <th>Rate/kg</th>
+                <th>Solid%</th>
+                <th>Solid ₹/kg</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="inkTableBody"></tbody>
+          </table>
+          <button class="add-row-btn" onclick="addInkRow()">+ Add Color</button>
+        </div>
+        <!-- Ink averages computed -->
+        <div class="input-row" style="margin-top:8px">
+          <div class="input-group">
+            <div class="computed-label">Avg Solid Content %</div>
+            <div class="computed-display" id="disp_avgSolid">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Avg Liquid Rate (₹/kg)</div>
+            <div class="computed-display" id="disp_avgLiqRate">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Avg Solid Rate (₹/kg solid)</div>
+            <div class="computed-display" id="disp_avgSolidRate" style="color:var(--acc)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Solid GSM on Film (g/m²)</div>
+            <div class="computed-display" id="disp_solidGSM" style="color:var(--acc2)">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Cylinder Planning -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-o"></div>
+        <h3>Cylinder Planning</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="input-row">
+          <div class="input-group">
+            <label>Cylinder Rate (₹/sq cm)</label>
+            <div class="inp-unit"><input class="inp" id="cylRate" type="number" step="0.1" value="2" oninput="calc()"><span>₹/cm²</span></div>
+          </div>
+          <div class="input-group">
+            <label>Cylinder Life (running km)</label>
+            <div class="inp-unit"><input class="inp" id="cylLife" type="number" value="100000" oninput="calc()"><span>km</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Ups in Circumference</label>
+            <input class="inp" id="upsCircum" type="number" value="4" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>Shrinkage / Repeat (mm)</label>
+            <div class="inp-unit"><input class="inp" id="cylShrinkage" type="number" step="0.1" value="1" oninput="calc()"><span>mm</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Ups in Width</label>
+            <input class="inp" id="upsLength" type="number" value="8" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>Trim Area (mm)</label>
+            <div class="inp-unit"><input class="inp" id="cylTrim" type="number" value="20" oninput="calc()"><span>mm</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Std Cylinder Width (mm)</label>
+            <div class="inp-unit"><input class="inp" id="stdCircum" type="number" value="1100" oninput="calc()"><span>mm</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Cylinder Circum (repeat + shrink) × ups</div>
+            <div class="computed-display" id="disp_calcCircum">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Printed Width (ups × slit + trim)</div>
+            <div class="computed-display" id="disp_printedWidth" style="color:var(--acc2)">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Non-Printed Width (charged but blank)</div>
+            <div class="computed-display" id="disp_nonPrintedWidth" style="color:var(--red)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Cylinder Area (full std width)</div>
+            <div class="computed-display" id="disp_cylArea">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Total Cylinder Cost (₹)</div>
+            <div class="computed-display" id="disp_cylTotal" style="color:var(--acc3)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Cylinder Cost / kg</div>
+            <div class="computed-display" id="disp_cylPerKg" style="color:var(--acc)">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Pricing -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-g"></div>
+        <h3>Pricing Parameters</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="input-row">
+          <div class="input-group">
+            <label>Profit %</label>
+            <div class="inp-unit"><input class="inp" id="profitPct" type="number" step="0.1" value="10" oninput="calc()"><span>%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Freight Cost -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-b"></div>
+        <h3>Freight Cost</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <div class="input-row">
+          <div class="input-group">
+            <label>Vehicle Hire Cost (₹ fixed)</label>
+            <div class="inp-unit"><input class="inp" id="fr_vehicleRate" type="number" value="2500" oninput="calc()"><span>₹</span></div>
+          </div>
+          <div class="input-group">
+            <label>Distance (km) — reference</label>
+            <div class="inp-unit"><input class="inp" id="fr_distance" type="number" value="100" oninput="calc()"><span>km</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Actual Load (kg)</label>
+            <div class="inp-unit"><input class="inp" id="fr_load" type="number" value="0" placeholder="blank = order qty" oninput="calc()"><span>kg</span></div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Freight / kg</div>
+            <div class="computed-display" id="disp_frPerKg" style="color:var(--acc)">—</div>
+          </div>
+        </div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:2px">
+          Freight/kg = Vehicle Cost ÷ Load &nbsp;·&nbsp; More load → lower ₹/kg &nbsp;·&nbsp; Load blank = order qty
+        </div>
+      </div>
+    </div>
+
+    <!-- Packing Cost -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-g"></div>
+        <h3>Packing Cost Breakup</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+
+        <!-- Box -->
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Box</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Box Rate (₹/box)</label>
+            <input class="inp" id="pk_boxRate" type="number" value="80" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>No. of Coils / Box</label>
+            <input class="inp" id="pk_coilsPerBox" type="number" value="6" oninput="calc()">
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Weight per Coil (kg)</label>
+            <input class="inp" id="pk_coilWt" type="number" step="0.1" value="15" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Weight per Box (kg)</div>
+            <div class="computed-display" id="disp_boxWt">—</div>
+          </div>
+        </div>
+
+        <!-- Core Plug -->
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:8px 0 4px">Core Plug</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Core Plugs / Box</label>
+            <input class="inp" id="pk_plugsPerBox" type="number" value="12" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>Core Plug Rate (₹/pcs)</label>
+            <input class="inp" id="pk_plugRate" type="number" step="0.1" value="2" oninput="calc()">
+          </div>
+        </div>
+
+        <!-- Tape -->
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:8px 0 4px">Tape</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Tape Rate (₹/roll)</label>
+            <input class="inp" id="pk_tapeRate" type="number" value="40" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>Width</label>
+            <select class="inp" id="pk_tapeWidth" onchange="calc()" style="cursor:pointer">
+              <option value="1">1 inch</option>
+              <option value="2" selected>2 inch</option>
+            </select>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Tape Used / Box (metres)</label>
+            <div class="inp-unit"><input class="inp" id="pk_tapeGm" type="number" value="10" oninput="calc()"><span>m</span></div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Rolls Used / Box (130m/roll)</div>
+            <div class="computed-display" id="disp_tapeRolls">—</div>
+          </div>
+        </div>
+
+        <!-- Stretch Film -->
+        <div style="font-family:var(--mono);font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:8px 0 4px">Stretch Film</div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Stretch Film / Box (gm)</label>
+            <input class="inp" id="pk_sfGm" type="number" value="200" oninput="calc()">
+          </div>
+          <div class="input-group">
+            <label>Stretch Film Rate (₹/kg)</label>
+            <input class="inp" id="pk_sfRate" type="number" value="90" oninput="calc()">
+          </div>
+        </div>
+
+        <!-- Computed totals -->
+        <div class="input-row" style="margin-top:8px">
+          <div class="input-group">
+            <div class="computed-label">Total Packing Cost / Box</div>
+            <div class="computed-display" id="disp_packPerBox" style="color:var(--acc3)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Packing Cost / kg</div>
+            <div class="computed-display" id="disp_packPerKg" style="color:var(--acc)">—</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 4. Conversion -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-o"></div>
+        <h3>Conversion Charge Breakup</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+
+        <!-- Machine Registry -->
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px">Machine Registry (auto ₹/hr)</div>
+        <div class="input-row" style="margin-bottom:6px">
+          <div class="input-group">
+            <label>Working Days / Year</label>
+            <input class="inp" id="workDays" type="number" value="300" oninput="renderMachineRegistry();renderProcessTable();calc()">
+          </div>
+          <div class="input-group">
+            <label>Working Hours / Day</label>
+            <input class="inp" id="workHours" type="number" value="8" oninput="renderMachineRegistry();renderProcessTable();calc()">
+          </div>
+        </div>
+        <table class="ink-table">
+          <thead>
+            <tr>
+              <th style="width:110px">Machine</th>
+              <th>Purchase Cost (₹)</th>
+              <th>Life (yrs)</th>
+              <th>Auto ₹/hr</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="machineRegistryBody"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addMachineRow()">+ Add Machine</button>
+
+        <!-- Process table -->
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.8px">Process Cost (Machine + Power + Hours)</div>
+        <div class="input-row" style="margin-bottom:8px">
+          <div class="input-group">
+            <label>Unit Rate (₹ / unit)</label>
+            <div class="inp-unit"><input class="inp" id="unitRate" type="number" step="0.01" value="8" oninput="renderProcessTable();calc()"><span>₹/unit</span></div>
+          </div>
+        </div>
+        <table class="ink-table" style="display:none"><thead><tr></tr></thead>
+          <tbody id="processTableBody"></tbody>
+        </table>
+        <div id="processCards"></div>
+        <button class="add-row-btn" onclick="addProcessRow()">+ Add Process</button>
+        <div class="input-row" style="margin-top:8px">
+          <div class="input-group">
+            <div class="computed-label">Total Process Cost (₹)</div>
+            <div class="computed-display" id="disp_machineCostKg" style="color:var(--acc3)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Conversion Cost / kg</div>
+            <div class="computed-display" id="disp_bottleneck" style="color:var(--acc)">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Total Loan Amount (₹)</label>
+            <div class="inp-unit"><input class="inp" id="loanAmt" type="number" value="5000000" oninput="calc()"><span>₹</span></div>
+          </div>
+          <div class="input-group">
+            <label>Interest Rate (% per annum)</label>
+            <div class="inp-unit"><input class="inp" id="interestRate" type="number" step="0.1" value="12" oninput="calc()"><span>%</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Annual Interest (₹)</div>
+            <div class="computed-display" id="disp_annualInt">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Interest Cost / hr (auto)</div>
+            <div class="computed-display" id="disp_intPerHr" style="color:var(--acc2)">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Total Monthly Salary (₹)</label>
+            <div class="inp-unit"><input class="inp" id="labourWage" type="number" value="150000" oninput="calc()"><span>₹/mo</span></div>
+          </div>
+          <div class="input-group">
+            <label>Working Days / Month</label>
+            <input class="inp" id="labourDays" type="number" value="25" oninput="calc()">
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Labour Cost / hr (auto)</div>
+            <div class="computed-display" id="disp_labPerHr" style="color:var(--acc2)">—</div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Conversion Cost / kg</div>
+            <div class="computed-display" id="disp_costkg" style="color:var(--acc)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Total Cost / hr</div>
+            <div class="computed-display" id="disp_costhr">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Production Report Inputs -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-b"></div>
+        <h3>Production Report (Actual)</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <!-- 3 user inputs -->
+        <div class="input-row">
+          <div class="input-group">
+            <label>Film / Substrate Input (kg)</label>
+            <div class="inp-unit"><input class="inp" id="pr_input" type="number" step="0.1" value="553.9" oninput="calc()"><span>kg</span></div>
+          </div>
+          <div class="input-group">
+            <label>Final Dispatch Output (kg)</label>
+            <div class="inp-unit"><input class="inp" id="pr_slit" type="number" step="0.1" value="537.6" oninput="calc()"><span>kg</span></div>
+          </div>
+        </div>
+        <div class="input-row">
+          <div class="input-group">
+            <label>Trim Waste (kg)</label>
+            <div class="inp-unit"><input class="inp" id="pr_twaste" type="number" step="0.1" value="23.7" oninput="calc()"><span>kg</span></div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Print Waste (auto)</div>
+            <div class="computed-display" id="disp_printWaste" style="color:var(--red)">—</div>
+          </div>
+        </div>
+
+        <!-- Auto-calculated -->
+        <div style="height:1px;background:var(--border);margin:4px 0"></div>
+        <div class="input-row">
+          <div class="input-group">
+            <div class="computed-label">Total Input (film + ink + solvent)</div>
+            <div class="computed-display" id="disp_totalIn" style="color:var(--muted2)">—</div>
+          </div>
+          <div class="input-group">
+            <div class="computed-label">Total Wastage % (auto)</div>
+            <div class="computed-display" id="disp_actualWastage2" style="color:var(--acc3)">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Solvents -->
+    <div class="section">
+      <div class="section-head" onclick="toggleSection(this)">
+        <div class="section-icon si-g"></div>
+        <h3>Solvent Consumption</h3>
+        <span class="chevron open">▾</span>
+      </div>
+      <div class="section-body">
+        <table class="ink-table">
+          <thead><tr><th>Solvent</th><th>Consume (kg)</th><th>Rate (₹/kg)</th><th>Total (₹)</th><th></th></tr></thead>
+          <tbody id="solventBody"></tbody>
+        </table>
+        <button class="add-row-btn" onclick="addSolventRow()">+ Add Solvent</button>
+      </div>
+    </div>
+
+  </div><!-- /input-panel -->
+
+  <!-- ══ OUTPUT PANEL ══ -->
+  <div class="output-panel">
+
+    <!-- PRINT-ONLY HEADER -->
+    <div class="print-header" style="display:none;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #185FA5">
+      <div style="width:36px;height:36px;background:#185FA5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🎨</div>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:800;color:#1a1a18">A J Shrink Wrap Private Limited <span style="color:#185FA5">(Unit-II)</span></div>
+        <div style="font-size:9px;color:#888;margin-top:2px">66A Toy City, Ecotech-3, Greater Noida, Gautam Buddha Nagar, UP – 201306 &nbsp;|&nbsp; GST: 09AAHCA0195J1ZI</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:13px;font-weight:700;color:#185FA5">COSTING SHEET</div>
+        <div style="font-size:9px;color:#888">Product Type: <span id="print_ptype">Shrink Label</span></div>
+        <div style="font-size:9px;color:#888">Date: <span id="print_date"></span></div>
+      </div>
+    </div>
+
+    <!-- SALES HERO -->
+    <div class="sales-hero">
+      <div>
+        <div class="label">Total Cost / Kg (All Inclusive)</div>
+        <div class="price" id="out_salesPrice">₹435.21</div>
+        <div class="sub">RM + Conversion + Profit + Cylinder + Packing + Freight · <span id="out_productName">2026_01_SPRITE_740ML_QR_PRICE</span></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.8px">Quick Stats</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--acc2)">Total Order: <span id="out_totalOrder">500</span> kg</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--txt)">Total Revenue: <span id="out_totalRev" style="color:var(--acc4)">₹2,17,605</span></div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--txt)">Total Impressions: <span id="out_totalImps">14,68,429</span></div>
+      </div>
+    </div>
+
+    <!-- KEY METRICS -->
+    <div class="metrics-grid">
+      <div class="metric-card mc-acc">
+        <div class="metric-label">Cost / Kg (Conversion)</div>
+        <div class="metric-value" id="m_costkg">₹19.7</div>
+        <div class="metric-sub">machine + labour + power</div>
+      </div>
+      <div class="metric-card mc-b">
+        <div class="metric-label">Total RM Cost / Kg</div>
+        <div class="metric-value" id="m_rmcost">₹368.37</div>
+        <div class="metric-sub">substrate + ink + wastage</div>
+      </div>
+      <div class="metric-card mc-o">
+        <div class="metric-label">Imp. Weight</div>
+        <div class="metric-value" id="m_impwt">0.34 g</div>
+        <div class="metric-sub">film + solid ink (with wastage)</div>
+      </div>
+      <div class="metric-card mc-g">
+        <div class="metric-label">Imps / Kg</div>
+        <div class="metric-value" id="m_impkg">2,937</div>
+        <div class="metric-sub">labels per kilogram</div>
+      </div>
+    </div>
+
+    <!-- 2-COL RESULTS -->
+    <div class="res-grid">
+
+      <!-- RM Breakdown -->
+      <div class="res-card">
+        <div class="res-head">
+          <div class="section-icon si-y"></div>
+          <h4>Raw Material Cost (per kg)</h4>
+        </div>
+        <table class="rtable">
+          <tr><td>GSM (Micron × SG)</td><td id="r_gsm">20.9</td></tr>
+          <tr><td>Substrate (CCPET)</td><td id="r_ccpet">₹239.38</td></tr>
+          <tr><td>Ink Cost (Solid)</td><td id="r_ink">₹69.91</td></tr>
+          <tr><td>Solvent Cost / kg</td><td id="r_solvent">—</td></tr>
+          <tr><td>Sub-total</td><td id="r_subtotal">₹309.29</td></tr>
+          <tr class="warn"><td>Wastage (<span id="r_wpct">8.6</span>%)</td><td id="r_wastage">₹29.08</td></tr>
+          <tr class="total"><td>Total RM Cost</td><td id="r_rm">₹368.37</td></tr>
+        </table>
+      </div>
+
+      <!-- Pricing Stack -->
+      <div class="res-card">
+        <div class="res-head">
+          <div class="section-icon si-g"></div>
+          <h4>Pricing Stack (per kg)</h4>
+        </div>
+        <table class="rtable">
+          <tr><td>Total RM Cost</td><td id="r_rm2">₹368.37</td></tr>
+          <tr class="highlight"><td>Conversion Charge</td><td id="r_conv">₹19.7</td></tr>
+          <tr class="highlight"><td>Profit (<span id="r_ppct">10</span>%)</td><td id="r_profit">₹36.84</td></tr>
+          <tr><td>Cylinder (₹/kg)</td><td id="r_cyl">₹2.00</td></tr>
+          <tr><td>Packing / kg</td><td id="r_pack">—</td></tr>
+          <tr><td>Freight</td><td id="r_frt">₹3.00</td></tr>
+          <tr class="total"><td>Total Cost / kg</td><td id="r_sale">₹435.21</td></tr>
+        </table>
+      </div>
+
+      <!-- Conversion Breakup -->
+      <div class="res-card">
+        <div class="res-head">
+          <div class="section-icon si-o"></div>
+          <h4>Conversion Breakup (per hr)</h4>
+        </div>
+        <table class="rtable">
+          <tr><td>Machine + Power (all processes)</td><td id="r_machine">—</td></tr>
+          <tr><td>Interest Cost</td><td id="r_interest">—</td></tr>
+          <tr><td>Labour Cost</td><td id="r_labour">—</td></tr>
+          <tr class="total"><td>Total Conversion / kg</td><td id="r_cpkg">—</td></tr>
+          <tr><td>Effective Rate (kg/hr)</td><td id="r_prodrate">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Impression Data -->
+      <div class="res-card">
+        <div class="res-head">
+          <div class="section-icon si-b"></div>
+          <h4>Impression Analysis</h4>
+        </div>
+        <table class="rtable">
+          <tr><td>Slitting Width</td><td id="r_width">60 mm</td></tr>
+          <tr><td>Repeat Length</td><td id="r_repeat">250 mm</td></tr>
+          <tr><td>Label Area</td><td id="r_area">15,000 mm²</td></tr>
+          <tr><td>Substrate GSM</td><td id="r_rawimpwt">0.3135 g</td></tr>
+          <tr><td>Solid Ink GSM (on film)</td><td id="r_solidgsm">—</td></tr>
+          <tr class="highlight"><td>Imp. Weight (film + solid ink)</td><td id="r_impwt2">—</td></tr>
+          <tr class="highlight"><td>Impressions / kg</td><td id="r_impkg">2,936.86</td></tr>
+          <tr class="total"><td>Total Impressions</td><td id="r_totimps">14,68,429</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- PRICING BAR CHART -->
+    <div class="full-card" style="margin-bottom:16px">
+      <div class="res-head">
+        <div class="section-icon si-y"></div>
+        <h4>Cost Composition (per kg)</h4>
+      </div>
+      <div style="padding:14px 20px" id="barChart"></div>
+    </div>
+
+    <!-- ACTUAL COST ANALYSIS -->
+    <div class="full-card" style="margin-bottom:16px;border-color:var(--acc2)">
+      <div class="res-head" style="background:rgba(71,212,255,.06);border-bottom-color:var(--acc2)">
+        <div class="section-icon si-b"></div>
+        <h4 style="color:var(--acc2)">Actual Cost Analysis</h4>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">
+          Actual Wastage: <span id="a_wastePct" style="color:var(--acc3)">—</span>
+          &nbsp;·&nbsp; Total Input: <span id="a_totalInputKg" style="color:var(--muted2)">—</span>
+          &nbsp;→&nbsp; Output: <span id="a_actualOutput" style="color:var(--acc2)">—</span>
+        </span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+
+        <!-- Left: actual inputs -->
+        <table class="rtable" style="border-right:1px solid var(--border)">
+          <tr>
+            <td colspan="3" style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:10px 16px 4px">
+              Actual Inputs → ÷ Actual Output (pr_slit)
+            </td>
+          </tr>
+          <tr style="font-family:var(--mono);font-size:9px;color:var(--muted)">
+            <td>Input</td><td>Qty (kg)</td><td>Cost (₹)</td>
+          </tr>
+          <tr>
+            <td>Substrate — unprinted film</td>
+            <td id="a_filmQty" style="color:var(--muted2)">—</td>
+            <td id="a_filmCost">—</td>
+          </tr>
+          <tr>
+            <td>Liquid Ink — all colors</td>
+            <td id="a_inkQty" style="color:var(--muted2)">—</td>
+            <td id="a_inkCost">—</td>
+          </tr>
+          <tr>
+            <td>Solvent — evaporates, 0 wt gain</td>
+            <td id="a_solventQty" style="color:var(--muted2)">—</td>
+            <td id="a_solventCost">—</td>
+          </tr>
+          <tr class="total">
+            <td>Total Input Cost</td><td></td>
+            <td id="a_totalInput">—</td>
+          </tr>
+          <tr class="highlight">
+            <td>÷ Actual Output (slit kg)</td><td></td>
+            <td id="a_rmPerKg">—</td>
+          </tr>
+        </table>
+
+        <!-- Right: actual cost per kg -->
+        <table class="rtable">
+          <tr><td colspan="2" style="font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);padding:10px 16px 4px">Actual Cost / kg Build-up</td></tr>
+          <tr><td>RM Cost / kg</td><td id="a_rmPerKg2">—</td></tr>
+          <tr><td>Conversion / kg (<span id="a_hrs2">—</span> hrs)</td><td id="a_convPerKg">—</td></tr>
+          <tr><td>Cylinder / kg</td><td id="a_cylPerKg">—</td></tr>
+          <tr><td>Packing + Freight</td><td id="a_packFrt">—</td></tr>
+          <tr><td>Profit (<span id="r_ppct2">—</span>%)</td><td id="a_profitPerKg">—</td></tr>
+          <tr class="total" style="border-top:2px solid var(--acc2)">
+            <td>Actual Total / kg</td>
+            <td id="a_totalPerKg" style="color:var(--acc2)">—</td>
+          </tr>
+        </table>
+
+      </div>
+    </div>
+
+    <!-- PRODUCTION FLOW -->
+    <div class="prod-report">
+      <div class="res-head">
+        <div class="section-icon si-b"></div>
+        <h4>Overall Production Flow</h4>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--muted)">Overall Wastage: <span id="r_overallWaste" style="color:var(--red)">8.57%</span></span>
+      </div>
+      <div class="flow-row" id="flowRow"></div>
+    </div>
+
+    <!-- INK CONSUMPTION REPORT -->
+    <div class="full-card">
+      <div class="res-head">
+        <div class="section-icon si-b"></div>
+        <h4>Ink Consumption Report</h4>
+      </div>
+      <table class="ink-report-table">
+        <thead>
+          <tr>
+            <th>Color</th>
+            <th class="num">Liquid Consumed (kg)</th>
+            <th class="num">Solid Deposited (kg)</th>
+            <th class="num">Liquid Rate (₹/kg)</th>
+            <th class="num">Solid% </th>
+            <th class="num">Solid Rate (₹/kg solid)</th>
+            <th class="num">Total Cost (₹)</th>
+          </tr>
+        </thead>
+        <tbody id="inkReportBody"></tbody>
+      </table>
+    </div>
+
+    <!-- SOLVENT REPORT -->
+    <div class="full-card" style="margin-top:16px">
+      <div class="res-head">
+        <div class="section-icon si-g"></div>
+        <h4>Solvent Consumption Report · Pearlised Bopp Consume: <span id="r_boppConsume">553.9</span> kgs</h4>
+      </div>
+      <table class="ink-report-table">
+        <thead><tr><th>Solvent</th><th class="num">Consume (kgs)</th><th class="num">Rate (₹/kg)</th><th class="num">Total Cost (₹)</th></tr></thead>
+        <tbody id="solventReport"></tbody>
+      </table>
+    </div>
+
+    <div style="text-align:center;font-family:var(--mono);font-size:10px;color:var(--muted);padding:24px 0 8px">
+      FlexCost Calculator · All values computed live
+    </div>
+
+    <!-- PRINT-ONLY FOOTER -->
+    <div class="print-footer" style="display:none">
+      A J Shrink Wrap Pvt. Ltd. (Unit-II) · Costing Calculator · <span id="print_date2"></span>
+    </div>
+
+  </div><!-- /output-panel -->
+</div><!-- /main -->
+
+<script>
+// ══ DEFAULT INK DATA ══
+let inkData = [
+  {color:'Cyan',   hex:'#00bfff', qty:11,  rate:362, solid:29.4},
+  {color:'Yellow', hex:'#f4e04a', qty:78,  rate:378, solid:30},
+  {color:'Green',  hex:'#4caf50', qty:2,   rate:316, solid:29.9},
+  {color:'Black',  hex:'#555',    qty:90,  rate:284, solid:23.8},
+  {color:'OPV',    hex:'#aaaaaa', qty:0,   rate:0,   solid:0},
+];
+
+let solventData = [
+  {name:'Ethyl Acetate', qty:60, rate:120},
+  {name:'Npac',          qty:36, rate:103},
+  {name:'IPA',           qty:24, rate:160},
+];
+
+let machineData = [
+  {machine:'Printing Press',  cost:5000000, life:10},
+  {machine:'Inspection M/c',  cost:800000,  life:8},
+  {machine:'Slitting M/c',    cost:600000,  life:8},
+];
+
+let processData = [
+  {process:'Printing',   machineIdx:0, units:300, hours:20},
+  {process:'Inspection', machineIdx:1, units:50,  hours:4},
+  {process:'Slitting',   machineIdx:2, units:40,  hours:30},
+];
+
+function getMachineRatePerHr(idx){
+  const m = machineData[idx];
+  if(!m || !m.cost || !m.life) return 0;
+  const days = parseFloat(document.getElementById('workDays')?.value)  || 300;
+  const hrs  = parseFloat(document.getElementById('workHours')?.value) || 8;
+  return m.cost / (m.life * days * hrs);
+}
+
+function renderMachineRegistry(){
+  const tbody = document.getElementById('machineRegistryBody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  machineData.forEach((row, i) => {
+    const rateHr = getMachineRatePerHr(i);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="inp" value="${row.machine}" style="width:100px" oninput="machineData[${i}].machine=this.value;renderProcessTable()"></td>
+      <td><input class="inp" type="number" value="${row.cost}" oninput="machineData[${i}].cost=+this.value;renderMachineRegistry();renderProcessTable();calc()"></td>
+      <td><input class="inp" type="number" value="${row.life}" oninput="machineData[${i}].life=+this.value;renderMachineRegistry();renderProcessTable();calc()"></td>
+      <td><div class="computed-display" style="color:var(--acc4)">₹${f2(rateHr)}/hr</div></td>
+      <td><button class="del-btn" onclick="delMachine(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+function addMachineRow(){ machineData.push({machine:'Machine',cost:0,life:5}); renderMachineRegistry(); renderProcessTable(); }
+function delMachine(i){ machineData.splice(i,1); renderMachineRegistry(); renderProcessTable(); calc(); }
+
+// ══ SECTION TOGGLE ══
+function toggleSection(head){
+  const body = head.nextElementSibling;
+  const chevron = head.querySelector('.chevron');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'flex';
+  chevron.classList.toggle('open', !open);
+}
+
+// ══ INK TABLE RENDER ══
+function renderInkTable(){
+  const tbody = document.getElementById('inkTableBody');
+  tbody.innerHTML = '';
+  inkData.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="color-swatch" style="background:${row.hex}"></span>
+          <input class="inp" value="${row.color}" style="width:70px" oninput="inkData[${i}].color=this.value;calc()"></td>
+      <td><input class="inp" type="number" value="${row.qty}" oninput="inkData[${i}].qty=+this.value;calc()"></td>
+      <td><input class="inp" type="number" value="${row.rate}" oninput="inkData[${i}].rate=+this.value;calc()"></td>
+      <td><input class="inp" type="number" step="0.1" value="${row.solid}" oninput="inkData[${i}].solid=+this.value;calc()"></td>
+      <td><div class="computed-display" id="ink_solidprice_${i}">${row.solid>0 && row.rate>0 ? f2(row.rate/(row.solid/100)) : '—'}</div></td>
+      <td><button class="del-btn" onclick="delInk(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderInkReport();
+}
+
+function addInkRow(){
+  inkData.push({color:'Color',hex:'#888',qty:0,rate:0,solid:0});
+  renderInkTable(); calc();
+}
+function delInk(i){ inkData.splice(i,1); renderInkTable(); calc(); }
+
+function renderInkReport(){
+  const tbody = document.getElementById('inkReportBody');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  let totalLiquid = 0, totalSolid = 0, totalCostAll = 0;
+  inkData.forEach(row => {
+    const liquidKg  = row.qty   || 0;
+    const solidKg   = liquidKg  * (row.solid || 0) / 100;
+    const solidRate = row.solid > 0 && row.rate > 0 ? row.rate / (row.solid / 100) : 0;
+    const totalCost = liquidKg  * (row.rate || 0);
+    totalLiquid  += liquidKg;
+    totalSolid   += solidKg;
+    totalCostAll += totalCost;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="color-swatch" style="background:${row.hex}"></span>${row.color}</td>
+      <td class="num">${liquidKg  || '—'} kg</td>
+      <td class="num" style="color:var(--acc2)">${solidKg ? f2(solidKg)+' kg' : '—'}</td>
+      <td class="num">₹${row.rate || '—'}/kg</td>
+      <td class="num">${row.solid || '—'} %</td>
+      <td class="num" style="color:var(--acc4)">${solidRate ? '₹'+f2(solidRate)+'/kg' : '—'}</td>
+      <td class="num" style="color:var(--acc)">${totalCost ? '₹'+fmt(totalCost) : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  // Totals row
+  if(inkData.length > 0){
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'background:rgba(71,212,255,.05);font-weight:600';
+    const avgSolidPct = totalLiquid > 0 ? totalSolid / totalLiquid * 100 : 0;
+    const avgLiqRate  = totalLiquid > 0 ? totalCostAll / totalLiquid : 0;
+    const avgSolidRate= avgSolidPct > 0 ? avgLiqRate / (avgSolidPct/100) : 0;
+    tr.innerHTML = `
+      <td style="color:var(--muted2)">Total / Average</td>
+      <td class="num">${f2(totalLiquid)} kg</td>
+      <td class="num" style="color:var(--acc2)">${f2(totalSolid)} kg</td>
+      <td class="num">₹${f2(avgLiqRate)}/kg avg</td>
+      <td class="num">${f2(avgSolidPct)} % avg</td>
+      <td class="num" style="color:var(--acc4)">₹${f2(avgSolidRate)}/kg avg</td>
+      <td class="num" style="color:var(--acc)">₹${fmt(totalCostAll)}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+// ══ SOLVENT TABLE ══
+function renderSolventTable(){
+  const tbody = document.getElementById('solventBody');
+  tbody.innerHTML = '';
+  solventData.forEach((row, i) => {
+    const total = (row.qty||0) * (row.rate||0);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="inp" value="${row.name}" oninput="solventData[${i}].name=this.value;calc()"></td>
+      <td><input class="inp" type="number" value="${row.qty}" oninput="solventData[${i}].qty=+this.value;updateSolventTotal(${i},this.closest('tr'));calc()"></td>
+      <td><input class="inp" type="number" value="${row.rate}" oninput="solventData[${i}].rate=+this.value;updateSolventTotal(${i},this.closest('tr'));calc()"></td>
+      <td><div class="computed-display" style="min-width:70px">${total ? '₹'+fmt(total) : '—'}</div></td>
+      <td><button class="del-btn" onclick="delSolvent(${i})">✕</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  renderSolventReport();
+}
+function addSolventRow(){ solventData.push({name:'Solvent',qty:0,rate:0}); renderSolventTable(); }
+function delSolvent(i){ solventData.splice(i,1); renderSolventTable(); }
+
+function updateSolventTotal(i, tr){
+  if(!tr) return;
+  const row = solventData[i];
+  const total = (row.qty||0) * (row.rate||0);
+  const cell = tr.querySelector('.computed-display');
+  if(cell) cell.textContent = total ? '₹' + fmt(total) : '—';
+  renderSolventReport();
+}
+function renderSolventReport(){
+  const tbody = document.getElementById('solventReport');
+  if(!tbody) return;
+  tbody.innerHTML = '';
+  let grandTotal = 0, totalQty = 0;
+  solventData.forEach(row => {
+    const total = (row.qty||0) * (row.rate||0);
+    grandTotal += total;
+    totalQty   += (row.qty||0);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${row.name}</td>
+      <td class="num">${row.qty || '—'} kg</td>
+      <td class="num">₹${row.rate||0}/kg</td>
+      <td class="num" style="color:var(--acc)">${total ? '₹'+fmt(total) : '—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  if(solventData.length > 0){
+    // Total row
+    const tr = document.createElement('tr');
+    tr.style.cssText = 'background:rgba(232,255,71,.05);font-weight:600';
+    tr.innerHTML = `
+      <td style="color:var(--muted2)">Total</td>
+      <td class="num">${f2(totalQty)} kg</td>
+      <td class="num" style="color:var(--muted);font-size:10px">0 weight gain on film</td>
+      <td class="num" style="color:var(--acc)">₹${fmt(grandTotal)}</td>
+    `;
+    tbody.appendChild(tr);
+    // Cost per kg row
+    const prSlit  = parseFloat(document.getElementById('pr_slit')?.value)  || 0;
+    const orderQty= parseFloat(document.getElementById('orderQty')?.value) || 0;
+    const outKg   = prSlit > 0 ? prSlit : orderQty;
+    if(outKg > 0){
+      const perKg = grandTotal / outKg;
+      const tr2 = document.createElement('tr');
+      tr2.style.cssText = 'background:rgba(167,139,250,.05)';
+      tr2.innerHTML = `
+        <td colspan="3" style="color:var(--muted);font-size:10px;font-family:var(--mono)">
+          ↳ Cost / kg output (÷ ${f2(outKg)} kg actual output)
+        </td>
+        <td class="num" style="color:#a78bfa;font-weight:600">₹${fmt(perKg)}/kg</td>
+      `;
+      tbody.appendChild(tr2);
+    }
+  }
+}
+
+// ══ FORMATTERS ══
+function f2(n){ return isFinite(n) ? (+n).toFixed(2) : '—'; }
+function f4(n){ return isFinite(n) ? (+n).toFixed(4) : '—'; }
+function fmt(n){
+  if(!isFinite(n)) return '—';
+  return (+n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function fmtI(n){
+  if(!isFinite(n)) return '—';
+  return Math.round(n).toLocaleString('en-IN');
+}
+function g(id){ const el=document.getElementById(id); return el ? parseFloat(el.value)||0 : 0; }
+function s(id,v){ const el=document.getElementById(id); if(el) el.textContent=v; }
+
+// ── Apply actual wastage % from production data into the wastage field ──
+function applyActualWastage(){
+  const prInput = parseFloat(document.getElementById('pr_input').value) || 0;
+  const prSlit  = parseFloat(document.getElementById('pr_slit').value)  || 0;
+  if(prInput > 0 && prSlit > 0){
+    const actual = ((prInput - prSlit) / prInput * 100).toFixed(2);
+    document.getElementById('wastage').value = actual;
+    calc();
+  }
+}
+
+// ══ PROCESS TABLE ══
+function renderProcessTable(){
+  const cards    = document.getElementById('processCards');
+  if(!cards) return;
+  const unitRate = parseFloat(document.getElementById('unitRate')?.value) || 0;
+  cards.innerHTML = '';
+  processData.forEach((row, i) => {
+    const mIdx     = row.machineIdx ?? 0;
+    const rateHr   = getMachineRatePerHr(mIdx);
+    const powerHr  = (row.units||0) * unitRate;
+    const totalHr  = rateHr + powerHr;
+    const totalCost= totalHr * (row.hours||0);
+    const machOpts = machineData.map((m,mi) =>
+      `<option value="${mi}"${mi===mIdx?' selected':''}>${m.machine}</option>`).join('');
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <input class="inp" value="${row.process}" style="width:110px;font-weight:600"
+          oninput="processData[${i}].process=this.value">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--acc2)">${totalCost ? '₹'+fmt(totalCost) : '—'}</div>
+        <button class="del-btn" onclick="delProcess(${i})" style="font-size:12px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">MACHINE</div>
+          <select class="inp" style="width:100%;font-size:10px;padding:4px 6px;cursor:pointer"
+            onchange="processData[${i}].machineIdx=+this.value;renderProcessTable();calc()">
+            ${machOpts}
+          </select>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">MACHINE ₹/HR (AUTO)</div>
+          <div class="computed-display" style="color:var(--acc4)">₹${f2(rateHr)}/hr</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">UNITS/HR (POWER)</div>
+          <input class="inp" type="number" value="${row.units}" style="width:100%"
+            oninput="processData[${i}].units=+this.value;renderProcessTable();calc()">
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">POWER ₹/HR (AUTO)</div>
+          <div class="computed-display" style="color:var(--acc3)">₹${f2(powerHr)}/hr</div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">HOURS RUN</div>
+          <div class="inp-unit" style="position:relative">
+            <input class="inp" type="number" value="${row.hours}" style="width:100%;padding-right:32px"
+              oninput="processData[${i}].hours=+this.value;renderProcessTable();calc()">
+            <span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:10px;color:var(--muted);pointer-events:none">hr</span>
+          </div>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:3px">TOTAL ₹/HR</div>
+          <div class="computed-display" style="color:var(--txt)">₹${f2(totalHr)}/hr</div>
+        </div>
+      </div>`;
+    cards.appendChild(card);
+  });
+  calc();
+}
+function addProcessRow(){ processData.push({process:'Process',machineIdx:0,units:0,hours:0}); renderProcessTable(); }
+function delProcess(i){ processData.splice(i,1); renderProcessTable(); }
+
+// ══ MAIN CALC ══
+function calc(){
+  const orderQty = g('orderQty');
+  const micron   = g('micron');
+  const sg       = g('sg');
+  const width    = g('width');
+  const repeat   = g('repeat');
+  const subRate  = g('subRate');
+  const inkGSM   = g('inkGSM');
+  const profitPct= g('profitPct');
+
+  // ── Ink solid weight (needed for weight-based wastage) ──
+  const totalSolidInkKg = inkData.reduce((t,r) => t + (r.qty||0)*(r.solid||0)/100, 0);
+
+  // ── Production actuals (3 user inputs; print waste auto-derived) ──
+  const prInput   = g('pr_input');
+  const prSlit    = g('pr_slit');
+  const prTwaste  = g('pr_twaste');
+  const totalWeightInput = prInput + totalSolidInkKg; // film + solid ink only
+  const prPwaste  = Math.max(0, totalWeightInput - prSlit - prTwaste);
+  const prOutput  = 0;
+  const prInspect = 0;
+  // ── Packing cost build-up ──
+  const pk_boxRate     = g('pk_boxRate');
+  const pk_coilsPerBox = g('pk_coilsPerBox');
+  const pk_coilWt      = g('pk_coilWt');
+  const pk_plugsPerBox = g('pk_plugsPerBox');
+  const pk_plugRate    = g('pk_plugRate');
+  const pk_tapeMetres  = g('pk_tapeGm');
+  const pk_tapeRate    = g('pk_tapeRate');
+  const pk_sfGm        = g('pk_sfGm');
+  const pk_sfRate      = g('pk_sfRate');
+
+  const boxWt          = pk_coilsPerBox * pk_coilWt;                    // kg per box
+  const plugCost       = pk_plugsPerBox * pk_plugRate;                   // ₹ plugs per box
+  const tapeRollsUsed  = pk_tapeMetres / 130;
+  const tapeCost       = tapeRollsUsed * pk_tapeRate;
+  const sfCost         = (pk_sfGm  / 1000) * pk_sfRate;                 // ₹ stretch film per box
+  const packPerBox     = pk_boxRate + plugCost + tapeCost + sfCost;     // ₹ total per box
+  const packing        = boxWt > 0 ? packPerBox / boxWt : 0;           // ₹/kg
+  // ── Freight calculation ──
+  const fr_vehicleCost = g('fr_vehicleRate');  // fixed vehicle hire cost (₹ total)
+  const fr_load        = g('fr_load') > 0 ? g('fr_load') : orderQty;  // kg (blank = order qty)
+  const freight        = fr_load > 0 ? fr_vehicleCost / fr_load : 0;  // ₹/kg
+  // ── Process cost: auto machine rate + power (units × unit rate) × hours ──
+  const unitRate         = parseFloat(document.getElementById('unitRate')?.value) || 0;
+  const totalProcessCost = processData.reduce((t, r) => {
+    const rateHr = getMachineRatePerHr(r.machineIdx ?? 0);
+    return t + (rateHr + (r.units||0) * unitRate) * (r.hours||0);
+  }, 0);
+  const machineCostPerKg = prSlit > 0 ? totalProcessCost / prSlit : 0;
+
+  // ── Total actual input = film + liquid ink + solvent (all kg going in) ──
+  const totalInkInput      = inkData.reduce((t,r) => t + (r.qty||0), 0);
+  const totalSolventInput  = solventData.reduce((t,r) => t + (r.qty||0), 0);
+  const totalActualInput   = prInput + totalInkInput + totalSolventInput;
+
+  // Auto-calculate actual wastage %:
+  // Input = film + ink + solvent; Output = pr_slit
+  // If output = 0, wastage = 100%; solvent evaporation is included in this
+  if(prInput > 0 && prSlit > 0){
+    const auto = ((totalWeightInput - prSlit) / totalWeightInput * 100).toFixed(2);
+    document.getElementById('wastage').value = auto;
+    s('disp_actualWastage',
+      auto + ' %  (' + f2(totalWeightInput) + ' kg weight in → ' + f2(prSlit) + ' kg out)  ' +
+      '[film ' + f2(prInput) + ' + solid ink ' + f2(totalSolidInkKg) + ']'
+    );
+  } else {
+    s('disp_actualWastage', '— fill production report');
+  }
+
+  // Now read wastage (auto-updated above if production data present)
+  const wastage = g('wastage');
+
+  // GSM of substrate
+  const gsm = micron * sg;
+
+  // ── INK SOLID CONTENT calculation (weighted average from ink table) ──
+  let totalInkQty  = 0, totalSolidWt = 0, totalInkCost = 0;
+  inkData.forEach(row => {
+    const qty   = row.qty   || 0;
+    const rate  = row.rate  || 0;
+    const solid = row.solid || 0;
+    totalInkQty  += qty;
+    totalSolidWt += qty * (solid / 100);   // kg of solid in that qty
+    totalInkCost += qty * rate;
+  });
+  // Weighted averages
+  const avgSolidPct  = totalInkQty > 0 ? totalSolidWt / totalInkQty * 100 : 0;  // %
+  const avgLiqRate   = totalInkQty > 0 ? totalInkCost / totalInkQty : 0;         // ₹/kg liquid
+  const avgSolidRate = avgSolidPct > 0  ? avgLiqRate / (avgSolidPct / 100) : 0;  // ₹/kg solid
+  const solidGSM     = inkGSM;                                          // g/m² solid on film (user input)
+  const liquidGSM    = avgSolidPct > 0 ? inkGSM / (avgSolidPct/100) : 0; // g/m² liquid applied (derived)
+
+  // ── Impression weight (physical weight of one printed label) ──
+  // Film + solid ink only — solvent evaporates, wastage is separate process loss
+  const rawImpWt  = (width * repeat * (gsm + solidGSM)) / 1e6;  // g per label (actual)
+  const impsPerKg = rawImpWt > 0 ? 1000 / rawImpWt : 0;
+  const totalImps = impsPerKg * orderQty;
+
+  // Area per kg output (m²)
+  const areaPerKg = impsPerKg * (width / 1000) * (repeat / 1000);
+
+  // ── Solvent cost ——evaporates fully, but paid for; allocated per kg actual output ──
+  const totalSolventCost  = solventData.reduce((sum, row) => sum + (row.qty||0)*(row.rate||0), 0);
+  const outputKg          = prSlit > 0 ? prSlit : orderQty;
+  const solventCostPerKg  = outputKg > 0 ? totalSolventCost / outputKg : 0;
+  const solventCostPerKgFinal = solventCostPerKg;
+
+  // ── RM Costs (per kg of output) ──
+  const ccpetCost = areaPerKg * (gsm / 1000) * subRate;
+  // Ink cost: solid deposited × solid rate  (= liquid applied × liquid rate — same math)
+  const inkCost   = areaPerKg * (solidGSM / 1000) * avgSolidRate;
+  // Solvent: zero weight on film but fully consumed — cost allocated per kg output
+  const subTotal  = ccpetCost + inkCost + solventCostPerKg;
+  const wastageCost = subTotal * (wastage / 100);
+  const totalRM   = subTotal + wastageCost;
+
+  // ── Cylinder planning ──
+  const cylRate      = g('cylRate');
+  const cylLife      = g('cylLife');
+  const cylShrinkage = g('cylShrinkage') || 1;
+  const upsCircum    = g('upsCircum');
+  const upsLen       = g('upsLength');
+  const cylLifeImps  = (repeat + cylShrinkage) > 0 ? (cylLife * 1e6) / (repeat + cylShrinkage) : 0;
+  const stdWidth       = g('stdCircum');                  // standard cylinder width mm
+  const cylTrim        = g('cylTrim') || 20;              // trim area mm
+
+  const cylCircum_mm     = (repeat + cylShrinkage) * upsCircum;  // (repeat + shrink) × ups
+  const printedWidth_mm  = (upsLen * width) + cylTrim;
+  const nonPrintedWidth  = Math.max(0, stdWidth - printedWidth_mm);
+  const cylArea_sqcm     = (cylCircum_mm / 10) * (stdWidth / 10); // full std width charged
+  const cylTotalCost     = cylRate * cylArea_sqcm;
+  const cylCostPerImp    = cylLifeImps > 0 ? cylTotalCost / cylLifeImps : 0;
+  const cylCostPerKg     = cylCostPerImp * impsPerKg;
+
+  // ── Conversion ──
+  // ── Interest from loan parameters ──
+  const loanAmt      = g('loanAmt');
+  const interestRate = g('interestRate');
+  const workDays     = g('workDays') || 300;
+  const workHoursDay = g('workHours') || 8;
+  const annualInt    = loanAmt * interestRate / 100;
+  const intC         = annualInt / (workDays * workHoursDay);  // ₹/hr
+  // ── Labour cost from total monthly salary ──
+  const labourWage   = g('labourWage');
+  const labourDays   = g('labourDays') || 25;
+  const labC         = labourWage / (labourDays * workHoursDay);  // ₹/hr
+  const totalHrs    = processData.reduce((t, r) => t + (r.hours||0), 0);
+  const prodRate    = totalHrs > 0 ? prSlit / totalHrs : 0;
+  const totalCostHr = totalHrs > 0 ? (totalProcessCost + (intC + labC) * totalHrs) / totalHrs : 0;
+  const costPerKg   = prSlit > 0
+    ? (totalProcessCost + (intC + labC) * totalHrs) / prSlit
+    : 0;
+
+  // ── Profit & Sales ──
+  const profitAmt  = (totalRM + costPerKg) * (profitPct / 100);
+  const salesPrice = totalRM + costPerKg + profitAmt + cylCostPerKg + packing + freight;
+  const totalRevenue = salesPrice * orderQty;
+
+  // ── ACTUAL COST (based on real inputs and actual slitting output) ──
+  // Every input has a real cost; actual output = pr_slit kg
+  const actualFilmCost    = prInput * subRate;                        // film consumed × rate
+  const actualInkCost     = inkData.reduce((s,r) => s + (r.qty||0)*(r.rate||0), 0); // all ink consumed
+  const actualSolventCost = totalSolventCost;                         // all solvent consumed (0 weight, real cost)
+  const actualTotalInput  = actualFilmCost + actualInkCost + actualSolventCost;
+  const actualRMperKg     = prSlit > 0 ? actualTotalInput / prSlit : 0;  // ₹/kg actual output
+
+  // Actual conversion cost: hours run = pr_input / prodRate
+  const actualHrs      = prodRate > 0 ? prInput / prodRate : 0;
+  const actualConvCost = actualHrs * totalCostHr;                    // total conversion ₹
+  const actualConvPerKg= prSlit > 0 ? actualConvCost / prSlit : 0;  // ₹/kg actual output
+
+  // Actual cylinder cost: based on actual impressions printed (pr_slit × impsPerKg)
+  const actualImps       = prSlit * impsPerKg;
+  const actualCylCost    = cylLifeImps > 0 ? cylTotalCost * (actualImps / cylLifeImps) : 0;
+  const actualCylPerKg   = prSlit > 0 ? actualCylCost / prSlit : 0;
+
+  const actualSalePerKg  = actualRMperKg + actualConvPerKg + actualCylPerKg + packing + freight;
+  const actualProfitPerKg= actualSalePerKg * (profitPct / 100);
+  const actualTotalPerKg = actualSalePerKg + actualProfitPerKg;
+
+  // ══ UPDATE DISPLAYS ══
+
+  // Substrate section
+  s('disp_gsm',          f2(gsm));
+  s('disp_gsm_printed',  f2(gsm + solidGSM));
+  s('disp_impwt',        f4(rawImpWt) + ' g');
+
+  // Freight & Packing
+  s('disp_frPerKg',    '₹' + f2(freight) + '  (load: ' + fmtI(fr_load) + ' kg, vehicle: ₹' + fmt(fr_vehicleCost) + ')');
+  s('disp_boxWt',      f2(boxWt) + ' kg');
+  s('disp_tapeRolls',  f2(tapeRollsUsed) + ' rolls');
+  s('disp_packPerBox', '₹' + fmt(packPerBox));
+  s('disp_packPerKg',  '₹' + f2(packing));
+
+  // Ink averages
+  s('disp_avgSolid',     f2(avgSolidPct) + ' %');
+  s('disp_avgLiqRate',   '₹' + fmt(avgLiqRate));
+  s('disp_avgSolidRate', '₹' + fmt(avgSolidRate));
+  s('disp_solidGSM',     f2(solidGSM) + ' g/m²  →  liquid applied: ' + f2(liquidGSM) + ' g/m²');
+
+  // Cylinder planning
+  s('disp_calcCircum',     fmtI(cylCircum_mm) + ' mm  (' + repeat + '+' + cylShrinkage + 'mm) × ' + upsCircum + ' ups  →  life: ' + fmtI(cylLifeImps) + ' imps');
+  s('disp_printedWidth',   fmtI(printedWidth_mm) + ' mm  (' + upsLen + ' × ' + width + 'mm + ' + cylTrim + 'mm trim)');
+  s('disp_nonPrintedWidth', fmtI(nonPrintedWidth) + ' mm  (blank, still charged on full ' + stdWidth + 'mm)');
+  s('disp_cylArea',        f2(cylArea_sqcm) + ' cm²  (circum × full width)');
+  s('disp_cylTotal',       '₹' + fmt(cylTotalCost));
+  s('disp_cylPerKg',       '₹' + f2(cylCostPerKg));
+
+  // Conversion
+  s('disp_annualInt',      '₹' + fmt(annualInt));
+  s('disp_intPerHr',       '₹' + f2(intC) + '/hr');
+  s('disp_labPerHr',       '₹' + f2(labC) + '/hr  (₹' + fmt(g('labourWage')) + '/mo ÷ ' + g('labourDays') + 'd × ' + workHoursDay + 'h)');
+  s('disp_machineCostKg',  '₹' + fmt(totalProcessCost));
+  s('disp_bottleneck',     prSlit > 0 ? '₹' + f2(costPerKg) + '/kg' : '— fill production report');
+  s('disp_costhr',         '₹ ' + fmt(totalCostHr));
+  s('disp_costkg',         '₹ ' + f2(costPerKg));
+
+  // Production report section
+  s('disp_printWaste',     f2(prPwaste) + ' kg');
+  s('disp_totalIn',        f2(totalWeightInput) + ' kg  (film ' + f2(prInput) + ' + solid ink ' + f2(totalSolidInkKg) + ')');
+  s('disp_actualWastage2', f2(totalWeightInput > 0 ? (totalWeightInput - prSlit) / totalWeightInput * 100 : 0) + ' %');
+
+  // Hero metrics
+  s('out_salesPrice',  '₹' + fmt(salesPrice));
+  s('out_productName', (document.getElementById('customName')?.value || document.getElementById('productName')?.options[document.getElementById('productName')?.selectedIndex]?.text || '—'));
+  s('out_totalOrder',  fmtI(orderQty));
+  s('out_totalRev',    '₹' + fmt(totalRevenue));
+  s('out_totalImps',   fmtI(totalImps));
+
+  // Key metric cards
+  s('m_costkg', '₹' + f2(costPerKg));
+  s('m_rmcost', '₹' + fmt(totalRM));
+  s('m_impwt',  f4(rawImpWt) + ' g');
+  s('m_impkg',  fmtI(impsPerKg));
+
+  // RM breakdown table
+  s('r_gsm',      f2(gsm) + ' g/m²');
+  s('r_ccpet',    '₹' + fmt(ccpetCost));
+  s('r_ink',      '₹' + fmt(inkCost));
+  s('r_solvent',  '₹' + fmt(solventCostPerKgFinal));
+  s('r_subtotal', '₹' + fmt(ccpetCost + inkCost + solventCostPerKgFinal));
+  s('r_wpct',     f2(wastage));
+  s('r_wastage',  '₹' + fmt((ccpetCost + inkCost + solventCostPerKgFinal) * wastage / 100));
+  s('r_rm',       '₹' + fmt(totalRM));
+
+  // Pricing stack
+  s('r_rm2',    '₹' + fmt(totalRM));
+  s('r_conv',   '₹' + f2(costPerKg));
+  s('r_ppct',   f2(profitPct));
+  s('r_profit', '₹' + fmt(profitAmt));
+  s('r_cyl',    '₹' + f2(cylCostPerKg));
+  s('r_pack',   '₹' + f2(packing));
+  s('r_frt',    '₹' + f2(freight));
+  s('r_sale',   '₹' + fmt(salesPrice));
+
+  // Conversion breakup
+  s('r_machine',  '₹' + fmt(totalProcessCost) + '  (' + f2(totalHrs) + ' hrs)');
+  s('r_interest', '₹' + fmt(intC * totalHrs));
+  s('r_labour',   '₹' + fmt(labC * totalHrs));
+  s('r_prodrate', prodRate > 0 ? f2(prodRate) + ' kg/hr' : '—');
+  s('r_cpkg',     '₹' + f2(costPerKg));
+
+  // Impression analysis
+  s('r_width',    width + ' mm');
+  s('r_repeat',   repeat + ' mm');
+  s('r_area',     fmtI(width * repeat) + ' mm²');
+  s('r_rawimpwt', f2(gsm) + ' g/m²  (substrate)');
+  s('r_solidgsm', f2(solidGSM) + ' g/m²  (solid ink)');
+  s('r_impwt2',   f4(rawImpWt) + ' g');
+  s('r_impkg',    fmt(impsPerKg));
+  s('r_totimps',  fmtI(totalImps));
+
+  // Production flow — simplified to actual 3-point flow
+  const flowEl = document.getElementById('flowRow');
+  if(flowEl){
+    flowEl.innerHTML = `
+      <div class="flow-node">
+        <div class="fn-val" style="color:var(--acc2)">${f2(totalWeightInput)}</div>
+        <div class="fn-lab">Weight Input (film+ink)</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="flow-loss"><div class="fl-val">-${f2(prPwaste)} kg</div><div class="fl-lab">Print Waste</div></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-node">
+        <div class="fn-val" style="color:var(--txt)">${f2(totalWeightInput - prPwaste)}</div>
+        <div class="fn-lab">After Printing</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div class="flow-loss"><div class="fl-val">-${f2(prTwaste)} kg</div><div class="fl-lab">Trim Waste</div></div>
+        <div class="flow-arrow">→</div>
+      </div>
+      <div class="flow-node">
+        <div class="fn-val" style="color:var(--acc4)">${f2(prSlit)}</div>
+        <div class="fn-lab">Final Dispatch</div>
+      </div>
+    `;
+  }
+
+  s('r_overallWaste', f2(totalWeightInput > 0 ? (totalWeightInput - prSlit) / totalWeightInput * 100 : 0) + '%');
+  s('r_boppConsume',  f2(prInput));
+
+  // Actual cost analysis card
+  s('a_totalInputKg', f2(totalActualInput) + ' kg');
+  s('a_wastePct',     f2(totalWeightInput > 0 ? (totalWeightInput - prSlit) / totalWeightInput * 100 : 0) + ' %');
+  s('a_actualOutput', f2(prSlit) + ' kg');
+  s('a_filmQty',      f2(prInput) + ' kg');
+  s('a_filmCost',     '₹' + fmt(actualFilmCost));
+  s('a_inkQty',       f2(totalInkInput) + ' kg');
+  s('a_inkCost',      '₹' + fmt(actualInkCost));
+  s('a_solventQty',   f2(totalSolventInput) + ' kg');
+  s('a_solventCost',  '₹' + fmt(actualSolventCost));
+  s('a_totalInput',   '₹' + fmt(actualTotalInput));
+  s('a_rmPerKg',      '₹' + fmt(actualRMperKg));
+  s('a_rmPerKg2',     '₹' + fmt(actualRMperKg));
+  s('a_hrs2',         f2(totalHrs));
+  s('a_convPerKg',    '₹' + fmt(actualConvPerKg));
+  s('a_cylPerKg',     '₹' + f2(actualCylPerKg));
+  s('a_packFrt',      '₹' + f2(packing + freight));
+  s('a_profitPerKg',  '₹' + fmt(actualProfitPerKg));
+  s('a_totalPerKg',   '₹' + fmt(actualTotalPerKg));
+  s('r_ppct2',        f2(profitPct));
+
+  // Bar chart
+  const items = [
+    {name:'Substrate',      val:ccpetCost,            pct: ccpetCost/salesPrice*100,            color:'var(--acc)'},
+    {name:'Ink (Solid)',    val:inkCost,               pct: inkCost/salesPrice*100,               color:'var(--acc2)'},
+    {name:'Solvent',        val:solventCostPerKgFinal, pct: solventCostPerKgFinal/salesPrice*100, color:'#a78bfa'},
+    {name:'Wastage',        val:wastageCost,           pct: wastageCost/salesPrice*100,           color:'var(--acc3)'},
+    {name:'Conversion',     val:costPerKg,             pct: costPerKg/salesPrice*100,             color:'var(--acc4)'},
+    {name:'Cylinder',       val:cylCostPerKg,          pct: cylCostPerKg/salesPrice*100,          color:'#fb923c'},
+    {name:'Packing',        val:packing,               pct: packing/salesPrice*100,               color:'var(--muted2)'},
+    {name:'Freight',        val:freight,               pct: freight/salesPrice*100,               color:'#64748b'},
+    {name:'Profit',         val:profitAmt,             pct: profitAmt/salesPrice*100,             color:'#bf9fff'},
+  ];
+  const barEl = document.getElementById('barChart');
+  if(barEl) barEl.innerHTML = items.map(item => `
+    <div class="bar-item">
+      <div class="bar-name">${item.name}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${Math.min(Math.max(item.pct,0),100)}%;background:${item.color}"></div>
+      </div>
+      <div class="bar-val" style="color:${item.color}">₹${f2(item.val)} <span style="color:var(--muted);font-size:10px">(${f2(item.pct)}%)</span></div>
+    </div>
+  `).join('');
+
+  // Ink solid price per color
+  inkData.forEach((row, i) => {
+    const el = document.getElementById('ink_solidprice_' + i);
+    if(el && row.solid > 0 && row.rate > 0) el.textContent = '₹' + f2(row.rate / (row.solid / 100));
+    else if(el) el.textContent = '—';
+  });
+
+  renderInkReport();
+  renderSolventReport();
+}
+
+function resetDefaults(){
+  document.getElementById('productName').value = '';
+  document.getElementById('specName').value = '38 mic Pearlised BOPP';
+  document.getElementById('orderQty').value = 500;
+  document.getElementById('micron').value = 38;
+  document.getElementById('sg').value = 0.55;
+  document.getElementById('width').value = 60;
+  document.getElementById('repeat').value = 250;
+  document.getElementById('subRate').value = 260;
+  document.getElementById('wastage').value = 8.6;
+  document.getElementById('inkGSM').value = 1.17;
+  document.getElementById('profitPct').value = 10;
+  document.getElementById('cylRate').value   = 2;
+  document.getElementById('cylLife').value   = 100000;
+  document.getElementById('upsCircum').value = 4;
+  document.getElementById('upsLength').value = 8;
+  document.getElementById('stdCircum').value = 1100;
+  document.getElementById('pr_input').value = 553.9;
+  document.getElementById('pr_slit').value = 537.6;
+  document.getElementById('pr_twaste').value = 23.7;
+  inkData = [
+    {color:'Cyan',   hex:'#00bfff', qty:11,  rate:362, solid:29.4},
+    {color:'Yellow', hex:'#f4e04a', qty:78,  rate:378, solid:30},
+    {color:'Green',  hex:'#4caf50', qty:2,   rate:316, solid:29.9},
+    {color:'Black',  hex:'#555',    qty:90,  rate:284, solid:23.8},
+    {color:'OPV',    hex:'#aaaaaa', qty:0,   rate:0,   solid:0},
+  ];
+  solventData = [{name:'Ethyl Acetate',qty:60,rate:120},{name:'Npac',qty:36,rate:103},{name:'IPA',qty:24,rate:160}];
+  renderInkTable();
+  renderSolventTable();
+  calc();
+}
+
+function onModeChange(mode){
+  const dashboardEls = [
+    document.getElementById('searchWrap'),
+    document.getElementById('sheetDot'),
+    document.getElementById('sheetStatus'),
+    document.getElementById('filterToggleWrap') || document.querySelector('.filter-toggle-wrap'),
+    document.getElementById('filterPanel'),
+    document.getElementById('artworkToggleWrap'),
+    document.getElementById('artworkPanel'),
+  ];
+  // product bar: hide sheet dropdown, show/hide custom name
+  const sheetDropRow = document.getElementById('productName')?.closest('.field-row');
+
+  if(mode === 'manual'){
+    dashboardEls.forEach(el => { if(el) el.style.display='none'; });
+    if(sheetDropRow) sheetDropRow.style.display='none';
+    document.getElementById('customName').placeholder = 'Enter product / job name…';
+    document.getElementById('customName').closest('.field-row').querySelector('.field-label').textContent = 'Product / Job Name';
+  } else {
+    // restore dashboard mode
+    [document.getElementById('sheetDot'), document.getElementById('sheetStatus')].forEach(el => { if(el) el.style.display=''; });
+    const sw = document.getElementById('searchWrap');
+    if(sw && sheetProducts.length) sw.style.display='';
+    if(sheetDropRow) sheetDropRow.style.display='';
+    document.getElementById('customName').placeholder = 'Enter custom product name…';
+    document.getElementById('customName').closest('.field-row').querySelector('.field-label').textContent = 'Custom Name / Remarks (Manual)';
+    // restore filter toggle if visible
+    const ft = document.querySelector('.filter-toggle-wrap');
+    if(ft) ft.style.display='';
+  }
+}
+
+// ══ FILTER PANEL ══
+function toggleFilters(){
+  const p = document.getElementById('filterPanel');
+  const c = document.getElementById('filterChevron');
+  const btn = document.getElementById('filterToggleBtn');
+  const open = p.classList.toggle('open');
+  c.textContent = open ? '▴' : '▾';
+  btn.classList.toggle('active', open);
+}
+
+const FILTER_KEYS = {
+  'f-job':'job','f-sku':'sku','f-brand':'brand','f-product':'product',
+  'f-customer':'customer','f-maker':'maker','f-design':'design',
+  'f-material':'material','f-substrate':'substrate','f-colors':'colors',
+  'f-devstatus':'devStatus','f-cylstatus':'cylStatus',
+  'f-substrateSize':'substrateSize','f-coilWidth':'coilWidth',
+  'f-repeatLength':'repeatLength','f-upsCircum':'upsCircum',
+  'f-cylCircum':'cylCircum','f-upsLength':'upsLength',
+  'f-cylLength':'cylLength','f-address':'address','f-application':'application'
+};
+
+function fillFilterDrops(){
+  const seen = {};
+  Object.entries(FILTER_KEYS).forEach(([id, key]) => {
+    const sel = document.getElementById(id); if(!sel) return;
+    const first = sel.options[0]; sel.innerHTML = ''; sel.appendChild(first);
+    seen[id] = {};
+    sheetProducts.forEach(p => {
+      const v = p[key]; if(!v || seen[id][v]) return;
+      seen[id][v] = 1;
+      const o = document.createElement('option'); o.value=v; o.textContent=v;
+      sel.appendChild(o);
+    });
+  });
+}
+
+function applyFilters(){
+  const q = (document.getElementById('f-search').value||'').toLowerCase();
+
+  // count active filters for badge
+  let activeCount = 0;
+
+  const filtered = sheetProducts.filter((p, idx) => {
+    // text search
+    if(q){
+      const txt = [p.job,p.brand,p.sku,p.customer,p.substrate,p.product,p.file,p.maker,p.design,p.material].filter(Boolean).join(' ').toLowerCase();
+      if(!txt.includes(q)) return false;
+    }
+
+    // dropdown filters
+    for(const [id, key] of Object.entries(FILTER_KEYS)){
+      const sel = document.getElementById(id); if(!sel) continue;
+      const val = sel.value; if(!val) continue;
+
+      // special: brand/lsd approval
+      if(id==='f-bappr'){
+        const has = p.brandApproval && p.brandApproval.trim() !== '' && p.brandApproval.toLowerCase() !== 'no';
+        if(val==='yes' && !has) return false;
+        if(val==='no' && has) return false;
+        continue;
+      }
+      if(id==='f-lappr'){
+        const has = p.lsdApproval && p.lsdApproval.trim() !== '' && p.lsdApproval.toLowerCase() !== 'no';
+        if(val==='yes' && !has) return false;
+        if(val==='no' && has) return false;
+        continue;
+      }
+      // status special
+      if(id==='f-status'){
+        const cs = (p.currentStatus||p.cylStatus||'').toLowerCase();
+        const map = {cyl_received:'received',engraving:'engrav',brand_approved:'approved',under_process:'process',pending:'pending',hold:'hold'};
+        if(!cs.includes(map[val]||val)) return false;
+        continue;
+      }
+      // generic
+      if(p[key] && p[key] !== val) return false;
+    }
+    return true;
+  });
+
+  // count active non-search filters
+  activeCount = Object.keys(FILTER_KEYS).filter(id => {
+    const el = document.getElementById(id); return el && el.value;
+  }).length + (q ? 1 : 0);
+
+  const badge = document.getElementById('filterBadge');
+  badge.textContent = activeCount;
+  badge.style.display = activeCount ? '' : 'none';
+  document.getElementById('filterToggleBtn').classList.toggle('active', activeCount > 0 || document.getElementById('filterPanel').classList.contains('open'));
+
+  renderArtworkPanel(filtered);
+  updateFileNameSelect(filtered);
+}
+
+function resetFilters(){
+  document.getElementById('f-search').value = '';
+  Object.keys(FILTER_KEYS).forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('f-bappr').value = '';
+  document.getElementById('f-lappr').value = '';
+  document.getElementById('f-status').value = '';
+  document.getElementById('filterBadge').style.display = 'none';
+  document.getElementById('filterToggleBtn').classList.remove('active');
+  // hide artwork
+  document.getElementById('artworkToggleWrap').style.display = 'none';
+  document.getElementById('artworkPanel').style.display = 'none';
+  // restore file names dropdown
+  showFileNamesDropdown();
+  populateDropdown(sheetProducts);
+}
+
+// ══ FILE NAMES PANEL ══
+function showFileNamesDropdown(){}   // kept for compat, no-op now
+function showFileNamesList(){}       // kept for compat, no-op now
+
+function updateFileNameSelect(filteredProducts){
+  const pb = document.getElementById('productName');
+  const files = filteredProducts.filter(p => p.file);
+  pb.innerHTML = files.length
+    ? '<option value="">— Select file name —</option>'
+    : '<option value="">— No files match filter —</option>';
+  files.forEach((p) => {
+    const i = sheetProducts.indexOf(p);
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.file;
+    pb.appendChild(opt);
+  });
+}
+
+function selectFileNamePill(el, idx){
+  document.querySelectorAll('.fn-pill').forEach(p => p.classList.remove('fn-selected'));
+  el.classList.add('fn-selected');
+  document.getElementById('productName').value = idx;
+  onJobSelect(idx);
+}
+
+function onFileNameSelect(idx){
+  if(idx === '') return;
+  document.getElementById('productName').value = idx;
+  onJobSelect(idx);
+}
+
+// ══ ARTWORK PANEL ══
+let selectedArtworkIdx = -1;
+
+function statusStyle(p){
+  const cs = (p.currentStatus||p.cylStatus||'').toLowerCase();
+  if(cs.includes('received')||cs.includes('approved')) return 'ac-stat-ok';
+  if(cs.includes('hold')) return 'ac-stat-hold';
+  return 'ac-stat-pend';
+}
+
+function toggleArtwork(){
+  const panel   = document.getElementById('artworkPanel');
+  const chevron = document.getElementById('artworkChevron');
+  const btn     = document.getElementById('artworkToggleBtn');
+  const isOpen  = panel.style.display !== 'none';
+  if(isOpen){
+    panel.style.display = 'none';
+    chevron.textContent = '▾';
+    btn.style.opacity = '0.6';
+  } else {
+    panel.style.display = 'block';
+    chevron.textContent = '▴';
+    btn.style.opacity = '1';
+  }
+}
+
+function renderArtworkPanel(list){
+  const panel   = document.getElementById('artworkPanel');
+  const grid    = document.getElementById('artworkGrid');
+  const count   = document.getElementById('artworkCount');
+  const wrap    = document.getElementById('artworkToggleWrap');
+
+  // check if any filter/search is active
+  const searchQ = document.getElementById('f-search')?.value || document.getElementById('universalSearch')?.value || '';
+  const anyFilter = searchQ.trim() || Object.keys(FILTER_KEYS).some(id => {
+    const el = document.getElementById(id); return el && el.value;
+  });
+
+  // hide everything when no filter active
+  if(!anyFilter){ wrap.style.display='none'; panel.style.display='none'; showFileNamesDropdown(); return; }
+
+  count.textContent = list.length;
+  wrap.style.display = list.length ? '' : 'none';
+  panel.style.display = list.length ? 'block' : 'none';
+  document.getElementById('artworkChevron').textContent = '▴';
+  document.getElementById('artworkToggleBtn').style.opacity = '1';
+
+  // Update file names panel with filtered list
+  // (handled by applyFilters → updateFileNameSelect)
+
+  if(!list.length){
+    grid.innerHTML = '<div class="artwork-empty">No artworks match the current filters.</div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(p => {
+    const idx = sheetProducts.indexOf(p);
+    const job = p.job || p.brand || p.file || `Job #${idx+1}`;
+    const statusCls = statusStyle(p);
+    const statusTxt = p.currentStatus || p.cylStatus || '';
+    const pills = [
+      p.coilWidth   ? p.coilWidth+'mm W'     : '',
+      p.repeatLength? p.repeatLength+'mm R'  : '',
+      p.colors      ? p.colors+' clr'        : '',
+      p.substrate   ? p.substrate            : '',
+    ].filter(Boolean);
+    return `<div class="artwork-card${idx===selectedArtworkIdx?' selected':''}" onclick="selectArtwork(${idx})">
+      <div class="ac-job" title="${job}">${job}</div>
+      ${p.brand ? `<div class="ac-brand">${p.brand}</div>` : ''}
+      <div class="ac-meta">
+        ${pills.map(t=>`<span class="ac-pill">${t}</span>`).join('')}
+        ${statusTxt ? `<span class="ac-status ${statusCls}">${statusTxt}</span>` : ''}
+      </div>
+      ${p.customer ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px">👤 ${p.customer}</div>` : ''}
+      ${p.file ? `<div style="font-family:var(--mono);font-size:9px;color:var(--muted2);margin-top:3px">📄 ${p.file}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function selectArtwork(idx){
+  selectedArtworkIdx = idx;
+  document.getElementById('productName').value = idx;
+  onJobSelect(idx);
+  // re-render to show selected state
+  const cards = document.querySelectorAll('.artwork-card');
+  cards.forEach(c => c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+}
+
+// ══ UNIVERSAL SEARCH ══
+let searchActive = -1;
+
+function highlight(text, query){
+  if(!query) return text;
+  const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
+  return text.replace(re, '<mark>$1</mark>');
+}
+
+function onSearchInput(q){
+  const clearBtn = document.getElementById('searchClear');
+  clearBtn.style.display = q ? '' : 'none';
+  searchActive = -1;
+
+  // sync filter search box
+  document.getElementById('f-search').value = q;
+
+  if(!q.trim()){
+    document.getElementById('searchDropdown').style.display = 'none';
+    renderArtworkPanel(sheetProducts);
+    return;
+  }
+
+  const lower = q.toLowerCase();
+  const matched = sheetProducts.filter(p => {
+    const txt = [p.job,p.brand,p.sku,p.customer,p.substrate,p.product,p.file,p.design,p.material].filter(Boolean).join(' ').toLowerCase();
+    return txt.includes(lower);
+  });
+
+  // show quick-pick dropdown
+  const dropdown = document.getElementById('searchDropdown');
+  if(!matched.length){
+    dropdown.innerHTML = '<div style="padding:10px 14px;font-family:var(--mono);font-size:11px;color:var(--muted)">No results for "'+q+'"</div>';
+    dropdown.style.display = '';
+  } else {
+    dropdown.innerHTML = `<div class="search-count">${matched.length} result${matched.length>1?'s':''} — select or see cards below</div>` +
+      matched.slice(0,10).map(p => {
+        const i = sheetProducts.indexOf(p);
+        const main = highlight(p.job||p.brand||p.file||`Job #${i+1}`, q);
+        const sub  = [p.customer,p.brand,p.sku,p.substrate,p.coilWidth?p.coilWidth+'mm':''].filter(Boolean);
+        return `<div class="search-item" data-idx="${i}" onmousedown="selectSearchItem(${i})">
+          <div class="si-main">${main}</div>
+          ${sub.length?`<div class="si-sub">${sub.map(s=>highlight(s,q)).join(' · ')}</div>`:''}
+        </div>`;
+      }).join('');
+    dropdown.style.display = '';
+  }
+
+  // also live-filter artwork panel
+  renderArtworkPanel(matched);
+}
+
+function onSearchKey(e){
+  const dropdown = document.getElementById('searchDropdown');
+  const items = dropdown.querySelectorAll('.search-item');
+  if(!items.length) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); searchActive=Math.min(searchActive+1,items.length-1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); searchActive=Math.max(searchActive-1,0); }
+  else if(e.key==='Enter'&&searchActive>=0){ e.preventDefault(); items[searchActive].dispatchEvent(new Event('mousedown')); return; }
+  else if(e.key==='Escape'){ clearSearch(); return; }
+  items.forEach((el,i) => el.classList.toggle('active', i===searchActive));
+  if(searchActive>=0) items[searchActive].scrollIntoView({block:'nearest'});
+}
+
+function selectSearchItem(idx){
+  const p = sheetProducts[idx];
+  const label = [p.job,p.brand,p.sku].filter(Boolean).join(' · ')||`Job #${idx+1}`;
+  document.getElementById('universalSearch').value = label;
+  document.getElementById('searchDropdown').style.display = 'none';
+  document.getElementById('searchClear').style.display = '';
+  document.getElementById('productName').value = idx;
+  onJobSelect(idx);
+}
+
+function clearSearch(){
+  document.getElementById('universalSearch').value = '';
+  document.getElementById('f-search').value = '';
+  document.getElementById('searchDropdown').style.display = 'none';
+  document.getElementById('searchClear').style.display = 'none';
+  document.getElementById('universalSearch').focus();
+  document.getElementById('artworkToggleWrap').style.display = 'none';
+  document.getElementById('artworkPanel').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  if(!document.getElementById('searchWrap')?.contains(e.target))
+    document.getElementById('searchDropdown').style.display = 'none';
+});
+
+// ══ GOOGLE SHEET INTEGRATION (JSONP — same method as Dashboard) ══
+const SHEET_ID  = '12ZhbJ0chwFAUosuEIvcwR7paqjXzdtQonDxAEKn5PPs';
+let sheetProducts = [];
+let _fetchTout = null;
+
+// Column map mirrors the Dashboard exactly
+const DASH_COL_MAP = {
+  's. no.':'sno','file name':'file','job name':'job','sku size':'sku',
+  'customer name & address':'customer','qr address/single address/multiple address':'address',
+  'regular design/promotional/offer/price off':'design','brand / product name':'brand',
+  'product type':'product','rpet/vpet':'material','application':'application',
+  'substrate type':'substrate','substrate size (mm)':'substrateSize',
+  'coil width (mm)':'coilWidth','repeat length (mm)':'repeatLength',
+  'no. of colors':'colors','no. of ups in circum':'upsCircum',
+  'cylinder circum (mm)':'cylCircum','no. of ups in length':'upsLength',
+  'cylinder length (mm)':'cylLength','artwork received date':'artworkDate',
+  'artwork approval given to cylinder manufacturer (date)':'approvalToMaker',
+  'artwork development status':'devStatus','cylinder maker':'maker',
+  'cylinder status':'cylStatus','cylinder received date':'cylReceived',
+  'current status of development':'currentStatus',
+  'artwork file approval date from brand':'brandApproval',
+  'lsd shade approval from brand':'lsdApproval','history':'history','remarks':'remarks'
+};
+
+function setSheetStatus(state, msg){
+  const dot = document.getElementById('sheetDot');
+  const txt = document.getElementById('sheetStatus');
+  dot.className = 'sheet-dot ' + state;
+  txt.textContent = msg;
+}
+
+function populateDropdown(products){
+  // Show universal search
+  document.getElementById('searchWrap').style.display = '';
+
+  // Fill product bar select with FILE NAMES
+  const pb = document.getElementById('productName');
+  pb.innerHTML = '<option value="">— Select file name —</option>';
+  products.forEach((p, i) => {
+    if(!p.file) return;
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.file;
+    pb.appendChild(opt);
+  });
+}
+
+// Syncs both selects and loads product
+function onJobSelect(idx){
+  document.getElementById('productSelect').value = idx;
+  loadProduct(idx);
+}
+
+function loadProduct(idx){
+  if(idx === '') return;
+  const p = sheetProducts[+idx];
+  if(!p) return;
+
+  // Helper: set input value if data exists
+  const sv = (id, val) => { if(val){ const el=document.getElementById(id); if(el) el.value=val; } };
+
+  // Product identity — populate custom name field
+  const nameVal = p.job || p.brand || p.file || p.sku || '';
+  const cn = document.getElementById('customName');
+  if(cn && nameVal) cn.value = nameVal;
+  sv('specName',    p.substrate || p.substrateSize || p.material);
+
+  // Dimensions — directly from dashboard columns
+  sv('width',  p.coilWidth);
+  sv('repeat', p.repeatLength);
+
+  // Colors hint in ink section (info only)
+  if(p.colors && !isNaN(+p.colors)){
+    // update ink count as a hint
+    document.getElementById('inkGSM').title = `${p.colors} colors in design`;
+  }
+
+  renderInkTable();
+  renderSolventTable();
+  calc();
+
+  // Show a summary toast
+  const info = [
+    p.customer   ? `👤 ${p.customer}`    : '',
+    p.brand      ? `🏷 ${p.brand}`        : '',
+    p.substrate  ? `🧱 ${p.substrate}`    : '',
+    p.coilWidth  ? `↔ ${p.coilWidth}mm`  : '',
+    p.repeatLength? `↕ ${p.repeatLength}mm` : '',
+    p.colors     ? `🎨 ${p.colors} colors` : '',
+    p.cylCircum  ? `⚙ Cyl Ø ${p.cylCircum}mm` : '',
+  ].filter(Boolean).join('  ');
+
+  setSheetStatus('ok', info || 'Job loaded');
+}
+
+function fetchSheet(){
+  setSheetStatus('loading', 'Syncing with Dashboard sheet…');
+  document.getElementById('productSelect').style.display = 'none';
+
+  // Remove old script tag
+  const old = document.getElementById('_gcost_cb'); if(old) old.remove();
+  clearTimeout(_fetchTout);
+  _fetchTout = setTimeout(() => setSheetStatus('err', 'Request timed out — check sheet sharing'), 13000);
+
+  window.__gcostCb = function(json){
+    clearTimeout(_fetchTout);
+    try {
+      if(json.status === 'error') throw new Error(json.errors?.[0]?.detailed_message || 'Sheet error');
+      const cols = json.table.cols.map(c => (c.label||c.id||'').trim().toLowerCase());
+      sheetProducts = json.table.rows
+        .filter(r => r && r.c && r.c.some(c => c && c.v != null && c.v !== ''))
+        .map(row => {
+          const o = {};
+          row.c.forEach((cell, i) => {
+            const k = DASH_COL_MAP[cols[i]]; if(!k) return;
+            let v = '';
+            if(cell){ if(cell.f != null) v = String(cell.f); else if(cell.v != null) v = String(cell.v); }
+            o[k] = v.trim();
+          });
+          return o;
+        })
+        .filter(r => r.job || r.brand || r.file);
+
+      populateDropdown(sheetProducts);
+      fillFilterDrops();
+      // artwork hidden by default — appears only when filtering
+      setSheetStatus('ok', `${sheetProducts.length} jobs loaded from Dashboard · last synced ${new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}`);
+    } catch(e){
+      setSheetStatus('err', 'Error: ' + e.message);
+    }
+  };
+
+  const s = document.createElement('script');
+  s.id = '_gcost_cb';
+  s.onerror = () => { clearTimeout(_fetchTout); setSheetStatus('err', 'Cannot reach sheet — ensure "Anyone with link" viewer access'); };
+  s.src = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=responseHandler:__gcostCb&t=${Date.now()}`;
+  document.head.appendChild(s);
+}
+
+// ══ PRINT ══
+function doPrint(){
+  const ptype = document.getElementById('productType');
+  const ptypeText = ptype ? ptype.options[ptype.selectedIndex].text : '';
+  const dateStr = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const el1 = document.getElementById('print_ptype');
+  const el2 = document.getElementById('print_date');
+  const el3 = document.getElementById('print_date2');
+  if(el1) el1.textContent = ptypeText;
+  if(el2) el2.textContent = dateStr;
+  if(el3) el3.textContent = dateStr;
+  window.print();
+}
+
+// ══ INIT ══
+renderInkTable();
+renderSolventTable();
+renderMachineRegistry();
+renderProcessTable();
+calc();
+fetchSheet();
+</script>
+</body>
+</html>

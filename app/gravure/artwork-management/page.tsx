@@ -497,7 +497,7 @@ export default function ArtworkManagementPage() {
   const [libFilters, setLibFilters] = useState({
     customer: "", jobName: "", brand: "", packSize: "", category: "",
     substrate: "", designType: "", noOfColors: "", colorName: "",
-    machine: "", cylType: "", cylStatus: "", cylVendor: "",
+    machine: "", cylType: "", cylStatus: "", cylVendor: "", material: "",
     artworkStage: "", brandApproved: "", lsdApproved: "", cylReceived: "",
     circum: "", cylLength: "", coilWidth: "", repeatLength: "",
   });
@@ -1361,6 +1361,7 @@ export default function ArtworkManagementPage() {
         const uPackSizes = uniq("PackSize");
         const uCategories = uniq("CategoryName");
         const uSubstrates = uniq("Substrate");
+        const uMaterials = [...new Set(libRows.map(r => r.BottleType || r.StructureType).filter(Boolean))].sort();
         const uTypes = uniq("SpecialSpecs");
         const uColors = uniq("NoOfColors");
         const uColorNames = [...new Set(
@@ -1379,8 +1380,11 @@ export default function ArtworkManagementPage() {
         const lf = libFilters;
         const filtered = libRows.filter(r => {
           const q = libSearch.toLowerCase();
-          const matchSearch = !q || [r.WoNo, r.OrderNo, r.Customer, r.JobName, r.Brand, r.ArtworkNo, r.ColorName, r.ProductCode]
-            .some(v => v?.toLowerCase().includes(q));
+          const matchSearch = !q || [
+            r.WoNo, r.OrderNo, r.Customer, r.JobName, r.Brand, r.ArtworkNo, r.ColorName, r.ProductCode,
+            r.AttachmentFilesName, r.PackSize, r.CategoryName, r.Substrate, r.StructureType, r.BottleType,
+            r.SpecialSpecs, r.TypeOfProduct, r.CylVendor, r.Machine, r.CylType, r.CylStatus, r.ArtworkStage,
+          ].some(v => v?.toLowerCase().includes(q));
           const stage = r.ArtworkStage || "Artwork Pending";
           const brandAppr = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("Brand Approved");
           const lsdAppr = ARTWORK_STAGES.indexOf(stage) >= ARTWORK_STAGES.indexOf("LSD Shade Approved");
@@ -1393,6 +1397,7 @@ export default function ArtworkManagementPage() {
             && (!lf.packSize || inc(r.PackSize, lf.packSize))
             && (!lf.category || inc(r.CategoryName, lf.category))
             && (!lf.substrate || inc(r.Substrate, lf.substrate))
+            && (!lf.material || inc(r.BottleType || r.StructureType, lf.material))
             && (!lf.designType || inc(r.SpecialSpecs, lf.designType))
             && (!lf.noOfColors || inc(r.NoOfColors, lf.noOfColors))
             && (!lf.colorName || r.ColorName?.split(",").some(c => c.trim().toLowerCase().includes(lf.colorName.toLowerCase())))
@@ -1759,7 +1764,7 @@ export default function ArtworkManagementPage() {
                       setLibSearch("");
                       setKpiFilter(null);
                       setLibFilters({
-                        customer: "", jobName: "", brand: "", packSize: "", category: "", substrate: "",
+                        customer: "", jobName: "", brand: "", packSize: "", category: "", substrate: "", material: "",
                         designType: "", noOfColors: "", colorName: "", machine: "", cylType: "",
                         cylStatus: "", cylVendor: "", artworkStage: "", brandApproved: "", lsdApproved: "", cylReceived: "",
                         circum: "", cylLength: "", coilWidth: "", repeatLength: "",
@@ -1849,6 +1854,13 @@ export default function ArtworkManagementPage() {
                       onChange={val => setLF("substrate", val)}
                       options={uSubstrates.map(v => ({ value: v, label: v }))}
                       placeholder="All substrates"
+                      className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
+                    />
+                    <SearchableSelect
+                      value={lf.material}
+                      onChange={val => setLF("material", val)}
+                      options={uMaterials.map(v => ({ value: v, label: v }))}
+                      placeholder="All materials"
                       className="px-2 py-1.5 border border-gray-200 rounded-lg text-xs outline-none bg-white w-full"
                     />
                     <SearchableSelect

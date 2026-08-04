@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { apiPost, apiGet } from "@/lib/api";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1426,6 +1427,11 @@ function EmptyState({ onSend, chatMode, setChatMode, visibleGroups, recentQuerie
 // ─── Main chatbot component ───────────────────────────────────────────────────
 
 export default function ERPChatBot() {
+  // Costing-estimation new/edit pages have a sticky right-side cost summary panel
+  // that the bottom-right floating trigger would otherwise cover — anchor to the
+  // top-right there instead of repositioning the widget globally.
+  const pathname = usePathname();
+  const anchorTop = pathname?.startsWith("/gravure/costing-estimation/new") || /^\/gravure\/costing-estimation\/[^/]+\/edit/.test(pathname || "");
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput]       = useState("");
@@ -1639,7 +1645,9 @@ export default function ERPChatBot() {
       <button
         onClick={() => setOpen(o => !o)}
         aria-label="Open ERP Assistant"
-        className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95"
+        className={`fixed z-50 w-14 h-14 rounded-full bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 ${
+          anchorTop ? "top-4 right-5" : "bottom-5 right-5"
+        }`}
         style={{ boxShadow: "0 4px 20px rgba(0,150,136,0.45)" }}
       >
         {open ? (
@@ -1661,7 +1669,9 @@ export default function ERPChatBot() {
       {/* Chat panel */}
       {open && (
         <div
-          className="fixed bottom-24 right-5 z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-gray-200"
+          className={`fixed z-50 flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-gray-200 ${
+            anchorTop ? "top-20 right-5" : "bottom-24 right-5"
+          }`}
           style={{ width: 360, height: 580, background: "#fff" }}
         >
           {/* Header */}

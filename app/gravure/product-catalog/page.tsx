@@ -2394,7 +2394,7 @@ export default function ProductCatalogPage() {
                         );
                       })()}
                       <div>
-                        <FieldMasterSelectField label="Pack Size"
+                        <FieldMasterSelectField label="SKU Size"
                           value={(replanForm as any).packSize ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.packSizes, ...((replanForm as any).packSize && !fmOptions.packSizes.includes((replanForm as any).packSize) ? [(replanForm as any).packSize] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("packSize" as any, e.target.value)}
@@ -2421,7 +2421,7 @@ export default function ProductCatalogPage() {
                         />
                       </div>
                       <div>
-                        <FieldMasterSelectField label="SKU Type"
+                        <FieldMasterSelectField label="Special Specification"
                           value={(replanForm as any).skuType ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.skuTypes, ...((replanForm as any).skuType && !fmOptions.skuTypes.includes((replanForm as any).skuType) ? [(replanForm as any).skuType] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("skuType" as any, e.target.value)}
@@ -2429,7 +2429,7 @@ export default function ProductCatalogPage() {
                         />
                       </div>
                       <div>
-                        <FieldMasterSelectField label="Bottle Type"
+                        <FieldMasterSelectField label="Material Type"
                           value={(replanForm as any).bottleType ?? ""}
                           options={[{ value: "", label: "-- Select --" }, ...[...fmOptions.bottleTypes, ...((replanForm as any).bottleType && !fmOptions.bottleTypes.includes((replanForm as any).bottleType) ? [(replanForm as any).bottleType] : [])].map(v => ({ value: v, label: v }))]}
                           onChange={e => rf("bottleType" as any, e.target.value)}
@@ -2445,13 +2445,13 @@ export default function ProductCatalogPage() {
                         />
                       </div>
                       <div className="sm:col-span-2">
-                        <Input label="Artwork Name"
+                        <Input label="Job Name"
                           placeholder="e.g. Parle-G 100g Front Artwork v3"
                           value={(replanForm as any).artworkName ?? ""}
                           onChange={e => rf("artworkName" as any, e.target.value)} />
                       </div>
                       <div className="sm:col-span-2">
-                        <Input label="Special Specifications"
+                        <Input label="Design Type"
                           placeholder="e.g. @20 Rs, Free, Promo, Export"
                           value={(replanForm as any).specialSpecs ?? ""}
                           onChange={e => rf("specialSpecs" as any, e.target.value)} />
@@ -4729,17 +4729,17 @@ export default function ProductCatalogPage() {
                   <tr>
                     <th style={TH}>Category</th>
                     <td style={TD}>{r.categoryName || "—"}</td>
-                    <th style={TH}>SKU Type</th>
+                    <th style={TH}>Special Specification</th>
                     <td style={TD}>{r.skuType || "—"}</td>
                   </tr>
                   <tr>
-                    <th style={TH}>Artwork Name</th>
+                    <th style={TH}>Job Name</th>
                     <td style={TD}>{r.artworkName || "—"}</td>
                     <th style={TH}>Address Type</th>
                     <td style={TD}>{r.addressType || "—"}</td>
                   </tr>
                   <tr>
-                    <th style={TH}>Pack Size</th>
+                    <th style={TH}>SKU Size</th>
                     <td style={TD}>{r.packSize || "—"}</td>
                     <th style={TH}>Print Type</th>
                     <td style={TD}>{r.printType || "—"}{r.noOfColors > 0 ? ` · ${r.noOfColors} Colours (${r.frontColors ?? "—"}F + ${r.backColors ?? "—"}B)` : ""}</td>
@@ -4963,7 +4963,7 @@ export default function ProductCatalogPage() {
                   <tbody>
                     {r.specialSpecs && (
                       <tr>
-                        <th style={{ ...TH, width: "16%" }}>Special Specifications</th>
+                        <th style={{ ...TH, width: "16%" }}>Design Type</th>
                         <td style={TD}>{r.specialSpecs}</td>
                       </tr>
                     )}
@@ -6064,7 +6064,7 @@ export default function ProductCatalogPage() {
               { key: "ProductName",  header: "Product Name",  sortable: true  },
               { key: "ArtworkName",  header: "Artwork Name",  sortable: true  },
               { key: "Content",      header: "Content",       sortable: false },
-              { key: "PackSize",     header: "Pack Size",     sortable: false },
+              { key: "PackSize",     header: "SKU Size",      sortable: false },
               { key: "BrandName",    header: "Brand",         sortable: true  },
             ] as Column<(typeof artworkList)[0]>[])}
             actions={(a) => (
@@ -6154,10 +6154,10 @@ export default function ProductCatalogPage() {
             columns={([
               { key: "SubGroupNo",   header: "Sub Group No",   sortable: true, render: (sg: any) => <span className="font-semibold text-[var(--erp-primary)]">{sg.SubGroupNo || "—"}</span> },
               { key: "SubGroupName", header: "Sub Group Name",  sortable: true  },
-              { key: "PackSize",     header: "Pack Size",       sortable: false },
+              { key: "PackSize",     header: "SKU Size",        sortable: false },
               { key: "BrandName",    header: "Brand Name",      sortable: true  },
               { key: "Content",      header: "Content",         sortable: false },
-              { key: "SpecialSpecs", header: "Special Specs",   sortable: false },
+              { key: "SpecialSpecs", header: "Design Type",     sortable: false },
             ] as Column<(typeof sgList)[0]>[])}
             actions={(sg) => (
               <Button size="sm" variant="action-create"

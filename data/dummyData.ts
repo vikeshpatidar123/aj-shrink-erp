@@ -2412,7 +2412,7 @@ export type GravureEstimation = {
   materials: GravureEstimationMaterial[];
   processes: GravureEstimationProcess[];
   overheadPct: number; profitPct: number;
-  labourCost?: number; transportationCost?: number; interestCost?: number;
+  labourCost?: number; transportationCost?: number; interestCost?: number; depreciationCost?: number;
   // Packing cost breakup (from reference costing model)
   packingBoxRate?: number;          // ₹/box
   packingCoilsPerBox?: number;      // coils per box

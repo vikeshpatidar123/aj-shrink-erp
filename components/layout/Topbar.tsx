@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import NotificationPanel from "./NotificationPanel";
 import { useCompanyName } from "@/lib/useCompanyName";
+import { getSession } from "@/lib/auth";
 
 // ── All navigable modules (flat list for search) ──────────────────────────────
 const ALL_MODULES = [
@@ -86,6 +87,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter();
   const [dropOpen, setDropOpen]         = useState(false);
   const [unitDropOpen, setUnitDropOpen] = useState(false);
+  const [userName, setUserName]         = useState("");
+
+  useEffect(() => {
+    setUserName(getSession()?.userName || "");
+  }, []);
 
   // ── Module search ─────────────────────────────────────────────────────────
   const [searchQ, setSearchQ]         = useState("");
@@ -221,12 +227,12 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
       {/* ── Right ── */}
       <div className="flex items-center gap-0.5 flex-shrink-0">
 
-        {/* Hello Admin */}
+        {/* Hello <user> */}
         <span
           className="hidden lg:block text-[11px] font-medium px-2"
           style={{ color: "rgba(255,255,255,0.4)" }}
         >
-          Hello Admin
+          Hello {userName || "User"}
         </span>
 
         {/* Module search — md+ only */}
@@ -350,7 +356,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
               className="hidden sm:block text-xs font-medium"
               style={{ color: "rgba(255,255,255,0.85)" }}
             >
-              Admin
+              {userName || "User"}
             </span>
             <ChevronDown size={12} className="hidden sm:block" style={{ color: "rgba(255,255,255,0.4)" }} />
           </button>
@@ -360,8 +366,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
               <div className="fixed inset-0 z-50" onClick={() => setDropOpen(false)} />
               <div className="absolute right-0 mt-1.5 w-44 bg-white rounded-lg shadow-lg border border-gray-200 z-[60] overflow-hidden">
                 <div className="px-4 py-3" style={{ borderBottom: "1px solid #f3f4f6" }}>
-                  <p className="text-xs font-semibold text-gray-800">Admin User</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">admin@ajshrink.com</p>
+                  <p className="text-xs font-semibold text-gray-800">{userName || "User"}</p>
                 </div>
                 <button
                   onClick={() => { setDropOpen(false); router.push("/login"); }}

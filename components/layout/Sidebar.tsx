@@ -44,6 +44,7 @@ export const navItems: NavItem[] = [
   { label: "Enquiry",          href: "/enquiry",                   icon: ClipboardList,  badge: "GRV" },
   { label: "Estimation",       href: "/cost-estimation",           icon: Calculator,     badge: "EXT" },
   { label: "Estimation",       href: "/gravure/estimation",        icon: Calculator,     badge: "GRV" },
+  { label: "Costing Estimation", href: "/gravure/costing-estimation", icon: ReceiptText,  badge: "GRV" },
   { label: "Product Catalog",  href: "/extrusion/product-catalog", icon: BookMarked,     badge: "EXT" },
   { label: "Product Catalog",  href: "/gravure/product-catalog",   icon: BookMarked,     badge: "GRV" },
   { label: "Order Booking",    href: "/gravure/orders",            icon: ShoppingCart,   badge: "GRV" },
